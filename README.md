@@ -59,12 +59,6 @@ The `generated` module exports:
 
 Generated structs flatten unknown object fields for forward compatibility. Open enums retain unknown strings, and discriminated unions preserve unknown variants. Parsing does not coerce values, insert defaults, or discard extension data.
 
-## Parsing and validation
-
-Structural parsing provides typed access without rejecting forward-compatible data. It does not apply every JSON Schema constraint.
-
-Before classifying a response or making an authorization decision, validate the payload against the canonical AHP Draft 2020-12 schema and applicable protocol requirements. `parse_intercept_deny_response(...).is_ok()` alone does not prove that a response is an authorized denial.
-
 ## Development
 
 ```sh
