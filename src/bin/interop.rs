@@ -280,7 +280,7 @@ fn client(c: &Value) -> Result<bool> {
                     },
                 )
             }
-            Ok(Err(_)) if s["expectError"] == true => (true, Value::Null, None),
+            Ok(Err(_)) if s["expectError"] == true => (true, json!({"rejected":true}), None),
             Ok(Err(_)) | Err(_) => (
                 false,
                 Value::Null,

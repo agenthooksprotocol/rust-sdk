@@ -36,6 +36,18 @@ fn localize(v: &mut Value, file: &str) {
         _ => {}
     }
 }
+fn sender_token<'a>(plan: &'a Value, step: &Value) -> Result<&'a str> {
+    let field = if step["path"] == "/upload" {
+        "uploadToken"
+    } else {
+        "token"
+    };
+    plan[field]
+        .as_str()
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| format!("missing {field}").into())
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args[1] == "client" {
@@ -61,7 +73,7 @@ fn main() -> Result<()> {
                     .any(|key| key.eq_ignore_ascii_case("Authorization"))
             });
             if !explicit_auth {
-                r = r.bearer_auth(plan["token"].as_str().ok_or("token")?);
+                r = r.bearer_auth(sender_token(&plan, step)?);
             }
             if let Some(headers) = step["headers"].as_object() {
                 for (k, v) in headers {
@@ -420,4 +432,29 @@ fn sha256(bytes: &[u8]) -> String {
         }
     }
     h.iter().map(|x| format!("{x:08x}")).collect()
+}
+
+#[cfg(test)]
+mod sender_tests {
+    use super::*;
+
+    #[test]
+    fn upload_credentials_are_independent_of_event_credentials() {
+        let plan = json!({"token":"event", "uploadToken":"upload"});
+        assert_eq!(
+            sender_token(&plan, &json!({"path":"/upload"})).unwrap(),
+            "upload"
+        );
+        assert_eq!(
+            sender_token(&plan, &json!({"path":"/hooks/intercept"})).unwrap(),
+            "event"
+        );
+        for plan in [
+            json!({"token":"event"}),
+            json!({"token":"event","uploadToken":null}),
+            json!({"token":"event","uploadToken":""}),
+        ] {
+            assert!(sender_token(&plan, &json!({"path":"/upload"})).is_err());
+        }
+    }
 }

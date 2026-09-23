@@ -128,6 +128,7 @@ def main():
                     rows = json.loads(report.read_text())['results']
                     assert len(rows) == 1
                     assert rows[0]['status'] == ('passed' if passed else 'failed'), (label,rows)
+                    assert rows[0]['actual'] == ({'rejected': True} if passed else None), (label,rows)
                 print(f'{label}: passed')
             for mode in ['503','reset','watchdog','redirect','canonical-rejection']:
                 server.mode = mode

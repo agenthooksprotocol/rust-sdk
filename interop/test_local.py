@@ -71,7 +71,12 @@ def main():
                 path = write(directory / 'client.json',client_config)
                 result = subprocess.run([binary,'client','--config',path],cwd=SDK,timeout=60)
                 rows = json.loads(report.read_text())['results'] if report.exists() else []
-                failed = [r for r in rows if r['status'] != 'passed']
+                expected_status = {s['id']: bool(s.get('expectError'))
+                                   for s in scenarios['scenarios']}
+                assert len(rows) == len(expected_status)
+                assert {r['id'] for r in rows} == set(expected_status)
+                failed = [r for r in rows if r['status'] != 'passed'
+                          or (expected_status[r['id']] and r['actual'] != {'rejected': True})]
                 if result.returncode or failed:
                     print(json.dumps(failed[:8],indent=2))
                     raise AssertionError(f'{transport}/{mode}: exit={result.returncode}')

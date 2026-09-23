@@ -1038,6 +1038,11 @@ fn publish(id: &str, b: &mut Boundary, state: Value, actual: &mut Value) {
     actual["published"].as_array_mut().unwrap().push(json!(id));
     actual["states"][id] = state;
 }
+// An explicit step policy replaces, rather than merges with, configured credentials.
+fn upload_policy<'a>(config: &'a Value, step: &'a Value) -> &'a Value {
+    step.get("upload").unwrap_or(&config["upload"])
+}
+
 fn send_upload(
     endpoint: &reqwest::Url,
     step: &Value,
@@ -1251,12 +1256,17 @@ fn client(c: &Value) -> Result<()> {
                     )?;
                 }
                 "upload" => {
-                    // A failed retry must not reuse a prior confirmation for this fixture alias.
-                    descriptors.remove(s(step, "ref"));
+                    // Failed retries cannot revoke a previously confirmed immutable body.
+                    // Only successful confirmations replace aliases; resolve_bodies still
+                    // checks the referenced bytes against their exact size and hash.
                     let bytes =
                         base64::engine::general_purpose::STANDARD.decode(s(step, "bodyBase64"))?;
-                    let upload = &c["upload"];
-                    let endpoint = reqwest::Url::parse(&transport.upload_endpoint)?;
+                    let upload = upload_policy(c, step);
+                    let endpoint = reqwest::Url::parse(
+                        upload["endpoint"]
+                            .as_str()
+                            .unwrap_or(&transport.upload_endpoint),
+                    )?;
                     if endpoint.scheme() != "https"
                         && !(endpoint.scheme() == "http"
                             && ["127.0.0.1", "localhost", "[::1]"]
@@ -1390,6 +1400,17 @@ fn test_upload(state: &ServerState, value: &Value) -> Result<(u16, Value)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn step_upload_policy_replaces_configured_policy_without_credential_fallback() {
+        let config = json!({"upload":{"endpoint":"https://configured.invalid/upload","auth":{"type":"bearer","tokenEnv":"AUTHORIZED"},"maxBytes":100}});
+        assert_eq!(upload_policy(&config, &json!({})), &config["upload"]);
+        let step = json!({"upload":{"endpoint":"https://override.invalid/upload","auth":{"type":"bearer","tokenEnv":"UNAUTHORIZED"},"maxBytes":1}});
+        assert_eq!(upload_policy(&config, &step), &step["upload"]);
+        let anonymous = json!({"upload":{"endpoint":"https://override.invalid/upload"}});
+        assert!(upload_policy(&config, &anonymous)["auth"].is_null());
+        assert!(upload_policy(&config, &json!({"upload":null})).is_null());
+    }
+
     #[test]
     fn upload_header_injection_is_rejected_before_connecting() {
         let endpoint = reqwest::Url::parse("http://127.0.0.1:1/upload").unwrap();

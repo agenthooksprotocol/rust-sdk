@@ -300,6 +300,49 @@ fn unknown_effect_fields_reject_the_compound_response() {
 }
 
 #[test]
+fn bundled_schemas_enforce_strict_effect_fields_beyond_structural_parsing() {
+    let schemas = schemas();
+    for effect in [
+        json!({"type":"allow"}),
+        json!({"type":"ask"}),
+        json!({"type":"deny","reason":"policy"}),
+        json!({"type":"modify","target":"input","operation":"replace","value":{}}),
+        json!({"type":"message","text":"hello"}),
+        json!({"type":"return","value":null}),
+        json!({"type":"flow","operation":"stop","reason":"done"}),
+        json!({"type":"flow","operation":"continue"}),
+        json!({"type":"inject","target":"context","operation":"append","deliverAt":"now","value":"context"}),
+    ] {
+        assert!(
+            schemas
+                .validate("intercept-response", &response(json!([effect])))
+                .is_ok()
+        );
+        assert!(agent_hooks_protocol::generated::parse_effect_value(effect.clone()).is_ok());
+        let mut invalid = effect.clone();
+        invalid["future"] = json!(true);
+        assert!(
+            schemas
+                .validate("intercept-response", &response(json!([invalid])))
+                .is_err()
+        );
+        // Structural codecs preserve unknown fields; canonical validation rejects them.
+        assert!(agent_hooks_protocol::generated::parse_effect_value(invalid).is_ok());
+    }
+    // Ask is not an elicitation request and has no reason or message field.
+    for field in ["reason", "message"] {
+        let mut invalid = json!({"type":"ask"});
+        invalid[field] = json!("Please confirm");
+        assert!(
+            schemas
+                .validate("intercept-response", &response(json!([invalid])))
+                .is_err()
+        );
+        assert!(agent_hooks_protocol::generated::parse_effect_value(invalid).is_ok());
+    }
+}
+
+#[test]
 fn continuation_without_instruction_does_not_invent_one() {
     let schemas = schemas();
     let mut req = request();
