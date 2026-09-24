@@ -1,1 +1,4 @@
 /target/
+
+# Local interoperability run reports
+/interop/auth-test-report.json

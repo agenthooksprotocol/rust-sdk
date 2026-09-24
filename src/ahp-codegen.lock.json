@@ -1,0 +1,121 @@
+{
+  "schemaRevision": "draft",
+  "protocolVersion": "draft",
+  "generatorVersion": "0.1.0",
+  "language": "rust",
+  "schemaManifestSha256": "5790952c8b55619a64e63b0ad1775ff4ad38e9790474500fa2d4ae0a3008923a",
+  "documents": [
+    {
+      "path": "schema/draft/capabilities-request.schema.json",
+      "sha256": "c139a439d0e21bc59bd2e69b596e684484ba0052a7fdf6f2ec0810d1a5fad299"
+    },
+    {
+      "path": "schema/draft/capabilities-response.schema.json",
+      "sha256": "90c09d1eef78a8d95c4c82fa1c978fb55fd60938cffa3ad60c3def6ab7ace8e1"
+    },
+    {
+      "path": "schema/draft/capabilities.schema.json",
+      "sha256": "c29b8effdb09a492bc791885ece3d59a824c4082771c782f41cacbb2304fc103"
+    },
+    {
+      "path": "schema/draft/catalogue-event.schema.json",
+      "sha256": "06ed4bc91478a93c8edc3b454d58e18e581f537c65fd1688f1533bd058bdbf4e"
+    },
+    {
+      "path": "schema/draft/common.schema.json",
+      "sha256": "d46f541db8a5f2a401a6b2b77f1d93e75076847e8f2b2e5d5ed201b8562107e5"
+    },
+    {
+      "path": "schema/draft/content-item.schema.json",
+      "sha256": "ef15f47f3f57f3004e89046a79429944b5361e302719f4f45bbf819667a13a38"
+    },
+    {
+      "path": "schema/draft/content-reference.schema.json",
+      "sha256": "24221c52d428c6104ce6f526f278d000169777f866adbc2c2de90a635469d692"
+    },
+    {
+      "path": "schema/draft/content-selection.schema.json",
+      "sha256": "fe57bce4a7a6c7a8d51728634349621ba327b5ef118bc60b1c330260392e2a62"
+    },
+    {
+      "path": "schema/draft/content-upload.schema.json",
+      "sha256": "1a516c5bae9e09e1b0cb32536cdd0d0eb1e80540ad29e9b65e392eceef6e4701"
+    },
+    {
+      "path": "schema/draft/deny-effect.schema.json",
+      "sha256": "8ff24b87d1e58764ba1d200446732a216bf72d870a5f4cba72f704020622cd90"
+    },
+    {
+      "path": "schema/draft/effect.schema.json",
+      "sha256": "1448151926563244194ed56b15e3074ddfc8ec8c10889f2e42ab49d66be2d031"
+    },
+    {
+      "path": "schema/draft/execution-event.schema.json",
+      "sha256": "d9b13cf28e20eced629cfe8eb822eb6dfb2ac453fe14e6d2334c2f4b2793512a"
+    },
+    {
+      "path": "schema/draft/extensions.schema.json",
+      "sha256": "5722deafc1bf750e19e033702659fecd6a0804e598d114ebbd9aef9daac48835"
+    },
+    {
+      "path": "schema/draft/interaction-event.schema.json",
+      "sha256": "34550586dde5748f14df80e8879b5eec5e3b2ae5353ef84b0208e9248d6a0fb2"
+    },
+    {
+      "path": "schema/draft/intercept-deny-response.schema.json",
+      "sha256": "74f024322660b73e370ad086bde82edf0f94bbe7c440592de4ea083e292bcbf6"
+    },
+    {
+      "path": "schema/draft/intercept-no-effect-response.schema.json",
+      "sha256": "65429ed03e5580fbd906331f57d60042c18f97eb43d1103140ed9e7101642c16"
+    },
+    {
+      "path": "schema/draft/intercept-request.schema.json",
+      "sha256": "fbd5ed20681d918c8647382de6a2bc07de14a7ac57f756e68d2f3293043d534e"
+    },
+    {
+      "path": "schema/draft/intercept-response.schema.json",
+      "sha256": "9b71855630e8f5194631395ba907696dea3cd232884aaea783bfe9341711404f"
+    },
+    {
+      "path": "schema/draft/json-rpc-message.schema.json",
+      "sha256": "721a8e485e855863915c982368830d28091b8fd83f61e077d12c539714940ffa"
+    },
+    {
+      "path": "schema/draft/mcp-elicitation.schema.json",
+      "sha256": "52473b9e5dda9c514081319c9543d03a6ac85997a8fa98355b00502819f99e69"
+    },
+    {
+      "path": "schema/draft/observe-notification.schema.json",
+      "sha256": "27255ccd1a6d0fa788161825f4df74f7e0b3c074a8dc7c8cdeb7e07df11d55cf"
+    },
+    {
+      "path": "schema/draft/registration.schema.json",
+      "sha256": "76f429521eec5c85dfb6ce8e9a56108a4fa582912fc6ddf25d324af86ea557c0"
+    },
+    {
+      "path": "schema/draft/schema.json",
+      "sha256": "191b1fd79f7550f69e6f2bb39ec7953fac727eed5721c7a36fb30d8fc029e8d0"
+    },
+    {
+      "path": "schema/draft/session-end.schema.json",
+      "sha256": "9d42bb96f2114e6b31db34f2fc1f40244c45e259c0dd27d2e3d1ea85bdc98cbc"
+    },
+    {
+      "path": "schema/draft/session-start.schema.json",
+      "sha256": "11da44d294f939941f19caa4b614a0e48743ceafdb3da70a5eb020a003bc3580"
+    },
+    {
+      "path": "schema/draft/task-workspace-event.schema.json",
+      "sha256": "9a11955ba26ca3d2d7f9362f82460d8247f77720d2991b54117b88b42338be21"
+    },
+    {
+      "path": "schema/draft/tool-after.schema.json",
+      "sha256": "a5f110d150df12ed4bb0ae7e4b8fd7b5dbb3973da7499a8f9931184c6824408a"
+    },
+    {
+      "path": "schema/draft/tool-before.schema.json",
+      "sha256": "8edb0bb32cd96b3e15e7a82d64f964b746cd51e3d98b0270d55a3e30ac57aef6"
+    }
+  ]
+}

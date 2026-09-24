@@ -176,15 +176,44 @@ impl<T> ParseResult<T> {
 }
 
 /// Source: schema/draft/registration.schema.json#/$defs/authentication
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Authentication {
-    #[serde(rename = "tokenEnv")]
-    pub token_env: String,
-    #[serde(rename = "type")]
-    pub type_: AuthenticationType,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Authentication {
+    Intersection(AuthenticationIntersection),
+    Object(AuthenticationObject),
+    Object2(AuthenticationObject2),
+    Object3(AuthenticationObject3),
+    /// Raw value for a forward-compatible discriminator variant.
+    Unknown(JsonValue),
+}
+
+impl<'de> Deserialize<'de> for Authentication {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let actual = value
+            .as_object()
+            .and_then(|object| object.get("type"))
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                <D::Error as serde::de::Error>::custom("expected string discriminator type")
+            })?;
+        match actual.as_str() {
+            "bearer" => serde_json::from_value::<AuthenticationIntersection>(value)
+                .map(Self::Intersection)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "oauth" => serde_json::from_value::<AuthenticationObject>(value)
+                .map(Self::Object)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "mtls" => serde_json::from_value::<AuthenticationObject2>(value)
+                .map(Self::Object2)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "workload" => serde_json::from_value::<AuthenticationObject3>(value)
+                .map(Self::Object3)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            _ => Ok(Self::Unknown(value)),
+        }
+    }
 }
 
 /// Source: schema/draft/registration.schema.json#/$defs/backend
@@ -209,10 +238,315 @@ pub struct Backend {
 pub struct Capabilities {
     #[serde(rename = "effects")]
     pub effects: Vec<CapabilitiesEffectsItem>,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<CapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<CapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<CapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<CapabilitiesModify>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
+
+/// Source: schema/draft/capabilities-request.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesRequest {
+    #[serde(rename = "id")]
+    pub id: Box<JsonRpcId>,
+    #[serde(rename = "jsonrpc")]
+    pub jsonrpc: CapabilitiesRequestJsonrpc,
+    #[serde(rename = "method")]
+    pub method: CapabilitiesRequestMethod,
+    #[serde(rename = "params")]
+    pub params: CapabilitiesRequestParams,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities-response.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesResponse {
+    #[serde(rename = "id")]
+    pub id: Box<JsonRpcResponseId>,
+    #[serde(rename = "jsonrpc")]
+    pub jsonrpc: CapabilitiesResponseJsonrpc,
+    #[serde(rename = "result")]
+    pub result: CapabilitiesResponseResult,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CatalogueEvent {
+    ConfigChangeBeforeEvent(Box<ConfigChangeBeforeEvent>),
+    ConfigChangeAfterEvent(Box<ConfigChangeAfterEvent>),
+    TurnStartEvent(Box<TurnStartEvent>),
+    TurnFinishBeforeEvent(Box<TurnFinishBeforeEvent>),
+    TurnEndEvent(Box<TurnEndEvent>),
+    TurnProgressEvent(Box<TurnProgressEvent>),
+    ModelRequestBeforeEvent(Box<ModelRequestBeforeEvent>),
+    ModelResponseAfterEvent(Box<ModelResponseAfterEvent>),
+    ModelErrorEvent(Box<ModelErrorEvent>),
+    ModelSwitchBeforeEvent(Box<ModelSwitchBeforeEvent>),
+    ModelSwitchAfterEvent(Box<ModelSwitchAfterEvent>),
+    ToolPermissionRequestEvent(Box<ToolPermissionRequestEvent>),
+    ToolPermissionResolvedEvent(Box<ToolPermissionResolvedEvent>),
+    ToolProgressEvent(Box<ToolProgressEvent>),
+    ToolBatchAfterEvent(Box<ToolBatchAfterEvent>),
+    ContextCompactBeforeEvent(Box<ContextCompactBeforeEvent>),
+    ContextCompactAfterEvent(Box<ContextCompactAfterEvent>),
+    TaskChangeBeforeEvent(Box<TaskChangeBeforeEvent>),
+    TaskChangeAfterEvent(Box<TaskChangeAfterEvent>),
+    UserAttentionEvent(Box<UserAttentionEvent>),
+    UserElicitationRequestEvent(Box<UserElicitationRequestEvent>),
+    UserElicitationResultEvent(Box<UserElicitationResultEvent>),
+    UserMessageInboundEvent(Box<UserMessageInboundEvent>),
+    UserMessageOutboundEvent(Box<UserMessageOutboundEvent>),
+    WorkspaceChangeBeforeEvent(Box<WorkspaceChangeBeforeEvent>),
+    WorkspaceChangeAfterEvent(Box<WorkspaceChangeAfterEvent>),
+    FileChangedEvent(Box<FileChangedEvent>),
+    HookFailureEvent(Box<HookFailureEvent>),
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/config.change.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterEvent {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ConfigChangeAfterEventGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ConfigChangeAfterEventTurn>,
+    #[serde(rename = "type")]
+    pub type_: ConfigChangeAfterEventType,
+    #[serde(rename = "change")]
+    pub change: ConfigChangeAfterEventChange,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/config.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ConfigChangeBeforeCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ConfigChangeBeforeCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ConfigChangeBeforeCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ConfigChangeBeforeCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ConfigChangeBeforeCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/config.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeEvent {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ConfigChangeBeforeEventGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ConfigChangeBeforeEventTurn>,
+    #[serde(rename = "type")]
+    pub type_: ConfigChangeBeforeEventType,
+    #[serde(rename = "change")]
+    pub change: ConfigChangeBeforeEventChange,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/content-item.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ContentItem {
+    Object(ContentItemObject),
+    Object2(ContentItemObject2),
+    Object3(ContentItemObject3),
+    Object4(ContentItemObject4),
+}
+
+/// Source: schema/draft/content-reference.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentReference {
+    #[serde(rename = "ref")]
+    pub ref_: String,
+    #[serde(rename = "sha256")]
+    pub sha256: String,
+    #[serde(rename = "size")]
+    pub size: Integer,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/content-selection.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentSelection {
+    #[serde(rename = "audio")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub audio: Presence<ContentSelectionAudio>,
+    #[serde(rename = "default")]
+    pub default: ContentSelectionDefault,
+    #[serde(rename = "files")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub files: Presence<ContentSelectionFiles>,
+    #[serde(rename = "images")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub images: Presence<ContentSelectionImages>,
+    #[serde(rename = "reasoning")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub reasoning: Presence<ContentSelectionReasoning>,
+    #[serde(rename = "text")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub text: Presence<ContentSelectionText>,
+    #[serde(rename = "video")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub video: Presence<ContentSelectionVideo>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/content-upload.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentUpload {
+    #[serde(rename = "auth")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub auth: Presence<ContentUploadAuth>,
+    #[serde(rename = "endpoint")]
+    pub endpoint: String,
+    #[serde(rename = "maxBytes")]
+    pub max_bytes: Integer,
+    #[serde(rename = "timeoutMs")]
+    pub timeout_ms: Integer,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/context.compact.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ContextCompactAfterCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ContextCompactAfterCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ContextCompactAfterCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ContextCompactAfterCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ContextCompactAfterCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/context.compact.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterEvent(pub Box<ExecutionEventContextCompactAfter>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/context.compact.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ContextCompactBeforeCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ContextCompactBeforeCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ContextCompactBeforeCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ContextCompactBeforeCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ContextCompactBeforeCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/context.compact.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeEvent(pub Box<ExecutionEventContextCompactBefore>);
 
 /// Source: schema/draft/deny-effect.schema.json#
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -232,9 +566,1108 @@ pub struct DenyEffect {
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
+/// Source: schema/draft/effect.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Effect {
+    DenyEffect(Box<DenyEffect>),
+    Object(EffectObject),
+    Object2(EffectObject2),
+    Object3(EffectObject3),
+    Object4(EffectObject4),
+    Object5(EffectObject5),
+    Object6(EffectObject6),
+    Object7(EffectObject7),
+    Object8(EffectObject8),
+}
+
+/// Source: schema/draft/execution-event.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ExecutionEvent {
+    ExecutionEventTurnStart(Box<ExecutionEventTurnStart>),
+    ExecutionEventTurnFinishBefore(Box<ExecutionEventTurnFinishBefore>),
+    ExecutionEventTurnEnd(Box<ExecutionEventTurnEnd>),
+    ExecutionEventTurnProgress(Box<ExecutionEventTurnProgress>),
+    ExecutionEventModelRequestBefore(Box<ExecutionEventModelRequestBefore>),
+    ExecutionEventModelResponseAfter(Box<ExecutionEventModelResponseAfter>),
+    ExecutionEventModelError(Box<ExecutionEventModelError>),
+    ExecutionEventModelSwitchBefore(Box<ExecutionEventModelSwitchBefore>),
+    ExecutionEventModelSwitchAfter(Box<ExecutionEventModelSwitchAfter>),
+    ExecutionEventToolPermissionRequest(Box<ExecutionEventToolPermissionRequest>),
+    ExecutionEventToolPermissionResolved(Box<ExecutionEventToolPermissionResolved>),
+    ExecutionEventToolProgress(Box<ExecutionEventToolProgress>),
+    ExecutionEventToolBatchAfter(Box<ExecutionEventToolBatchAfter>),
+    ExecutionEventContextCompactBefore(Box<ExecutionEventContextCompactBefore>),
+    ExecutionEventContextCompactAfter(Box<ExecutionEventContextCompactAfter>),
+    /// Raw value for a forward-compatible discriminator variant.
+    Unknown(JsonValue),
+}
+
+impl<'de> Deserialize<'de> for ExecutionEvent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let actual = value
+            .as_object()
+            .and_then(|object| object.get("type"))
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                <D::Error as serde::de::Error>::custom("expected string discriminator type")
+            })?;
+        match actual.as_str() {
+            "turn.start" => serde_json::from_value::<Box<ExecutionEventTurnStart>>(value)
+                .map(Self::ExecutionEventTurnStart)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "turn.finish.before" => {
+                serde_json::from_value::<Box<ExecutionEventTurnFinishBefore>>(value)
+                    .map(Self::ExecutionEventTurnFinishBefore)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "turn.end" => serde_json::from_value::<Box<ExecutionEventTurnEnd>>(value)
+                .map(Self::ExecutionEventTurnEnd)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "turn.progress" => serde_json::from_value::<Box<ExecutionEventTurnProgress>>(value)
+                .map(Self::ExecutionEventTurnProgress)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "model.request.before" => {
+                serde_json::from_value::<Box<ExecutionEventModelRequestBefore>>(value)
+                    .map(Self::ExecutionEventModelRequestBefore)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "model.response.after" => {
+                serde_json::from_value::<Box<ExecutionEventModelResponseAfter>>(value)
+                    .map(Self::ExecutionEventModelResponseAfter)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "model.error" => serde_json::from_value::<Box<ExecutionEventModelError>>(value)
+                .map(Self::ExecutionEventModelError)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "model.switch.before" => {
+                serde_json::from_value::<Box<ExecutionEventModelSwitchBefore>>(value)
+                    .map(Self::ExecutionEventModelSwitchBefore)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "model.switch.after" => {
+                serde_json::from_value::<Box<ExecutionEventModelSwitchAfter>>(value)
+                    .map(Self::ExecutionEventModelSwitchAfter)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "tool.permission.request" => {
+                serde_json::from_value::<Box<ExecutionEventToolPermissionRequest>>(value)
+                    .map(Self::ExecutionEventToolPermissionRequest)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "tool.permission.resolved" => {
+                serde_json::from_value::<Box<ExecutionEventToolPermissionResolved>>(value)
+                    .map(Self::ExecutionEventToolPermissionResolved)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "tool.progress" => serde_json::from_value::<Box<ExecutionEventToolProgress>>(value)
+                .map(Self::ExecutionEventToolProgress)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "tool.batch.after" => {
+                serde_json::from_value::<Box<ExecutionEventToolBatchAfter>>(value)
+                    .map(Self::ExecutionEventToolBatchAfter)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "context.compact.before" => {
+                serde_json::from_value::<Box<ExecutionEventContextCompactBefore>>(value)
+                    .map(Self::ExecutionEventContextCompactBefore)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "context.compact.after" => {
+                serde_json::from_value::<Box<ExecutionEventContextCompactAfter>>(value)
+                    .map(Self::ExecutionEventContextCompactAfter)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            _ => Ok(Self::Unknown(value)),
+        }
+    }
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/attempt
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventAttempt {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "number")]
+    pub number: Integer,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/attemptUsage
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventAttemptusage {
+    #[serde(rename = "cacheReadTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cache_read_tokens: Presence<Integer>,
+    #[serde(rename = "cacheWriteTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cache_write_tokens: Presence<Integer>,
+    #[serde(rename = "completeness")]
+    pub completeness: ExecutionEventAttemptusageCompleteness,
+    #[serde(rename = "cost")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cost: Presence<ExecutionEventAttemptusageCost>,
+    #[serde(rename = "inputTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input_tokens: Presence<Integer>,
+    #[serde(rename = "kind")]
+    pub kind: ExecutionEventAttemptusageKind,
+    #[serde(rename = "outputTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output_tokens: Presence<Integer>,
+    #[serde(rename = "provenance")]
+    pub provenance: ExecutionEventAttemptusageProvenance,
+    #[serde(rename = "scope")]
+    pub scope: ExecutionEventAttemptusageScope,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/batch
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventBatch {
+    #[serde(rename = "callIds")]
+    pub call_ids: Vec<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/context.compact.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventContextCompactAfter {
+    #[serde(rename = "execution")]
+    pub execution: Box<ExecutionEventExecution>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventContextCompactAfterGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ModelVisibleItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "removed")]
+    pub removed: Vec<ExecutionEventContextCompactAfterRemovedItem>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "summary")]
+    pub summary: Box<ModelVisibleItem>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "tokenCounts")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub token_counts: Presence<Box<ExecutionEventTokencounts>>,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventContextCompactAfterTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventContextCompactAfterType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/context.compact.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventContextCompactBefore(pub JsonValue);
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/error
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventError {
+    #[serde(rename = "class")]
+    pub class: String,
+    #[serde(rename = "code")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub code: Presence<String>,
+    #[serde(rename = "message")]
+    pub message: String,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "status")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub status: Presence<ExecutionEventErrorStatus>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/execution
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ExecutionEventExecution {
+    Object(ExecutionEventExecutionObject),
+    Object2(ExecutionEventExecutionObject2),
+    Object3(ExecutionEventExecutionObject3),
+    Object4(ExecutionEventExecutionObject4),
+    Object5(ExecutionEventExecutionObject5),
+    Object6(ExecutionEventExecutionObject6),
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/fileChange
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventFilechange {
+    #[serde(rename = "after")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub after: Presence<Box<ContentItem>>,
+    #[serde(rename = "before")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub before: Presence<Box<ContentItem>>,
+    #[serde(rename = "change")]
+    pub change: ExecutionEventFilechangeChange,
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "previousPath")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub previous_path: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/mcp
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventMcp {
+    #[serde(rename = "connection")]
+    pub connection: ExecutionEventMcpConnection,
+    #[serde(rename = "provenance")]
+    pub provenance: ExecutionEventMcpProvenance,
+    #[serde(rename = "server")]
+    pub server: ExecutionEventMcpServer,
+    #[serde(rename = "toolName")]
+    pub tool_name: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/model
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModel {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "provider")]
+    pub provider: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/model.error
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelError {
+    #[serde(rename = "attempt")]
+    pub attempt: Box<ExecutionEventAttempt>,
+    #[serde(rename = "error")]
+    pub error: Box<ExecutionEventError>,
+    #[serde(rename = "execution")]
+    pub execution: ExecutionEventModelErrorExecution,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventModelErrorGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "latencyMs")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub latency_ms: Presence<JsonNumber>,
+    #[serde(rename = "model")]
+    pub model: Box<ExecutionEventModel>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "recovery")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub recovery: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventModelErrorTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventModelErrorType,
+    #[serde(rename = "usage")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub usage: Presence<Box<ExecutionEventAttemptusage>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/model.request.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelRequestBefore {
+    #[serde(rename = "attempt")]
+    pub attempt: Box<ExecutionEventAttempt>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventModelRequestBeforeGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    pub items: Vec<Box<ModelVisibleItem>>,
+    #[serde(rename = "model")]
+    pub model: Box<ExecutionEventModel>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "params")]
+    pub params: ExecutionEventModelRequestBeforeParams,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventModelRequestBeforeTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventModelRequestBeforeType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/model.response.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelResponseAfter {
+    #[serde(rename = "attempt")]
+    pub attempt: Box<ExecutionEventAttempt>,
+    #[serde(rename = "execution")]
+    pub execution: Box<ExecutionEventExecution>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "finishReason")]
+    pub finish_reason: String,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventModelResponseAfterGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    pub items: Vec<Box<ModelVisibleItem>>,
+    #[serde(rename = "latencyMs")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub latency_ms: Presence<JsonNumber>,
+    #[serde(rename = "model")]
+    pub model: Box<ExecutionEventModel>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventModelResponseAfterTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventModelResponseAfterType,
+    #[serde(rename = "usage")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub usage: Presence<Box<ExecutionEventAttemptusage>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/model.switch.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelSwitchAfter {
+    #[serde(rename = "current")]
+    pub current: Box<ExecutionEventModel>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventModelSwitchAfterGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "previous")]
+    pub previous: Box<ExecutionEventModel>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventModelSwitchAfterTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventModelSwitchAfterType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/model.switch.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelSwitchBefore {
+    #[serde(rename = "current")]
+    pub current: Box<ExecutionEventModel>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventModelSwitchBeforeGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "pricing")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub pricing: Presence<ExecutionEventModelSwitchBeforePricing>,
+    #[serde(rename = "proposed")]
+    pub proposed: Box<ExecutionEventModel>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventModelSwitchBeforeTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventModelSwitchBeforeType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/tokenCounts
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTokencounts {
+    #[serde(rename = "after")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub after: Presence<Integer>,
+    #[serde(rename = "before")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub before: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/tool
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTool {
+    #[serde(rename = "input")]
+    pub input: ExecutionEventToolInput,
+    #[serde(rename = "kind")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub kind: Presence<String>,
+    #[serde(rename = "mcp")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub mcp: Presence<Box<ExecutionEventMcp>>,
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "origin")]
+    pub origin: ExecutionEventToolOrigin,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/tool.batch.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolBatchAfter {
+    #[serde(rename = "batch")]
+    pub batch: ExecutionEventToolBatchAfterBatch,
+    #[serde(rename = "calls")]
+    pub calls: Vec<ExecutionEventToolBatchAfterCallsItem>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventToolBatchAfterGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventToolBatchAfterTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventToolBatchAfterType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/tool.permission.request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionRequest {
+    #[serde(rename = "batch")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub batch: Presence<Box<ExecutionEventBatch>>,
+    #[serde(rename = "call")]
+    pub call: ExecutionEventToolPermissionRequestCall,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventToolPermissionRequestGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "sandboxBypass")]
+    pub sandbox_bypass: bool,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "suggestions")]
+    pub suggestions: Vec<ExecutionEventToolPermissionRequestSuggestionsItem>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "tool")]
+    pub tool: Box<ExecutionEventTool>,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventToolPermissionRequestTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventToolPermissionRequestType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/tool.permission.resolved
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionResolved {
+    #[serde(rename = "batch")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub batch: Presence<Box<ExecutionEventBatch>>,
+    #[serde(rename = "call")]
+    pub call: ExecutionEventToolPermissionResolvedCall,
+    #[serde(rename = "decidedBy")]
+    pub decided_by: ExecutionEventToolPermissionResolvedDecidedBy,
+    #[serde(rename = "decision")]
+    pub decision: ExecutionEventToolPermissionResolvedDecision,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventToolPermissionResolvedGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "tool")]
+    pub tool: Box<ExecutionEventTool>,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventToolPermissionResolvedTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventToolPermissionResolvedType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/tool.progress
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolProgress {
+    #[serde(rename = "backgrounded")]
+    pub backgrounded: bool,
+    #[serde(rename = "batch")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub batch: Presence<Box<ExecutionEventBatch>>,
+    #[serde(rename = "call")]
+    pub call: ExecutionEventToolProgressCall,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventToolProgressGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "partialOutput")]
+    pub partial_output: Box<ModelVisibleItem>,
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "tool")]
+    pub tool: Box<ExecutionEventTool>,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventToolProgressTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventToolProgressType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/turn.end
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnEnd {
+    #[serde(rename = "continuationCount")]
+    pub continuation_count: Integer,
+    #[serde(rename = "error")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub error: Presence<Box<ExecutionEventError>>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventTurnEndGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    pub items: Vec<Box<ModelVisibleItem>>,
+    #[serde(rename = "lastAssistantItem")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub last_assistant_item: Presence<ExecutionEventTurnEndLastAssistantItem>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "outcome")]
+    pub outcome: ExecutionEventTurnEndOutcome,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    pub turn: ExecutionEventTurnEndTurn,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventTurnEndType,
+    #[serde(rename = "usage")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub usage: Presence<Box<ExecutionEventTurnusage>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/turn.finish.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnFinishBefore {
+    #[serde(rename = "continuationCount")]
+    pub continuation_count: Integer,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventTurnFinishBeforeGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    pub items: Vec<Box<ModelVisibleItem>>,
+    #[serde(rename = "lastAssistantItem")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub last_assistant_item: Presence<ExecutionEventTurnFinishBeforeLastAssistantItem>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "outcome")]
+    pub outcome: ExecutionEventTurnFinishBeforeOutcome,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    pub turn: ExecutionEventTurnFinishBeforeTurn,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventTurnFinishBeforeType,
+    #[serde(rename = "usage")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub usage: Presence<Box<ExecutionEventTurnusage>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/turn.progress
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnProgress {
+    #[serde(rename = "delta")]
+    pub delta: Box<ModelVisibleItem>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "final")]
+    pub final_: bool,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventTurnProgressGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "item")]
+    pub item: ExecutionEventTurnProgressItem,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    pub turn: ExecutionEventTurnProgressTurn,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventTurnProgressType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/turn.start
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnStart {
+    #[serde(rename = "expandedFrom")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub expanded_from: Presence<String>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventTurnStartGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    pub items: Vec<Box<ModelVisibleItem>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "trigger")]
+    pub trigger: ExecutionEventTurnStartTrigger,
+    #[serde(rename = "turn")]
+    pub turn: ExecutionEventTurnStartTurn,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventTurnStartType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/turnUsage
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnusage {
+    #[serde(rename = "cacheReadTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cache_read_tokens: Presence<Integer>,
+    #[serde(rename = "cacheWriteTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cache_write_tokens: Presence<Integer>,
+    #[serde(rename = "completeness")]
+    pub completeness: ExecutionEventTurnusageCompleteness,
+    #[serde(rename = "cost")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cost: Presence<ExecutionEventTurnusageCost>,
+    #[serde(rename = "inputTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input_tokens: Presence<Integer>,
+    #[serde(rename = "kind")]
+    pub kind: ExecutionEventTurnusageKind,
+    #[serde(rename = "outputTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output_tokens: Presence<Integer>,
+    #[serde(rename = "provenance")]
+    pub provenance: ExecutionEventTurnusageProvenance,
+    #[serde(rename = "scope")]
+    pub scope: ExecutionEventTurnusageScope,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/execution-event.schema.json#/$defs/usage
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventUsage {
+    #[serde(rename = "cacheReadTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cache_read_tokens: Presence<Integer>,
+    #[serde(rename = "cacheWriteTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cache_write_tokens: Presence<Integer>,
+    #[serde(rename = "completeness")]
+    pub completeness: ExecutionEventUsageCompleteness,
+    #[serde(rename = "cost")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cost: Presence<ExecutionEventUsageCost>,
+    #[serde(rename = "inputTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input_tokens: Presence<Integer>,
+    #[serde(rename = "kind")]
+    pub kind: ExecutionEventUsageKind,
+    #[serde(rename = "outputTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output_tokens: Presence<Integer>,
+    #[serde(rename = "provenance")]
+    pub provenance: ExecutionEventUsageProvenance,
+    #[serde(rename = "scope")]
+    pub scope: ExecutionEventUsageScope,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
 /// Source: schema/draft/extensions.schema.json#
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Extensions {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/file.changed
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct FileChangedEvent(pub Box<TaskWorkspaceEventFileChanged>);
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/hook.failure
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookFailureEvent {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<HookFailureEventGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<HookFailureEventTurn>,
+    #[serde(rename = "type")]
+    pub type_: HookFailureEventType,
+    #[serde(rename = "failure")]
+    pub failure: HookFailureEventFailure,
+    #[serde(rename = "parentEventId")]
+    pub parent_event_id: String,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -247,6 +1680,173 @@ pub struct HttpTransport {
     pub type_: HttpTransportType,
     #[serde(rename = "url")]
     pub url: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/interaction-event.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum InteractionEvent {
+    InteractionEventConfigChangeBefore(Box<InteractionEventConfigChangeBefore>),
+    InteractionEventConfigChangeAfter(Box<InteractionEventConfigChangeAfter>),
+    InteractionEventUserAttention(Box<InteractionEventUserAttention>),
+    InteractionEventUserElicitationRequest(Box<InteractionEventUserElicitationRequest>),
+    InteractionEventUserElicitationResult(Box<InteractionEventUserElicitationResult>),
+    InteractionEventUserMessageInbound(Box<InteractionEventUserMessageInbound>),
+    InteractionEventUserMessageOutbound(Box<InteractionEventUserMessageOutbound>),
+    InteractionEventHookFailure(Box<InteractionEventHookFailure>),
+    /// Raw value for a forward-compatible discriminator variant.
+    Unknown(JsonValue),
+}
+
+impl<'de> Deserialize<'de> for InteractionEvent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let actual = value
+            .as_object()
+            .and_then(|object| object.get("type"))
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                <D::Error as serde::de::Error>::custom("expected string discriminator type")
+            })?;
+        match actual.as_str() {
+            "config.change.before" => {
+                serde_json::from_value::<Box<InteractionEventConfigChangeBefore>>(value)
+                    .map(Self::InteractionEventConfigChangeBefore)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "config.change.after" => {
+                serde_json::from_value::<Box<InteractionEventConfigChangeAfter>>(value)
+                    .map(Self::InteractionEventConfigChangeAfter)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "user.attention" => serde_json::from_value::<Box<InteractionEventUserAttention>>(value)
+                .map(Self::InteractionEventUserAttention)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "user.elicitation.request" => {
+                serde_json::from_value::<Box<InteractionEventUserElicitationRequest>>(value)
+                    .map(Self::InteractionEventUserElicitationRequest)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "user.elicitation.result" => {
+                serde_json::from_value::<Box<InteractionEventUserElicitationResult>>(value)
+                    .map(Self::InteractionEventUserElicitationResult)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "user.message.inbound" => {
+                serde_json::from_value::<Box<InteractionEventUserMessageInbound>>(value)
+                    .map(Self::InteractionEventUserMessageInbound)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "user.message.outbound" => {
+                serde_json::from_value::<Box<InteractionEventUserMessageOutbound>>(value)
+                    .map(Self::InteractionEventUserMessageOutbound)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "hook.failure" => serde_json::from_value::<Box<InteractionEventHookFailure>>(value)
+                .map(Self::InteractionEventHookFailure)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            _ => Ok(Self::Unknown(value)),
+        }
+    }
+}
+
+/// Source: schema/draft/interaction-event.schema.json#/$defs/config.change.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventConfigChangeAfter {
+    #[serde(rename = "change")]
+    pub change: InteractionEventConfigChangeAfterChange,
+    #[serde(rename = "type")]
+    pub type_: InteractionEventConfigChangeAfterType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/interaction-event.schema.json#/$defs/config.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventConfigChangeBefore {
+    #[serde(rename = "change")]
+    pub change: InteractionEventConfigChangeBeforeChange,
+    #[serde(rename = "type")]
+    pub type_: InteractionEventConfigChangeBeforeType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/interaction-event.schema.json#/$defs/hook.failure
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventHookFailure {
+    #[serde(rename = "failure")]
+    pub failure: InteractionEventHookFailureFailure,
+    #[serde(rename = "parentEventId")]
+    pub parent_event_id: String,
+    #[serde(rename = "type")]
+    pub type_: InteractionEventHookFailureType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/interaction-event.schema.json#/$defs/user.attention
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserAttention {
+    #[serde(rename = "attention")]
+    pub attention: InteractionEventUserAttentionAttention,
+    #[serde(rename = "type")]
+    pub type_: InteractionEventUserAttentionType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/interaction-event.schema.json#/$defs/user.elicitation.request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationRequest {
+    #[serde(rename = "elicitation")]
+    pub elicitation: InteractionEventUserElicitationRequestElicitation,
+    #[serde(rename = "type")]
+    pub type_: InteractionEventUserElicitationRequestType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/interaction-event.schema.json#/$defs/user.elicitation.result
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationResult {
+    #[serde(rename = "elicitation")]
+    pub elicitation: InteractionEventUserElicitationResultElicitation,
+    #[serde(rename = "type")]
+    pub type_: InteractionEventUserElicitationResultType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/interaction-event.schema.json#/$defs/user.message.inbound
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserMessageInbound {
+    #[serde(rename = "message")]
+    pub message: InteractionEventUserMessageInboundMessage,
+    #[serde(rename = "type")]
+    pub type_: InteractionEventUserMessageInboundType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/interaction-event.schema.json#/$defs/user.message.outbound
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserMessageOutbound {
+    #[serde(rename = "message")]
+    pub message: InteractionEventUserMessageOutboundMessage,
+    #[serde(rename = "type")]
+    pub type_: InteractionEventUserMessageOutboundType,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -296,20 +1896,48 @@ pub struct InterceptRequest {
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
+/// Source: schema/draft/intercept-response.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptResponse {
+    #[serde(rename = "id")]
+    pub id: Box<JsonRpcResponseId>,
+    #[serde(rename = "jsonrpc")]
+    pub jsonrpc: InterceptResponseJsonrpc,
+    #[serde(rename = "result")]
+    pub result: InterceptResponseResult,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
 /// Source: schema/draft/registration.schema.json#/$defs/interceptSubscription
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InterceptSubscription {
+    #[serde(rename = "content")]
+    pub content: Box<ContentSelection>,
+    #[serde(rename = "disableable")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub disableable: Presence<bool>,
     #[serde(rename = "events")]
     pub events: Vec<InterceptSubscriptionEventsItem>,
     #[serde(rename = "failurePolicy")]
     pub failure_policy: InterceptSubscriptionFailurePolicy,
+    #[serde(rename = "filters")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub filters: Presence<InterceptSubscriptionFilters>,
     #[serde(rename = "includeNative")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub include_native: Presence<bool>,
     #[serde(rename = "mode")]
     pub mode: InterceptSubscriptionMode,
+    #[serde(rename = "scope")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub scope: Presence<InterceptSubscriptionScope>,
     #[serde(rename = "timeoutMs")]
     pub timeout_ms: Integer,
+    #[serde(rename = "upload")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub upload: Presence<Box<ContentUpload>>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -399,19 +2027,406 @@ pub struct JsonRpcSuccessResponse {
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
-/// Source: schema/draft/common.schema.json#/$defs/native
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/BooleanSchema
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NativeEvent {
-    #[serde(rename = "eventName")]
-    pub event_name: String,
-    #[serde(rename = "payload")]
-    pub payload: NativeEventPayload,
-    #[serde(rename = "provider")]
-    pub provider: String,
+pub struct McpElicitationBooleanSchema {
+    #[serde(rename = "default")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub default: Presence<bool>,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "title")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub title: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationBooleanSchemaType,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/ElicitRequestFormParams
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationElicitRequestFormParams {
+    #[serde(rename = "_meta")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub meta: Presence<McpElicitationElicitRequestFormParamsMeta>,
+    #[serde(rename = "message")]
+    pub message: String,
+    #[serde(rename = "mode")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub mode: Presence<McpElicitationElicitRequestFormParamsMode>,
+    #[serde(rename = "requestedSchema")]
+    pub requested_schema: McpElicitationElicitRequestFormParamsRequestedSchema,
+    #[serde(rename = "task")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub task: Presence<Box<McpElicitationTaskMetadata>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/ElicitRequestParams
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum McpElicitationElicitRequestParams {
+    McpElicitationElicitRequestUrlParams(Box<McpElicitationElicitRequestUrlParams>),
+    McpElicitationElicitRequestFormParams(Box<McpElicitationElicitRequestFormParams>),
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/ElicitRequestURLParams
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationElicitRequestUrlParams {
+    #[serde(rename = "_meta")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub meta: Presence<McpElicitationElicitRequestUrlParamsMeta>,
+    #[serde(rename = "elicitationId")]
+    pub elicitation_id: String,
+    #[serde(rename = "message")]
+    pub message: String,
+    #[serde(rename = "mode")]
+    pub mode: McpElicitationElicitRequestUrlParamsMode,
+    #[serde(rename = "task")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub task: Presence<Box<McpElicitationTaskMetadata>>,
+    #[serde(rename = "url")]
+    pub url: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/ElicitResult
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationElicitResult {
+    #[serde(rename = "_meta")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub meta: Presence<McpElicitationElicitResultMeta>,
+    #[serde(rename = "action")]
+    pub action: McpElicitationElicitResultAction,
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<McpElicitationElicitResultContent>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/LegacyTitledEnumSchema
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationLegacyTitledEnumSchema {
+    #[serde(rename = "default")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub default: Presence<String>,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "enum")]
+    pub enum_: Vec<String>,
+    #[serde(rename = "enumNames")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub enum_names: Presence<Vec<String>>,
+    #[serde(rename = "title")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub title: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationLegacyTitledEnumSchemaType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/NumberSchema
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationNumberSchema {
+    #[serde(rename = "default")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub default: Presence<JsonNumber>,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "maximum")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub maximum: Presence<JsonNumber>,
+    #[serde(rename = "minimum")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub minimum: Presence<JsonNumber>,
+    #[serde(rename = "title")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub title: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationNumberSchemaType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/PrimitiveSchemaDefinition
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum McpElicitationPrimitiveSchemaDefinition {
+    McpElicitationStringSchema(Box<McpElicitationStringSchema>),
+    McpElicitationNumberSchema(Box<McpElicitationNumberSchema>),
+    McpElicitationBooleanSchema(Box<McpElicitationBooleanSchema>),
+    McpElicitationUntitledSingleSelectEnumSchema(Box<McpElicitationUntitledSingleSelectEnumSchema>),
+    McpElicitationTitledSingleSelectEnumSchema(Box<McpElicitationTitledSingleSelectEnumSchema>),
+    McpElicitationUntitledMultiSelectEnumSchema(Box<McpElicitationUntitledMultiSelectEnumSchema>),
+    McpElicitationTitledMultiSelectEnumSchema(Box<McpElicitationTitledMultiSelectEnumSchema>),
+    McpElicitationLegacyTitledEnumSchema(Box<McpElicitationLegacyTitledEnumSchema>),
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/ProgressToken
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum McpElicitationProgressToken {
+    String(String),
+    Number(JsonNumber),
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct McpElicitationRequest(pub Box<McpElicitationElicitRequestParams>);
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/result
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct McpElicitationResult(pub Box<McpElicitationElicitResult>);
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/StringSchema
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationStringSchema {
+    #[serde(rename = "default")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub default: Presence<String>,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "format")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub format: Presence<McpElicitationStringSchemaFormat>,
+    #[serde(rename = "maxLength")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_length: Presence<JsonNumber>,
+    #[serde(rename = "minLength")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub min_length: Presence<JsonNumber>,
+    #[serde(rename = "title")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub title: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationStringSchemaType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/TaskMetadata
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationTaskMetadata {
+    #[serde(rename = "ttl")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub ttl: Presence<JsonNumber>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/TitledMultiSelectEnumSchema
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationTitledMultiSelectEnumSchema {
+    #[serde(rename = "default")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub default: Presence<Vec<String>>,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "items")]
+    pub items: McpElicitationTitledMultiSelectEnumSchemaItems,
+    #[serde(rename = "maxItems")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_items: Presence<JsonNumber>,
+    #[serde(rename = "minItems")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub min_items: Presence<JsonNumber>,
+    #[serde(rename = "title")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub title: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationTitledMultiSelectEnumSchemaType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/TitledSingleSelectEnumSchema
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationTitledSingleSelectEnumSchema {
+    #[serde(rename = "default")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub default: Presence<String>,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "oneOf")]
+    pub one_of: Vec<McpElicitationTitledSingleSelectEnumSchemaOneOfItem>,
+    #[serde(rename = "title")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub title: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationTitledSingleSelectEnumSchemaType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/UntitledMultiSelectEnumSchema
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationUntitledMultiSelectEnumSchema {
+    #[serde(rename = "default")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub default: Presence<Vec<String>>,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "items")]
+    pub items: McpElicitationUntitledMultiSelectEnumSchemaItems,
+    #[serde(rename = "maxItems")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_items: Presence<JsonNumber>,
+    #[serde(rename = "minItems")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub min_items: Presence<JsonNumber>,
+    #[serde(rename = "title")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub title: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationUntitledMultiSelectEnumSchemaType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/mcp-elicitation.schema.json#/$defs/UntitledSingleSelectEnumSchema
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationUntitledSingleSelectEnumSchema {
+    #[serde(rename = "default")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub default: Presence<String>,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "enum")]
+    pub enum_: Vec<String>,
+    #[serde(rename = "title")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub title: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationUntitledSingleSelectEnumSchemaType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/model.error
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelErrorEvent(pub Box<ExecutionEventModelError>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/model.request.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ModelRequestBeforeCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ModelRequestBeforeCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ModelRequestBeforeCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ModelRequestBeforeCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ModelRequestBeforeCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/model.request.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeEvent(pub Box<ExecutionEventModelRequestBefore>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/model.response.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ModelResponseAfterCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ModelResponseAfterCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ModelResponseAfterCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ModelResponseAfterCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ModelResponseAfterCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/model.response.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterEvent(pub Box<ExecutionEventModelResponseAfter>);
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/model.switch.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchAfterEvent(pub Box<ExecutionEventModelSwitchAfter>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/model.switch.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ModelSwitchBeforeCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ModelSwitchBeforeCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ModelSwitchBeforeCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ModelSwitchBeforeCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ModelSwitchBeforeCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/model.switch.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeEvent(pub Box<ExecutionEventModelSwitchBefore>);
+
+/// Source: schema/draft/content-item.schema.json#/$defs/modelVisibleItem
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelVisibleItem(pub JsonValue);
+
+/// Source: schema/draft/common.schema.json#/$defs/native
+pub type NativeEvent = JsonValue;
 
 /// Source: schema/draft/observe-notification.schema.json#
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -430,13 +2445,27 @@ pub struct ObserveNotification {
 /// Source: schema/draft/registration.schema.json#/$defs/observeSubscription
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObserveSubscription {
+    #[serde(rename = "content")]
+    pub content: Box<ContentSelection>,
+    #[serde(rename = "disableable")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub disableable: Presence<bool>,
     #[serde(rename = "events")]
     pub events: Vec<ObserveSubscriptionEventsItem>,
+    #[serde(rename = "filters")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub filters: Presence<ObserveSubscriptionFilters>,
     #[serde(rename = "includeNative")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub include_native: Presence<bool>,
     #[serde(rename = "mode")]
     pub mode: ObserveSubscriptionMode,
+    #[serde(rename = "scope")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub scope: Presence<ObserveSubscriptionScope>,
+    #[serde(rename = "upload")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub upload: Presence<Box<ContentUpload>>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -481,6 +2510,23 @@ pub struct Registration {
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
+/// Source: schema/draft/registration.schema.json#/$defs/contentReceiver
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RegistrationContentreceiver {
+    #[serde(rename = "authentication")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub authentication: Presence<Box<Authentication>>,
+    #[serde(rename = "maxBytes")]
+    pub max_bytes: Integer,
+    #[serde(rename = "timeoutMs")]
+    pub timeout_ms: Integer,
+    #[serde(rename = "url")]
+    pub url: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
 /// Source: schema/draft/registration.schema.json#/$defs/reverseDns
 pub type ReverseDnsName = String;
 
@@ -498,6 +2544,9 @@ pub struct Session {
     #[serde(rename = "model")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub model: Presence<String>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
     #[serde(rename = "workspaceRoots")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub workspace_roots: Presence<Vec<String>>,
@@ -509,25 +2558,66 @@ pub struct Session {
 /// Source: schema/draft/session-end.schema.json#
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionEndEvent {
+    #[serde(rename = "counters")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub counters: Presence<SessionEndEventCounters>,
     #[serde(rename = "extensions")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<SessionEndEventGapsItem>>,
     #[serde(rename = "id")]
     pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
     #[serde(rename = "native")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub native: Presence<Box<NativeEvent>>,
     #[serde(rename = "outcome")]
+    pub outcome: SessionEndEventOutcome,
+    #[serde(rename = "parentEventId")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub outcome: Presence<SessionEndEventOutcome>,
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
     #[serde(rename = "session")]
     pub session: Box<Session>,
     #[serde(rename = "source")]
     pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
     #[serde(rename = "time")]
     pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<SessionEndEventTurn>,
     #[serde(rename = "type")]
     pub type_: SessionEndEventType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/session.start
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: SessionStartCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<SessionStartCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<SessionStartCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<SessionStartCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<SessionStartCapabilitiesModify>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -539,19 +2629,70 @@ pub struct SessionStartEvent {
     #[serde(rename = "extensions")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<SessionStartEventGapsItem>>,
+    #[serde(rename = "harness")]
+    pub harness: SessionStartEventHarness,
     #[serde(rename = "id")]
     pub id: String,
+    #[serde(rename = "items")]
+    pub items: Vec<Box<ModelVisibleItem>>,
+    #[serde(rename = "manifest")]
+    pub manifest: Box<StaticCapabilityManifest>,
     #[serde(rename = "native")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "permissionMode")]
+    pub permission_mode: String,
+    #[serde(rename = "resumedFrom")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub resumed_from: Presence<SessionStartEventResumedFrom>,
     #[serde(rename = "session")]
     pub session: Box<Session>,
     #[serde(rename = "source")]
     pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
     #[serde(rename = "time")]
     pub time: String,
+    #[serde(rename = "trigger")]
+    pub trigger: SessionStartEventTrigger,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<SessionStartEventTurn>,
     #[serde(rename = "type")]
     pub type_: SessionStartEventType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities-response.schema.json#/allOf/1/properties/result/properties/manifest
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StaticCapabilityManifest {
+    #[serde(rename = "authentication")]
+    pub authentication: Vec<StaticCapabilityManifestAuthenticationItem>,
+    #[serde(rename = "contentCategories")]
+    pub content_categories: Vec<String>,
+    #[serde(rename = "correlationIdentityFields")]
+    pub correlation_identity_fields: Vec<String>,
+    #[serde(rename = "events")]
+    pub events: Vec<StaticCapabilityManifestEventsItem>,
+    #[serde(rename = "gaps")]
+    pub gaps: Vec<StaticCapabilityManifestGapsItem>,
+    #[serde(rename = "limits")]
+    pub limits: StaticCapabilityManifestLimits,
+    #[serde(rename = "managedPolicy")]
+    pub managed_policy: StaticCapabilityManifestManagedPolicy,
+    #[serde(rename = "toolPaths")]
+    pub tool_paths: Vec<String>,
+    #[serde(rename = "transports")]
+    pub transports: Vec<StaticCapabilityManifestTransportsItem>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -577,27 +2718,428 @@ pub struct StdioTransport {
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
-/// Source: schema/draft/tool-after.schema.json#
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/task.change.after
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolAfterEvent {
+#[serde(transparent)]
+pub struct TaskChangeAfterEvent(pub Box<TaskWorkspaceEventTaskChangeAfter>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/task.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: TaskChangeBeforeCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<TaskChangeBeforeCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<TaskChangeBeforeCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<TaskChangeBeforeCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<TaskChangeBeforeCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/task.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeEvent(pub Box<TaskWorkspaceEventTaskChangeBefore>);
+
+/// Source: schema/draft/task-workspace-event.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum TaskWorkspaceEvent {
+    TaskWorkspaceEventTaskChangeBefore(Box<TaskWorkspaceEventTaskChangeBefore>),
+    TaskWorkspaceEventTaskChangeAfter(Box<TaskWorkspaceEventTaskChangeAfter>),
+    TaskWorkspaceEventWorkspaceChangeBefore(Box<TaskWorkspaceEventWorkspaceChangeBefore>),
+    TaskWorkspaceEventWorkspaceChangeAfter(Box<TaskWorkspaceEventWorkspaceChangeAfter>),
+    TaskWorkspaceEventFileChanged(Box<TaskWorkspaceEventFileChanged>),
+    /// Raw value for a forward-compatible discriminator variant.
+    Unknown(JsonValue),
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEvent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let actual = value
+            .as_object()
+            .and_then(|object| object.get("type"))
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                <D::Error as serde::de::Error>::custom("expected string discriminator type")
+            })?;
+        match actual.as_str() {
+            "task.change.before" => {
+                serde_json::from_value::<Box<TaskWorkspaceEventTaskChangeBefore>>(value)
+                    .map(Self::TaskWorkspaceEventTaskChangeBefore)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "task.change.after" => {
+                serde_json::from_value::<Box<TaskWorkspaceEventTaskChangeAfter>>(value)
+                    .map(Self::TaskWorkspaceEventTaskChangeAfter)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "workspace.change.before" => {
+                serde_json::from_value::<Box<TaskWorkspaceEventWorkspaceChangeBefore>>(value)
+                    .map(Self::TaskWorkspaceEventWorkspaceChangeBefore)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "workspace.change.after" => {
+                serde_json::from_value::<Box<TaskWorkspaceEventWorkspaceChangeAfter>>(value)
+                    .map(Self::TaskWorkspaceEventWorkspaceChangeAfter)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            }
+            "file.changed" => serde_json::from_value::<Box<TaskWorkspaceEventFileChanged>>(value)
+                .map(Self::TaskWorkspaceEventFileChanged)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            _ => Ok(Self::Unknown(value)),
+        }
+    }
+}
+
+/// Source: schema/draft/task-workspace-event.schema.json#/$defs/file.changed
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventFileChanged {
+    #[serde(rename = "changes")]
+    pub changes: Vec<TaskWorkspaceEventFileChangedChangesItem>,
     #[serde(rename = "extensions")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<TaskWorkspaceEventFileChangedGapsItem>>,
     #[serde(rename = "id")]
     pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
     #[serde(rename = "native")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
     #[serde(rename = "session")]
-    pub session: Box<Session>,
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
     #[serde(rename = "source")]
     pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<TaskWorkspaceEventFileChangedTurn>,
+    #[serde(rename = "type")]
+    pub type_: TaskWorkspaceEventFileChangedType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/task-workspace-event.schema.json#/$defs/task.change.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeAfter {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<TaskWorkspaceEventTaskChangeAfterGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "task")]
+    pub task: TaskWorkspaceEventTaskChangeAfterTask,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<TaskWorkspaceEventTaskChangeAfterTurn>,
+    #[serde(rename = "type")]
+    pub type_: TaskWorkspaceEventTaskChangeAfterType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/task-workspace-event.schema.json#/$defs/task.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeBefore {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<TaskWorkspaceEventTaskChangeBeforeGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "task")]
+    pub task: TaskWorkspaceEventTaskChangeBeforeTask,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<TaskWorkspaceEventTaskChangeBeforeTurn>,
+    #[serde(rename = "type")]
+    pub type_: TaskWorkspaceEventTaskChangeBeforeType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/task-workspace-event.schema.json#/$defs/workspace.change.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeAfter {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<TaskWorkspaceEventWorkspaceChangeAfterGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<TaskWorkspaceEventWorkspaceChangeAfterTurn>,
+    #[serde(rename = "type")]
+    pub type_: TaskWorkspaceEventWorkspaceChangeAfterType,
+    #[serde(rename = "workspace")]
+    pub workspace: TaskWorkspaceEventWorkspaceChangeAfterWorkspace,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/task-workspace-event.schema.json#/$defs/workspace.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeBefore {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<TaskWorkspaceEventWorkspaceChangeBeforeGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<TaskWorkspaceEventWorkspaceChangeBeforeTurn>,
+    #[serde(rename = "type")]
+    pub type_: TaskWorkspaceEventWorkspaceChangeBeforeType,
+    #[serde(rename = "workspace")]
+    pub workspace: TaskWorkspaceEventWorkspaceChangeBeforeWorkspace,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/tool.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ToolAfterCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ToolAfterCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ToolAfterCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ToolAfterCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ToolAfterCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/tool-after.schema.json#
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterEvent {
+    #[serde(rename = "batch")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub batch: Presence<Box<ExecutionEventBatch>>,
+    #[serde(rename = "call")]
+    pub call: ToolAfterEventCall,
+    #[serde(rename = "durationMs")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub duration_ms: Presence<JsonNumber>,
+    #[serde(rename = "error")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub error: Presence<Box<ExecutionEventError>>,
+    #[serde(rename = "execution")]
+    pub execution: Box<ExecutionEventExecution>,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "fileChanges")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub file_changes: Presence<Vec<Box<ExecutionEventFilechange>>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ToolAfterEventGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    pub items: Vec<Box<ModelVisibleItem>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "outcome")]
+    pub outcome: ToolAfterEventOutcome,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
     #[serde(rename = "time")]
     pub time: String,
     #[serde(rename = "tool")]
-    pub tool: ToolAfterEventTool,
+    pub tool: Box<ExecutionEventTool>,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ToolAfterEventTurn>,
     #[serde(rename = "type")]
     pub type_: ToolAfterEventType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/tool.batch.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ToolBatchAfterCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ToolBatchAfterCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ToolBatchAfterCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ToolBatchAfterCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ToolBatchAfterCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/tool.batch.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterEvent(pub Box<ExecutionEventToolBatchAfter>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/tool.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ToolBeforeCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ToolBeforeCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ToolBeforeCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ToolBeforeCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ToolBeforeCapabilitiesModify>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -606,22 +3148,45 @@ pub struct ToolAfterEvent {
 /// Source: schema/draft/tool-before.schema.json#
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolBeforeEvent {
+    #[serde(rename = "batch")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub batch: Presence<Box<ExecutionEventBatch>>,
+    #[serde(rename = "call")]
+    pub call: ToolBeforeEventCall,
     #[serde(rename = "extensions")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ToolBeforeEventGapsItem>>,
     #[serde(rename = "id")]
     pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
     #[serde(rename = "native")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "path")]
+    pub path: String,
     #[serde(rename = "session")]
-    pub session: Box<Session>,
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
     #[serde(rename = "source")]
     pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
     #[serde(rename = "time")]
     pub time: String,
     #[serde(rename = "tool")]
-    pub tool: ToolBeforeEventTool,
+    pub tool: Box<ExecutionEventTool>,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ToolBeforeEventTurn>,
     #[serde(rename = "type")]
     pub type_: ToolBeforeEventType,
     /// Members not known to this schema revision.
@@ -629,27 +3194,400 @@ pub struct ToolBeforeEvent {
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
-/// Source: schema/draft/tool-error.schema.json#
+/// Source: schema/draft/capabilities.schema.json#/$defs/tool.permission.request
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolErrorEvent {
+pub struct ToolPermissionRequestCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: ToolPermissionRequestCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<ToolPermissionRequestCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ToolPermissionRequestCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<ToolPermissionRequestCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<ToolPermissionRequestCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/tool.permission.request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestEvent(pub Box<ExecutionEventToolPermissionRequest>);
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/tool.permission.resolved
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionResolvedEvent(pub Box<ExecutionEventToolPermissionResolved>);
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/tool.progress
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolProgressEvent(pub Box<ExecutionEventToolProgress>);
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/turn.end
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnEndEvent(pub Box<ExecutionEventTurnEnd>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/turn.finish.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: TurnFinishBeforeCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<TurnFinishBeforeCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<TurnFinishBeforeCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<TurnFinishBeforeCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<TurnFinishBeforeCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/turn.finish.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeEvent(pub Box<ExecutionEventTurnFinishBefore>);
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/turn.progress
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnProgressEvent(pub Box<ExecutionEventTurnProgress>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/turn.start
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: TurnStartCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<TurnStartCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<TurnStartCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<TurnStartCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<TurnStartCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/turn.start
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartEvent(pub Box<ExecutionEventTurnStart>);
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/user.attention
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserAttentionEvent {
     #[serde(rename = "extensions")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<UserAttentionEventGapsItem>>,
     #[serde(rename = "id")]
     pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
     #[serde(rename = "native")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
     #[serde(rename = "session")]
-    pub session: Box<Session>,
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
     #[serde(rename = "source")]
     pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
     #[serde(rename = "time")]
     pub time: String,
-    #[serde(rename = "tool")]
-    pub tool: ToolErrorEventTool,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<UserAttentionEventTurn>,
     #[serde(rename = "type")]
-    pub type_: ToolErrorEventType,
+    pub type_: UserAttentionEventType,
+    #[serde(rename = "attention")]
+    pub attention: UserAttentionEventAttention,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/user.elicitation.request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: UserElicitationRequestCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<UserElicitationRequestCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<UserElicitationRequestCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<UserElicitationRequestCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<UserElicitationRequestCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/user.elicitation.request
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEvent {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<UserElicitationRequestEventGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<UserElicitationRequestEventTurn>,
+    #[serde(rename = "type")]
+    pub type_: UserElicitationRequestEventType,
+    #[serde(rename = "elicitation")]
+    pub elicitation: UserElicitationRequestEventElicitation,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/user.elicitation.result
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: UserElicitationResultCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<UserElicitationResultCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<UserElicitationResultCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<UserElicitationResultCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<UserElicitationResultCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/user.elicitation.result
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEvent {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<UserElicitationResultEventGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<UserElicitationResultEventTurn>,
+    #[serde(rename = "type")]
+    pub type_: UserElicitationResultEventType,
+    #[serde(rename = "elicitation")]
+    pub elicitation: UserElicitationResultEventElicitation,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/user.message.inbound
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: UserMessageInboundCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<UserMessageInboundCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<UserMessageInboundCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<UserMessageInboundCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<UserMessageInboundCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/user.message.inbound
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundEvent {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<UserMessageInboundEventGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<UserMessageInboundEventTurn>,
+    #[serde(rename = "type")]
+    pub type_: UserMessageInboundEventType,
+    #[serde(rename = "message")]
+    pub message: UserMessageInboundEventMessage,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/user.message.outbound
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: UserMessageOutboundCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<UserMessageOutboundCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<UserMessageOutboundCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<UserMessageOutboundCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<UserMessageOutboundCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/user.message.outbound
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundEvent {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<UserMessageOutboundEventGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "items")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub items: Presence<Vec<Box<ContentItem>>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<UserMessageOutboundEventTurn>,
+    #[serde(rename = "type")]
+    pub type_: UserMessageOutboundEventType,
+    #[serde(rename = "message")]
+    pub message: UserMessageOutboundEventMessage,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -660,29 +3598,119 @@ pub struct ToolErrorEvent {
 #[serde(untagged)]
 pub enum WireMessage {
     InterceptRequest(Box<InterceptRequest>),
-    InterceptNoEffectResponse(Box<InterceptNoEffectResponse>),
-    InterceptDenyResponse(Box<InterceptDenyResponse>),
+    InterceptResponse(Box<InterceptResponse>),
     JsonRpcErrorResponse(Box<JsonRpcErrorResponse>),
     ObserveNotification(Box<ObserveNotification>),
+    CapabilitiesRequest(Box<CapabilitiesRequest>),
+    CapabilitiesResponse(Box<CapabilitiesResponse>),
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/workspace.change.after
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeAfterEvent(pub Box<TaskWorkspaceEventWorkspaceChangeAfter>);
+
+/// Source: schema/draft/capabilities.schema.json#/$defs/workspace.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeCapabilities {
+    #[serde(rename = "effects")]
+    pub effects: WorkspaceChangeBeforeCapabilitiesEffects,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<WorkspaceChangeBeforeCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<WorkspaceChangeBeforeCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<WorkspaceChangeBeforeCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<WorkspaceChangeBeforeCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Source: schema/draft/catalogue-event.schema.json#/$defs/workspace.change.before
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeEvent(pub Box<TaskWorkspaceEventWorkspaceChangeBefore>);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AuthenticationIntersection(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthenticationObjectFlow {
+    AuthorizationCodePkce,
+    ClientCredentials,
+    Unknown(String),
+}
+
+impl Serialize for AuthenticationObjectFlow {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::AuthorizationCodePkce => {
+                let value: JsonValue = serde_json::from_str("\"authorization_code_pkce\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ClientCredentials => {
+                let value: JsonValue = serde_json::from_str("\"client_credentials\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AuthenticationObjectFlow {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"authorization_code_pkce\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::AuthorizationCodePkce);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"client_credentials\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ClientCredentials);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for AuthenticationObjectFlow: {value}"
+        )))
+    }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AuthenticationType;
+pub struct AuthenticationObjectType;
 
-impl Serialize for AuthenticationType {
+impl Serialize for AuthenticationObjectType {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let value: JsonValue =
-            serde_json::from_str("\"bearer\"").expect("generated literal is valid JSON");
+            serde_json::from_str("\"oauth\"").expect("generated literal is valid JSON");
         value.serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for AuthenticationType {
+impl<'de> Deserialize<'de> for AuthenticationObjectType {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         let expected: JsonValue =
-            serde_json::from_str("\"bearer\"").expect("generated literal is valid JSON");
+            serde_json::from_str("\"oauth\"").expect("generated literal is valid JSON");
         if same_json(&value, &expected) {
             Ok(Self)
         } else {
@@ -691,6 +3719,116 @@ impl<'de> Deserialize<'de> for AuthenticationType {
             )))
         }
     }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuthenticationObject {
+    #[serde(rename = "clientId")]
+    pub client_id: String,
+    #[serde(rename = "clientSecretRef")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub client_secret_ref: Presence<String>,
+    #[serde(rename = "flow")]
+    pub flow: AuthenticationObjectFlow,
+    #[serde(rename = "issuer")]
+    pub issuer: String,
+    #[serde(rename = "resource")]
+    pub resource: String,
+    #[serde(rename = "scopes")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub scopes: Presence<Vec<String>>,
+    #[serde(rename = "type")]
+    pub type_: AuthenticationObjectType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthenticationObject2Type;
+
+impl Serialize for AuthenticationObject2Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"mtls\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AuthenticationObject2Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"mtls\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuthenticationObject2 {
+    #[serde(rename = "certificateRef")]
+    pub certificate_ref: String,
+    #[serde(rename = "privateKeyRef")]
+    pub private_key_ref: String,
+    #[serde(rename = "trustRootsRef")]
+    pub trust_roots_ref: String,
+    #[serde(rename = "type")]
+    pub type_: AuthenticationObject2Type,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthenticationObject3Type;
+
+impl Serialize for AuthenticationObject3Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"workload\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AuthenticationObject3Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"workload\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuthenticationObject3 {
+    #[serde(rename = "audience")]
+    pub audience: String,
+    #[serde(rename = "credentialRef")]
+    pub credential_ref: String,
+    #[serde(rename = "issuer")]
+    pub issuer: String,
+    #[serde(rename = "type")]
+    pub type_: AuthenticationObject3Type,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
 /// Inline schema model.
@@ -760,22 +3898,430 @@ impl<'de> Deserialize<'de> for BackendTransport {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CapabilitiesEffectsItemDeny;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitiesEffectsItemEnum {
+    Deny,
+    Allow,
+    Ask,
+    Modify,
+    Message,
+    Return,
+    Flow,
+    Inject,
+    Unknown(String),
+}
 
-impl Serialize for CapabilitiesEffectsItemDeny {
+impl Serialize for CapabilitiesEffectsItemEnum {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Allow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Ask => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Return => {
+                let value: JsonValue =
+                    serde_json::from_str("\"return\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesEffectsItemEnum {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Allow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ask);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"return\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Return);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CapabilitiesEffectsItemEnum: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CapabilitiesEffectsItem {
+    Enum(CapabilitiesEffectsItemEnum),
+    String(String),
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<CapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<CapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for CapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<CapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapabilitiesInjectContextAppend;
+
+impl Serialize for CapabilitiesInjectContextAppend {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let value: JsonValue =
-            serde_json::from_str("\"deny\"").expect("generated literal is valid JSON");
+            serde_json::from_str("true").expect("generated literal is valid JSON");
         value.serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for CapabilitiesEffectsItemDeny {
+impl<'de> Deserialize<'de> for CapabilitiesInjectContextAppend {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         let expected: JsonValue =
-            serde_json::from_str("\"deny\"").expect("generated literal is valid JSON");
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for CapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: CapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<CapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: CapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<CapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<CapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<CapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<CapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<CapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<CapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<CapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<CapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<CapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapabilitiesRequestJsonrpc;
+
+impl Serialize for CapabilitiesRequestJsonrpc {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"2.0\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesRequestJsonrpc {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"2.0\"").expect("generated literal is valid JSON");
         if same_json(&value, &expected) {
             Ok(Self)
         } else {
@@ -788,10 +4334,2556 @@ impl<'de> Deserialize<'de> for CapabilitiesEffectsItemDeny {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum CapabilitiesEffectsItem {
-    Deny(CapabilitiesEffectsItemDeny),
-    String(String),
+#[serde(transparent)]
+pub struct CapabilitiesRequestMethod(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesRequestParams {
+    #[serde(rename = "protocolVersion")]
+    pub protocol_version: Box<ProtocolVersion>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapabilitiesResponseJsonrpc;
+
+impl Serialize for CapabilitiesResponseJsonrpc {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"2.0\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesResponseJsonrpc {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"2.0\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitiesResponseResultManifestAuthenticationItem {
+    Bearer,
+    Oauth,
+    Mtls,
+    Workload,
+    Unknown(String),
+}
+
+impl Serialize for CapabilitiesResponseResultManifestAuthenticationItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Bearer => {
+                let value: JsonValue =
+                    serde_json::from_str("\"bearer\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Oauth => {
+                let value: JsonValue =
+                    serde_json::from_str("\"oauth\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mtls => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mtls\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Workload => {
+                let value: JsonValue = serde_json::from_str("\"workload\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesResponseResultManifestAuthenticationItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"bearer\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Bearer);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"oauth\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Oauth);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mtls\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mtls);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workload\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Workload);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CapabilitiesResponseResultManifestAuthenticationItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitiesResponseResultManifestEventsItemEvent {
+    ToolBefore,
+    ToolAfter,
+    SessionStart,
+    SessionEnd,
+    ConfigChangeBefore,
+    ConfigChangeAfter,
+    TurnStart,
+    TurnFinishBefore,
+    TurnEnd,
+    TurnProgress,
+    ModelRequestBefore,
+    ModelResponseAfter,
+    ModelError,
+    ModelSwitchBefore,
+    ModelSwitchAfter,
+    ToolPermissionRequest,
+    ToolPermissionResolved,
+    ToolProgress,
+    ToolBatchAfter,
+    ContextCompactBefore,
+    ContextCompactAfter,
+    TaskChangeBefore,
+    TaskChangeAfter,
+    UserAttention,
+    UserElicitationRequest,
+    UserElicitationResult,
+    UserMessageInbound,
+    UserMessageOutbound,
+    WorkspaceChangeBefore,
+    WorkspaceChangeAfter,
+    FileChanged,
+    HookFailure,
+    Unknown(String),
+}
+
+impl Serialize for CapabilitiesResponseResultManifestEventsItemEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::ToolBefore => {
+                let value: JsonValue = serde_json::from_str("\"tool.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolAfter => {
+                let value: JsonValue = serde_json::from_str("\"tool.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::SessionStart => {
+                let value: JsonValue = serde_json::from_str("\"session.start\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::SessionEnd => {
+                let value: JsonValue = serde_json::from_str("\"session.end\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ConfigChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"config.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ConfigChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"config.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnStart => {
+                let value: JsonValue = serde_json::from_str("\"turn.start\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnFinishBefore => {
+                let value: JsonValue = serde_json::from_str("\"turn.finish.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnEnd => {
+                let value: JsonValue = serde_json::from_str("\"turn.end\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnProgress => {
+                let value: JsonValue = serde_json::from_str("\"turn.progress\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelRequestBefore => {
+                let value: JsonValue = serde_json::from_str("\"model.request.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelResponseAfter => {
+                let value: JsonValue = serde_json::from_str("\"model.response.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelError => {
+                let value: JsonValue = serde_json::from_str("\"model.error\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelSwitchBefore => {
+                let value: JsonValue = serde_json::from_str("\"model.switch.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelSwitchAfter => {
+                let value: JsonValue = serde_json::from_str("\"model.switch.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolPermissionRequest => {
+                let value: JsonValue = serde_json::from_str("\"tool.permission.request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolPermissionResolved => {
+                let value: JsonValue = serde_json::from_str("\"tool.permission.resolved\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolProgress => {
+                let value: JsonValue = serde_json::from_str("\"tool.progress\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolBatchAfter => {
+                let value: JsonValue = serde_json::from_str("\"tool.batch.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ContextCompactBefore => {
+                let value: JsonValue = serde_json::from_str("\"context.compact.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ContextCompactAfter => {
+                let value: JsonValue = serde_json::from_str("\"context.compact.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TaskChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"task.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TaskChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"task.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserAttention => {
+                let value: JsonValue = serde_json::from_str("\"user.attention\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserElicitationRequest => {
+                let value: JsonValue = serde_json::from_str("\"user.elicitation.request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserElicitationResult => {
+                let value: JsonValue = serde_json::from_str("\"user.elicitation.result\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserMessageInbound => {
+                let value: JsonValue = serde_json::from_str("\"user.message.inbound\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserMessageOutbound => {
+                let value: JsonValue = serde_json::from_str("\"user.message.outbound\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::WorkspaceChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"workspace.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::WorkspaceChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"workspace.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::FileChanged => {
+                let value: JsonValue = serde_json::from_str("\"file.changed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::HookFailure => {
+                let value: JsonValue = serde_json::from_str("\"hook.failure\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesResponseResultManifestEventsItemEvent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.before\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.after\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"session.start\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::SessionStart);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"session.end\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::SessionEnd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"config.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ConfigChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"config.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ConfigChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.start\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnStart);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.finish.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnFinishBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.end\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnEnd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.progress\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnProgress);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.request.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelRequestBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.response.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelResponseAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.error\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelError);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.switch.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelSwitchBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.switch.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelSwitchAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.permission.request\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolPermissionRequest);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.permission.resolved\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolPermissionResolved);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.progress\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolProgress);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.batch.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolBatchAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"context.compact.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ContextCompactBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"context.compact.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ContextCompactAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"task.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TaskChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"task.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TaskChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.attention\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserAttention);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.elicitation.request\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserElicitationRequest);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.elicitation.result\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserElicitationResult);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.message.inbound\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserMessageInbound);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.message.outbound\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserMessageOutbound);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workspace.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::WorkspaceChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workspace.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::WorkspaceChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"file.changed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FileChanged);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook.failure\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::HookFailure);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CapabilitiesResponseResultManifestEventsItemEvent: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitiesResponseResultManifestEventsItemModesItem {
+    Observe,
+    Intercept,
+    Unknown(String),
+}
+
+impl Serialize for CapabilitiesResponseResultManifestEventsItemModesItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Observe => {
+                let value: JsonValue = serde_json::from_str("\"observe\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Intercept => {
+                let value: JsonValue = serde_json::from_str("\"intercept\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesResponseResultManifestEventsItemModesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"observe\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Observe);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"intercept\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Intercept);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CapabilitiesResponseResultManifestEventsItemModesItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesResponseResultManifestEventsItem {
+    #[serde(rename = "capabilities")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub capabilities: Presence<Box<Capabilities>>,
+    #[serde(rename = "event")]
+    pub event: CapabilitiesResponseResultManifestEventsItemEvent,
+    #[serde(rename = "modes")]
+    pub modes: Vec<CapabilitiesResponseResultManifestEventsItemModesItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesResponseResultManifestGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesResponseResultManifestLimits {
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "maxTimeoutMs")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_timeout_ms: Presence<Integer>,
+    #[serde(rename = "maxUploadBytes")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_upload_bytes: Presence<Integer>,
+    #[serde(rename = "minTimeoutMs")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub min_timeout_ms: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitiesResponseResultManifestManagedPolicyScopesItem {
+    User,
+    Project,
+    Managed,
+    Unknown(String),
+}
+
+impl Serialize for CapabilitiesResponseResultManifestManagedPolicyScopesItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Project => {
+                let value: JsonValue = serde_json::from_str("\"project\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Managed => {
+                let value: JsonValue = serde_json::from_str("\"managed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesResponseResultManifestManagedPolicyScopesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"project\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Project);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"managed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Managed);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CapabilitiesResponseResultManifestManagedPolicyScopesItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesResponseResultManifestManagedPolicy {
+    #[serde(rename = "disableable")]
+    pub disableable: bool,
+    #[serde(rename = "scopes")]
+    pub scopes: Vec<CapabilitiesResponseResultManifestManagedPolicyScopesItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitiesResponseResultManifestTransportsItem {
+    Http,
+    Stdio,
+    InProcess,
+    Unknown(String),
+}
+
+impl Serialize for CapabilitiesResponseResultManifestTransportsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Http => {
+                let value: JsonValue =
+                    serde_json::from_str("\"http\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Stdio => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stdio\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::InProcess => {
+                let value: JsonValue = serde_json::from_str("\"in_process\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CapabilitiesResponseResultManifestTransportsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"http\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Http);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stdio\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stdio);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"in_process\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::InProcess);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CapabilitiesResponseResultManifestTransportsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesResponseResultManifest {
+    #[serde(rename = "authentication")]
+    pub authentication: Vec<CapabilitiesResponseResultManifestAuthenticationItem>,
+    #[serde(rename = "contentCategories")]
+    pub content_categories: Vec<String>,
+    #[serde(rename = "correlationIdentityFields")]
+    pub correlation_identity_fields: Vec<String>,
+    #[serde(rename = "events")]
+    pub events: Vec<CapabilitiesResponseResultManifestEventsItem>,
+    #[serde(rename = "gaps")]
+    pub gaps: Vec<CapabilitiesResponseResultManifestGapsItem>,
+    #[serde(rename = "limits")]
+    pub limits: CapabilitiesResponseResultManifestLimits,
+    #[serde(rename = "managedPolicy")]
+    pub managed_policy: CapabilitiesResponseResultManifestManagedPolicy,
+    #[serde(rename = "toolPaths")]
+    pub tool_paths: Vec<String>,
+    #[serde(rename = "transports")]
+    pub transports: Vec<CapabilitiesResponseResultManifestTransportsItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesResponseResult {
+    #[serde(rename = "manifest")]
+    pub manifest: CapabilitiesResponseResultManifest,
+    #[serde(rename = "protocolVersion")]
+    pub protocol_version: Box<ProtocolVersion>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfigChangeAfterEventType;
+
+impl Serialize for ConfigChangeAfterEventType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"config.change.after\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigChangeAfterEventType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"config.change.after\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterEventChangeMcpServersItem {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterEventChange {
+    #[serde(rename = "mcpServers")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub mcp_servers: Presence<Vec<ConfigChangeAfterEventChangeMcpServersItem>>,
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "scope")]
+    pub scope: String,
+    #[serde(rename = "settings")]
+    pub settings: Vec<String>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "summary")]
+    pub summary: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ConfigChangeBeforeCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ConfigChangeBeforeCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigChangeBeforeCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ConfigChangeBeforeCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigChangeBeforeCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ConfigChangeBeforeCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<ConfigChangeBeforeCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfigChangeBeforeCapabilitiesInjectContextAppend;
+
+impl Serialize for ConfigChangeBeforeCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigChangeBeforeCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ConfigChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ConfigChangeBeforeCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ConfigChangeBeforeCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ConfigChangeBeforeCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ConfigChangeBeforeCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ConfigChangeBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ConfigChangeBeforeCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ConfigChangeBeforeCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ConfigChangeBeforeCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ConfigChangeBeforeCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ConfigChangeBeforeCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ConfigChangeBeforeCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ConfigChangeBeforeCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ConfigChangeBeforeCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ConfigChangeBeforeCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfigChangeBeforeEventType;
+
+impl Serialize for ConfigChangeBeforeEventType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"config.change.before\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigChangeBeforeEventType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"config.change.before\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeEventChange {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "scope")]
+    pub scope: String,
+    #[serde(rename = "settings")]
+    pub settings: Vec<String>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "summary")]
+    pub summary: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentItemObjectSelection;
+
+impl Serialize for ContentItemObjectSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentItemObjectSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentItemObject {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: ContentItemObjectSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentItemObject2Gap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentItemObject2Selection;
+
+impl Serialize for ContentItemObject2Selection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentItemObject2Selection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentItemObject2 {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: ContentItemObject2Gap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: ContentItemObject2Selection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentItemObject3Selection;
+
+impl Serialize for ContentItemObject3Selection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentItemObject3Selection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentItemObject3 {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: ContentItemObject3Selection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentItemObject4Selection;
+
+impl Serialize for ContentItemObject4Selection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentItemObject4Selection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentItemObject4 {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: ContentItemObject4Selection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSelectionAudio {
+    Body,
+    Metadata,
+    Omit,
+    Unknown(String),
+}
+
+impl Serialize for ContentSelectionAudio {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Body => {
+                let value: JsonValue =
+                    serde_json::from_str("\"body\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Metadata => {
+                let value: JsonValue = serde_json::from_str("\"metadata\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Omit => {
+                let value: JsonValue =
+                    serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentSelectionAudio {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"body\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Body);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"metadata\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Metadata);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Omit);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContentSelectionAudio: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSelectionDefault {
+    Body,
+    Metadata,
+    Omit,
+    Unknown(String),
+}
+
+impl Serialize for ContentSelectionDefault {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Body => {
+                let value: JsonValue =
+                    serde_json::from_str("\"body\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Metadata => {
+                let value: JsonValue = serde_json::from_str("\"metadata\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Omit => {
+                let value: JsonValue =
+                    serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentSelectionDefault {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"body\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Body);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"metadata\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Metadata);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Omit);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContentSelectionDefault: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSelectionFiles {
+    Body,
+    Metadata,
+    Omit,
+    Unknown(String),
+}
+
+impl Serialize for ContentSelectionFiles {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Body => {
+                let value: JsonValue =
+                    serde_json::from_str("\"body\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Metadata => {
+                let value: JsonValue = serde_json::from_str("\"metadata\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Omit => {
+                let value: JsonValue =
+                    serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentSelectionFiles {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"body\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Body);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"metadata\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Metadata);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Omit);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContentSelectionFiles: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSelectionImages {
+    Body,
+    Metadata,
+    Omit,
+    Unknown(String),
+}
+
+impl Serialize for ContentSelectionImages {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Body => {
+                let value: JsonValue =
+                    serde_json::from_str("\"body\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Metadata => {
+                let value: JsonValue = serde_json::from_str("\"metadata\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Omit => {
+                let value: JsonValue =
+                    serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentSelectionImages {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"body\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Body);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"metadata\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Metadata);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Omit);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContentSelectionImages: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSelectionReasoning {
+    Body,
+    Metadata,
+    Omit,
+    Unknown(String),
+}
+
+impl Serialize for ContentSelectionReasoning {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Body => {
+                let value: JsonValue =
+                    serde_json::from_str("\"body\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Metadata => {
+                let value: JsonValue = serde_json::from_str("\"metadata\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Omit => {
+                let value: JsonValue =
+                    serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentSelectionReasoning {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"body\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Body);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"metadata\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Metadata);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Omit);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContentSelectionReasoning: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSelectionText {
+    Body,
+    Metadata,
+    Omit,
+    Unknown(String),
+}
+
+impl Serialize for ContentSelectionText {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Body => {
+                let value: JsonValue =
+                    serde_json::from_str("\"body\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Metadata => {
+                let value: JsonValue = serde_json::from_str("\"metadata\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Omit => {
+                let value: JsonValue =
+                    serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentSelectionText {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"body\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Body);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"metadata\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Metadata);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Omit);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContentSelectionText: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentSelectionVideo {
+    Body,
+    Metadata,
+    Omit,
+    Unknown(String),
+}
+
+impl Serialize for ContentSelectionVideo {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Body => {
+                let value: JsonValue =
+                    serde_json::from_str("\"body\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Metadata => {
+                let value: JsonValue = serde_json::from_str("\"metadata\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Omit => {
+                let value: JsonValue =
+                    serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentSelectionVideo {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"body\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Body);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"metadata\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Metadata);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"omit\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Omit);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContentSelectionVideo: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentUploadAuthType;
+
+impl Serialize for ContentUploadAuthType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"bearer\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentUploadAuthType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"bearer\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentUploadAuth {
+    #[serde(rename = "tokenEnv")]
+    pub token_env: String,
+    #[serde(rename = "type")]
+    pub type_: ContentUploadAuthType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ContextCompactAfterCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ContextCompactAfterCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextCompactAfterCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ContextCompactAfterCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactAfterCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContextCompactAfterCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<ContextCompactAfterCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContextCompactAfterCapabilitiesInjectContextAppend;
+
+impl Serialize for ContextCompactAfterCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactAfterCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextCompactAfterCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ContextCompactAfterCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactAfterCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContextCompactAfterCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ContextCompactAfterCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ContextCompactAfterCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ContextCompactAfterCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactAfterCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ContextCompactAfterCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ContextCompactAfterCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ContextCompactAfterCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ContextCompactAfterCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ContextCompactAfterCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ContextCompactAfterCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ContextCompactAfterCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ContextCompactAfterCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ContextCompactAfterCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ContextCompactBeforeCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ContextCompactBeforeCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextCompactBeforeCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ContextCompactBeforeCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactBeforeCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContextCompactBeforeCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<ContextCompactBeforeCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContextCompactBeforeCapabilitiesInjectContextAppend;
+
+impl Serialize for ContextCompactBeforeCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactBeforeCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextCompactBeforeCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ContextCompactBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContextCompactBeforeCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ContextCompactBeforeCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ContextCompactBeforeCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ContextCompactBeforeCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContextCompactBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ContextCompactBeforeCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ContextCompactBeforeCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ContextCompactBeforeCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ContextCompactBeforeCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ContextCompactBeforeCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ContextCompactBeforeCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ContextCompactBeforeCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ContextCompactBeforeCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ContextCompactBeforeCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
 /// Inline schema model.
@@ -823,6 +6915,3436 @@ impl<'de> Deserialize<'de> for DenyEffectType {
 
 /// Inline schema model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObjectType;
+
+impl Serialize for EffectObjectType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"allow\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObjectType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"allow\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectObject {
+    #[serde(rename = "type")]
+    pub type_: EffectObjectType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject2Type;
+
+impl Serialize for EffectObject2Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"ask\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject2Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"ask\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectObject2 {
+    #[serde(rename = "type")]
+    pub type_: EffectObject2Type,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectObject3Operation {
+    Replace,
+    Merge,
+    Unknown(String),
+}
+
+impl Serialize for EffectObject3Operation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Replace => {
+                let value: JsonValue = serde_json::from_str("\"replace\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Merge => {
+                let value: JsonValue =
+                    serde_json::from_str("\"merge\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject3Operation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"replace\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Replace);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"merge\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Merge);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for EffectObject3Operation: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectObject3Target {
+    Input,
+    Output,
+    Prompt,
+    Request,
+    Response,
+    Content,
+    Instructions,
+    Summary,
+    Workspace,
+    Unknown(String),
+}
+
+impl Serialize for EffectObject3Target {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Input => {
+                let value: JsonValue =
+                    serde_json::from_str("\"input\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Output => {
+                let value: JsonValue =
+                    serde_json::from_str("\"output\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Prompt => {
+                let value: JsonValue =
+                    serde_json::from_str("\"prompt\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Request => {
+                let value: JsonValue = serde_json::from_str("\"request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Response => {
+                let value: JsonValue = serde_json::from_str("\"response\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Content => {
+                let value: JsonValue = serde_json::from_str("\"content\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Instructions => {
+                let value: JsonValue = serde_json::from_str("\"instructions\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Summary => {
+                let value: JsonValue = serde_json::from_str("\"summary\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Workspace => {
+                let value: JsonValue = serde_json::from_str("\"workspace\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject3Target {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"input\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Input);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"output\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Output);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"prompt\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Prompt);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"request\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Request);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"response\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Response);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"content\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Content);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"instructions\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Instructions);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"summary\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Summary);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workspace\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Workspace);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for EffectObject3Target: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject3Type;
+
+impl Serialize for EffectObject3Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"modify\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject3Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"modify\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectObject3 {
+    #[serde(rename = "operation")]
+    pub operation: EffectObject3Operation,
+    #[serde(rename = "target")]
+    pub target: EffectObject3Target,
+    #[serde(rename = "type")]
+    pub type_: EffectObject3Type,
+    #[serde(rename = "value")]
+    pub value: JsonValue,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject4Type;
+
+impl Serialize for EffectObject4Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"message\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject4Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"message\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectObject4 {
+    #[serde(rename = "text")]
+    pub text: String,
+    #[serde(rename = "type")]
+    pub type_: EffectObject4Type,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject5Type;
+
+impl Serialize for EffectObject5Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"return\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject5Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"return\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectObject5 {
+    #[serde(rename = "type")]
+    pub type_: EffectObject5Type,
+    #[serde(rename = "value")]
+    pub value: JsonValue,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject6Operation;
+
+impl Serialize for EffectObject6Operation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"stop\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject6Operation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"stop\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject6Type;
+
+impl Serialize for EffectObject6Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"flow\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject6Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"flow\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectObject6 {
+    #[serde(rename = "operation")]
+    pub operation: EffectObject6Operation,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    #[serde(rename = "type")]
+    pub type_: EffectObject6Type,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject7Operation;
+
+impl Serialize for EffectObject7Operation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"continue\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject7Operation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"continue\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject7Type;
+
+impl Serialize for EffectObject7Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"flow\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject7Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"flow\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectObject7 {
+    #[serde(rename = "instruction")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instruction: Presence<String>,
+    #[serde(rename = "operation")]
+    pub operation: EffectObject7Operation,
+    #[serde(rename = "type")]
+    pub type_: EffectObject7Type,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectObject8DeliverAt {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for EffectObject8DeliverAt {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject8DeliverAt {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for EffectObject8DeliverAt: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject8Operation;
+
+impl Serialize for EffectObject8Operation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"append\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject8Operation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"append\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject8Target;
+
+impl Serialize for EffectObject8Target {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"context\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject8Target {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"context\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectObject8Type;
+
+impl Serialize for EffectObject8Type {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"inject\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectObject8Type {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"inject\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectObject8 {
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: EffectObject8DeliverAt,
+    #[serde(rename = "operation")]
+    pub operation: EffectObject8Operation,
+    #[serde(rename = "target")]
+    pub target: EffectObject8Target,
+    #[serde(rename = "type")]
+    pub type_: EffectObject8Type,
+    #[serde(rename = "value")]
+    pub value: JsonValue,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventAttemptusageCompleteness {
+    Complete,
+    Partial,
+    Unknown2,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventAttemptusageCompleteness {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Complete => {
+                let value: JsonValue = serde_json::from_str("\"complete\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Partial => {
+                let value: JsonValue = serde_json::from_str("\"partial\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown2 => {
+                let value: JsonValue = serde_json::from_str("\"unknown\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventAttemptusageCompleteness {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"complete\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Complete);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"partial\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Partial);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Unknown2);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventAttemptusageCompleteness: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventAttemptusageCostBasis {
+    Billed,
+    Reported,
+    Estimated,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventAttemptusageCostBasis {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Billed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"billed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Reported => {
+                let value: JsonValue = serde_json::from_str("\"reported\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Estimated => {
+                let value: JsonValue = serde_json::from_str("\"estimated\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventAttemptusageCostBasis {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"billed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Billed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"reported\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Reported);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"estimated\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Estimated);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventAttemptusageCostBasis: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventAttemptusageCost {
+    #[serde(rename = "amount")]
+    pub amount: JsonNumber,
+    #[serde(rename = "basis")]
+    pub basis: ExecutionEventAttemptusageCostBasis,
+    #[serde(rename = "currency")]
+    pub currency: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventAttemptusageKind(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventAttemptusageProvenance(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventAttemptusageScope(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventContextCompactAfterGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventContextCompactAfterRemovedItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventContextCompactAfterTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventContextCompactAfterType;
+
+impl Serialize for ExecutionEventContextCompactAfterType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"context.compact.after\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventContextCompactAfterType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"context.compact.after\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ExecutionEventErrorStatus {
+    String(String),
+    Integer(Integer),
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObjectStatus;
+
+impl Serialize for ExecutionEventExecutionObjectStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObjectStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventExecutionObject {
+    #[serde(rename = "status")]
+    pub status: ExecutionEventExecutionObjectStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject2Reason;
+
+impl Serialize for ExecutionEventExecutionObject2Reason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"supplied_result\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject2Reason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"supplied_result\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject2Status;
+
+impl Serialize for ExecutionEventExecutionObject2Status {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject2Status {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventExecutionObject2 {
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventExecutionObject2Reason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventExecutionObject2Status,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject3Reason;
+
+impl Serialize for ExecutionEventExecutionObject3Reason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"policy\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject3Reason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"policy\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject3Status;
+
+impl Serialize for ExecutionEventExecutionObject3Status {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject3Status {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventExecutionObject3 {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventExecutionObject3Reason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventExecutionObject3Status,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject4Reason;
+
+impl Serialize for ExecutionEventExecutionObject4Reason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"cancelled\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject4Reason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"cancelled\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject4Status;
+
+impl Serialize for ExecutionEventExecutionObject4Status {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject4Status {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventExecutionObject4 {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventExecutionObject4Reason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventExecutionObject4Status,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject5Reason;
+
+impl Serialize for ExecutionEventExecutionObject5Reason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"timeout\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject5Reason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"timeout\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject5Status;
+
+impl Serialize for ExecutionEventExecutionObject5Status {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject5Status {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventExecutionObject5 {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventExecutionObject5Reason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventExecutionObject5Status,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject6Reason;
+
+impl Serialize for ExecutionEventExecutionObject6Reason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"other\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject6Reason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"other\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventExecutionObject6Status;
+
+impl Serialize for ExecutionEventExecutionObject6Status {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventExecutionObject6Status {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"skipped\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventExecutionObject6 {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventExecutionObject6Reason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventExecutionObject6Status,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventFilechangeChange {
+    Created,
+    Modified,
+    Deleted,
+    Moved,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventFilechangeChange {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Created => {
+                let value: JsonValue = serde_json::from_str("\"created\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modified => {
+                let value: JsonValue = serde_json::from_str("\"modified\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Deleted => {
+                let value: JsonValue = serde_json::from_str("\"deleted\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Moved => {
+                let value: JsonValue =
+                    serde_json::from_str("\"moved\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventFilechangeChange {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"created\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Created);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modified\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modified);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deleted\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deleted);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"moved\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Moved);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventFilechangeChange: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventMcpConnectionIntersection(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventMcpConnectionIntersection2(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventMcpConnectionIntersection3(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventMcpConnectionIntersection4(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ExecutionEventMcpConnection {
+    Intersection(ExecutionEventMcpConnectionIntersection),
+    Intersection2(ExecutionEventMcpConnectionIntersection2),
+    Intersection3(ExecutionEventMcpConnectionIntersection3),
+    Intersection4(ExecutionEventMcpConnectionIntersection4),
+    /// Raw value for a forward-compatible discriminator variant.
+    Unknown(JsonValue),
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventMcpConnection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let actual = value
+            .as_object()
+            .and_then(|object| object.get("transport"))
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                <D::Error as serde::de::Error>::custom("expected string discriminator transport")
+            })?;
+        match actual.as_str() {
+            "http" => serde_json::from_value::<ExecutionEventMcpConnectionIntersection>(value)
+                .map(Self::Intersection)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "sse" => serde_json::from_value::<ExecutionEventMcpConnectionIntersection2>(value)
+                .map(Self::Intersection2)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            "stdio" => serde_json::from_value::<ExecutionEventMcpConnectionIntersection3>(value)
+                .map(Self::Intersection3)
+                .map_err(<D::Error as serde::de::Error>::custom),
+            _ => Ok(Self::Unknown(value)),
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventMcpProvenance {
+    Runtime,
+    Inferred,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventMcpProvenance {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Runtime => {
+                let value: JsonValue = serde_json::from_str("\"runtime\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inferred => {
+                let value: JsonValue = serde_json::from_str("\"inferred\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventMcpProvenance {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"runtime\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Runtime);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inferred\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inferred);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventMcpProvenance: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventMcpServer {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "name")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub name: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventModelErrorExecution(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelErrorGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelErrorTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventModelErrorType;
+
+impl Serialize for ExecutionEventModelErrorType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"model.error\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"model.error\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelRequestBeforeGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelRequestBeforeParams {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelRequestBeforeTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventModelRequestBeforeType;
+
+impl Serialize for ExecutionEventModelRequestBeforeType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"model.request.before\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelRequestBeforeType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"model.request.before\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelResponseAfterGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelResponseAfterTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventModelResponseAfterType;
+
+impl Serialize for ExecutionEventModelResponseAfterType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"model.response.after\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelResponseAfterType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"model.response.after\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelSwitchAfterGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelSwitchAfterTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventModelSwitchAfterType;
+
+impl Serialize for ExecutionEventModelSwitchAfterType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"model.switch.after\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelSwitchAfterType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"model.switch.after\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelSwitchBeforeGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelSwitchBeforePricing {
+    #[serde(rename = "currency")]
+    pub currency: String,
+    #[serde(rename = "inputPerMillionTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input_per_million_tokens: Presence<JsonNumber>,
+    #[serde(rename = "outputPerMillionTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output_per_million_tokens: Presence<JsonNumber>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelSwitchBeforeTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventModelSwitchBeforeType;
+
+impl Serialize for ExecutionEventModelSwitchBeforeType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"model.switch.before\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelSwitchBeforeType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"model.switch.before\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolInput {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventToolOrigin {
+    Native,
+    Mcp,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventToolOrigin {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Native => {
+                let value: JsonValue =
+                    serde_json::from_str("\"native\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mcp => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventToolOrigin {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"native\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Native);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mcp);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventToolOrigin: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolBatchAfterBatch {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolBatchAfterCallsItemCall {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventToolBatchAfterCallsItemOutcome {
+    Ok,
+    Error,
+    Denied,
+    Cancelled,
+    Timeout,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventToolBatchAfterCallsItemOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Ok => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ok\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Error => {
+                let value: JsonValue =
+                    serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Denied => {
+                let value: JsonValue =
+                    serde_json::from_str("\"denied\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Timeout => {
+                let value: JsonValue = serde_json::from_str("\"timeout\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventToolBatchAfterCallsItemOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ok\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ok);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"error\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Error);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"denied\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Denied);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"timeout\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Timeout);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventToolBatchAfterCallsItemOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolBatchAfterCallsItem {
+    #[serde(rename = "batch")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub batch: Presence<Box<ExecutionEventBatch>>,
+    #[serde(rename = "call")]
+    pub call: ExecutionEventToolBatchAfterCallsItemCall,
+    #[serde(rename = "execution")]
+    pub execution: Box<ExecutionEventExecution>,
+    #[serde(rename = "outcome")]
+    pub outcome: ExecutionEventToolBatchAfterCallsItemOutcome,
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "tool")]
+    pub tool: Box<ExecutionEventTool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolBatchAfterGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolBatchAfterTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventToolBatchAfterType;
+
+impl Serialize for ExecutionEventToolBatchAfterType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"tool.batch.after\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventToolBatchAfterType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"tool.batch.after\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionRequestCall {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionRequestGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionRequestSuggestionsItem {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionRequestTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventToolPermissionRequestType;
+
+impl Serialize for ExecutionEventToolPermissionRequestType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"tool.permission.request\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventToolPermissionRequestType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"tool.permission.request\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionResolvedCall {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventToolPermissionResolvedDecidedBy {
+    User,
+    Policy,
+    Hook,
+    Auto,
+    Classifier,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventToolPermissionResolvedDecidedBy {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Policy => {
+                let value: JsonValue =
+                    serde_json::from_str("\"policy\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Hook => {
+                let value: JsonValue =
+                    serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Auto => {
+                let value: JsonValue =
+                    serde_json::from_str("\"auto\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Classifier => {
+                let value: JsonValue = serde_json::from_str("\"classifier\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventToolPermissionResolvedDecidedBy {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"policy\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Policy);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Hook);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"auto\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Auto);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"classifier\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Classifier);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventToolPermissionResolvedDecidedBy: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventToolPermissionResolvedDecision {
+    Allow,
+    Deny,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventToolPermissionResolvedDecision {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Allow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventToolPermissionResolvedDecision {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Allow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventToolPermissionResolvedDecision: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionResolvedGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolPermissionResolvedTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventToolPermissionResolvedType;
+
+impl Serialize for ExecutionEventToolPermissionResolvedType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"tool.permission.resolved\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventToolPermissionResolvedType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"tool.permission.resolved\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolProgressCall {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolProgressGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventToolProgressTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventToolProgressType;
+
+impl Serialize for ExecutionEventToolProgressType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"tool.progress\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventToolProgressType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"tool.progress\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnEndGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnEndLastAssistantItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventTurnEndOutcome {
+    Completed,
+    Failed,
+    Cancelled,
+    MaxIterations,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventTurnEndOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Completed => {
+                let value: JsonValue = serde_json::from_str("\"completed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Failed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"failed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::MaxIterations => {
+                let value: JsonValue = serde_json::from_str("\"max_iterations\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnEndOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"completed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Completed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"failed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Failed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"max_iterations\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::MaxIterations);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventTurnEndOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnEndTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventTurnEndType;
+
+impl Serialize for ExecutionEventTurnEndType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"turn.end\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnEndType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"turn.end\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnFinishBeforeGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnFinishBeforeLastAssistantItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventTurnFinishBeforeOutcome {
+    Completed,
+    Failed,
+    Cancelled,
+    MaxIterations,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventTurnFinishBeforeOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Completed => {
+                let value: JsonValue = serde_json::from_str("\"completed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Failed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"failed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::MaxIterations => {
+                let value: JsonValue = serde_json::from_str("\"max_iterations\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnFinishBeforeOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"completed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Completed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"failed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Failed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"max_iterations\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::MaxIterations);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventTurnFinishBeforeOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnFinishBeforeTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventTurnFinishBeforeType;
+
+impl Serialize for ExecutionEventTurnFinishBeforeType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"turn.finish.before\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnFinishBeforeType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"turn.finish.before\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnProgressGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnProgressItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnProgressTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventTurnProgressType;
+
+impl Serialize for ExecutionEventTurnProgressType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"turn.progress\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnProgressType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"turn.progress\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnStartGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventTurnStartTrigger {
+    User,
+    Continuation,
+    Hook,
+    External,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventTurnStartTrigger {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continuation => {
+                let value: JsonValue = serde_json::from_str("\"continuation\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Hook => {
+                let value: JsonValue =
+                    serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::External => {
+                let value: JsonValue = serde_json::from_str("\"external\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnStartTrigger {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continuation\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continuation);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Hook);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"external\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::External);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventTurnStartTrigger: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnStartTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionEventTurnStartType;
+
+impl Serialize for ExecutionEventTurnStartType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"turn.start\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnStartType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"turn.start\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventTurnusageCompleteness {
+    Complete,
+    Partial,
+    Unknown2,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventTurnusageCompleteness {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Complete => {
+                let value: JsonValue = serde_json::from_str("\"complete\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Partial => {
+                let value: JsonValue = serde_json::from_str("\"partial\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown2 => {
+                let value: JsonValue = serde_json::from_str("\"unknown\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnusageCompleteness {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"complete\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Complete);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"partial\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Partial);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Unknown2);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventTurnusageCompleteness: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventTurnusageCostBasis {
+    Billed,
+    Reported,
+    Estimated,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventTurnusageCostBasis {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Billed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"billed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Reported => {
+                let value: JsonValue = serde_json::from_str("\"reported\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Estimated => {
+                let value: JsonValue = serde_json::from_str("\"estimated\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnusageCostBasis {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"billed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Billed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"reported\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Reported);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"estimated\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Estimated);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventTurnusageCostBasis: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventTurnusageCost {
+    #[serde(rename = "amount")]
+    pub amount: JsonNumber,
+    #[serde(rename = "basis")]
+    pub basis: ExecutionEventTurnusageCostBasis,
+    #[serde(rename = "currency")]
+    pub currency: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventTurnusageKind(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventTurnusageProvenance {
+    Provider,
+    Estimate,
+    Mixed,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventTurnusageProvenance {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Provider => {
+                let value: JsonValue = serde_json::from_str("\"provider\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Estimate => {
+                let value: JsonValue = serde_json::from_str("\"estimate\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mixed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mixed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventTurnusageProvenance {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"provider\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Provider);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"estimate\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Estimate);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mixed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mixed);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventTurnusageProvenance: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExecutionEventTurnusageScope(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventUsageCompleteness {
+    Complete,
+    Partial,
+    Unknown2,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventUsageCompleteness {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Complete => {
+                let value: JsonValue = serde_json::from_str("\"complete\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Partial => {
+                let value: JsonValue = serde_json::from_str("\"partial\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown2 => {
+                let value: JsonValue = serde_json::from_str("\"unknown\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventUsageCompleteness {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"complete\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Complete);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"partial\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Partial);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Unknown2);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventUsageCompleteness: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventUsageCostBasis {
+    Billed,
+    Reported,
+    Estimated,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventUsageCostBasis {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Billed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"billed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Reported => {
+                let value: JsonValue = serde_json::from_str("\"reported\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Estimated => {
+                let value: JsonValue = serde_json::from_str("\"estimated\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventUsageCostBasis {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"billed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Billed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"reported\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Reported);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"estimated\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Estimated);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventUsageCostBasis: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventUsageCost {
+    #[serde(rename = "amount")]
+    pub amount: JsonNumber,
+    #[serde(rename = "basis")]
+    pub basis: ExecutionEventUsageCostBasis,
+    #[serde(rename = "currency")]
+    pub currency: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventUsageKind {
+    Amount,
+    Total,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventUsageKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Amount => {
+                let value: JsonValue =
+                    serde_json::from_str("\"amount\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Total => {
+                let value: JsonValue =
+                    serde_json::from_str("\"total\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventUsageKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"amount\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Amount);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"total\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Total);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventUsageKind: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventUsageProvenance {
+    Provider,
+    Estimate,
+    Mixed,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventUsageProvenance {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Provider => {
+                let value: JsonValue = serde_json::from_str("\"provider\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Estimate => {
+                let value: JsonValue = serde_json::from_str("\"estimate\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mixed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mixed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventUsageProvenance {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"provider\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Provider);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"estimate\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Estimate);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mixed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mixed);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventUsageProvenance: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventUsageScope {
+    Attempt,
+    Turn,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventUsageScope {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Attempt => {
+                let value: JsonValue = serde_json::from_str("\"attempt\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Turn => {
+                let value: JsonValue =
+                    serde_json::from_str("\"turn\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventUsageScope {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"attempt\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Attempt);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Turn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventUsageScope: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookFailureEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookFailureEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HookFailureEventType;
+
+impl Serialize for HookFailureEventType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"hook.failure\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for HookFailureEventType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"hook.failure\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HookFailureEventFailurePolicy {
+    FailOpen,
+    FailClosed,
+    Unknown(String),
+}
+
+impl Serialize for HookFailureEventFailurePolicy {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::FailOpen => {
+                let value: JsonValue = serde_json::from_str("\"fail-open\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::FailClosed => {
+                let value: JsonValue = serde_json::from_str("\"fail-closed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for HookFailureEventFailurePolicy {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"fail-open\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FailOpen);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"fail-closed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FailClosed);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for HookFailureEventFailurePolicy: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookFailureEventFailure {
+    #[serde(rename = "backendId")]
+    pub backend_id: String,
+    #[serde(rename = "policy")]
+    pub policy: HookFailureEventFailurePolicy,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HttpTransportType;
 
 impl Serialize for HttpTransportType {
@@ -838,6 +10360,579 @@ impl<'de> Deserialize<'de> for HttpTransportType {
         let value = JsonValue::deserialize(deserializer)?;
         let expected: JsonValue =
             serde_json::from_str("\"http\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventConfigChangeAfterChangeMcpServersItem {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventConfigChangeAfterChange {
+    #[serde(rename = "mcpServers")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub mcp_servers: Presence<Vec<InteractionEventConfigChangeAfterChangeMcpServersItem>>,
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "scope")]
+    pub scope: String,
+    #[serde(rename = "settings")]
+    pub settings: Vec<String>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "summary")]
+    pub summary: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionEventConfigChangeAfterType;
+
+impl Serialize for InteractionEventConfigChangeAfterType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"config.change.after\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventConfigChangeAfterType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"config.change.after\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventConfigChangeBeforeChange {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "scope")]
+    pub scope: String,
+    #[serde(rename = "settings")]
+    pub settings: Vec<String>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "summary")]
+    pub summary: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionEventConfigChangeBeforeType;
+
+impl Serialize for InteractionEventConfigChangeBeforeType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"config.change.before\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventConfigChangeBeforeType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"config.change.before\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InteractionEventHookFailureFailurePolicy {
+    FailOpen,
+    FailClosed,
+    Unknown(String),
+}
+
+impl Serialize for InteractionEventHookFailureFailurePolicy {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::FailOpen => {
+                let value: JsonValue = serde_json::from_str("\"fail-open\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::FailClosed => {
+                let value: JsonValue = serde_json::from_str("\"fail-closed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventHookFailureFailurePolicy {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"fail-open\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FailOpen);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"fail-closed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FailClosed);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InteractionEventHookFailureFailurePolicy: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventHookFailureFailure {
+    #[serde(rename = "backendId")]
+    pub backend_id: String,
+    #[serde(rename = "policy")]
+    pub policy: InteractionEventHookFailureFailurePolicy,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionEventHookFailureType;
+
+impl Serialize for InteractionEventHookFailureType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"hook.failure\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventHookFailureType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"hook.failure\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserAttentionAttention {
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "message")]
+    pub message: Vec<Box<ContentItem>>,
+    #[serde(rename = "title")]
+    pub title: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionEventUserAttentionType;
+
+impl Serialize for InteractionEventUserAttentionType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"user.attention\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserAttentionType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"user.attention\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InteractionEventUserElicitationRequestElicitationMode {
+    Form,
+    Url,
+    Unknown(String),
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Form => {
+                let value: JsonValue =
+                    serde_json::from_str("\"form\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Url => {
+                let value: JsonValue =
+                    serde_json::from_str("\"url\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitationMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"form\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Form);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"url\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Url);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InteractionEventUserElicitationRequestElicitationMode: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InteractionEventUserElicitationRequestElicitationRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationRequestElicitation {
+    #[serde(rename = "mode")]
+    pub mode: InteractionEventUserElicitationRequestElicitationMode,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<InteractionEventUserElicitationRequestElicitationRequest>,
+    #[serde(rename = "server")]
+    pub server: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionEventUserElicitationRequestType;
+
+impl Serialize for InteractionEventUserElicitationRequestType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"user.elicitation.request\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"user.elicitation.request\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InteractionEventUserElicitationResultElicitationAction {
+    Accept,
+    Decline,
+    Cancel,
+    Unknown(String),
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationAction {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Accept => {
+                let value: JsonValue =
+                    serde_json::from_str("\"accept\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Decline => {
+                let value: JsonValue = serde_json::from_str("\"decline\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancel => {
+                let value: JsonValue =
+                    serde_json::from_str("\"cancel\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationAction {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"accept\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Accept);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"decline\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Decline);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancel\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancel);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InteractionEventUserElicitationResultElicitationAction: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InteractionEventUserElicitationResultElicitationMode {
+    Form,
+    Url,
+    Unknown(String),
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Form => {
+                let value: JsonValue =
+                    serde_json::from_str("\"form\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Url => {
+                let value: JsonValue =
+                    serde_json::from_str("\"url\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"form\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Form);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"url\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Url);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InteractionEventUserElicitationResultElicitationMode: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InteractionEventUserElicitationResultElicitationResult(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationResultElicitation {
+    #[serde(rename = "action")]
+    pub action: InteractionEventUserElicitationResultElicitationAction,
+    #[serde(rename = "mode")]
+    pub mode: InteractionEventUserElicitationResultElicitationMode,
+    #[serde(rename = "result")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub result: Presence<InteractionEventUserElicitationResultElicitationResult>,
+    #[serde(rename = "server")]
+    pub server: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionEventUserElicitationResultType;
+
+impl Serialize for InteractionEventUserElicitationResultType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"user.elicitation.result\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"user.elicitation.result\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserMessageInboundMessage {
+    #[serde(rename = "channel")]
+    pub channel: String,
+    #[serde(rename = "sender")]
+    pub sender: String,
+    #[serde(rename = "text")]
+    pub text: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionEventUserMessageInboundType;
+
+impl Serialize for InteractionEventUserMessageInboundType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"user.message.inbound\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserMessageInboundType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"user.message.inbound\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserMessageOutboundMessage {
+    #[serde(rename = "channel")]
+    pub channel: String,
+    #[serde(rename = "payload")]
+    pub payload: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionEventUserMessageOutboundType;
+
+impl Serialize for InteractionEventUserMessageOutboundType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"user.message.outbound\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserMessageOutboundType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"user.message.outbound\"")
+            .expect("generated literal is valid JSON");
         if same_json(&value, &expected) {
             Ok(Self)
         } else {
@@ -965,22 +11060,251 @@ impl<'de> Deserialize<'de> for InterceptRequestJsonrpc {
 pub struct InterceptRequestMethod(pub JsonValue);
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InterceptRequestParamsCapabilitiesEffectsItemDeny;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterceptRequestParamsCapabilitiesEffectsItemEnum {
+    Deny,
+    Allow,
+    Ask,
+    Modify,
+    Message,
+    Return,
+    Flow,
+    Inject,
+    Unknown(String),
+}
 
-impl Serialize for InterceptRequestParamsCapabilitiesEffectsItemDeny {
+impl Serialize for InterceptRequestParamsCapabilitiesEffectsItemEnum {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Allow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Ask => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Return => {
+                let value: JsonValue =
+                    serde_json::from_str("\"return\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesEffectsItemEnum {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Allow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ask);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"return\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Return);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InterceptRequestParamsCapabilitiesEffectsItemEnum: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum InterceptRequestParamsCapabilitiesEffectsItem {
+    Enum(InterceptRequestParamsCapabilitiesEffectsItemEnum),
+    String(String),
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<InterceptRequestParamsCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<InterceptRequestParamsCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterceptRequestParamsCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for InterceptRequestParamsCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InterceptRequestParamsCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<InterceptRequestParamsCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InterceptRequestParamsCapabilitiesInjectContextAppend;
+
+impl Serialize for InterceptRequestParamsCapabilitiesInjectContextAppend {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let value: JsonValue =
-            serde_json::from_str("\"deny\"").expect("generated literal is valid JSON");
+            serde_json::from_str("true").expect("generated literal is valid JSON");
         value.serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesEffectsItemDeny {
+impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesInjectContextAppend {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         let expected: JsonValue =
-            serde_json::from_str("\"deny\"").expect("generated literal is valid JSON");
+            serde_json::from_str("true").expect("generated literal is valid JSON");
         if same_json(&value, &expected) {
             Ok(Self)
         } else {
@@ -992,11 +11316,155 @@ impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesEffectsItemDeny
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterceptRequestParamsCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for InterceptRequestParamsCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InterceptRequestParamsCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum InterceptRequestParamsCapabilitiesEffectsItem {
-    Deny(InterceptRequestParamsCapabilitiesEffectsItemDeny),
-    String(String),
+pub struct InterceptRequestParamsCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: InterceptRequestParamsCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<InterceptRequestParamsCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: InterceptRequestParamsCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InterceptRequestParamsCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<InterceptRequestParamsCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<InterceptRequestParamsCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<InterceptRequestParamsCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<InterceptRequestParamsCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<InterceptRequestParamsCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<InterceptRequestParamsCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<InterceptRequestParamsCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<InterceptRequestParamsCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<InterceptRequestParamsCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
 /// Inline schema model.
@@ -1004,6 +11472,229 @@ pub enum InterceptRequestParamsCapabilitiesEffectsItem {
 pub struct InterceptRequestParamsCapabilities {
     #[serde(rename = "effects")]
     pub effects: Vec<InterceptRequestParamsCapabilitiesEffectsItem>,
+    #[serde(rename = "elicitation")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub elicitation: Presence<InterceptRequestParamsCapabilitiesElicitation>,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<InterceptRequestParamsCapabilitiesFlow>,
+    #[serde(rename = "inject")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub inject: Presence<InterceptRequestParamsCapabilitiesInject>,
+    #[serde(rename = "modify")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub modify: Presence<InterceptRequestParamsCapabilitiesModify>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum InterceptRequestParamsEvent {
+    ToolBeforeEvent(Box<ToolBeforeEvent>),
+    ToolAfterEvent(Box<ToolAfterEvent>),
+    SessionStartEvent(Box<SessionStartEvent>),
+    ConfigChangeBeforeEvent(Box<ConfigChangeBeforeEvent>),
+    TurnStartEvent(Box<TurnStartEvent>),
+    TurnFinishBeforeEvent(Box<TurnFinishBeforeEvent>),
+    ModelRequestBeforeEvent(Box<ModelRequestBeforeEvent>),
+    ModelSwitchBeforeEvent(Box<ModelSwitchBeforeEvent>),
+    ToolPermissionRequestEvent(Box<ToolPermissionRequestEvent>),
+    ToolBatchAfterEvent(Box<ToolBatchAfterEvent>),
+    ContextCompactBeforeEvent(Box<ContextCompactBeforeEvent>),
+    ContextCompactAfterEvent(Box<ContextCompactAfterEvent>),
+    TaskChangeBeforeEvent(Box<TaskChangeBeforeEvent>),
+    UserElicitationRequestEvent(Box<UserElicitationRequestEvent>),
+    UserElicitationResultEvent(Box<UserElicitationResultEvent>),
+    UserMessageInboundEvent(Box<UserMessageInboundEvent>),
+    UserMessageOutboundEvent(Box<UserMessageOutboundEvent>),
+    WorkspaceChangeBeforeEvent(Box<WorkspaceChangeBeforeEvent>),
+    ModelResponseAfterEvent(Box<ModelResponseAfterEvent>),
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsStateCandidateObjectProvenance {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsStateCandidateObject {
+    #[serde(rename = "provenance")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub provenance: Presence<InterceptRequestParamsStateCandidateObjectProvenance>,
+    #[serde(rename = "value")]
+    pub value: JsonValue,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum InterceptRequestParamsStateCandidate {
+    Null(()),
+    Object(InterceptRequestParamsStateCandidateObject),
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterceptRequestParamsStateFlow {
+    None,
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for InterceptRequestParamsStateFlow {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::None => {
+                let value: JsonValue =
+                    serde_json::from_str("\"none\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InterceptRequestParamsStateFlow {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"none\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::None);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InterceptRequestParamsStateFlow: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterceptRequestParamsStatePermission {
+    None,
+    Allow,
+    Ask,
+    Deny,
+    Unknown(String),
+}
+
+impl Serialize for InterceptRequestParamsStatePermission {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::None => {
+                let value: JsonValue =
+                    serde_json::from_str("\"none\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Allow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Ask => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InterceptRequestParamsStatePermission {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"none\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::None);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Allow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ask);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InterceptRequestParamsStatePermission: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptRequestParamsState {
+    #[serde(rename = "candidate")]
+    pub candidate: InterceptRequestParamsStateCandidate,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<InterceptRequestParamsStateFlow>,
+    #[serde(rename = "injections")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub injections: Presence<Vec<JsonValue>>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<Vec<String>>,
+    #[serde(rename = "permission")]
+    pub permission: InterceptRequestParamsStatePermission,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -1015,7 +11706,52 @@ pub struct InterceptRequestParams {
     #[serde(rename = "capabilities")]
     pub capabilities: InterceptRequestParamsCapabilities,
     #[serde(rename = "event")]
-    pub event: Box<ToolBeforeEvent>,
+    pub event: InterceptRequestParamsEvent,
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "protocolVersion")]
+    pub protocol_version: Box<ProtocolVersion>,
+    #[serde(rename = "state")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub state: Presence<InterceptRequestParamsState>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InterceptResponseJsonrpc;
+
+impl Serialize for InterceptResponseJsonrpc {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"2.0\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InterceptResponseJsonrpc {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"2.0\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptResponseResult {
+    #[serde(rename = "effects")]
+    pub effects: Vec<Box<Effect>>,
     #[serde(rename = "extensions")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub extensions: Presence<Box<Extensions>>,
@@ -1027,30 +11763,280 @@ pub struct InterceptRequestParams {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InterceptSubscriptionEventsItem;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterceptSubscriptionEventsItemEnum {
+    ToolBefore,
+    ToolAfter,
+    SessionStart,
+    ConfigChangeBefore,
+    TurnStart,
+    TurnFinishBefore,
+    ModelRequestBefore,
+    ModelSwitchBefore,
+    ToolPermissionRequest,
+    ToolBatchAfter,
+    ContextCompactBefore,
+    ContextCompactAfter,
+    TaskChangeBefore,
+    UserElicitationRequest,
+    UserElicitationResult,
+    UserMessageInbound,
+    UserMessageOutbound,
+    WorkspaceChangeBefore,
+    ModelResponseAfter,
+    Unknown(String),
+}
 
-impl Serialize for InterceptSubscriptionEventsItem {
+impl Serialize for InterceptSubscriptionEventsItemEnum {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"tool.before\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
+        match self {
+            Self::ToolBefore => {
+                let value: JsonValue = serde_json::from_str("\"tool.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolAfter => {
+                let value: JsonValue = serde_json::from_str("\"tool.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::SessionStart => {
+                let value: JsonValue = serde_json::from_str("\"session.start\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ConfigChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"config.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnStart => {
+                let value: JsonValue = serde_json::from_str("\"turn.start\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnFinishBefore => {
+                let value: JsonValue = serde_json::from_str("\"turn.finish.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelRequestBefore => {
+                let value: JsonValue = serde_json::from_str("\"model.request.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelSwitchBefore => {
+                let value: JsonValue = serde_json::from_str("\"model.switch.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolPermissionRequest => {
+                let value: JsonValue = serde_json::from_str("\"tool.permission.request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolBatchAfter => {
+                let value: JsonValue = serde_json::from_str("\"tool.batch.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ContextCompactBefore => {
+                let value: JsonValue = serde_json::from_str("\"context.compact.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ContextCompactAfter => {
+                let value: JsonValue = serde_json::from_str("\"context.compact.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TaskChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"task.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserElicitationRequest => {
+                let value: JsonValue = serde_json::from_str("\"user.elicitation.request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserElicitationResult => {
+                let value: JsonValue = serde_json::from_str("\"user.elicitation.result\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserMessageInbound => {
+                let value: JsonValue = serde_json::from_str("\"user.message.inbound\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserMessageOutbound => {
+                let value: JsonValue = serde_json::from_str("\"user.message.outbound\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::WorkspaceChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"workspace.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelResponseAfter => {
+                let value: JsonValue = serde_json::from_str("\"model.response.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
     }
 }
 
-impl<'de> Deserialize<'de> for InterceptSubscriptionEventsItem {
+impl<'de> Deserialize<'de> for InterceptSubscriptionEventsItemEnum {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
-        let expected: JsonValue =
-            serde_json::from_str("\"tool.before\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.before\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolBefore);
         }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.after\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"session.start\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::SessionStart);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"config.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ConfigChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.start\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnStart);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.finish.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnFinishBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.request.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelRequestBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.switch.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelSwitchBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.permission.request\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolPermissionRequest);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.batch.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolBatchAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"context.compact.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ContextCompactBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"context.compact.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ContextCompactAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"task.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TaskChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.elicitation.request\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserElicitationRequest);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.elicitation.result\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserElicitationResult);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.message.inbound\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserMessageInbound);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.message.outbound\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserMessageOutbound);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workspace.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::WorkspaceChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.response.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelResponseAfter);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InterceptSubscriptionEventsItemEnum: {value}"
+        )))
     }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum InterceptSubscriptionEventsItem {
+    Enum(InterceptSubscriptionEventsItemEnum),
+    String(String),
 }
 
 /// Inline schema model.
@@ -1104,6 +12090,20 @@ impl<'de> Deserialize<'de> for InterceptSubscriptionFailurePolicy {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InterceptSubscriptionFilters {
+    #[serde(rename = "paths")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub paths: Presence<Vec<String>>,
+    #[serde(rename = "toolKinds")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub tool_kinds: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InterceptSubscriptionMode;
 
@@ -1127,6 +12127,68 @@ impl<'de> Deserialize<'de> for InterceptSubscriptionMode {
                 "expected {expected}"
             )))
         }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterceptSubscriptionScope {
+    Managed,
+    Project,
+    User,
+    Unknown(String),
+}
+
+impl Serialize for InterceptSubscriptionScope {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Managed => {
+                let value: JsonValue = serde_json::from_str("\"managed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Project => {
+                let value: JsonValue = serde_json::from_str("\"project\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for InterceptSubscriptionScope {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"managed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Managed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"project\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Project);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for InterceptSubscriptionScope: {value}"
+        )))
     }
 }
 
@@ -1278,8 +12340,1307 @@ pub struct JsonRpcSuccessResponseResult {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationBooleanSchemaType;
+
+impl Serialize for McpElicitationBooleanSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"boolean\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationBooleanSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"boolean\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NativeEventPayload {
+pub struct McpElicitationElicitRequestFormParamsMeta {
+    #[serde(rename = "progressToken")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub progress_token: Presence<Box<McpElicitationProgressToken>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationElicitRequestFormParamsMode;
+
+impl Serialize for McpElicitationElicitRequestFormParamsMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"form\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationElicitRequestFormParamsMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"form\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationElicitRequestFormParamsRequestedSchemaProperties {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationElicitRequestFormParamsRequestedSchemaType;
+
+impl Serialize for McpElicitationElicitRequestFormParamsRequestedSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"object\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationElicitRequestFormParamsRequestedSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"object\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationElicitRequestFormParamsRequestedSchema {
+    #[serde(rename = "$schema")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub schema: Presence<String>,
+    #[serde(rename = "properties")]
+    pub properties: McpElicitationElicitRequestFormParamsRequestedSchemaProperties,
+    #[serde(rename = "required")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub required: Presence<Vec<String>>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationElicitRequestFormParamsRequestedSchemaType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationElicitRequestUrlParamsMeta {
+    #[serde(rename = "progressToken")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub progress_token: Presence<Box<McpElicitationProgressToken>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationElicitRequestUrlParamsMode;
+
+impl Serialize for McpElicitationElicitRequestUrlParamsMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"url\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationElicitRequestUrlParamsMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"url\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationElicitResultMeta {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpElicitationElicitResultAction {
+    Accept,
+    Cancel,
+    Decline,
+    Unknown(String),
+}
+
+impl Serialize for McpElicitationElicitResultAction {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Accept => {
+                let value: JsonValue =
+                    serde_json::from_str("\"accept\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancel => {
+                let value: JsonValue =
+                    serde_json::from_str("\"cancel\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Decline => {
+                let value: JsonValue = serde_json::from_str("\"decline\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationElicitResultAction {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"accept\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Accept);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancel\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancel);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"decline\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Decline);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for McpElicitationElicitResultAction: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationElicitResultContent {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationLegacyTitledEnumSchemaType;
+
+impl Serialize for McpElicitationLegacyTitledEnumSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationLegacyTitledEnumSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpElicitationNumberSchemaType {
+    Integer,
+    Number,
+    Unknown(String),
+}
+
+impl Serialize for McpElicitationNumberSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Integer => {
+                let value: JsonValue = serde_json::from_str("\"integer\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Number => {
+                let value: JsonValue =
+                    serde_json::from_str("\"number\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationNumberSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"integer\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Integer);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"number\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Number);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for McpElicitationNumberSchemaType: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpElicitationStringSchemaFormat {
+    Date,
+    DateTime,
+    Email,
+    Uri,
+    Unknown(String),
+}
+
+impl Serialize for McpElicitationStringSchemaFormat {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Date => {
+                let value: JsonValue =
+                    serde_json::from_str("\"date\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::DateTime => {
+                let value: JsonValue = serde_json::from_str("\"date-time\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Email => {
+                let value: JsonValue =
+                    serde_json::from_str("\"email\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Uri => {
+                let value: JsonValue =
+                    serde_json::from_str("\"uri\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationStringSchemaFormat {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"date\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Date);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"date-time\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::DateTime);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"email\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Email);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"uri\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Uri);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for McpElicitationStringSchemaFormat: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationStringSchemaType;
+
+impl Serialize for McpElicitationStringSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationStringSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationTitledMultiSelectEnumSchemaItemsAnyOfItem {
+    #[serde(rename = "const")]
+    pub const_: String,
+    #[serde(rename = "title")]
+    pub title: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationTitledMultiSelectEnumSchemaItems {
+    #[serde(rename = "anyOf")]
+    pub any_of: Vec<McpElicitationTitledMultiSelectEnumSchemaItemsAnyOfItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationTitledMultiSelectEnumSchemaType;
+
+impl Serialize for McpElicitationTitledMultiSelectEnumSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"array\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationTitledMultiSelectEnumSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"array\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationTitledSingleSelectEnumSchemaOneOfItem {
+    #[serde(rename = "const")]
+    pub const_: String,
+    #[serde(rename = "title")]
+    pub title: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationTitledSingleSelectEnumSchemaType;
+
+impl Serialize for McpElicitationTitledSingleSelectEnumSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationTitledSingleSelectEnumSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationUntitledMultiSelectEnumSchemaItemsType;
+
+impl Serialize for McpElicitationUntitledMultiSelectEnumSchemaItemsType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationUntitledMultiSelectEnumSchemaItemsType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpElicitationUntitledMultiSelectEnumSchemaItems {
+    #[serde(rename = "enum")]
+    pub enum_: Vec<String>,
+    #[serde(rename = "type")]
+    pub type_: McpElicitationUntitledMultiSelectEnumSchemaItemsType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationUntitledMultiSelectEnumSchemaType;
+
+impl Serialize for McpElicitationUntitledMultiSelectEnumSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"array\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationUntitledMultiSelectEnumSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"array\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpElicitationUntitledSingleSelectEnumSchemaType;
+
+impl Serialize for McpElicitationUntitledSingleSelectEnumSchemaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpElicitationUntitledSingleSelectEnumSchemaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"string\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ModelRequestBeforeCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ModelRequestBeforeCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesFlowOperations(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: ModelRequestBeforeCapabilitiesFlowOperations,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelRequestBeforeCapabilitiesInjectContextAppend;
+
+impl Serialize for ModelRequestBeforeCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelRequestBeforeCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelRequestBeforeCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ModelRequestBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelRequestBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelRequestBeforeCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ModelRequestBeforeCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ModelRequestBeforeCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ModelRequestBeforeCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelRequestBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ModelRequestBeforeCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ModelRequestBeforeCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ModelRequestBeforeCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ModelRequestBeforeCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ModelRequestBeforeCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ModelRequestBeforeCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ModelRequestBeforeCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ModelRequestBeforeCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ModelRequestBeforeCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ModelResponseAfterCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ModelResponseAfterCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesFlowOperations(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: ModelResponseAfterCapabilitiesFlowOperations,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelResponseAfterCapabilitiesInjectContextAppend;
+
+impl Serialize for ModelResponseAfterCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelResponseAfterCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelResponseAfterCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ModelResponseAfterCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelResponseAfterCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelResponseAfterCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ModelResponseAfterCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ModelResponseAfterCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ModelResponseAfterCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelResponseAfterCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ModelResponseAfterCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ModelResponseAfterCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ModelResponseAfterCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ModelResponseAfterCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ModelResponseAfterCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ModelResponseAfterCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ModelResponseAfterCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ModelResponseAfterCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ModelResponseAfterCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ModelSwitchBeforeCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ModelSwitchBeforeCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesFlowOperations(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: ModelSwitchBeforeCapabilitiesFlowOperations,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelSwitchBeforeCapabilitiesInjectContextAppend;
+
+impl Serialize for ModelSwitchBeforeCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelSwitchBeforeCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelSwitchBeforeCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ModelSwitchBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelSwitchBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelSwitchBeforeCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ModelSwitchBeforeCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ModelSwitchBeforeCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ModelSwitchBeforeCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelSwitchBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ModelSwitchBeforeCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ModelSwitchBeforeCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ModelSwitchBeforeCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ModelSwitchBeforeCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ModelSwitchBeforeCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ModelSwitchBeforeCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ModelSwitchBeforeCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ModelSwitchBeforeCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ModelSwitchBeforeCapabilitiesModifyWorkspace>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -1318,48 +13679,41 @@ impl<'de> Deserialize<'de> for ObserveNotificationJsonrpc {
 pub struct ObserveNotificationMethod(pub JsonValue);
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ObserveNotificationParamsEvent {
     ToolBeforeEvent(Box<ToolBeforeEvent>),
     ToolAfterEvent(Box<ToolAfterEvent>),
-    ToolErrorEvent(Box<ToolErrorEvent>),
     SessionStartEvent(Box<SessionStartEvent>),
     SessionEndEvent(Box<SessionEndEvent>),
-    /// Raw value for a forward-compatible discriminator variant.
-    Unknown(JsonValue),
-}
-
-impl<'de> Deserialize<'de> for ObserveNotificationParamsEvent {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let actual = value
-            .as_object()
-            .and_then(|object| object.get("type"))
-            .and_then(JsonValue::as_str)
-            .map(str::to_owned)
-            .ok_or_else(|| {
-                <D::Error as serde::de::Error>::custom("expected string discriminator type")
-            })?;
-        match actual.as_str() {
-            "tool.before" => serde_json::from_value::<Box<ToolBeforeEvent>>(value)
-                .map(Self::ToolBeforeEvent)
-                .map_err(<D::Error as serde::de::Error>::custom),
-            "tool.after" => serde_json::from_value::<Box<ToolAfterEvent>>(value)
-                .map(Self::ToolAfterEvent)
-                .map_err(<D::Error as serde::de::Error>::custom),
-            "tool.error" => serde_json::from_value::<Box<ToolErrorEvent>>(value)
-                .map(Self::ToolErrorEvent)
-                .map_err(<D::Error as serde::de::Error>::custom),
-            "session.start" => serde_json::from_value::<Box<SessionStartEvent>>(value)
-                .map(Self::SessionStartEvent)
-                .map_err(<D::Error as serde::de::Error>::custom),
-            "session.end" => serde_json::from_value::<Box<SessionEndEvent>>(value)
-                .map(Self::SessionEndEvent)
-                .map_err(<D::Error as serde::de::Error>::custom),
-            _ => Ok(Self::Unknown(value)),
-        }
-    }
+    ConfigChangeBeforeEvent(Box<ConfigChangeBeforeEvent>),
+    ConfigChangeAfterEvent(Box<ConfigChangeAfterEvent>),
+    TurnStartEvent(Box<TurnStartEvent>),
+    TurnFinishBeforeEvent(Box<TurnFinishBeforeEvent>),
+    TurnEndEvent(Box<TurnEndEvent>),
+    TurnProgressEvent(Box<TurnProgressEvent>),
+    ModelRequestBeforeEvent(Box<ModelRequestBeforeEvent>),
+    ModelResponseAfterEvent(Box<ModelResponseAfterEvent>),
+    ModelErrorEvent(Box<ModelErrorEvent>),
+    ModelSwitchBeforeEvent(Box<ModelSwitchBeforeEvent>),
+    ModelSwitchAfterEvent(Box<ModelSwitchAfterEvent>),
+    ToolPermissionRequestEvent(Box<ToolPermissionRequestEvent>),
+    ToolPermissionResolvedEvent(Box<ToolPermissionResolvedEvent>),
+    ToolProgressEvent(Box<ToolProgressEvent>),
+    ToolBatchAfterEvent(Box<ToolBatchAfterEvent>),
+    ContextCompactBeforeEvent(Box<ContextCompactBeforeEvent>),
+    ContextCompactAfterEvent(Box<ContextCompactAfterEvent>),
+    TaskChangeBeforeEvent(Box<TaskChangeBeforeEvent>),
+    TaskChangeAfterEvent(Box<TaskChangeAfterEvent>),
+    UserAttentionEvent(Box<UserAttentionEvent>),
+    UserElicitationRequestEvent(Box<UserElicitationRequestEvent>),
+    UserElicitationResultEvent(Box<UserElicitationResultEvent>),
+    UserMessageInboundEvent(Box<UserMessageInboundEvent>),
+    UserMessageOutboundEvent(Box<UserMessageOutboundEvent>),
+    WorkspaceChangeBeforeEvent(Box<WorkspaceChangeBeforeEvent>),
+    WorkspaceChangeAfterEvent(Box<WorkspaceChangeAfterEvent>),
+    FileChangedEvent(Box<FileChangedEvent>),
+    HookFailureEvent(Box<HookFailureEvent>),
 }
 
 /// Inline schema model.
@@ -1376,16 +13730,43 @@ pub struct ObserveNotificationParams {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ObserveSubscriptionEventsItem {
+pub enum ObserveSubscriptionEventsItemEnum {
     ToolBefore,
     ToolAfter,
-    ToolError,
     SessionStart,
     SessionEnd,
+    ConfigChangeBefore,
+    ConfigChangeAfter,
+    TurnStart,
+    TurnFinishBefore,
+    TurnEnd,
+    TurnProgress,
+    ModelRequestBefore,
+    ModelResponseAfter,
+    ModelError,
+    ModelSwitchBefore,
+    ModelSwitchAfter,
+    ToolPermissionRequest,
+    ToolPermissionResolved,
+    ToolProgress,
+    ToolBatchAfter,
+    ContextCompactBefore,
+    ContextCompactAfter,
+    TaskChangeBefore,
+    TaskChangeAfter,
+    UserAttention,
+    UserElicitationRequest,
+    UserElicitationResult,
+    UserMessageInbound,
+    UserMessageOutbound,
+    WorkspaceChangeBefore,
+    WorkspaceChangeAfter,
+    FileChanged,
+    HookFailure,
     Unknown(String),
 }
 
-impl Serialize for ObserveSubscriptionEventsItem {
+impl Serialize for ObserveSubscriptionEventsItemEnum {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::ToolBefore => {
@@ -1395,11 +13776,6 @@ impl Serialize for ObserveSubscriptionEventsItem {
             }
             Self::ToolAfter => {
                 let value: JsonValue = serde_json::from_str("\"tool.after\"")
-                    .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::ToolError => {
-                let value: JsonValue = serde_json::from_str("\"tool.error\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
@@ -1413,12 +13789,152 @@ impl Serialize for ObserveSubscriptionEventsItem {
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
+            Self::ConfigChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"config.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ConfigChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"config.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnStart => {
+                let value: JsonValue = serde_json::from_str("\"turn.start\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnFinishBefore => {
+                let value: JsonValue = serde_json::from_str("\"turn.finish.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnEnd => {
+                let value: JsonValue = serde_json::from_str("\"turn.end\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnProgress => {
+                let value: JsonValue = serde_json::from_str("\"turn.progress\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelRequestBefore => {
+                let value: JsonValue = serde_json::from_str("\"model.request.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelResponseAfter => {
+                let value: JsonValue = serde_json::from_str("\"model.response.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelError => {
+                let value: JsonValue = serde_json::from_str("\"model.error\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelSwitchBefore => {
+                let value: JsonValue = serde_json::from_str("\"model.switch.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelSwitchAfter => {
+                let value: JsonValue = serde_json::from_str("\"model.switch.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolPermissionRequest => {
+                let value: JsonValue = serde_json::from_str("\"tool.permission.request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolPermissionResolved => {
+                let value: JsonValue = serde_json::from_str("\"tool.permission.resolved\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolProgress => {
+                let value: JsonValue = serde_json::from_str("\"tool.progress\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolBatchAfter => {
+                let value: JsonValue = serde_json::from_str("\"tool.batch.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ContextCompactBefore => {
+                let value: JsonValue = serde_json::from_str("\"context.compact.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ContextCompactAfter => {
+                let value: JsonValue = serde_json::from_str("\"context.compact.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TaskChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"task.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TaskChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"task.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserAttention => {
+                let value: JsonValue = serde_json::from_str("\"user.attention\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserElicitationRequest => {
+                let value: JsonValue = serde_json::from_str("\"user.elicitation.request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserElicitationResult => {
+                let value: JsonValue = serde_json::from_str("\"user.elicitation.result\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserMessageInbound => {
+                let value: JsonValue = serde_json::from_str("\"user.message.inbound\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserMessageOutbound => {
+                let value: JsonValue = serde_json::from_str("\"user.message.outbound\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::WorkspaceChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"workspace.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::WorkspaceChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"workspace.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::FileChanged => {
+                let value: JsonValue = serde_json::from_str("\"file.changed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::HookFailure => {
+                let value: JsonValue = serde_json::from_str("\"hook.failure\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
             Self::Unknown(value) => value.serialize(serializer),
         }
     }
 }
 
-impl<'de> Deserialize<'de> for ObserveSubscriptionEventsItem {
+impl<'de> Deserialize<'de> for ObserveSubscriptionEventsItemEnum {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         if same_json(
@@ -1435,12 +13951,6 @@ impl<'de> Deserialize<'de> for ObserveSubscriptionEventsItem {
         }
         if same_json(
             &value,
-            &serde_json::from_str("\"tool.error\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::ToolError);
-        }
-        if same_json(
-            &value,
             &serde_json::from_str("\"session.start\"").expect("generated enum value is valid JSON"),
         ) {
             return Ok(Self::SessionStart);
@@ -1451,13 +13961,224 @@ impl<'de> Deserialize<'de> for ObserveSubscriptionEventsItem {
         ) {
             return Ok(Self::SessionEnd);
         }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"config.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ConfigChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"config.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ConfigChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.start\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnStart);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.finish.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnFinishBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.end\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnEnd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.progress\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnProgress);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.request.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelRequestBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.response.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelResponseAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.error\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelError);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.switch.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelSwitchBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.switch.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelSwitchAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.permission.request\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolPermissionRequest);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.permission.resolved\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolPermissionResolved);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.progress\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolProgress);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.batch.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolBatchAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"context.compact.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ContextCompactBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"context.compact.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ContextCompactAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"task.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TaskChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"task.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TaskChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.attention\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserAttention);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.elicitation.request\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserElicitationRequest);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.elicitation.result\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserElicitationResult);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.message.inbound\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserMessageInbound);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.message.outbound\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserMessageOutbound);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workspace.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::WorkspaceChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workspace.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::WorkspaceChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"file.changed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FileChanged);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook.failure\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::HookFailure);
+        }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
         }
         Err(<D::Error as serde::de::Error>::custom(format!(
-            "unknown value for ObserveSubscriptionEventsItem: {value}"
+            "unknown value for ObserveSubscriptionEventsItemEnum: {value}"
         )))
     }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ObserveSubscriptionEventsItem {
+    Enum(ObserveSubscriptionEventsItemEnum),
+    String(String),
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObserveSubscriptionFilters {
+    #[serde(rename = "paths")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub paths: Presence<Vec<String>>,
+    #[serde(rename = "toolKinds")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub tool_kinds: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
 /// Inline schema model.
@@ -1488,6 +14209,68 @@ impl<'de> Deserialize<'de> for ObserveSubscriptionMode {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ObserveSubscriptionScope {
+    Managed,
+    Project,
+    User,
+    Unknown(String),
+}
+
+impl Serialize for ObserveSubscriptionScope {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Managed => {
+                let value: JsonValue = serde_json::from_str("\"managed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Project => {
+                let value: JsonValue = serde_json::from_str("\"project\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ObserveSubscriptionScope {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"managed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Managed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"project\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Project);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ObserveSubscriptionScope: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionAgent {
     #[serde(rename = "id")]
@@ -1495,6 +14278,26 @@ pub struct SessionAgent {
     #[serde(rename = "type")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub type_: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionEndEventCounters {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionEndEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -1575,6 +14378,19 @@ impl<'de> Deserialize<'de> for SessionEndEventOutcome {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionEndEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionEndEventType;
 
@@ -1602,6 +14418,425 @@ impl<'de> Deserialize<'de> for SessionEndEventType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<SessionStartCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<SessionStartCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionStartCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for SessionStartCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionStartCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for SessionStartCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<SessionStartCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionStartCapabilitiesInjectContextAppend;
+
+impl Serialize for SessionStartCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionStartCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionStartCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for SessionStartCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionStartCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for SessionStartCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: SessionStartCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<SessionStartCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: SessionStartCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionStartCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<SessionStartCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<SessionStartCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<SessionStartCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<SessionStartCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<SessionStartCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<SessionStartCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<SessionStartCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<SessionStartCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<SessionStartCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartEventHarness {
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "version")]
+    pub version: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartEventResumedFrom {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionStartEventTrigger {
+    Startup,
+    Resume,
+    Clear,
+    Compact,
+    Fork,
+    Unknown(String),
+}
+
+impl Serialize for SessionStartEventTrigger {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Startup => {
+                let value: JsonValue = serde_json::from_str("\"startup\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Resume => {
+                let value: JsonValue =
+                    serde_json::from_str("\"resume\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Clear => {
+                let value: JsonValue =
+                    serde_json::from_str("\"clear\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Compact => {
+                let value: JsonValue = serde_json::from_str("\"compact\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Fork => {
+                let value: JsonValue =
+                    serde_json::from_str("\"fork\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionStartEventTrigger {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"startup\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Startup);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"resume\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Resume);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"clear\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Clear);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"compact\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Compact);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"fork\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Fork);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for SessionStartEventTrigger: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionStartEventType;
 
@@ -1625,6 +14860,744 @@ impl<'de> Deserialize<'de> for SessionStartEventType {
                 "expected {expected}"
             )))
         }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticCapabilityManifestAuthenticationItem {
+    Bearer,
+    Oauth,
+    Mtls,
+    Workload,
+    Unknown(String),
+}
+
+impl Serialize for StaticCapabilityManifestAuthenticationItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Bearer => {
+                let value: JsonValue =
+                    serde_json::from_str("\"bearer\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Oauth => {
+                let value: JsonValue =
+                    serde_json::from_str("\"oauth\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mtls => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mtls\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Workload => {
+                let value: JsonValue = serde_json::from_str("\"workload\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StaticCapabilityManifestAuthenticationItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"bearer\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Bearer);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"oauth\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Oauth);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mtls\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mtls);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workload\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Workload);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for StaticCapabilityManifestAuthenticationItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticCapabilityManifestEventsItemEvent {
+    ToolBefore,
+    ToolAfter,
+    SessionStart,
+    SessionEnd,
+    ConfigChangeBefore,
+    ConfigChangeAfter,
+    TurnStart,
+    TurnFinishBefore,
+    TurnEnd,
+    TurnProgress,
+    ModelRequestBefore,
+    ModelResponseAfter,
+    ModelError,
+    ModelSwitchBefore,
+    ModelSwitchAfter,
+    ToolPermissionRequest,
+    ToolPermissionResolved,
+    ToolProgress,
+    ToolBatchAfter,
+    ContextCompactBefore,
+    ContextCompactAfter,
+    TaskChangeBefore,
+    TaskChangeAfter,
+    UserAttention,
+    UserElicitationRequest,
+    UserElicitationResult,
+    UserMessageInbound,
+    UserMessageOutbound,
+    WorkspaceChangeBefore,
+    WorkspaceChangeAfter,
+    FileChanged,
+    HookFailure,
+    Unknown(String),
+}
+
+impl Serialize for StaticCapabilityManifestEventsItemEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::ToolBefore => {
+                let value: JsonValue = serde_json::from_str("\"tool.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolAfter => {
+                let value: JsonValue = serde_json::from_str("\"tool.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::SessionStart => {
+                let value: JsonValue = serde_json::from_str("\"session.start\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::SessionEnd => {
+                let value: JsonValue = serde_json::from_str("\"session.end\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ConfigChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"config.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ConfigChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"config.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnStart => {
+                let value: JsonValue = serde_json::from_str("\"turn.start\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnFinishBefore => {
+                let value: JsonValue = serde_json::from_str("\"turn.finish.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnEnd => {
+                let value: JsonValue = serde_json::from_str("\"turn.end\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TurnProgress => {
+                let value: JsonValue = serde_json::from_str("\"turn.progress\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelRequestBefore => {
+                let value: JsonValue = serde_json::from_str("\"model.request.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelResponseAfter => {
+                let value: JsonValue = serde_json::from_str("\"model.response.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelError => {
+                let value: JsonValue = serde_json::from_str("\"model.error\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelSwitchBefore => {
+                let value: JsonValue = serde_json::from_str("\"model.switch.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ModelSwitchAfter => {
+                let value: JsonValue = serde_json::from_str("\"model.switch.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolPermissionRequest => {
+                let value: JsonValue = serde_json::from_str("\"tool.permission.request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolPermissionResolved => {
+                let value: JsonValue = serde_json::from_str("\"tool.permission.resolved\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolProgress => {
+                let value: JsonValue = serde_json::from_str("\"tool.progress\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ToolBatchAfter => {
+                let value: JsonValue = serde_json::from_str("\"tool.batch.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ContextCompactBefore => {
+                let value: JsonValue = serde_json::from_str("\"context.compact.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::ContextCompactAfter => {
+                let value: JsonValue = serde_json::from_str("\"context.compact.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TaskChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"task.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::TaskChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"task.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserAttention => {
+                let value: JsonValue = serde_json::from_str("\"user.attention\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserElicitationRequest => {
+                let value: JsonValue = serde_json::from_str("\"user.elicitation.request\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserElicitationResult => {
+                let value: JsonValue = serde_json::from_str("\"user.elicitation.result\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserMessageInbound => {
+                let value: JsonValue = serde_json::from_str("\"user.message.inbound\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::UserMessageOutbound => {
+                let value: JsonValue = serde_json::from_str("\"user.message.outbound\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::WorkspaceChangeBefore => {
+                let value: JsonValue = serde_json::from_str("\"workspace.change.before\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::WorkspaceChangeAfter => {
+                let value: JsonValue = serde_json::from_str("\"workspace.change.after\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::FileChanged => {
+                let value: JsonValue = serde_json::from_str("\"file.changed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::HookFailure => {
+                let value: JsonValue = serde_json::from_str("\"hook.failure\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StaticCapabilityManifestEventsItemEvent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.before\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.after\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"session.start\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::SessionStart);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"session.end\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::SessionEnd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"config.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ConfigChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"config.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ConfigChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.start\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnStart);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.finish.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnFinishBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.end\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnEnd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"turn.progress\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TurnProgress);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.request.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelRequestBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.response.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelResponseAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.error\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelError);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.switch.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelSwitchBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"model.switch.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ModelSwitchAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.permission.request\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolPermissionRequest);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.permission.resolved\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolPermissionResolved);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.progress\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolProgress);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool.batch.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ToolBatchAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"context.compact.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ContextCompactBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"context.compact.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::ContextCompactAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"task.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TaskChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"task.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::TaskChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.attention\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserAttention);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.elicitation.request\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserElicitationRequest);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.elicitation.result\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserElicitationResult);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.message.inbound\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserMessageInbound);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user.message.outbound\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::UserMessageOutbound);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workspace.change.before\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::WorkspaceChangeBefore);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"workspace.change.after\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::WorkspaceChangeAfter);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"file.changed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FileChanged);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook.failure\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::HookFailure);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for StaticCapabilityManifestEventsItemEvent: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticCapabilityManifestEventsItemModesItem {
+    Observe,
+    Intercept,
+    Unknown(String),
+}
+
+impl Serialize for StaticCapabilityManifestEventsItemModesItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Observe => {
+                let value: JsonValue = serde_json::from_str("\"observe\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Intercept => {
+                let value: JsonValue = serde_json::from_str("\"intercept\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StaticCapabilityManifestEventsItemModesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"observe\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Observe);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"intercept\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Intercept);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for StaticCapabilityManifestEventsItemModesItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StaticCapabilityManifestEventsItem {
+    #[serde(rename = "capabilities")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub capabilities: Presence<Box<Capabilities>>,
+    #[serde(rename = "event")]
+    pub event: StaticCapabilityManifestEventsItemEvent,
+    #[serde(rename = "modes")]
+    pub modes: Vec<StaticCapabilityManifestEventsItemModesItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StaticCapabilityManifestGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StaticCapabilityManifestLimits {
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "maxTimeoutMs")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_timeout_ms: Presence<Integer>,
+    #[serde(rename = "maxUploadBytes")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_upload_bytes: Presence<Integer>,
+    #[serde(rename = "minTimeoutMs")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub min_timeout_ms: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticCapabilityManifestManagedPolicyScopesItem {
+    User,
+    Project,
+    Managed,
+    Unknown(String),
+}
+
+impl Serialize for StaticCapabilityManifestManagedPolicyScopesItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Project => {
+                let value: JsonValue = serde_json::from_str("\"project\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Managed => {
+                let value: JsonValue = serde_json::from_str("\"managed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StaticCapabilityManifestManagedPolicyScopesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"project\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Project);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"managed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Managed);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for StaticCapabilityManifestManagedPolicyScopesItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StaticCapabilityManifestManagedPolicy {
+    #[serde(rename = "disableable")]
+    pub disableable: bool,
+    #[serde(rename = "scopes")]
+    pub scopes: Vec<StaticCapabilityManifestManagedPolicyScopesItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticCapabilityManifestTransportsItem {
+    Http,
+    Stdio,
+    InProcess,
+    Unknown(String),
+}
+
+impl Serialize for StaticCapabilityManifestTransportsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Http => {
+                let value: JsonValue =
+                    serde_json::from_str("\"http\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Stdio => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stdio\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::InProcess => {
+                let value: JsonValue = serde_json::from_str("\"in_process\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StaticCapabilityManifestTransportsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"http\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Http);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stdio\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stdio);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"in_process\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::InProcess);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for StaticCapabilityManifestTransportsItem: {value}"
+        )))
     }
 }
 
@@ -1707,7 +15680,34 @@ impl<'de> Deserialize<'de> for StdioTransportType {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolAfterEventToolInput {
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<TaskChangeBeforeCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<TaskChangeBeforeCapabilitiesElicitationUrl>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -1715,65 +15715,23 @@ pub struct ToolAfterEventToolInput {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ToolAfterEventToolKind {
-    Shell,
-    FileRead,
-    FileWrite,
-    FileEdit,
-    Search,
-    Fetch,
-    Task,
-    Mcp,
-    Other,
+pub enum TaskChangeBeforeCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
     Unknown(String),
 }
 
-impl Serialize for ToolAfterEventToolKind {
+impl Serialize for TaskChangeBeforeCapabilitiesFlowOperationsItem {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::Shell => {
+            Self::Stop => {
                 let value: JsonValue =
-                    serde_json::from_str("\"shell\"").expect("generated enum value is valid JSON");
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::FileRead => {
-                let value: JsonValue = serde_json::from_str("\"file_read\"")
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
                     .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::FileWrite => {
-                let value: JsonValue = serde_json::from_str("\"file_write\"")
-                    .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::FileEdit => {
-                let value: JsonValue = serde_json::from_str("\"file_edit\"")
-                    .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Search => {
-                let value: JsonValue =
-                    serde_json::from_str("\"search\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Fetch => {
-                let value: JsonValue =
-                    serde_json::from_str("\"fetch\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Task => {
-                let value: JsonValue =
-                    serde_json::from_str("\"task\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Mcp => {
-                let value: JsonValue =
-                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Other => {
-                let value: JsonValue =
-                    serde_json::from_str("\"other\"").expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
             Self::Unknown(value) => value.serialize(serializer),
@@ -1781,75 +15739,133 @@ impl Serialize for ToolAfterEventToolKind {
     }
 }
 
-impl<'de> Deserialize<'de> for ToolAfterEventToolKind {
+impl<'de> Deserialize<'de> for TaskChangeBeforeCapabilitiesFlowOperationsItem {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         if same_json(
             &value,
-            &serde_json::from_str("\"shell\"").expect("generated enum value is valid JSON"),
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::Shell);
+            return Ok(Self::Stop);
         }
         if same_json(
             &value,
-            &serde_json::from_str("\"file_read\"").expect("generated enum value is valid JSON"),
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::FileRead);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"file_write\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::FileWrite);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"file_edit\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::FileEdit);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"search\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Search);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"fetch\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Fetch);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"task\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Task);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Mcp);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"other\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Other);
+            return Ok(Self::Continue);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
         }
         Err(<D::Error as serde::de::Error>::custom(format!(
-            "unknown value for ToolAfterEventToolKind: {value}"
+            "unknown value for TaskChangeBeforeCapabilitiesFlowOperationsItem: {value}"
         )))
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolAfterEventToolMcp {
+pub struct TaskChangeBeforeCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<TaskChangeBeforeCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskChangeBeforeCapabilitiesInjectContextAppend;
+
+impl Serialize for TaskChangeBeforeCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskChangeBeforeCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for TaskChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskChangeBeforeCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: TaskChangeBeforeCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<TaskChangeBeforeCapabilitiesInjectContextDeliverAtItem>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -1857,21 +15873,1256 @@ pub struct ToolAfterEventToolMcp {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolAfterEventTool {
-    #[serde(rename = "callId")]
-    pub call_id: String,
-    #[serde(rename = "input")]
-    pub input: ToolAfterEventToolInput,
-    #[serde(rename = "kind")]
-    pub kind: ToolAfterEventToolKind,
-    #[serde(rename = "mcp")]
+pub struct TaskChangeBeforeCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: TaskChangeBeforeCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskChangeBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeCapabilitiesModify {
+    #[serde(rename = "content")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub mcp: Presence<ToolAfterEventToolMcp>,
-    #[serde(rename = "name")]
-    pub name: String,
+    pub content: Presence<TaskChangeBeforeCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<TaskChangeBeforeCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<TaskChangeBeforeCapabilitiesModifyInstructions>,
     #[serde(rename = "output")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub output: Presence<JsonValue>,
+    pub output: Presence<TaskChangeBeforeCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<TaskChangeBeforeCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<TaskChangeBeforeCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<TaskChangeBeforeCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<TaskChangeBeforeCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<TaskChangeBeforeCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskWorkspaceEventFileChangedChangesItemOperation {
+    Create,
+    Update,
+    Remove,
+    Unknown(String),
+}
+
+impl Serialize for TaskWorkspaceEventFileChangedChangesItemOperation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Create => {
+                let value: JsonValue =
+                    serde_json::from_str("\"create\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Update => {
+                let value: JsonValue =
+                    serde_json::from_str("\"update\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Remove => {
+                let value: JsonValue =
+                    serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventFileChangedChangesItemOperation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"create\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Create);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"update\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Update);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Remove);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskWorkspaceEventFileChangedChangesItemOperation: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventFileChangedChangesItem {
+    #[serde(rename = "after")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub after: Presence<Box<ContentReference>>,
+    #[serde(rename = "agentCaused")]
+    pub agent_caused: bool,
+    #[serde(rename = "before")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub before: Presence<Box<ContentReference>>,
+    #[serde(rename = "operation")]
+    pub operation: TaskWorkspaceEventFileChangedChangesItemOperation,
+    #[serde(rename = "path")]
+    pub path: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventFileChangedGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventFileChangedTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskWorkspaceEventFileChangedType;
+
+impl Serialize for TaskWorkspaceEventFileChangedType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"file.changed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventFileChangedType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"file.changed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeAfterGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeAfterTaskChange {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskWorkspaceEventTaskChangeAfterTaskOperation {
+    Create,
+    Update,
+    Remove,
+    Unknown(String),
+}
+
+impl Serialize for TaskWorkspaceEventTaskChangeAfterTaskOperation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Create => {
+                let value: JsonValue =
+                    serde_json::from_str("\"create\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Update => {
+                let value: JsonValue =
+                    serde_json::from_str("\"update\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Remove => {
+                let value: JsonValue =
+                    serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventTaskChangeAfterTaskOperation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"create\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Create);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"update\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Update);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Remove);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskWorkspaceEventTaskChangeAfterTaskOperation: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeAfterTaskPrior {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeAfterTask {
+    #[serde(rename = "change")]
+    pub change: TaskWorkspaceEventTaskChangeAfterTaskChange,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "operation")]
+    pub operation: TaskWorkspaceEventTaskChangeAfterTaskOperation,
+    #[serde(rename = "prior")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prior: Presence<TaskWorkspaceEventTaskChangeAfterTaskPrior>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeAfterTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskWorkspaceEventTaskChangeAfterType;
+
+impl Serialize for TaskWorkspaceEventTaskChangeAfterType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"task.change.after\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventTaskChangeAfterType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"task.change.after\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeBeforeGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeBeforeTaskChange {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskWorkspaceEventTaskChangeBeforeTaskOperation {
+    Create,
+    Update,
+    Remove,
+    Unknown(String),
+}
+
+impl Serialize for TaskWorkspaceEventTaskChangeBeforeTaskOperation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Create => {
+                let value: JsonValue =
+                    serde_json::from_str("\"create\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Update => {
+                let value: JsonValue =
+                    serde_json::from_str("\"update\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Remove => {
+                let value: JsonValue =
+                    serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventTaskChangeBeforeTaskOperation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"create\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Create);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"update\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Update);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Remove);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskWorkspaceEventTaskChangeBeforeTaskOperation: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeBeforeTaskPrior {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeBeforeTask {
+    #[serde(rename = "change")]
+    pub change: TaskWorkspaceEventTaskChangeBeforeTaskChange,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "operation")]
+    pub operation: TaskWorkspaceEventTaskChangeBeforeTaskOperation,
+    #[serde(rename = "prior")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prior: Presence<TaskWorkspaceEventTaskChangeBeforeTaskPrior>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventTaskChangeBeforeTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskWorkspaceEventTaskChangeBeforeType;
+
+impl Serialize for TaskWorkspaceEventTaskChangeBeforeType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"task.change.before\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventTaskChangeBeforeType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"task.change.before\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeAfterGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeAfterTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskWorkspaceEventWorkspaceChangeAfterType;
+
+impl Serialize for TaskWorkspaceEventWorkspaceChangeAfterType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"workspace.change.after\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventWorkspaceChangeAfterType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"workspace.change.after\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeAfterWorkspaceChange {
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "workspaceRoots")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace_roots: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskWorkspaceEventWorkspaceChangeAfterWorkspaceKind {
+    Cwd,
+    Roots,
+    Switch,
+    Unknown(String),
+}
+
+impl Serialize for TaskWorkspaceEventWorkspaceChangeAfterWorkspaceKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Cwd => {
+                let value: JsonValue =
+                    serde_json::from_str("\"cwd\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Roots => {
+                let value: JsonValue =
+                    serde_json::from_str("\"roots\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Switch => {
+                let value: JsonValue =
+                    serde_json::from_str("\"switch\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventWorkspaceChangeAfterWorkspaceKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cwd\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cwd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"roots\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Roots);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"switch\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Switch);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskWorkspaceEventWorkspaceChangeAfterWorkspaceKind: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeAfterWorkspacePrior {
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "workspaceRoots")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace_roots: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeAfterWorkspace {
+    #[serde(rename = "change")]
+    pub change: TaskWorkspaceEventWorkspaceChangeAfterWorkspaceChange,
+    #[serde(rename = "kind")]
+    pub kind: TaskWorkspaceEventWorkspaceChangeAfterWorkspaceKind,
+    #[serde(rename = "prior")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prior: Presence<TaskWorkspaceEventWorkspaceChangeAfterWorkspacePrior>,
+    #[serde(rename = "reason")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub reason: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeBeforeGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeBeforeTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskWorkspaceEventWorkspaceChangeBeforeType;
+
+impl Serialize for TaskWorkspaceEventWorkspaceChangeBeforeType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"workspace.change.before\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventWorkspaceChangeBeforeType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"workspace.change.before\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeBeforeWorkspaceChange {
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "workspaceRoots")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace_roots: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskWorkspaceEventWorkspaceChangeBeforeWorkspaceKind {
+    Cwd,
+    Roots,
+    Switch,
+    Unknown(String),
+}
+
+impl Serialize for TaskWorkspaceEventWorkspaceChangeBeforeWorkspaceKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Cwd => {
+                let value: JsonValue =
+                    serde_json::from_str("\"cwd\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Roots => {
+                let value: JsonValue =
+                    serde_json::from_str("\"roots\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Switch => {
+                let value: JsonValue =
+                    serde_json::from_str("\"switch\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskWorkspaceEventWorkspaceChangeBeforeWorkspaceKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cwd\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cwd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"roots\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Roots);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"switch\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Switch);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskWorkspaceEventWorkspaceChangeBeforeWorkspaceKind: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeBeforeWorkspacePrior {
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "workspaceRoots")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace_roots: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskWorkspaceEventWorkspaceChangeBeforeWorkspace {
+    #[serde(rename = "change")]
+    pub change: TaskWorkspaceEventWorkspaceChangeBeforeWorkspaceChange,
+    #[serde(rename = "kind")]
+    pub kind: TaskWorkspaceEventWorkspaceChangeBeforeWorkspaceKind,
+    #[serde(rename = "prior")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prior: Presence<TaskWorkspaceEventWorkspaceChangeBeforeWorkspacePrior>,
+    #[serde(rename = "reason")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub reason: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ToolAfterCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ToolAfterCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolAfterCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ToolAfterCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolAfterCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolAfterCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<ToolAfterCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolAfterCapabilitiesInjectContextAppend;
+
+impl Serialize for ToolAfterCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolAfterCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolAfterCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ToolAfterCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolAfterCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolAfterCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ToolAfterCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ToolAfterCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ToolAfterCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolAfterCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ToolAfterCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ToolAfterCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ToolAfterCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ToolAfterCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ToolAfterCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ToolAfterCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ToolAfterCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ToolAfterCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ToolAfterCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterEventCall {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolAfterEventOutcome {
+    Ok,
+    Error,
+    Denied,
+    Cancelled,
+    Timeout,
+    Unknown(String),
+}
+
+impl Serialize for ToolAfterEventOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Ok => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ok\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Error => {
+                let value: JsonValue =
+                    serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Denied => {
+                let value: JsonValue =
+                    serde_json::from_str("\"denied\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Timeout => {
+                let value: JsonValue = serde_json::from_str("\"timeout\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolAfterEventOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ok\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ok);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"error\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Error);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"denied\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Denied);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"timeout\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Timeout);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolAfterEventOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -1906,73 +17157,109 @@ impl<'de> Deserialize<'de> for ToolAfterEventType {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolBeforeEventToolInput {
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterCapabilitiesElicitationForm {
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ToolBatchAfterCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ToolBatchAfterCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesFlowOperations(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: ToolBatchAfterCapabilitiesFlowOperations,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolBatchAfterCapabilitiesInjectContextAppend;
+
+impl Serialize for ToolBatchAfterCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBatchAfterCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ToolBeforeEventToolKind {
-    Shell,
-    FileRead,
-    FileWrite,
-    FileEdit,
-    Search,
-    Fetch,
-    Task,
-    Mcp,
-    Other,
+pub enum ToolBatchAfterCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
     Unknown(String),
 }
 
-impl Serialize for ToolBeforeEventToolKind {
+impl Serialize for ToolBatchAfterCapabilitiesInjectContextDeliverAtItem {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::Shell => {
+            Self::Now => {
                 let value: JsonValue =
-                    serde_json::from_str("\"shell\"").expect("generated enum value is valid JSON");
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::FileRead => {
-                let value: JsonValue = serde_json::from_str("\"file_read\"")
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
                     .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::FileWrite => {
-                let value: JsonValue = serde_json::from_str("\"file_write\"")
-                    .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::FileEdit => {
-                let value: JsonValue = serde_json::from_str("\"file_edit\"")
-                    .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Search => {
-                let value: JsonValue =
-                    serde_json::from_str("\"search\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Fetch => {
-                let value: JsonValue =
-                    serde_json::from_str("\"fetch\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Task => {
-                let value: JsonValue =
-                    serde_json::from_str("\"task\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Mcp => {
-                let value: JsonValue =
-                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Other => {
-                let value: JsonValue =
-                    serde_json::from_str("\"other\"").expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
             Self::Unknown(value) => value.serialize(serializer),
@@ -1980,75 +17267,37 @@ impl Serialize for ToolBeforeEventToolKind {
     }
 }
 
-impl<'de> Deserialize<'de> for ToolBeforeEventToolKind {
+impl<'de> Deserialize<'de> for ToolBatchAfterCapabilitiesInjectContextDeliverAtItem {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         if same_json(
             &value,
-            &serde_json::from_str("\"shell\"").expect("generated enum value is valid JSON"),
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::Shell);
+            return Ok(Self::Now);
         }
         if same_json(
             &value,
-            &serde_json::from_str("\"file_read\"").expect("generated enum value is valid JSON"),
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::FileRead);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"file_write\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::FileWrite);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"file_edit\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::FileEdit);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"search\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Search);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"fetch\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Fetch);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"task\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Task);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Mcp);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"other\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Other);
+            return Ok(Self::NextTurn);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
         }
         Err(<D::Error as serde::de::Error>::custom(format!(
-            "unknown value for ToolBeforeEventToolKind: {value}"
+            "unknown value for ToolBatchAfterCapabilitiesInjectContextDeliverAtItem: {value}"
         )))
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolBeforeEventToolMcp {
+pub struct ToolBatchAfterCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ToolBatchAfterCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ToolBatchAfterCapabilitiesInjectContextDeliverAtItem>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -2056,18 +17305,365 @@ pub struct ToolBeforeEventToolMcp {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolBeforeEventTool {
-    #[serde(rename = "callId")]
-    pub call_id: String,
-    #[serde(rename = "input")]
-    pub input: ToolBeforeEventToolInput,
-    #[serde(rename = "kind")]
-    pub kind: ToolBeforeEventToolKind,
-    #[serde(rename = "mcp")]
+pub struct ToolBatchAfterCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ToolBatchAfterCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBatchAfterCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterCapabilitiesModify {
+    #[serde(rename = "content")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub mcp: Presence<ToolBeforeEventToolMcp>,
-    #[serde(rename = "name")]
-    pub name: String,
+    pub content: Presence<ToolBatchAfterCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ToolBatchAfterCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ToolBatchAfterCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ToolBatchAfterCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ToolBatchAfterCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ToolBatchAfterCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ToolBatchAfterCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ToolBatchAfterCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ToolBatchAfterCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<ToolBeforeCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ToolBeforeCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesFlowOperations(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: ToolBeforeCapabilitiesFlowOperations,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolBeforeCapabilitiesInjectContextAppend;
+
+impl Serialize for ToolBeforeCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBeforeCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolBeforeCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ToolBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolBeforeCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ToolBeforeCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ToolBeforeCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ToolBeforeCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ToolBeforeCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ToolBeforeCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ToolBeforeCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ToolBeforeCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ToolBeforeCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ToolBeforeCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ToolBeforeCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ToolBeforeCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ToolBeforeCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeEventCall {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -2102,15 +17698,12 @@ impl<'de> Deserialize<'de> for ToolBeforeEventType {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolErrorEventToolError {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<JsonValue>,
-    #[serde(rename = "code")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub code: Presence<JsonValue>,
-    #[serde(rename = "message")]
-    pub message: JsonValue,
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionRequestCapabilitiesElicitationForm {
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -2118,149 +17711,7 @@ pub struct ToolErrorEventToolError {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolErrorEventToolInput {
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ToolErrorEventToolKind {
-    Shell,
-    FileRead,
-    FileWrite,
-    FileEdit,
-    Search,
-    Fetch,
-    Task,
-    Mcp,
-    Other,
-    Unknown(String),
-}
-
-impl Serialize for ToolErrorEventToolKind {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::Shell => {
-                let value: JsonValue =
-                    serde_json::from_str("\"shell\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::FileRead => {
-                let value: JsonValue = serde_json::from_str("\"file_read\"")
-                    .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::FileWrite => {
-                let value: JsonValue = serde_json::from_str("\"file_write\"")
-                    .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::FileEdit => {
-                let value: JsonValue = serde_json::from_str("\"file_edit\"")
-                    .expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Search => {
-                let value: JsonValue =
-                    serde_json::from_str("\"search\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Fetch => {
-                let value: JsonValue =
-                    serde_json::from_str("\"fetch\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Task => {
-                let value: JsonValue =
-                    serde_json::from_str("\"task\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Mcp => {
-                let value: JsonValue =
-                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Other => {
-                let value: JsonValue =
-                    serde_json::from_str("\"other\"").expect("generated enum value is valid JSON");
-                value.serialize(serializer)
-            }
-            Self::Unknown(value) => value.serialize(serializer),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ToolErrorEventToolKind {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        if same_json(
-            &value,
-            &serde_json::from_str("\"shell\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Shell);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"file_read\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::FileRead);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"file_write\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::FileWrite);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"file_edit\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::FileEdit);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"search\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Search);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"fetch\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Fetch);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"task\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Task);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Mcp);
-        }
-        if same_json(
-            &value,
-            &serde_json::from_str("\"other\"").expect("generated enum value is valid JSON"),
-        ) {
-            return Ok(Self::Other);
-        }
-        if let Some(value) = value.as_str() {
-            return Ok(Self::Unknown(value.to_owned()));
-        }
-        Err(<D::Error as serde::de::Error>::custom(format!(
-            "unknown value for ToolErrorEventToolKind: {value}"
-        )))
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolErrorEventToolMcp {
+pub struct ToolPermissionRequestCapabilitiesElicitationUrl {
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -2268,20 +17719,37 @@ pub struct ToolErrorEventToolMcp {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolErrorEventTool {
-    #[serde(rename = "callId")]
-    pub call_id: String,
-    #[serde(rename = "error")]
-    pub error: ToolErrorEventToolError,
-    #[serde(rename = "input")]
-    pub input: ToolErrorEventToolInput,
-    #[serde(rename = "kind")]
-    pub kind: ToolErrorEventToolKind,
-    #[serde(rename = "mcp")]
+pub struct ToolPermissionRequestCapabilitiesElicitation {
+    #[serde(rename = "form")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub mcp: Presence<ToolErrorEventToolMcp>,
-    #[serde(rename = "name")]
-    pub name: String,
+    pub form: Presence<ToolPermissionRequestCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<ToolPermissionRequestCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesFlowOperations(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionRequestCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: ToolPermissionRequestCapabilitiesFlowOperations,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -2289,21 +17757,21 @@ pub struct ToolErrorEventTool {
 
 /// Inline schema model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ToolErrorEventType;
+pub struct ToolPermissionRequestCapabilitiesInjectContextAppend;
 
-impl Serialize for ToolErrorEventType {
+impl Serialize for ToolPermissionRequestCapabilitiesInjectContextAppend {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let value: JsonValue =
-            serde_json::from_str("\"tool.error\"").expect("generated literal is valid JSON");
+            serde_json::from_str("true").expect("generated literal is valid JSON");
         value.serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for ToolErrorEventType {
+impl<'de> Deserialize<'de> for ToolPermissionRequestCapabilitiesInjectContextAppend {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         let expected: JsonValue =
-            serde_json::from_str("\"tool.error\"").expect("generated literal is valid JSON");
+            serde_json::from_str("true").expect("generated literal is valid JSON");
         if same_json(&value, &expected) {
             Ok(Self)
         } else {
@@ -2314,7 +17782,2599 @@ impl<'de> Deserialize<'de> for ToolErrorEventType {
     }
 }
 
-const SCHEMAS_JSON: &str = "{\"Authentication\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenEnv\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"bearer\"}}],\"forbidden_property_sets\":[[\"bearerToken\"],[\"token\"],[\"value\"]],\"additional\":{\"kind\":\"allowed\"}},\"Backend\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ReverseDnsName\"}},{\"wire_name\":\"subscriptions\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InterceptSubscription\"},{\"kind\":\"ref\",\"name\":\"ObserveSubscription\"}],\"discriminator\":\"mode\"}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"StdioTransport\"},{\"kind\":\"ref\",\"name\":\"HttpTransport\"}],\"discriminator\":\"type\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"Capabilities\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"literal\",\"value\":\"deny\"},{\"kind\":\"string\"}]}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"DenyEffect\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"code\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"deny\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"Extensions\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"HttpTransport\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"http\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InterceptDenyResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"DenyEffect\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptNoEffectResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"any\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptRequest\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/intercept\"}},{\"wire_name\":\"params\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ToolBeforeEvent\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptSubscription\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"literal\",\"value\":\"tool.before\"}}},{\"wire_name\":\"failurePolicy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"fail-open\",\"fail-closed\"],\"open_strings\":true}},{\"wire_name\":\"includeNative\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"intercept\"}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcErrorResponse\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"error\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"code\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"data\",\"required\":false,\"shape\":{\"kind\":\"any\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcResponseId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}}],\"forbidden_property_sets\":[[\"result\"]],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcId\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"integer\"}]},\"JsonRpcMessage\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"ref\",\"name\":\"JsonRpcNotification\"},{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"ref\",\"name\":\"JsonRpcErrorResponse\"}]},\"JsonRpcNotification\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[[\"id\"]],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcResponseId\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcId\"},{\"kind\":\"null\"}]},\"JsonRpcSuccessResponse\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcResponseId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[[\"error\"]],\"additional\":{\"kind\":\"allowed\"}},\"NativeEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"eventName\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"payload\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"provider\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ObserveNotification\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcNotification\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/observe\"}},{\"wire_name\":\"params\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ToolErrorEvent\"},{\"kind\":\"ref\",\"name\":\"SessionStartEvent\"},{\"kind\":\"ref\",\"name\":\"SessionEndEvent\"}],\"discriminator\":\"type\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ObserveSubscription\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"tool.error\",\"session.start\",\"session.end\"],\"open_strings\":true}}},{\"wire_name\":\"includeNative\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"observe\"}}],\"forbidden_property_sets\":[[\"failurePolicy\"],[\"timeoutMs\"]],\"additional\":{\"kind\":\"allowed\"}},\"ProtocolVersion\":{\"kind\":\"literal\",\"value\":\"draft\"},\"Registration\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"hooks\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"Backend\"}}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ReverseDnsName\":{\"kind\":\"string\"},\"Session\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"agent\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"model\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"SessionEndEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"cancelled\",\"error\",\"unknown\"],\"open_strings\":true}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"session.end\"}}],\"forbidden_property_sets\":[[\"tool\"]],\"additional\":{\"kind\":\"allowed\"}},\"SessionStartEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"session.start\"}}],\"forbidden_property_sets\":[[\"outcome\"],[\"tool\"]],\"additional\":{\"kind\":\"allowed\"}},\"StdioTransport\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"command\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"lifecycle\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"persistent\",\"per_event\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stdio\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolAfterEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"callId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"input\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"shell\",\"file_read\",\"file_write\",\"file_edit\",\"search\",\"fetch\",\"task\",\"mcp\",\"other\"],\"open_strings\":true}},{\"wire_name\":\"mcp\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"output\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[[\"error\"]],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolBeforeEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"callId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"input\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"shell\",\"file_read\",\"file_write\",\"file_edit\",\"search\",\"fetch\",\"task\",\"mcp\",\"other\"],\"open_strings\":true}},{\"wire_name\":\"mcp\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[[\"error\"],[\"output\"]],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolErrorEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"callId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"error\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"any\"}},{\"wire_name\":\"code\",\"required\":false,\"shape\":{\"kind\":\"any\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"input\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"shell\",\"file_read\",\"file_write\",\"file_edit\",\"search\",\"fetch\",\"task\",\"mcp\",\"other\"],\"open_strings\":true}},{\"wire_name\":\"mcp\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[[\"output\"]],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.error\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"WireMessage\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InterceptRequest\"},{\"kind\":\"ref\",\"name\":\"InterceptNoEffectResponse\"},{\"kind\":\"ref\",\"name\":\"InterceptDenyResponse\"},{\"kind\":\"ref\",\"name\":\"JsonRpcErrorResponse\"},{\"kind\":\"ref\",\"name\":\"ObserveNotification\"}]}}";
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolPermissionRequestCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for ToolPermissionRequestCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolPermissionRequestCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolPermissionRequestCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionRequestCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: ToolPermissionRequestCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<ToolPermissionRequestCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionRequestCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: ToolPermissionRequestCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolPermissionRequestCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionRequestCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<ToolPermissionRequestCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<ToolPermissionRequestCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<ToolPermissionRequestCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<ToolPermissionRequestCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<ToolPermissionRequestCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<ToolPermissionRequestCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<ToolPermissionRequestCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<ToolPermissionRequestCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<ToolPermissionRequestCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<TurnFinishBeforeCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<TurnFinishBeforeCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnFinishBeforeCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for TurnFinishBeforeCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnFinishBeforeCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnFinishBeforeCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<TurnFinishBeforeCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TurnFinishBeforeCapabilitiesInjectContextAppend;
+
+impl Serialize for TurnFinishBeforeCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnFinishBeforeCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnFinishBeforeCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for TurnFinishBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnFinishBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnFinishBeforeCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: TurnFinishBeforeCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<TurnFinishBeforeCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: TurnFinishBeforeCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnFinishBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<TurnFinishBeforeCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<TurnFinishBeforeCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<TurnFinishBeforeCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<TurnFinishBeforeCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<TurnFinishBeforeCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<TurnFinishBeforeCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<TurnFinishBeforeCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<TurnFinishBeforeCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<TurnFinishBeforeCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<TurnStartCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<TurnStartCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesFlowOperations(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: TurnStartCapabilitiesFlowOperations,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TurnStartCapabilitiesInjectContextAppend;
+
+impl Serialize for TurnStartCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnStartCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnStartCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for TurnStartCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnStartCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnStartCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: TurnStartCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<TurnStartCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: TurnStartCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TurnStartCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<TurnStartCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<TurnStartCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<TurnStartCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<TurnStartCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<TurnStartCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<TurnStartCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<TurnStartCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<TurnStartCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<TurnStartCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserAttentionEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserAttentionEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserAttentionEventType;
+
+impl Serialize for UserAttentionEventType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"user.attention\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserAttentionEventType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"user.attention\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserAttentionEventAttention {
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "message")]
+    pub message: Vec<Box<ContentItem>>,
+    #[serde(rename = "title")]
+    pub title: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<UserElicitationRequestCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<UserElicitationRequestCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationRequestCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationRequestCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationRequestCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<UserElicitationRequestCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserElicitationRequestCapabilitiesInjectContextAppend;
+
+impl Serialize for UserElicitationRequestCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationRequestCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationRequestCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationRequestCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: UserElicitationRequestCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<UserElicitationRequestCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: UserElicitationRequestCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<UserElicitationRequestCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<UserElicitationRequestCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<UserElicitationRequestCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<UserElicitationRequestCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<UserElicitationRequestCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<UserElicitationRequestCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<UserElicitationRequestCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<UserElicitationRequestCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<UserElicitationRequestCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserElicitationRequestEventType;
+
+impl Serialize for UserElicitationRequestEventType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"user.elicitation.request\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"user.elicitation.request\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationRequestEventElicitationMode {
+    Form,
+    Url,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationRequestEventElicitationMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Form => {
+                let value: JsonValue =
+                    serde_json::from_str("\"form\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Url => {
+                let value: JsonValue =
+                    serde_json::from_str("\"url\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"form\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Form);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"url\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Url);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationRequestEventElicitationMode: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestEventElicitationRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEventElicitation {
+    #[serde(rename = "mode")]
+    pub mode: UserElicitationRequestEventElicitationMode,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<UserElicitationRequestEventElicitationRequest>,
+    #[serde(rename = "server")]
+    pub server: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<UserElicitationResultCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<UserElicitationResultCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationResultCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationResultCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationResultCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<UserElicitationResultCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserElicitationResultCapabilitiesInjectContextAppend;
+
+impl Serialize for UserElicitationResultCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationResultCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationResultCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationResultCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: UserElicitationResultCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<UserElicitationResultCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: UserElicitationResultCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<UserElicitationResultCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<UserElicitationResultCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<UserElicitationResultCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<UserElicitationResultCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<UserElicitationResultCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<UserElicitationResultCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<UserElicitationResultCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<UserElicitationResultCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<UserElicitationResultCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserElicitationResultEventType;
+
+impl Serialize for UserElicitationResultEventType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"user.elicitation.result\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"user.elicitation.result\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationResultEventElicitationAction {
+    Accept,
+    Decline,
+    Cancel,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationResultEventElicitationAction {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Accept => {
+                let value: JsonValue =
+                    serde_json::from_str("\"accept\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Decline => {
+                let value: JsonValue = serde_json::from_str("\"decline\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancel => {
+                let value: JsonValue =
+                    serde_json::from_str("\"cancel\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationAction {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"accept\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Accept);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"decline\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Decline);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancel\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancel);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationResultEventElicitationAction: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationResultEventElicitationMode {
+    Form,
+    Url,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationResultEventElicitationMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Form => {
+                let value: JsonValue =
+                    serde_json::from_str("\"form\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Url => {
+                let value: JsonValue =
+                    serde_json::from_str("\"url\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"form\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Form);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"url\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Url);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationResultEventElicitationMode: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultEventElicitationResult(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEventElicitation {
+    #[serde(rename = "action")]
+    pub action: UserElicitationResultEventElicitationAction,
+    #[serde(rename = "mode")]
+    pub mode: UserElicitationResultEventElicitationMode,
+    #[serde(rename = "result")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub result: Presence<UserElicitationResultEventElicitationResult>,
+    #[serde(rename = "server")]
+    pub server: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<UserMessageInboundCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<UserMessageInboundCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserMessageInboundCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for UserMessageInboundCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserMessageInboundCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<UserMessageInboundCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserMessageInboundCapabilitiesInjectContextAppend;
+
+impl Serialize for UserMessageInboundCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserMessageInboundCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for UserMessageInboundCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserMessageInboundCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: UserMessageInboundCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<UserMessageInboundCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: UserMessageInboundCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageInboundCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<UserMessageInboundCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<UserMessageInboundCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<UserMessageInboundCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<UserMessageInboundCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<UserMessageInboundCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<UserMessageInboundCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<UserMessageInboundCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<UserMessageInboundCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<UserMessageInboundCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserMessageInboundEventType;
+
+impl Serialize for UserMessageInboundEventType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"user.message.inbound\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundEventType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"user.message.inbound\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundEventMessage {
+    #[serde(rename = "channel")]
+    pub channel: String,
+    #[serde(rename = "sender")]
+    pub sender: String,
+    #[serde(rename = "text")]
+    pub text: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<UserMessageOutboundCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<UserMessageOutboundCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserMessageOutboundCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for UserMessageOutboundCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserMessageOutboundCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<UserMessageOutboundCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserMessageOutboundCapabilitiesInjectContextAppend;
+
+impl Serialize for UserMessageOutboundCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserMessageOutboundCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for UserMessageOutboundCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserMessageOutboundCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: UserMessageOutboundCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<UserMessageOutboundCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: UserMessageOutboundCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserMessageOutboundCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<UserMessageOutboundCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<UserMessageOutboundCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<UserMessageOutboundCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<UserMessageOutboundCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<UserMessageOutboundCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<UserMessageOutboundCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<UserMessageOutboundCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<UserMessageOutboundCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<UserMessageOutboundCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundEventGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundEventTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserMessageOutboundEventType;
+
+impl Serialize for UserMessageOutboundEventType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"user.message.outbound\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundEventType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"user.message.outbound\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundEventMessage {
+    #[serde(rename = "channel")]
+    pub channel: String,
+    #[serde(rename = "payload")]
+    pub payload: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesEffects(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeCapabilitiesElicitationForm {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeCapabilitiesElicitationUrl {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeCapabilitiesElicitation {
+    #[serde(rename = "form")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub form: Presence<WorkspaceChangeBeforeCapabilitiesElicitationForm>,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<WorkspaceChangeBeforeCapabilitiesElicitationUrl>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceChangeBeforeCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for WorkspaceChangeBeforeCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkspaceChangeBeforeCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for WorkspaceChangeBeforeCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeCapabilitiesFlow {
+    #[serde(rename = "continuationCount")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub continuation_count: Presence<Integer>,
+    #[serde(rename = "maxContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub max_continuations: Presence<Integer>,
+    #[serde(rename = "operations")]
+    pub operations: Vec<WorkspaceChangeBeforeCapabilitiesFlowOperationsItem>,
+    #[serde(rename = "remainingContinuations")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub remaining_continuations: Presence<Integer>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkspaceChangeBeforeCapabilitiesInjectContextAppend;
+
+impl Serialize for WorkspaceChangeBeforeCapabilitiesInjectContextAppend {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkspaceChangeBeforeCapabilitiesInjectContextAppend {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("true").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    Now,
+    NextTurn,
+    Unknown(String),
+}
+
+impl Serialize for WorkspaceChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Now => {
+                let value: JsonValue =
+                    serde_json::from_str("\"now\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::NextTurn => {
+                let value: JsonValue = serde_json::from_str("\"next_turn\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkspaceChangeBeforeCapabilitiesInjectContextDeliverAtItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"now\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Now);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"next_turn\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::NextTurn);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for WorkspaceChangeBeforeCapabilitiesInjectContextDeliverAtItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeCapabilitiesInjectContext {
+    #[serde(rename = "append")]
+    pub append: WorkspaceChangeBeforeCapabilitiesInjectContextAppend,
+    #[serde(rename = "deliverAt")]
+    pub deliver_at: Vec<WorkspaceChangeBeforeCapabilitiesInjectContextDeliverAtItem>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeCapabilitiesInject {
+    #[serde(rename = "context")]
+    pub context: WorkspaceChangeBeforeCapabilitiesInjectContext,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifyContent(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifyInput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifyInstructions(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifyOutput(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifyPrompt(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifyRequest(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifyResponse(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifySummary(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct WorkspaceChangeBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeCapabilitiesModify {
+    #[serde(rename = "content")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub content: Presence<WorkspaceChangeBeforeCapabilitiesModifyContent>,
+    #[serde(rename = "input")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input: Presence<WorkspaceChangeBeforeCapabilitiesModifyInput>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<WorkspaceChangeBeforeCapabilitiesModifyInstructions>,
+    #[serde(rename = "output")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output: Presence<WorkspaceChangeBeforeCapabilitiesModifyOutput>,
+    #[serde(rename = "prompt")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prompt: Presence<WorkspaceChangeBeforeCapabilitiesModifyPrompt>,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<WorkspaceChangeBeforeCapabilitiesModifyRequest>,
+    #[serde(rename = "response")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub response: Presence<WorkspaceChangeBeforeCapabilitiesModifyResponse>,
+    #[serde(rename = "summary")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub summary: Presence<WorkspaceChangeBeforeCapabilitiesModifySummary>,
+    #[serde(rename = "workspace")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace: Presence<WorkspaceChangeBeforeCapabilitiesModifyWorkspace>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+const SCHEMAS_JSON: &str = "{\"Authentication\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenEnv\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenRef\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"bearer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenEnv\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[[\"tokenRef\"]],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenRef\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[[\"tokenEnv\"]],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"clientId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"clientSecretRef\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"flow\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"authorization_code_pkce\",\"client_credentials\"],\"open_strings\":true}},{\"wire_name\":\"issuer\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"resource\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scopes\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"oauth\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"certificateRef\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"privateKeyRef\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"trustRootsRef\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"mtls\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"audience\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"credentialRef\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"issuer\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"workload\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}],\"discriminator\":\"type\"},\"Backend\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ReverseDnsName\"}},{\"wire_name\":\"subscriptions\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InterceptSubscription\"},{\"kind\":\"ref\",\"name\":\"ObserveSubscription\"}],\"discriminator\":\"mode\"}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"StdioTransport\"},{\"kind\":\"ref\",\"name\":\"HttpTransport\"}],\"discriminator\":\"type\"}}],\"forbidden_property_sets\":[[\"contentReceiver\"]],\"additional\":{\"kind\":\"allowed\"}},\"Capabilities\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"deny\",\"allow\",\"ask\",\"modify\",\"message\",\"return\",\"flow\",\"inject\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"elicitation\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"form\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"operations\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}},{\"wire_name\":\"remainingContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"inject\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"context\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"append\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}},{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"input\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"output\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"prompt\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"response\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"summary\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"workspace\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"CapabilitiesRequest\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/capabilities\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"CapabilitiesResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"manifest\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"bearer\",\"oauth\",\"mtls\",\"workload\"],\"open_strings\":true}}},{\"wire_name\":\"contentCategories\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"correlationIdentityFields\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Capabilities\"}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true}},{\"wire_name\":\"modes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"observe\",\"intercept\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"limits\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxUploadBytes\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"minTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"managedPolicy\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"disableable\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"scopes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"user\",\"project\",\"managed\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"toolPaths\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"transports\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"http\",\"stdio\",\"in_process\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[[\"identity\"]],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[[\"effects\"]],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"CatalogueEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnEndEvent\"},{\"kind\":\"ref\",\"name\":\"TurnProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ModelErrorEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionResolvedEvent\"},{\"kind\":\"ref\",\"name\":\"ToolProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"UserAttentionEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"FileChangedEvent\"},{\"kind\":\"ref\",\"name\":\"HookFailureEvent\"}]},\"ConfigChangeAfterEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeAfter\"}]},\"ConfigChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ConfigChangeBeforeEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeBefore\"}]},\"ContentItem\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]},\"ContentReference\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"ref\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sha256\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":true,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ContentSelection\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"audio\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"default\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"files\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"images\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"reasoning\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"text\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"video\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ContentUpload\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"auth\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenEnv\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"bearer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"endpoint\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"maxBytes\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ContextCompactAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"inject\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ContextCompactAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactAfter\"},\"ContextCompactBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"return\",\"inject\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ContextCompactBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactBefore\"},\"DenyEffect\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"code\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"deny\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"Effect\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"DenyEffect\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"allow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"ask\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"replace\",\"merge\"],\"open_strings\":true}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"input\",\"output\",\"prompt\",\"request\",\"response\",\"content\",\"instructions\",\"summary\",\"workspace\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"modify\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"message\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"return\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stop\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"instruction\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"continue\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"append\"}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"inject\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]},\"ExecutionEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnStart\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnFinishBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnEnd\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnProgress\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelRequestBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelResponseAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelError\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionRequest\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionResolved\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolProgress\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolBatchAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactAfter\"}],\"discriminator\":\"type\"},\"ExecutionEventAttempt\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"number\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventAttemptusage\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventUsage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"amount\"}},{\"wire_name\":\"provenance\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"provider\",\"estimate\"],\"open_strings\":true}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"attempt\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventBatch\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"callIds\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventContextCompactAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"removed\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventContextCompactBefore\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"auto\",\"manual\",\"hook\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"any\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventError\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"class\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"code\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"status\",\"required\":false,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"integer\"}]}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventExecution\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"executed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"supplied_result\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"policy\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"cancelled\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"timeout\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"other\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]},\"ExecutionEventFilechange\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"created\",\"modified\",\"deleted\",\"moved\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"previousPath\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventMcp\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"connection\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"http\"}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"sse\"}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"command\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stdio\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"command\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"address\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"addressForm\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"addressForm\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"address\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}],\"discriminator\":\"transport\"}},{\"wire_name\":\"provenance\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"runtime\",\"inferred\"],\"open_strings\":true}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"name\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"toolName\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventModel\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"provider\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventModelError\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"error\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"status\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"executed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"latencyMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"recovery\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.error\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttemptusage\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelRequestBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.request.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelResponseAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"finishReason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"latencyMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.response.after\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttemptusage\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelSwitchAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"current\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"previous\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.switch.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelSwitchBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"current\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"pricing\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"currency\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"inputPerMillionTokens\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"outputPerMillionTokens\",\"required\":false,\"shape\":{\"kind\":\"number\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"proposed\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.switch.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTokencounts\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventTool\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"input\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mcp\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventMcp\"}},{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"origin\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"native\",\"mcp\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventToolBatchAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"calls\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"ok\",\"error\",\"denied\",\"cancelled\",\"timeout\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.batch.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolPermissionRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sandboxBypass\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"suggestions\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.permission.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolPermissionResolved\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"decidedBy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"user\",\"policy\",\"hook\",\"auto\",\"classifier\"],\"open_strings\":true}},{\"wire_name\":\"decision\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"allow\",\"deny\"],\"open_strings\":true}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.permission.resolved\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolProgress\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"backgrounded\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"partialOutput\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.progress\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnEnd\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"error\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"lastAssistantItem\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"failed\",\"cancelled\",\"max_iterations\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.end\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnusage\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnFinishBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"lastAssistantItem\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"failed\",\"cancelled\",\"max_iterations\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.finish.before\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnusage\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnProgress\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"delta\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"final\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"item\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.progress\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnStart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"expandedFrom\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"user\",\"continuation\",\"hook\",\"external\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.start\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnusage\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventUsage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"total\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"turn\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventUsage\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cacheReadTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"cacheWriteTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"completeness\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"complete\",\"partial\",\"unknown\"],\"open_strings\":true}},{\"wire_name\":\"cost\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"amount\",\"required\":true,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"basis\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"billed\",\"reported\",\"estimated\"],\"open_strings\":true}},{\"wire_name\":\"currency\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"inputTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"amount\",\"total\"],\"open_strings\":true}},{\"wire_name\":\"outputTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"provenance\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"provider\",\"estimate\",\"mixed\"],\"open_strings\":true}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"attempt\",\"turn\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"Extensions\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"FileChangedEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventFileChanged\"},\"HookFailureEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hook.failure\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventHookFailure\"}]},\"HttpTransport\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"http\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeBefore\"},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeAfter\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserAttention\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationRequest\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationResult\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageInbound\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageOutbound\"},{\"kind\":\"ref\",\"name\":\"InteractionEventHookFailure\"}],\"discriminator\":\"type\"},\"InteractionEventConfigChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mcpServers\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"settings\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventConfigChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"settings\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventHookFailure\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"failure\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"backendId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"policy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"fail-open\",\"fail-closed\"],\"open_strings\":true}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"parentEventId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hook.failure\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserAttention\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attention\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.attention\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserElicitationRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserElicitationResult\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.result\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserMessageInbound\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.inbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserMessageOutbound\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"payload\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.outbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InterceptDenyResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"DenyEffect\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptNoEffectResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"any\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptRequest\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/intercept\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolAfterEvent\"},{\"kind\":\"ref\",\"name\":\"SessionStartEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"}]}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}},{\"wire_name\":\"state\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"candidate\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"null\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"provenance\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"none\",\"stop\",\"continue\"],\"open_strings\":true}},{\"wire_name\":\"injections\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"any\"}}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"permission\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"none\",\"allow\",\"ask\",\"deny\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"Effect\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[[\"manifest\"]],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptSubscription\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentSelection\"}},{\"wire_name\":\"disableable\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"config.change.before\",\"turn.start\",\"turn.finish.before\",\"model.request.before\",\"model.switch.before\",\"tool.permission.request\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"model.response.after\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"failurePolicy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"fail-open\",\"fail-closed\"],\"open_strings\":true}},{\"wire_name\":\"filters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"paths\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"toolKinds\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"includeNative\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"intercept\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"managed\",\"project\",\"user\"],\"open_strings\":true}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"upload\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentUpload\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcErrorResponse\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"error\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"code\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"data\",\"required\":false,\"shape\":{\"kind\":\"any\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcResponseId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}}],\"forbidden_property_sets\":[[\"result\"]],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcId\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"integer\"}]},\"JsonRpcMessage\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"ref\",\"name\":\"JsonRpcNotification\"},{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"ref\",\"name\":\"JsonRpcErrorResponse\"}]},\"JsonRpcNotification\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[[\"id\"]],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcResponseId\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcId\"},{\"kind\":\"null\"}]},\"JsonRpcSuccessResponse\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcResponseId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[[\"error\"]],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationBooleanSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationElicitRequestFormParams\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"progressToken\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationProgressToken\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mode\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"form\"}},{\"wire_name\":\"requestedSchema\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"$schema\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"properties\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"required\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"object\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"task\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationTaskMetadata\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationElicitRequestParams\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestURLParams\"},{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestFormParams\"}]},\"McpElicitationElicitRequestURLParams\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"progressToken\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationProgressToken\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"elicitationId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"url\"}},{\"wire_name\":\"task\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationTaskMetadata\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationElicitResult\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"cancel\",\"decline\"],\"open_strings\":true}},{\"wire_name\":\"content\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationLegacyTitledEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"enumNames\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationNumberSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"maximum\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minimum\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"integer\",\"number\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationPrimitiveSchemaDefinition\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"McpElicitationStringSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationNumberSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationBooleanSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationUntitledSingleSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationTitledSingleSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationUntitledMultiSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationTitledMultiSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationLegacyTitledEnumSchema\"}]},\"McpElicitationProgressToken\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"number\"}]},\"McpElicitationRequest\":{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestParams\"},\"McpElicitationResult\":{\"kind\":\"ref\",\"name\":\"McpElicitationElicitResult\"},\"McpElicitationStringSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"format\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"date\",\"date-time\",\"email\",\"uri\"],\"open_strings\":true}},{\"wire_name\":\"maxLength\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minLength\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationTaskMetadata\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"ttl\",\"required\":false,\"shape\":{\"kind\":\"number\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationTitledMultiSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"anyOf\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"const\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"maxItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"array\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationTitledSingleSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"oneOf\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"const\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationUntitledMultiSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"maxItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"array\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationUntitledSingleSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ModelErrorEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelError\"},\"ModelRequestBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"inject\",\"return\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelRequestBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelRequestBefore\"},\"ModelResponseAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelResponseAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelResponseAfter\"},\"ModelSwitchAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchAfter\"},\"ModelSwitchBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelSwitchBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchBefore\"},\"ModelVisibleItem\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"NativeEvent\":{\"kind\":\"any\"},\"ObserveNotification\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcNotification\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/observe\"}},{\"wire_name\":\"params\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolAfterEvent\"},{\"kind\":\"ref\",\"name\":\"SessionStartEvent\"},{\"kind\":\"ref\",\"name\":\"SessionEndEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnEndEvent\"},{\"kind\":\"ref\",\"name\":\"TurnProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ModelErrorEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionResolvedEvent\"},{\"kind\":\"ref\",\"name\":\"ToolProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"UserAttentionEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"FileChangedEvent\"},{\"kind\":\"ref\",\"name\":\"HookFailureEvent\"}]}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ObserveSubscription\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentSelection\"}},{\"wire_name\":\"disableable\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"filters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"paths\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"toolKinds\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"includeNative\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"observe\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"managed\",\"project\",\"user\"],\"open_strings\":true}},{\"wire_name\":\"upload\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentUpload\"}}],\"forbidden_property_sets\":[[\"failurePolicy\"],[\"timeoutMs\"]],\"additional\":{\"kind\":\"allowed\"}},\"ProtocolVersion\":{\"kind\":\"literal\",\"value\":\"draft\"},\"Registration\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"hooks\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"Backend\"}}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"RegistrationContentreceiver\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"maxBytes\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ReverseDnsName\":{\"kind\":\"string\"},\"Session\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"agent\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"model\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"SessionEndEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"counters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"cancelled\",\"error\",\"unknown\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"session.end\"}}],\"forbidden_property_sets\":[[\"tool\"]],\"additional\":{\"kind\":\"allowed\"}},\"SessionStartCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"inject\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"SessionStartEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"harness\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"version\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"manifest\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"StaticCapabilityManifest\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"permissionMode\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"resumedFrom\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"startup\",\"resume\",\"clear\",\"compact\",\"fork\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"session.start\"}}],\"forbidden_property_sets\":[[\"outcome\"],[\"tool\"]],\"additional\":{\"kind\":\"allowed\"}},\"StaticCapabilityManifest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"bearer\",\"oauth\",\"mtls\",\"workload\"],\"open_strings\":true}}},{\"wire_name\":\"contentCategories\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"correlationIdentityFields\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Capabilities\"}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true}},{\"wire_name\":\"modes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"observe\",\"intercept\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"limits\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxUploadBytes\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"minTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"managedPolicy\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"disableable\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"scopes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"user\",\"project\",\"managed\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"toolPaths\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"transports\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"http\",\"stdio\",\"in_process\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[[\"identity\"]],\"additional\":{\"kind\":\"allowed\"}},\"StdioTransport\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"command\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"lifecycle\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"persistent\",\"per_event\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stdio\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskChangeAfterEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeAfter\"},\"TaskChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TaskChangeBeforeEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeBefore\"},\"TaskWorkspaceEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeBefore\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeAfter\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeBefore\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeAfter\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventFileChanged\"}],\"discriminator\":\"type\"},\"TaskWorkspaceEventFileChanged\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"changes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"file.changed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventTaskChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"task\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"task.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventTaskChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"task\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"task.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventWorkspaceChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"workspace.change.after\"}},{\"wire_name\":\"workspace\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"cwd\",\"roots\",\"switch\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"reason\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventWorkspaceChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"workspace.change.before\"}},{\"wire_name\":\"workspace\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"cwd\",\"roots\",\"switch\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"reason\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"inject\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolAfterEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"durationMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"error\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"fileChanges\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ExecutionEventFilechange\"}}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"ok\",\"error\",\"denied\",\"cancelled\",\"timeout\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolBatchAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"flow\",\"inject\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolBatchAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolBatchAfter\"},\"ToolBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"allow\",\"ask\",\"modify\",\"inject\",\"flow\",\"return\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolBeforeEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolPermissionRequestCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"allow\",\"deny\",\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolPermissionRequestEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionRequest\"},\"ToolPermissionResolvedEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionResolved\"},\"ToolProgressEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolProgress\"},\"TurnEndEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnEnd\"},\"TurnFinishBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TurnFinishBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnFinishBefore\"},\"TurnProgressEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnProgress\"},\"TurnStartCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"inject\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TurnStartEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnStart\"},\"UserAttentionEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.attention\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserAttention\"}]},\"UserElicitationRequestCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"return\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserElicitationRequestEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationRequest\"}]},\"UserElicitationResultCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserElicitationResultEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.result\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationResult\"}]},\"UserMessageInboundCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserMessageInboundEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.inbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageInbound\"}]},\"UserMessageOutboundCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserMessageOutboundEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.outbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageOutbound\"}]},\"WireMessage\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InterceptRequest\"},{\"kind\":\"ref\",\"name\":\"InterceptResponse\"},{\"kind\":\"ref\",\"name\":\"JsonRpcErrorResponse\"},{\"kind\":\"ref\",\"name\":\"ObserveNotification\"},{\"kind\":\"ref\",\"name\":\"CapabilitiesRequest\"},{\"kind\":\"ref\",\"name\":\"CapabilitiesResponse\"}]},\"WorkspaceChangeAfterEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeAfter\"},\"WorkspaceChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"WorkspaceChangeBeforeEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeBefore\"}}";
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -2808,6 +20868,101 @@ pub fn encode_capabilities(value: &Capabilities) -> Result<String, serde_json::E
     serde_json::to_string(value)
 }
 
+/// Parse and structurally check a `CapabilitiesRequest` JSON document.
+pub fn parse_capabilities_request(input: &str) -> ParseResult<CapabilitiesRequest> {
+    parse_root("CapabilitiesRequest", input)
+}
+/// Structurally check an already-decoded `CapabilitiesRequest` JSON value.
+pub fn parse_capabilities_request_value(input: JsonValue) -> ParseResult<CapabilitiesRequest> {
+    parse_root_value("CapabilitiesRequest", input)
+}
+/// Encode a `CapabilitiesRequest` without applying canonical normalization.
+pub fn encode_capabilities_request(
+    value: &CapabilitiesRequest,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `CapabilitiesResponse` JSON document.
+pub fn parse_capabilities_response(input: &str) -> ParseResult<CapabilitiesResponse> {
+    parse_root("CapabilitiesResponse", input)
+}
+/// Structurally check an already-decoded `CapabilitiesResponse` JSON value.
+pub fn parse_capabilities_response_value(input: JsonValue) -> ParseResult<CapabilitiesResponse> {
+    parse_root_value("CapabilitiesResponse", input)
+}
+/// Encode a `CapabilitiesResponse` without applying canonical normalization.
+pub fn encode_capabilities_response(
+    value: &CapabilitiesResponse,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `CatalogueEvent` JSON document.
+pub fn parse_catalogue_event(input: &str) -> ParseResult<CatalogueEvent> {
+    parse_root("CatalogueEvent", input)
+}
+/// Structurally check an already-decoded `CatalogueEvent` JSON value.
+pub fn parse_catalogue_event_value(input: JsonValue) -> ParseResult<CatalogueEvent> {
+    parse_root_value("CatalogueEvent", input)
+}
+/// Encode a `CatalogueEvent` without applying canonical normalization.
+pub fn encode_catalogue_event(value: &CatalogueEvent) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `ContentItem` JSON document.
+pub fn parse_content_item(input: &str) -> ParseResult<ContentItem> {
+    parse_root("ContentItem", input)
+}
+/// Structurally check an already-decoded `ContentItem` JSON value.
+pub fn parse_content_item_value(input: JsonValue) -> ParseResult<ContentItem> {
+    parse_root_value("ContentItem", input)
+}
+/// Encode a `ContentItem` without applying canonical normalization.
+pub fn encode_content_item(value: &ContentItem) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `ContentReference` JSON document.
+pub fn parse_content_reference(input: &str) -> ParseResult<ContentReference> {
+    parse_root("ContentReference", input)
+}
+/// Structurally check an already-decoded `ContentReference` JSON value.
+pub fn parse_content_reference_value(input: JsonValue) -> ParseResult<ContentReference> {
+    parse_root_value("ContentReference", input)
+}
+/// Encode a `ContentReference` without applying canonical normalization.
+pub fn encode_content_reference(value: &ContentReference) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `ContentSelection` JSON document.
+pub fn parse_content_selection(input: &str) -> ParseResult<ContentSelection> {
+    parse_root("ContentSelection", input)
+}
+/// Structurally check an already-decoded `ContentSelection` JSON value.
+pub fn parse_content_selection_value(input: JsonValue) -> ParseResult<ContentSelection> {
+    parse_root_value("ContentSelection", input)
+}
+/// Encode a `ContentSelection` without applying canonical normalization.
+pub fn encode_content_selection(value: &ContentSelection) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `ContentUpload` JSON document.
+pub fn parse_content_upload(input: &str) -> ParseResult<ContentUpload> {
+    parse_root("ContentUpload", input)
+}
+/// Structurally check an already-decoded `ContentUpload` JSON value.
+pub fn parse_content_upload_value(input: JsonValue) -> ParseResult<ContentUpload> {
+    parse_root_value("ContentUpload", input)
+}
+/// Encode a `ContentUpload` without applying canonical normalization.
+pub fn encode_content_upload(value: &ContentUpload) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
 /// Parse and structurally check a `DenyEffect` JSON document.
 pub fn parse_deny_effect(input: &str) -> ParseResult<DenyEffect> {
     parse_root("DenyEffect", input)
@@ -2821,6 +20976,32 @@ pub fn encode_deny_effect(value: &DenyEffect) -> Result<String, serde_json::Erro
     serde_json::to_string(value)
 }
 
+/// Parse and structurally check a `Effect` JSON document.
+pub fn parse_effect(input: &str) -> ParseResult<Effect> {
+    parse_root("Effect", input)
+}
+/// Structurally check an already-decoded `Effect` JSON value.
+pub fn parse_effect_value(input: JsonValue) -> ParseResult<Effect> {
+    parse_root_value("Effect", input)
+}
+/// Encode a `Effect` without applying canonical normalization.
+pub fn encode_effect(value: &Effect) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `ExecutionEvent` JSON document.
+pub fn parse_execution_event(input: &str) -> ParseResult<ExecutionEvent> {
+    parse_root("ExecutionEvent", input)
+}
+/// Structurally check an already-decoded `ExecutionEvent` JSON value.
+pub fn parse_execution_event_value(input: JsonValue) -> ParseResult<ExecutionEvent> {
+    parse_root_value("ExecutionEvent", input)
+}
+/// Encode a `ExecutionEvent` without applying canonical normalization.
+pub fn encode_execution_event(value: &ExecutionEvent) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
 /// Parse and structurally check a `Extensions` JSON document.
 pub fn parse_extensions(input: &str) -> ParseResult<Extensions> {
     parse_root("Extensions", input)
@@ -2831,6 +21012,19 @@ pub fn parse_extensions_value(input: JsonValue) -> ParseResult<Extensions> {
 }
 /// Encode a `Extensions` without applying canonical normalization.
 pub fn encode_extensions(value: &Extensions) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `InteractionEvent` JSON document.
+pub fn parse_interaction_event(input: &str) -> ParseResult<InteractionEvent> {
+    parse_root("InteractionEvent", input)
+}
+/// Structurally check an already-decoded `InteractionEvent` JSON value.
+pub fn parse_interaction_event_value(input: JsonValue) -> ParseResult<InteractionEvent> {
+    parse_root_value("InteractionEvent", input)
+}
+/// Encode a `InteractionEvent` without applying canonical normalization.
+pub fn encode_interaction_event(value: &InteractionEvent) -> Result<String, serde_json::Error> {
     serde_json::to_string(value)
 }
 
@@ -2876,6 +21070,19 @@ pub fn parse_intercept_request_value(input: JsonValue) -> ParseResult<InterceptR
 }
 /// Encode a `InterceptRequest` without applying canonical normalization.
 pub fn encode_intercept_request(value: &InterceptRequest) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+/// Parse and structurally check a `InterceptResponse` JSON document.
+pub fn parse_intercept_response(input: &str) -> ParseResult<InterceptResponse> {
+    parse_root("InterceptResponse", input)
+}
+/// Structurally check an already-decoded `InterceptResponse` JSON value.
+pub fn parse_intercept_response_value(input: JsonValue) -> ParseResult<InterceptResponse> {
+    parse_root_value("InterceptResponse", input)
+}
+/// Encode a `InterceptResponse` without applying canonical normalization.
+pub fn encode_intercept_response(value: &InterceptResponse) -> Result<String, serde_json::Error> {
     serde_json::to_string(value)
 }
 
@@ -2946,6 +21153,21 @@ pub fn encode_session_start_event(value: &SessionStartEvent) -> Result<String, s
     serde_json::to_string(value)
 }
 
+/// Parse and structurally check a `TaskWorkspaceEvent` JSON document.
+pub fn parse_task_workspace_event(input: &str) -> ParseResult<TaskWorkspaceEvent> {
+    parse_root("TaskWorkspaceEvent", input)
+}
+/// Structurally check an already-decoded `TaskWorkspaceEvent` JSON value.
+pub fn parse_task_workspace_event_value(input: JsonValue) -> ParseResult<TaskWorkspaceEvent> {
+    parse_root_value("TaskWorkspaceEvent", input)
+}
+/// Encode a `TaskWorkspaceEvent` without applying canonical normalization.
+pub fn encode_task_workspace_event(
+    value: &TaskWorkspaceEvent,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
 /// Parse and structurally check a `ToolAfterEvent` JSON document.
 pub fn parse_tool_after_event(input: &str) -> ParseResult<ToolAfterEvent> {
     parse_root("ToolAfterEvent", input)
@@ -2969,19 +21191,6 @@ pub fn parse_tool_before_event_value(input: JsonValue) -> ParseResult<ToolBefore
 }
 /// Encode a `ToolBeforeEvent` without applying canonical normalization.
 pub fn encode_tool_before_event(value: &ToolBeforeEvent) -> Result<String, serde_json::Error> {
-    serde_json::to_string(value)
-}
-
-/// Parse and structurally check a `ToolErrorEvent` JSON document.
-pub fn parse_tool_error_event(input: &str) -> ParseResult<ToolErrorEvent> {
-    parse_root("ToolErrorEvent", input)
-}
-/// Structurally check an already-decoded `ToolErrorEvent` JSON value.
-pub fn parse_tool_error_event_value(input: JsonValue) -> ParseResult<ToolErrorEvent> {
-    parse_root_value("ToolErrorEvent", input)
-}
-/// Encode a `ToolErrorEvent` without applying canonical normalization.
-pub fn encode_tool_error_event(value: &ToolErrorEvent) -> Result<String, serde_json::Error> {
     serde_json::to_string(value)
 }
 
