@@ -31,6 +31,9 @@ instructions and allowance without scheduling continuation. Injections represent
 work, not proof of content delivery. The tool.before, turn.finish.before, task.change.before and
 workspace.change.before boundaries are implemented; other boundaries are rejected.
 
+OAuth protected-resource discovery is not implemented; OAuth requires explicit
+test issuer configuration.
+
 HTTP supports bearer, actual OAuth client-credentials token acquisition, signed
 HS256 workload assertion verification, and actual mutual TLS with CA-based client
 certificate verification. OAuth/workload validate issuer, audience, purpose,

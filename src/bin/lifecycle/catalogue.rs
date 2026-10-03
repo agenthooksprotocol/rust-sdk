@@ -49,7 +49,7 @@ pub(super) fn manifest() -> Value {
             "reason": "Synthetic occurrence source does not implement other boundaries"
         }],
         "transports": ["http", "stdio"],
-        "authentication": ["bearer", "oauth", "workload", "mtls"],
+        "authentication": ["bearer", "oauth"],
         "toolPaths": ["native"],
         "contentCategories": ["text", "message", "tool_result"],
         "limits": {
