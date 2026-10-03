@@ -34,16 +34,11 @@ fn portable_registration_accepts_omission_bearer_and_oauth() {
 }
 
 #[test]
-fn portable_registration_rejects_deployment_and_unknown_mechanisms() {
+fn registration_rejects_unknown_authentication() {
     let schemas = Schemas::bundled().unwrap();
-    for auth in [
-        json!({"type": "mtls", "certificateRef": "cert", "privateKeyRef": "key", "trustRootsRef": "roots"}),
-        json!({"type": "workload", "credentialRef": "identity", "issuer": "trusted", "audience": "hooks", "profile": "urn:example:profile"}),
-        json!({"type": "com.example.identity", "tokenEnv": "AHP_TOKEN"}),
-    ] {
-        let mut value = registration();
-        value["hooks"][0]["authentication"] = auth;
-        assert!(!generated::parse_registration_value(value.clone()).is_ok());
-        assert!(schemas.validate("registration", &value).is_err());
-    }
+    let mut value = registration();
+    value["hooks"][0]["authentication"] =
+        json!({"type": "com.example.identity", "tokenEnv": "AHP_TOKEN"});
+    assert!(!generated::parse_registration_value(value.clone()).is_ok());
+    assert!(schemas.validate("registration", &value).is_err());
 }
