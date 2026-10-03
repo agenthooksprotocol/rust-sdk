@@ -12,6 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: agenthooksprotocol/agent-hooks-protocol
+          ref: 6efb34f8a3da9c174d69edc8e41a62e1ee60ee71
+          path: shared-spec
+      - run: mv shared-spec ../agent-hooks-protocol
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: clippy, rustfmt

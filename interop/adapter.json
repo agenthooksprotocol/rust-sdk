@@ -1,0 +1,23 @@
+{
+  "language": "rust",
+  "server": [
+    "cargo",
+    "run",
+    "--quiet",
+    "--bin",
+    "interop",
+    "--",
+    "server"
+  ],
+  "client": [
+    "cargo",
+    "run",
+    "--quiet",
+    "--bin",
+    "interop",
+    "--",
+    "client"
+  ],
+  "lifecycleClient": ["target/debug/lifecycle_client"],
+  "lifecycleServer": ["target/debug/lifecycle_server"]
+}
