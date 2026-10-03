@@ -341,7 +341,7 @@ fn reply(
                 "protocolVersion": "draft",
                 "manifest": {
                     "transports": ["http", "stdio"],
-                    "authentication": ["bearer", "oauth", "workload", "mtls"],
+                    "authentication": ["bearer", "oauth"],
                     "toolPaths": ["native"],
                     "contentCategories": [],
                     "limits": {

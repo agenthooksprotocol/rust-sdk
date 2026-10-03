@@ -81,7 +81,7 @@ cargo test --bin lifecycle_client disposition_comes
 ```
 
 Limits: this is a synthetic boundary adapter, not native harness integration.
-HTTP event transport supports all five core adapter modes: `none`, `bearer`,
+HTTP event transport supports five deployment adapter modes: `none`, `bearer`,
 `oauth` client credentials, signed `workload`, and verified client-certificate
 `mtls`. JWT checks include signature, issuer, audience, purpose, and time. Redirects
 are disabled. Stdio accepts only explicit process-trust (`none`), not HTTP tokens.
