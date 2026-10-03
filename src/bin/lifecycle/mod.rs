@@ -103,7 +103,13 @@ impl Validation {
                 files.insert(name.into(), v);
             }
         }
-        let schema = json!({"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/files/observe-notification.schema.json","$defs":{"files":files}});
+        let schema = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$ref": "#/$defs/files/observe-notification.schema.json",
+            "$defs": {
+                "files": files
+            }
+        });
         Ok(Self {
             core: load_schemas(c)?,
             observe: jsonschema::options()
@@ -392,7 +398,15 @@ impl ServerState {
             descriptor = json!({"ref":reference,"size":bytes.len(),"sha256":hash});
             201
         })();
-        self.data.lock().unwrap().entries.push(json!({"kind":"upload","scope":sub,"ref":descriptor["ref"],"descriptor":descriptor,"size":length,"sha256":hash,"status":status}));
+        self.data.lock().unwrap().entries.push(json!({
+            "kind": "upload",
+            "scope": sub,
+            "ref": descriptor["ref"],
+            "descriptor": descriptor,
+            "size": length,
+            "sha256": hash,
+            "status": status
+        }));
         (status, descriptor)
     }
     fn upload_scope(&self) -> &str {
@@ -408,14 +422,26 @@ impl ServerState {
             .unwrap_or("body")
     }
     fn rejection(&self, v: &Value, kind: &str) -> Box<dyn std::error::Error + Send + Sync> {
-        self.data.lock().unwrap().entries.push(json!({"kind":"rejected","eventId":v["params"]["event"]["id"],"message":v,"errorKind":kind}));
+        self.data.lock().unwrap().entries.push(json!({
+            "kind": "rejected",
+            "eventId": v["params"]["event"]["id"],
+            "message": v,
+            "errorKind": kind
+        }));
         self.changed.notify_all();
         format!("{kind}: rejected notification").into()
     }
     fn protocol(&self, v: &Value) -> Result<Value> {
         if self.catalogue && v["method"] == "hooks/capabilities" {
             self.validation.core.validate("capabilities-request", v)?;
-            let response = json!({"jsonrpc":"2.0","id":v["id"],"result":{"protocolVersion":"draft","manifest":catalogue::manifest()}});
+            let response = json!({
+                "jsonrpc": "2.0",
+                "id": v["id"],
+                "result": {
+                    "protocolVersion": "draft",
+                    "manifest": catalogue::manifest()
+                }
+            });
             self.validation
                 .core
                 .validate("capabilities-response", &response)?;
@@ -470,8 +496,12 @@ impl ServerState {
                 d.entries
                     .push(json!({"kind":"observer-blocked","id":event["id"]}));
             }
-            d.entries
-                .push(json!({"kind":"observed","eventId":event["id"],"event":event,"message":v}));
+            d.entries.push(json!({
+                "kind": "observed",
+                "eventId": event["id"],
+                "event": event,
+                "message": v
+            }));
             self.changed.notify_all();
             if held {
                 let (guard, timeout) = self
@@ -483,9 +513,17 @@ impl ServerState {
                     return Err("observer gate timed out".into());
                 }
             }
-            return Ok(
-                json!({"jsonrpc":"2.0","id":"unsolicited-observer","result":{"protocolVersion":"draft","effects":[{"type":"deny","reason":"observer must not decide"}]}}),
-            );
+            return Ok(json!({
+                "jsonrpc": "2.0",
+                "id": "unsolicited-observer",
+                "result": {
+                    "protocolVersion": "draft",
+                    "effects": [{
+                        "type": "deny",
+                        "reason": "observer must not decide"
+                    }]
+                }
+            }));
         }
         self.validation.core.validate("intercept-request", v)?;
         resolve_bodies(
@@ -733,7 +771,12 @@ fn server(c: &Value) -> Result<()> {
     };
     write(
         s(c, "readinessFile"),
-        &json!({"endpoint":endpoint,"controlEndpoint":control_endpoint,"uploadEndpoint":upload_endpoint,"pid":std::process::id()}),
+        &json!({
+            "endpoint": endpoint,
+            "controlEndpoint": control_endpoint,
+            "uploadEndpoint": upload_endpoint,
+            "pid": std::process::id()
+        }),
     )?;
     if s(c, "transport") == "stdio" {
         let st = state.clone();
@@ -1165,7 +1208,14 @@ fn client(c: &Value) -> Result<()> {
             continue;
         }
         // Never read expected: reports are derived solely from acquired responses and local state.
-        let mut actual = json!({"published":[],"cancelled":[],"ignored":[],"states":{},"observations":[],"uploadStatuses":[]});
+        let mut actual = json!({
+            "published": [],
+            "cancelled": [],
+            "ignored": [],
+            "states": {},
+            "observations": [],
+            "uploadStatuses": []
+        });
         let mut boundaries: BTreeMap<String, Boundary> = BTreeMap::new();
         let mut slots = BTreeMap::new();
         for step in scenario["steps"].as_array().ok_or("missing steps")? {
@@ -1202,7 +1252,11 @@ fn client(c: &Value) -> Result<()> {
                     } else {
                         transport.control(
                             "/mark",
-                            &json!({"scenario":scenario["id"],"kind":"acquired","id":req["id"]}),
+                            &json!({
+                                "scenario": scenario["id"],
+                                "kind": "acquired",
+                                "id": req["id"]
+                            }),
                         )?;
                     }
                 }
@@ -1222,7 +1276,14 @@ fn client(c: &Value) -> Result<()> {
                         let state = if s(step, "op") == "failOpen" {
                             Some(evaluator::apply(
                                 request,
-                                &json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":"draft","effects":[]}}),
+                                &json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "result": {
+                                        "protocolVersion": "draft",
+                                        "effects": []
+                                    }
+                                }),
                                 &validation.core,
                             )?)
                         } else {
@@ -1252,7 +1313,11 @@ fn client(c: &Value) -> Result<()> {
                         .push(json!(format!("unsolicited:{}", s(response, "id"))));
                     transport.control(
                         "/mark",
-                        &json!({"scenario":scenario["id"],"kind":"discarded","id":response["id"]}),
+                        &json!({
+                            "scenario": scenario["id"],
+                            "kind": "discarded",
+                            "id": response["id"]
+                        }),
                     )?;
                 }
                 "upload" => {
@@ -1309,7 +1374,14 @@ fn client(c: &Value) -> Result<()> {
                         step.get("items"),
                     )?;
                     replace_references(&mut event, &descriptors);
-                    let notification = json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":event}});
+                    let notification = json!({
+                        "jsonrpc": "2.0",
+                        "method": "hooks/observe",
+                        "params": {
+                            "protocolVersion": "draft",
+                            "event": event
+                        }
+                    });
                     validation.observe(&notification)?;
                     resolve_bodies(&event, "body", &confirmed_uploads)?;
                     transport.observe(&notification)?;
@@ -1319,7 +1391,11 @@ fn client(c: &Value) -> Result<()> {
                         "/wait-observed",
                         &json!({"eventId":event["id"],"count":count}),
                     )?;
-                    actual["observations"].as_array_mut().unwrap().push(json!({"eventId":event["id"],"subscription":step["subscription"],"input":event["tool"]["input"]}));
+                    actual["observations"].as_array_mut().unwrap().push(json!({
+                        "eventId": event["id"],
+                        "subscription": step["subscription"],
+                        "input": event["tool"]["input"]
+                    }));
                 }
                 _ => return Err(format!("unknown lifecycle operation: {}", s(step, "op")).into()),
             }
@@ -1402,9 +1478,27 @@ mod tests {
     use super::*;
     #[test]
     fn step_upload_policy_replaces_configured_policy_without_credential_fallback() {
-        let config = json!({"upload":{"endpoint":"https://configured.invalid/upload","auth":{"type":"bearer","tokenEnv":"AUTHORIZED"},"maxBytes":100}});
+        let config = json!({
+            "upload": {
+                "endpoint": "https://configured.invalid/upload",
+                "auth": {
+                    "type": "bearer",
+                    "tokenEnv": "AUTHORIZED"
+                },
+                "maxBytes": 100
+            }
+        });
         assert_eq!(upload_policy(&config, &json!({})), &config["upload"]);
-        let step = json!({"upload":{"endpoint":"https://override.invalid/upload","auth":{"type":"bearer","tokenEnv":"UNAUTHORIZED"},"maxBytes":1}});
+        let step = json!({
+            "upload": {
+                "endpoint": "https://override.invalid/upload",
+                "auth": {
+                    "type": "bearer",
+                    "tokenEnv": "UNAUTHORIZED"
+                },
+                "maxBytes": 1
+            }
+        });
         assert_eq!(upload_policy(&config, &step), &step["upload"]);
         let anonymous = json!({"upload":{"endpoint":"https://override.invalid/upload"}});
         assert!(upload_policy(&config, &anonymous)["auth"].is_null());
@@ -1414,8 +1508,12 @@ mod tests {
     #[test]
     fn upload_header_injection_is_rejected_before_connecting() {
         let endpoint = reqwest::Url::parse("http://127.0.0.1:1/upload").unwrap();
-        let step =
-            json!({"size":99,"sha256":"bad\r\nInjected: value","ref":"r","subscription":"s"});
+        let step = json!({
+            "size": 99,
+            "sha256": "bad\r\nInjected: value",
+            "ref": "r",
+            "subscription": "s"
+        });
         assert_eq!(
             send_upload(&endpoint, &step, b"body", None, TIMEOUT)
                 .unwrap_err()
@@ -1426,7 +1524,16 @@ mod tests {
     #[test]
     fn canonical_ask_has_no_reason_field() {
         let validation = Validation::new(&json!({})).unwrap();
-        let mut response = json!({"jsonrpc":"2.0","id":"ask","result":{"protocolVersion":"draft","effects":[{"type":"ask"}]}});
+        let mut response = json!({
+            "jsonrpc": "2.0",
+            "id": "ask",
+            "result": {
+                "protocolVersion": "draft",
+                "effects": [{
+                    "type": "ask"
+                }]
+            }
+        });
         validation
             .core
             .validate("intercept-response", &response)
@@ -1473,7 +1580,12 @@ mod lifecycle_tests {
     fn binary_upload_is_scoped_immutable_and_auth_is_independent() {
         let mut receiver = state();
         let bytes = [0, 255, 128, 13, 10];
-        let upload = json!({"subscription":"body","ref":"urn:binary","bodyBase64":base64::engine::general_purpose::STANDARD.encode(bytes),"sha256":sha256(&bytes)});
+        let upload = json!({
+            "subscription": "body",
+            "ref": "urn:binary",
+            "bodyBase64": base64::engine::general_purpose::STANDARD.encode(bytes),
+            "sha256": sha256(&bytes)
+        });
         let (status, descriptor) = test_upload(&receiver, &upload).unwrap();
         assert_eq!(status, 201);
         let mut changed = upload.clone();
@@ -1497,7 +1609,13 @@ mod lifecycle_tests {
             terminal: Some("accepted"),
             staged: None,
         };
-        let state = json!({"decision":"deny","flow":"stop","input":{"effective":true}});
+        let state = json!({
+            "decision": "deny",
+            "flow": "stop",
+            "input": {
+                "effective": true
+            }
+        });
         let event = settled_view(&request, &boundary, Some(&state), &json!("s"), None).unwrap();
         assert_eq!(event["id"], "same");
         assert_eq!(event["tool"]["input"], state["input"]);
@@ -1511,27 +1629,62 @@ mod lifecycle_tests {
     fn typed_task_workspace_observations_capture_exact_wire_and_lineage() {
         let receiver = state();
         let notification = |id: &str, kind: &str, payload: Value, parent: Option<&str>| {
-            let mut event = json!({"id":id,"source":"urn:tasks","time":"2026-09-01T00:00:00Z","type":format!("{kind}.change.after"),kind:payload});
+            let mut event = json!({
+                "id": id,
+                "source": "urn:tasks",
+                "time": "2026-09-01T00:00:00Z",
+                "type": format!("{kind}.change.after"),
+                kind: payload
+            });
             if let Some(parent) = parent {
                 event["parentEventId"] = json!(parent);
             }
-            json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":event}})
+            json!({
+                "jsonrpc": "2.0",
+                "method": "hooks/observe",
+                "params": {
+                    "protocolVersion": "draft",
+                    "event": event
+                }
+            })
         };
         let task = notification(
             "task-after",
             "task",
-            json!({"id":"stable-task","operation":"update","prior":{"status":"working"},"change":{"status":"native-finished"}}),
+            json!({
+                "id": "stable-task",
+                "operation": "update",
+                "prior": {
+                    "status": "working"
+                },
+                "change": {
+                    "status": "native-finished"
+                }
+            }),
             Some("unknown-parent"),
         );
         receiver.protocol(&task).unwrap();
         assert_eq!(
             receiver.data.lock().unwrap().entries[0],
-            json!({"kind":"observed","eventId":task["params"]["event"]["id"],"event":task["params"]["event"],"message":task})
+            json!({
+                "kind": "observed",
+                "eventId": task["params"]["event"]["id"],
+                "event": task["params"]["event"],
+                "message": task
+            })
         );
         let workspace = notification(
             "workspace-after",
             "workspace",
-            json!({"kind":"cwd","prior":{"cwd":"/old"},"change":{"cwd":"/new"}}),
+            json!({
+                "kind": "cwd",
+                "prior": {
+                    "cwd": "/old"
+                },
+                "change": {
+                    "cwd": "/new"
+                }
+            }),
             None,
         );
         receiver.protocol(&workspace).unwrap();
@@ -1564,7 +1717,13 @@ mod lifecycle_tests {
     fn immutable_upload_and_receiver_authorization() {
         let mut state = state();
         let text = "é body";
-        let upload = json!({"subscription":"body","ref":"urn:body:1","size":text.len(),"sha256":sha256(text.as_bytes()),"text":text});
+        let upload = json!({
+            "subscription": "body",
+            "ref": "urn:body:1",
+            "size": text.len(),
+            "sha256": sha256(text.as_bytes()),
+            "text": text
+        });
         let (status, descriptor) = test_upload(&state, &upload).unwrap();
         assert_eq!(status, 201);
         let second = test_upload(&state, &upload).unwrap().1;
@@ -1572,7 +1731,41 @@ mod lifecycle_tests {
         state.upload["scope"] = json!("");
         assert_eq!(test_upload(&state, &upload).unwrap().0, 403);
         state.upload["scope"] = json!("body");
-        let mut notification = json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":{"id":"test","source":"urn:rust:test","type":"tool.before","time":"2026-09-01T00:00:00Z","session":{"id":"s"},"call":{"id":"c"},"path":"native","tool":{"origin":"native","name":"task","kind":"task","input":{"value":"settled"}},"items":[{"id":"item","kind":"text","mediaType":"text/plain","selection":"body","body":descriptor}]}}});
+        let mut notification = json!({
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+                "protocolVersion": "draft",
+                "event": {
+                    "id": "test",
+                    "source": "urn:rust:test",
+                    "type": "tool.before",
+                    "time": "2026-09-01T00:00:00Z",
+                    "session": {
+                        "id": "s"
+                    },
+                    "call": {
+                        "id": "c"
+                    },
+                    "path": "native",
+                    "tool": {
+                        "origin": "native",
+                        "name": "task",
+                        "kind": "task",
+                        "input": {
+                            "value": "settled"
+                        }
+                    },
+                    "items": [{
+                        "id": "item",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "body": descriptor
+                    }]
+                }
+            }
+        });
         let response = state.protocol(&notification).unwrap();
         state
             .validation
@@ -1602,10 +1795,56 @@ mod lifecycle_tests {
 mod hardening_tests {
     use super::*;
     fn request() -> Value {
-        json!({"jsonrpc":"2.0","id":"hardening","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"hardening","source":"urn:rust:test","type":"tool.before","time":"2026-09-01T00:00:00Z","session":{"id":"s"},"call":{"id":"c"},"path":"native","tool":{"origin":"native","name":"task","kind":"task","input":{"value":"original"}}},"capabilities":interop::capabilities()}})
+        json!({
+            "jsonrpc": "2.0",
+            "id": "hardening",
+            "method": "hooks/intercept",
+            "params": {
+                "protocolVersion": "draft",
+                "event": {
+                    "id": "hardening",
+                    "source": "urn:rust:test",
+                    "type": "tool.before",
+                    "time": "2026-09-01T00:00:00Z",
+                    "session": {
+                        "id": "s"
+                    },
+                    "call": {
+                        "id": "c"
+                    },
+                    "path": "native",
+                    "tool": {
+                        "origin": "native",
+                        "name": "task",
+                        "kind": "task",
+                        "input": {
+                            "value": "original"
+                        }
+                    }
+                },
+                "capabilities": interop::capabilities()
+            }
+        })
     }
     fn response(value: &str) -> Value {
-        json!({"jsonrpc":"2.0","id":"hardening","result":{"protocolVersion":"draft","effects":[{"type":"modify","target":"input","operation":"replace","value":{"value":value}},{"type":"message","text":value}]}})
+        json!({
+            "jsonrpc": "2.0",
+            "id": "hardening",
+            "result": {
+                "protocolVersion": "draft",
+                "effects": [{
+                    "type": "modify",
+                    "target": "input",
+                    "operation": "replace",
+                    "value": {
+                        "value": value
+                    }
+                }, {
+                    "type": "message",
+                    "text": value
+                }]
+            }
+        })
     }
     fn server() -> ServerState {
         ServerState {
@@ -1695,9 +1934,49 @@ mod hardening_tests {
         let fixture = directory.join("scenario.json");
         let report = directory.join("report.json");
         let bytes = vec![0, 255, 10];
-        write(fixture.to_str().unwrap(),&json!({"scenarios":[{"id":"sender-isolation","requests":{},"responses":{},"steps":[{"op":"upload","subscription":"body","ref":"isolation","bodyBase64":base64::engine::general_purpose::STANDARD.encode(&bytes),"size":bytes.len(),"sha256":sha256(&bytes)}]}]})).unwrap();
-        let config = json!({"transport":"http","auth":{"mode":"bearer","token":"TEST-EVENT-CREDENTIAL"},"endpoint":endpoint,"controlEndpoint":endpoint,"upload":{"endpoint":format!("{endpoint}/upload?separate=1"),"timeoutMs":5000,"maxBytes":128},"scenarioFile":fixture,"reportFile":report});
-        let notification = json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":request()["params"]["event"]}});
+        write(
+            fixture.to_str().unwrap(),
+            &json!({
+                "scenarios": [{
+                    "id": "sender-isolation",
+                    "requests": {},
+                    "responses": {},
+                    "steps": [{
+                        "op": "upload",
+                        "subscription": "body",
+                        "ref": "isolation",
+                        "bodyBase64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+                        "size": bytes.len(),
+                        "sha256": sha256(&bytes)
+                    }]
+                }]
+            }),
+        )
+        .unwrap();
+        let config = json!({
+            "transport": "http",
+            "auth": {
+                "mode": "bearer",
+                "token": "TEST-EVENT-CREDENTIAL"
+            },
+            "endpoint": endpoint,
+            "controlEndpoint": endpoint,
+            "upload": {
+                "endpoint": format!("{endpoint}/upload?separate=1"),
+                "timeoutMs": 5000,
+                "maxBytes": 128
+            },
+            "scenarioFile": fixture,
+            "reportFile": report
+        });
+        let notification = json!({
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+                "protocolVersion": "draft",
+                "event": request()["params"]["event"]
+            }
+        });
         Validation::new(&config)
             .unwrap()
             .observe(&notification)
@@ -1867,8 +2146,13 @@ mod hardening_tests {
             (
                 201,
                 "application/json",
-                json!({"ref":"allocated", "size":3,"sha256":sha256(bytes),"extra":true})
-                    .to_string(),
+                json!({
+                    "ref": "allocated",
+                    "size": 3,
+                    "sha256": sha256(bytes),
+                    "extra": true
+                })
+                .to_string(),
                 false,
             ),
             (202, "application/json", descriptor.to_string(), false),
@@ -1922,7 +2206,13 @@ mod hardening_tests {
         let descriptor = json!({"ref":"receiver-ref", "size":3, "sha256":sha256(b"abc")});
         let aliases = BTreeMap::from([("fixture-alias".into(), descriptor.clone())]);
         let uploads = BTreeMap::from([(("body".into(), "receiver-ref".into()), b"abc".to_vec())]);
-        let mut event = json!({"body":{"ref":"fixture-alias","size":3,"sha256":sha256(b"abc")}});
+        let mut event = json!({
+            "body": {
+                "ref": "fixture-alias",
+                "size": 3,
+                "sha256": sha256(b"abc")
+            }
+        });
         replace_references(&mut event, &aliases);
         assert_eq!(event["body"], descriptor);
         assert!(resolve_bodies(&event, "body", &uploads).is_ok());
@@ -1963,7 +2253,11 @@ mod hardening_tests {
         authorized.push(("Authorization".into(), "Bearer TEST-UPLOAD-ONLY".into()));
         let (status, descriptor) = receiver.receive_upload("POST", &authorized, b"abc");
         assert_eq!(status, 201);
-        let event = json!({"id":"caller-selected", "source":"urn:caller", "body":descriptor});
+        let event = json!({
+            "id": "caller-selected",
+            "source": "urn:caller",
+            "body": descriptor
+        });
         let data = receiver.data.lock().unwrap();
         assert!(resolve_bodies(&event, "tenant-a", &data.uploads).is_ok());
         assert!(resolve_bodies(&event, "tenant-b", &data.uploads).is_err());
@@ -1991,7 +2285,13 @@ mod hardening_tests {
         let pid_file = directory.join("child.json");
         // Force failure after spawn/metadata but before readiness. The spawned
         // process cannot exit naturally during this check; Drop must reap it.
-        let config = json!({"transport":"stdio","serverCommand":["/bin/sh","-c","exec sleep 60"],"serverConfig":directory.join("unused.json"),"schemaDir":directory.join("missing-schema"),"childPidFile":pid_file});
+        let config = json!({
+            "transport": "stdio",
+            "serverCommand": ["/bin/sh", "-c", "exec sleep 60"],
+            "serverConfig": directory.join("unused.json"),
+            "schemaDir": directory.join("missing-schema"),
+            "childPidFile": pid_file
+        });
         assert!(Transport::new(&config).is_err());
         let metadata = read(pid_file.to_str().unwrap()).unwrap();
         let pid = metadata["pid"].as_i64().unwrap() as i32;

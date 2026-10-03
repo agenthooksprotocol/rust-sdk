@@ -89,7 +89,14 @@ fn receive(request: Value) -> Value {
     match result {
         Ok(result) => json!({"jsonrpc":"2.0","id":request["id"],"result":result}),
         Err(_) => {
-            json!({"jsonrpc":"2.0","id":request["id"],"error":{"code":-32602,"message":"invalid request"}})
+            json!({
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "error": {
+                    "code": -32602,
+                    "message": "invalid request"
+                }
+            })
         }
     }
 }

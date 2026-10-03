@@ -116,7 +116,13 @@ fn main() -> Result<()> {
                 format!("/$defs/{def}")
             }
         );
-        let s = json!({"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":reference,"$defs":{"files":files}});
+        let s = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$ref": reference,
+            "$defs": {
+                "files": files
+            }
+        });
         validators.insert(
             name,
             jsonschema::options()
@@ -329,7 +335,9 @@ fn main() -> Result<()> {
                     let summary = match payload {
                         Some(payload) => json!({"request":payload}),
                         None => {
-                            json!({"selection":meta["request"]["selection"].as_str().unwrap_or("omit")})
+                            json!({
+                                "selection": meta["request"]["selection"].as_str().unwrap_or("omit")
+                            })
                         }
                     };
                     pending.insert(key.clone(), message.clone());
@@ -349,11 +357,21 @@ fn main() -> Result<()> {
                 }
                 _ => return Err("Not elicitation".into()),
             };
-            receipts
-                .push(json!({"message":message,"bytes":STANDARD.encode(body),"summary":summary}));
+            receipts.push(json!({
+                "message": message,
+                "bytes": STANDARD.encode(body),
+                "summary": summary
+            }));
             Ok((
                 200,
-                json!({"jsonrpc":"2.0","id":message["id"],"result":{"protocolVersion":"draft","effects":[]}}),
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": message["id"],
+                    "result": {
+                        "protocolVersion": "draft",
+                        "effects": []
+                    }
+                }),
             ))
         })();
         let (status, value) = operation.unwrap_or((400, json!({"error":"rejected"})));

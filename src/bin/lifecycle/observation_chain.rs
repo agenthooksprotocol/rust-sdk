@@ -71,7 +71,14 @@ pub(super) fn run(
                 item.insert("selection".into(), json!("metadata"));
             }
         }
-        let note = json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":projected}});
+        let note = json!({
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+                "protocolVersion": "draft",
+                "event": projected
+            }
+        });
         validation.observe(&note)?;
         if transport.stdin.is_some() {
             transport.observe(&note)?;
@@ -113,7 +120,10 @@ pub(super) fn run(
             .map_err(|_| "observer worker panicked")?
             .map_err(|e| format!("observation test drain: {e}"))?;
     }
-    Ok(
-        json!({"called":called,"failures":failures,"observations":remaining.iter().map(|s|s["id"].clone()).collect::<Vec<_>>(),"input":event["tool"]["input"]}),
-    )
+    Ok(json!({
+        "called": called,
+        "failures": failures,
+        "observations": remaining.iter().map(|s|s["id"].clone()).collect::<Vec<_>>(),
+        "input": event["tool"]["input"]
+    }))
 }

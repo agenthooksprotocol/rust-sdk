@@ -50,8 +50,64 @@ mod tests {
     #[test]
     fn projection_preserves_merge_replace_and_invalidation() {
         let schemas = Schemas::bundled().unwrap();
-        let request = json!({"jsonrpc":"2.0","id":"test","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"test","source":"urn:rust:test","type":"tool.before","time":"2026-09-01T00:00:00Z","session":{"id":"s"},"call":{"id":"c"},"path":"native","tool":{"origin":"native","name":"task","kind":"task","input":{"task":"lifecycle string","nested":{"a":1,"b":2}}}},"capabilities":interop::capabilities(),"state":{"permission":"allow","candidate":{"value":"stale","provenance":{}}}}});
-        let response = json!({"jsonrpc":"2.0","id":"test","result":{"protocolVersion":"draft","effects":[{"type":"modify","target":"input","operation":"merge","value":{"nested":{"a":3}}}]}});
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": "test",
+            "method": "hooks/intercept",
+            "params": {
+                "protocolVersion": "draft",
+                "event": {
+                    "id": "test",
+                    "source": "urn:rust:test",
+                    "type": "tool.before",
+                    "time": "2026-09-01T00:00:00Z",
+                    "session": {
+                        "id": "s"
+                    },
+                    "call": {
+                        "id": "c"
+                    },
+                    "path": "native",
+                    "tool": {
+                        "origin": "native",
+                        "name": "task",
+                        "kind": "task",
+                        "input": {
+                            "task": "lifecycle string",
+                            "nested": {
+                                "a": 1,
+                                "b": 2
+                            }
+                        }
+                    }
+                },
+                "capabilities": interop::capabilities(),
+                "state": {
+                    "permission": "allow",
+                    "candidate": {
+                        "value": "stale",
+                        "provenance": {}
+                    }
+                }
+            }
+        });
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": "test",
+            "result": {
+                "protocolVersion": "draft",
+                "effects": [{
+                    "type": "modify",
+                    "target": "input",
+                    "operation": "merge",
+                    "value": {
+                        "nested": {
+                            "a": 3
+                        }
+                    }
+                }]
+            }
+        });
         let before = request.clone();
         let actual = apply(&request, &response, &schemas).unwrap();
         assert_eq!(

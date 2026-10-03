@@ -49,11 +49,23 @@ fn receive(request: &Value, sub: &str, config: &Value, store: &str, schemas: &Sc
             let body = bodies[event[target]["id"].as_str().ok_or("item")?]
                 .as_str()
                 .ok_or("body")?;
-            json!([{"type":"modify","target":target,"operation":"replace","value":format!("{}{}",body,action["suffix"].as_str().ok_or("suffix")?)}])
+            json!([{
+                "type": "modify",
+                "target": target,
+                "operation": "replace",
+                "value": format!("{}{}", body, action["suffix"].as_str().ok_or("suffix")?)
+            }])
         } else {
             action["effects"].clone()
         };
-        let response = json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","effects":effects}});
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": "draft",
+                "effects": effects
+            }
+        });
         schemas.validate("intercept-response", &response)?;
         let mut file = fs::OpenOptions::new()
             .create(true)
@@ -62,11 +74,25 @@ fn receive(request: &Value, sub: &str, config: &Value, store: &str, schemas: &Sc
         writeln!(
             file,
             "{}",
-            json!({"subscription":sub,"request":request,"response":response,"bodies":bodies})
+            json!({
+                "subscription": sub,
+                "request": request,
+                "response": response,
+                "bodies": bodies
+            })
         )?;
         Ok(response)
     };
-    process().unwrap_or_else(|_|json!({"jsonrpc":"2.0","id":request["id"],"error":{"code":-32602,"message":"Invalid compaction request"}}))
+    process().unwrap_or_else(|_| {
+        json!({
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "error": {
+                "code": -32602,
+                "message": "Invalid compaction request"
+            }
+        })
+    })
 }
 fn item(
     client: &reqwest::blocking::Client,
@@ -117,9 +143,14 @@ fn item(
     {
         return Err("upload confirmation integrity".into());
     }
-    Ok(
-        json!({"id":id,"kind":kind,"mediaType":"text/plain","role":role,"selection":"body","body":descriptor}),
-    )
+    Ok(json!({
+        "id": id,
+        "kind": kind,
+        "mediaType": "text/plain",
+        "role": role,
+        "selection": "body",
+        "body": descriptor
+    }))
 }
 fn exchange(
     client: &reqwest::blocking::Client,
@@ -131,7 +162,15 @@ fn exchange(
     trace: &RefCell<Vec<Value>>,
 ) -> Result<Vec<Value>> {
     let boundary = snapshot["boundary"].as_str().ok_or("boundary")?;
-    let mut event = json!({"id":format!("{name}:{boundary}"),"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","session":{"id":name},"type":format!("context.compact.{boundary}")});
+    let mut event = json!({
+        "id": format!("{name}:{boundary}"),
+        "source": "urn:ahp:compaction-host",
+        "time": "2026-09-15T12:00:00Z",
+        "session": {
+            "id": name
+        },
+        "type": format!("context.compact.{boundary}")
+    });
     if boundary == "before" {
         event["trigger"] = json!("manual");
         event["items"] = json!([item(
@@ -174,7 +213,16 @@ fn exchange(
             json!({"status":"skipped","reason":"supplied_result"})
         };
     }
-    let request = json!({"jsonrpc":"2.0","id":event["id"],"method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":snapshot["capabilities"]}});
+    let request = json!({
+        "jsonrpc": "2.0",
+        "id": event["id"],
+        "method": "hooks/intercept",
+        "params": {
+            "protocolVersion": "draft",
+            "event": event,
+            "capabilities": snapshot["capabilities"]
+        }
+    });
     schemas.validate("intercept-request", &request)?;
     let response: Value = if plan["transport"] == "http" {
         client
@@ -285,7 +333,12 @@ fn main() -> Result<()> {
                 downstream
                     .push(result["bodies"][result["summary"]["ref"].as_str().unwrap()].clone());
             }
-            out.push(json!({"name":name,"result":result,"trace":trace.into_inner(),"downstream":downstream}));
+            out.push(json!({
+                "name": name,
+                "result": result,
+                "trace": trace.into_inner(),
+                "downstream": downstream
+            }));
         }
         println!("{}", json!(out));
         return Ok(());

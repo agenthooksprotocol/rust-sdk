@@ -211,7 +211,17 @@ fn client(c: &Value) -> Result<bool> {
     let cases = scenarios(c)?;
     let stdio = string(c, "transport") == "stdio";
     if stdio && !["", "none"].contains(&string(&c["auth"], "mode")) {
-        let results: Vec<_> = cases.iter().map(|s| json!({"id":s["id"],"status":"inapplicable","actual":null,"error":"stdio uses process trust"})).collect();
+        let results: Vec<_> = cases
+            .iter()
+            .map(|s| {
+                json!({
+                    "id": s["id"],
+                    "status": "inapplicable",
+                    "actual": null,
+                    "error": "stdio uses process trust"
+                })
+            })
+            .collect();
         atomic(
             string(c, "reportFile"),
             &json!({"language":"rust","results":results}),
@@ -223,7 +233,14 @@ fn client(c: &Value) -> Result<bool> {
     let endpoint = string(c, "endpoint").trim_end_matches('/');
     let base = endpoint.strip_suffix("/intercept").unwrap_or(endpoint);
     let discovered = if let Some(peer) = &mut peer {
-        let reply = peer.call(&json!({"jsonrpc":"2.0","id":"discovery","method":"hooks/capabilities","params":{"protocolVersion":"draft"}}))?;
+        let reply = peer.call(&json!({
+            "jsonrpc": "2.0",
+            "id": "discovery",
+            "method": "hooks/capabilities",
+            "params": {
+                "protocolVersion": "draft"
+            }
+        }))?;
         if reply["id"] != "discovery" || reply["jsonrpc"] != "2.0" {
             return Err("bad discovery envelope".into());
         }
@@ -288,8 +305,15 @@ fn client(c: &Value) -> Result<bool> {
             ),
         };
         passed &= ok;
-        let mut row =
-            json!({"id":s["id"],"status":if ok {"passed"} else {"failed"},"actual":actual});
+        let mut row = json!({
+            "id": s["id"],
+            "status": if ok {
+                "passed"
+            } else {
+                "failed"
+            },
+            "actual": actual
+        });
         if let Some(error) = error {
             row["error"] = json!(error);
         }
@@ -310,7 +334,57 @@ fn reply(
 ) -> Result<Value> {
     if string(request, "method") == "hooks/capabilities" {
         schemas.validate("capabilities-request", request)?;
-        let response = json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","manifest":{"transports":["http","stdio"],"authentication":["bearer","oauth","workload","mtls"],"toolPaths":["native"],"contentCategories":[],"limits":{"maxContinuations":2,"maxTimeoutMs":15000},"managedPolicy":{"scopes":["user"],"disableable":true},"correlationIdentityFields":["id","source","call.id"],"events":[{"event":"tool.before","modes":["intercept"],"capabilities":interop::capabilities()},{"event":"turn.finish.before","modes":["intercept"],"capabilities":{"effects":["flow","message"],"flow":{"operations":["stop","continue"],"remainingContinuations":2,"maxContinuations":2,"continuationCount":0}}},{"event":"task.change.before","modes":["intercept"],"capabilities":interop::capabilities_for("task.change.before")?},{"event":"workspace.change.before","modes":["intercept"],"capabilities":interop::capabilities_for("workspace.change.before")?}],"gaps":[{"path":"events.other","reason":"Synthetic adapter implements tool.before, turn.finish.before, task.change.before and workspace.change.before only"}]}}});
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": "draft",
+                "manifest": {
+                    "transports": ["http", "stdio"],
+                    "authentication": ["bearer", "oauth", "workload", "mtls"],
+                    "toolPaths": ["native"],
+                    "contentCategories": [],
+                    "limits": {
+                        "maxContinuations": 2,
+                        "maxTimeoutMs": 15000
+                    },
+                    "managedPolicy": {
+                        "scopes": ["user"],
+                        "disableable": true
+                    },
+                    "correlationIdentityFields": ["id", "source", "call.id"],
+                    "events": [{
+                        "event": "tool.before",
+                        "modes": ["intercept"],
+                        "capabilities": interop::capabilities()
+                    }, {
+                        "event": "turn.finish.before",
+                        "modes": ["intercept"],
+                        "capabilities": {
+                            "effects": ["flow", "message"],
+                            "flow": {
+                                "operations": ["stop", "continue"],
+                                "remainingContinuations": 2,
+                                "maxContinuations": 2,
+                                "continuationCount": 0
+                            }
+                        }
+                    }, {
+                        "event": "task.change.before",
+                        "modes": ["intercept"],
+                        "capabilities": interop::capabilities_for("task.change.before")?
+                    }, {
+                        "event": "workspace.change.before",
+                        "modes": ["intercept"],
+                        "capabilities": interop::capabilities_for("workspace.change.before")?
+                    }],
+                    "gaps": [{
+                        "path": "events.other",
+                        "reason": "Synthetic adapter implements tool.before, turn.finish.before, task.change.before and workspace.change.before only"
+                    }]
+                }
+            }
+        });
         schemas.validate("capabilities-response", &response)?;
         return Ok(response);
     }
@@ -323,7 +397,12 @@ fn reply(
         .find(|s| s["id"] == request["params"]["event"]["id"])
         .ok_or("unknown scenario")?;
     // Test evidence preserves the exact canonical message, never transport credentials.
-    receipts.lock().unwrap().push(json!({"id":request["id"],"method":request["method"],"eventId":request["params"]["event"]["id"],"message":request}));
+    receipts.lock().unwrap().push(json!({
+        "id": request["id"],
+        "method": request["method"],
+        "eventId": request["params"]["event"]["id"],
+        "message": request
+    }));
     if let Some(barrier) = case["barrier"].as_str() {
         let (lock, cv) = barriers;
         let guard = lock.lock().unwrap();
@@ -521,7 +600,11 @@ fn server(c: &Value) -> Result<()> {
     if string(c, "transport") == "stdio" {
         atomic(
             string(c, "readinessFile"),
-            &json!({"endpoint":"stdio","controlEndpoint":control_endpoint,"pid":std::process::id()}),
+            &json!({
+                "endpoint": "stdio",
+                "controlEndpoint": control_endpoint,
+                "pid": std::process::id()
+            }),
         )?;
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -534,7 +617,28 @@ fn server(c: &Value) -> Result<()> {
         while !stop.load(Ordering::SeqCst) {
             match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(line) => {
-                    let response = match serde_json::from_str::<Value>(&line?) { Ok(v) => reply(&v,&cases,&schemas,&receipts,&barriers).unwrap_or_else(|_| json!({"jsonrpc":"2.0","id":v["id"],"error":{"code":-32602,"message":"invalid request"}})), Err(_) => json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"parse error"}}) };
+                    let response = match serde_json::from_str::<Value>(&line?) {
+                        Ok(v) => {
+                            reply(&v, &cases, &schemas, &receipts, &barriers).unwrap_or_else(|_| {
+                                json!({
+                                    "jsonrpc": "2.0",
+                                    "id": v["id"],
+                                    "error": {
+                                        "code": -32602,
+                                        "message": "invalid request"
+                                    }
+                                })
+                            })
+                        }
+                        Err(_) => json!({
+                            "jsonrpc": "2.0",
+                            "id": null,
+                            "error": {
+                                "code": -32700,
+                                "message": "parse error"
+                            }
+                        }),
+                    };
                     println!("{response}");
                     std::io::stdout().flush()?;
                 }
@@ -561,7 +665,11 @@ fn server(c: &Value) -> Result<()> {
         };
         atomic(
             string(c, "readinessFile"),
-            &json!({"endpoint":endpoint,"controlEndpoint":control_endpoint,"pid":std::process::id()}),
+            &json!({
+                "endpoint": endpoint,
+                "controlEndpoint": control_endpoint,
+                "pid": std::process::id()
+            }),
         )?;
         while !stop.load(Ordering::SeqCst) {
             if let Some(mut r) = server.recv_timeout(Duration::from_millis(100))? {
@@ -650,10 +758,43 @@ mod tests {
     #[test]
     fn accepted_core_receipt_preserves_the_exact_canonical_message() {
         let schemas = schema(&json!({})).unwrap();
-        let request = json!({"jsonrpc":"2.0","id":"receipt","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"receipt","source":"urn:rust:receipts","type":"tool.before","time":"2026-09-01T00:00:00Z","call":{"id":"call"},"path":"native","tool":{"name":"task","origin":"native","input":{"task":1}}},"capabilities":interop::capabilities()}});
-        let cases = vec![
-            json!({"id":"receipt","response":{"jsonrpc":"2.0","id":"receipt","result":{"protocolVersion":"draft","effects":[]}}}),
-        ];
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": "receipt",
+            "method": "hooks/intercept",
+            "params": {
+                "protocolVersion": "draft",
+                "event": {
+                    "id": "receipt",
+                    "source": "urn:rust:receipts",
+                    "type": "tool.before",
+                    "time": "2026-09-01T00:00:00Z",
+                    "call": {
+                        "id": "call"
+                    },
+                    "path": "native",
+                    "tool": {
+                        "name": "task",
+                        "origin": "native",
+                        "input": {
+                            "task": 1
+                        }
+                    }
+                },
+                "capabilities": interop::capabilities()
+            }
+        });
+        let cases = vec![json!({
+            "id": "receipt",
+            "response": {
+                "jsonrpc": "2.0",
+                "id": "receipt",
+                "result": {
+                    "protocolVersion": "draft",
+                    "effects": []
+                }
+            }
+        })];
         let receipts = Mutex::new(Vec::new());
         let barriers = (Mutex::new(Vec::new()), Condvar::new());
         reply(&request, &cases, &schemas, &receipts, &barriers).unwrap();
@@ -666,8 +807,23 @@ mod tests {
     }
     #[test]
     fn signed_auth_checks_signature_issuer_audience_purpose_and_time() {
-        let c = json!({"auth":{"mode":"workload","signingKey":"TEST-ONLY-signature","issuer":"issuer","audience":"audience","purpose":"workload","clock":1893456000}});
-        let claims = json!({"iss":"issuer","aud":"audience","purpose":"workload","exp":1893459600i64,"iat":1893456000i64});
+        let c = json!({
+            "auth": {
+                "mode": "workload",
+                "signingKey": "TEST-ONLY-signature",
+                "issuer": "issuer",
+                "audience": "audience",
+                "purpose": "workload",
+                "clock": 1893456000
+            }
+        });
+        let claims = json!({
+            "iss": "issuer",
+            "aud": "audience",
+            "purpose": "workload",
+            "exp": 1893459600i64,
+            "iat": 1893456000i64
+        });
         let sign = |v: &Value, key: &str| {
             format!(
                 "Bearer {}",

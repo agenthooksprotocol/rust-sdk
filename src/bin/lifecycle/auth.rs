@@ -214,8 +214,23 @@ mod tests {
     use super::*;
     #[test]
     fn signed_auth_checks_signature_issuer_audience_purpose_and_time() {
-        let c = json!({"auth":{"mode":"workload","signingKey":"TEST-ONLY-signature","issuer":"issuer","audience":"audience","purpose":"workload","clock":1893456000}});
-        let claims = json!({"iss":"issuer","aud":"audience","purpose":"workload","exp":1893459600i64,"iat":1893456000i64});
+        let c = json!({
+            "auth": {
+                "mode": "workload",
+                "signingKey": "TEST-ONLY-signature",
+                "issuer": "issuer",
+                "audience": "audience",
+                "purpose": "workload",
+                "clock": 1893456000
+            }
+        });
+        let claims = json!({
+            "iss": "issuer",
+            "aud": "audience",
+            "purpose": "workload",
+            "exp": 1893459600i64,
+            "iat": 1893456000i64
+        });
         let sign = |v: &Value, key: &str| {
             format!(
                 "Bearer {}",

@@ -80,7 +80,17 @@ impl Router {
 mod tests {
     use super::*;
     fn response(id: &str, text: &str) -> Value {
-        json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":"draft","effects":[{"type":"message","text":text}]}})
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "protocolVersion": "draft",
+                "effects": [{
+                    "type": "message",
+                    "text": text
+                }]
+            }
+        })
     }
     #[test]
     fn reverse_order_replies_only_complete_their_exact_ids() {
