@@ -1,4 +1,5 @@
 //! Registration enforcement against an actually discovered host manifest.
+pub use crate::generated::registration::*;
 use crate::interop::{Result, Schemas};
 use serde_json::Value;
 use std::collections::BTreeSet;

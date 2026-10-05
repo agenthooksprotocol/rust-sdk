@@ -1,4 +1,6 @@
 {
+  "sourceRepository": "agenthooksprotocol/agent-hooks-protocol",
+  "sourceCommit": "7544872e5beff69f29b04ae61686cc8ac25c3654",
   "schemaRevision": "draft",
   "protocolVersion": "draft",
   "generatorVersion": "0.1.0",

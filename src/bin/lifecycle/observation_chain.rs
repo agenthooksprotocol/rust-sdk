@@ -8,6 +8,7 @@ pub(super) fn run(
     let original = &scenario["requests"]["a"];
     let id = s(original, "id");
     let mut event = original["params"]["event"].clone();
+    let mut permission = original["params"]["state"]["permission"].clone();
     let mut called = Vec::new();
     let mut failures = Vec::new();
     let mut remaining = Vec::new();
@@ -23,28 +24,33 @@ pub(super) fn run(
         }
         let mut request = original.clone();
         request["params"]["event"] = event.clone();
+        request["params"]["state"]["permission"] = permission.clone();
         if subscription["content"] == "omit" {
             request["params"]["event"]["items"] = json!([]);
         }
         validation.core.validate("intercept-request", &request)?;
         called.push(subscription["id"].clone());
-        let reply = transport.send(&request)?;
+        let (reply, attempt) = transport.send_sdk(&request);
         transport.control("/wait", &json!({"id":id,"count":called.len()}))?;
         if scenario["chain"]["interrupt"] == true {
             transport.control(
                 "/mark",
                 &json!({"scenario":scenario["id"],"kind":"cancelled","id":id}),
             )?;
+            drop(attempt);
             pending = Some(reply);
             halted = true;
             continue;
         }
         transport.control("/release", &json!({"id":id}))?;
         let response = transport.receive(id, reply);
-        let evaluated =
-            response.and_then(|response| evaluator::apply(&request, &response, &validation.core));
+        let evaluated = response.and_then(|_| attempt.settle());
         match evaluated {
-            Ok(state) => {
+            Ok(evaluated) => {
+                // Carry only accepted SDK permission, not this host's default
+                // execution authorization, to the next subscription.
+                permission = json!(evaluated.permission);
+                let state = evaluated.state;
                 event["tool"]["input"] = state["input"].clone();
                 halted = state["decision"] == "deny" || state["flow"] == "stop";
             }

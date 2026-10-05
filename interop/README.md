@@ -3,12 +3,12 @@
 Run from `rust-sdk`:
 
 ```sh
-cargo build --bin interop
-cargo test --test interop
+cargo build --features interop --bin interop
+cargo test --features interop --test interop
 python3 interop/test_local.py
 python3 interop/test_transport.py
-cargo run --quiet --bin interop -- server --config /absolute/server.json
-cargo run --quiet --bin interop -- client --config /absolute/client.json
+cargo run --features interop --quiet --bin interop -- server --config /absolute/server.json
+cargo run --features interop --quiet --bin interop -- client --config /absolute/client.json
 ```
 
 `adapter.json` provides the central runner's launch commands. Configuration follows

@@ -1,83 +1,298 @@
 //! Offline host fixture; no oracle or expected outcome is sent to this receiver.
-use agent_hooks_protocol::compaction::{
-    CompactionHook, CompactionObserver, run_compaction, run_compaction_observed,
+use agenthooksprotocol::{
+    client::{
+        Client, Decision, FailurePolicy, Hook, HookError, LocalFuture, Mode, Subscription,
+        ToolContext,
+    },
+    compaction::{capabilities, selected_text},
+    content::{AuthorizedScope, ContentContext, MemoryContentStore},
 };
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Read, Write};
 use std::process::{Command, Stdio};
-use std::sync::Arc;
-fn evaluate(p: &Value) -> Result<Value, String> {
-    let input = p["instructions"].as_str().ok_or("instructions")?;
-    let empty = vec![];
-    let before = if p.get("before").is_none() {
-        &empty
-    } else {
-        p["before"].as_array().ok_or("before")?
-    };
-    let after = if p.get("after").is_none() {
-        &empty
-    } else {
-        p["after"].as_array().ok_or("after")?
-    };
-    let callback = |row: &Value| {
-        let row = row.clone();
-        move |_: &Value| -> Result<Vec<Value>, String> {
-            if row["throw"] == true {
-                return Err("hook failed".into());
+use std::{cell::RefCell, rc::Rc};
+
+pub fn fixture_content(store: &MemoryContentStore) -> ContentContext<'_> {
+    ContentContext {
+        store,
+        scope: AuthorizedScope::new("compaction-fixture"),
+    }
+}
+struct EffectsHook(Value);
+impl Hook for EffectsHook {
+    fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
+        Box::pin(async move {
+            if self.0["throw"] == true {
+                return Err(HookError("hook failed".into()));
             }
-            row["effects"].as_array().cloned().ok_or("effects".into())
-        }
+            let effects = self.0["effects"]
+                .as_array()
+                .ok_or_else(|| HookError("effects".into()))?;
+            Ok(
+                json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","effects":effects}}),
+            )
+        })
+    }
+}
+#[derive(Default)]
+struct FixtureLog {
+    seen: Vec<Value>,
+    bodies: Value,
+    instructions: String,
+    returned: Vec<(String, Value)>,
+}
+struct RecordingHook {
+    inner: Box<dyn Hook>,
+    supplier: String,
+    store: MemoryContentStore,
+    log: Rc<RefCell<FixtureLog>>,
+}
+impl Hook for RecordingHook {
+    fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
+        Box::pin(async move {
+            let event = &request["params"]["event"];
+            let before = event["type"] == "context.compact.before";
+            let content = fixture_content(&self.store);
+            {
+                let mut log = self.log.borrow_mut();
+                let instructions = if before {
+                    selected_text(&event["instructions"], &content)
+                        .map_err(|e| HookError(e.to_string()))?
+                } else {
+                    log.instructions.clone()
+                };
+                let summary = if before {
+                    Value::Null
+                } else {
+                    let item = &event["summary"];
+                    let reference = item["body"]["ref"]
+                        .as_str()
+                        .ok_or_else(|| HookError("reference".into()))?;
+                    log.bodies[reference] =
+                        json!(selected_text(item, &content).map_err(|e| HookError(e.to_string()))?);
+                    json!({"id":item["id"],"ref":reference})
+                };
+                let snapshot = json!({"boundary":if before {"before"} else {"after"},"instructions":instructions,"summary":summary,"bodies":log.bodies,"capabilities":request["params"].get("capabilities").cloned().unwrap_or(json!({"effects":[],"modify":{}}))});
+                log.seen.push(snapshot);
+            }
+            let response = self.inner.call(request).await?;
+            if let Some(effects) = response["result"]["effects"].as_array() {
+                for effect in effects {
+                    if effect["type"] == "return" {
+                        self.log
+                            .borrow_mut()
+                            .returned
+                            .push((self.supplier.clone(), effect["value"].clone()));
+                    }
+                }
+            }
+            Ok(response)
+        })
+    }
+}
+pub fn fixture_subscription(
+    row: &Value,
+    boundary: &str,
+    hook: Box<dyn Hook>,
+    observe: bool,
+) -> Result<Subscription, String> {
+    let policy = match row["failurePolicy"].as_str().unwrap_or("fail-closed") {
+        "fail-open" => FailurePolicy::Open,
+        "fail-closed" => FailurePolicy::Closed,
+        _ => return Err("policy".into()),
     };
-    let before_callbacks: Vec<_> = before.iter().map(callback).collect();
-    let after_callbacks: Vec<_> = after.iter().map(callback).collect();
-    let mut before_hooks = vec![];
-    let mut after_hooks = vec![];
-    for (row, run) in before.iter().zip(&before_callbacks) {
-        before_hooks.push(CompactionHook {
-            supplier: row["supplier"].as_str().ok_or("supplier")?,
-            failure_policy: row
-                .get("failurePolicy")
-                .map(|v| v.as_str().ok_or("policy"))
-                .transpose()?
-                .unwrap_or("fail-closed"),
-            run,
-        });
-    }
-    for (row, run) in after.iter().zip(&after_callbacks) {
-        after_hooks.push(CompactionHook {
-            supplier: row["supplier"].as_str().ok_or("supplier")?,
-            failure_policy: row
-                .get("failurePolicy")
-                .map(|v| v.as_str().ok_or("policy"))
-                .transpose()?
-                .unwrap_or("fail-closed"),
-            run,
-        });
-    }
-    let item_id = p
-        .get("itemId")
-        .map(|v| v.as_str().ok_or("itemId"))
-        .transpose()?
-        .unwrap_or("summary-1");
-    if p["observeOnly"] == true {
-        let observers = after
+    let id = row["supplier"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .ok_or("supplier")?
+        .to_owned();
+    Ok(Subscription {
+        id,
+        events: vec![format!("context.compact.{boundary}")],
+        mode: if observe {
+            Mode::Observe
+        } else {
+            Mode::Intercept(policy)
+        },
+        hook,
+        timeout: std::time::Duration::from_secs(30),
+    })
+}
+fn content_item(
+    content: &ContentContext<'_>,
+    id: &str,
+    kind: &str,
+    role: &str,
+    text: &str,
+) -> Result<Value, String> {
+    Ok(
+        json!({"id":id,"kind":kind,"role":role,"mediaType":"text/plain","selection":"body","body":content.put(text.as_bytes()).map_err(|e|e.to_string())?}),
+    )
+}
+/// Host fixture only: protocol settlement runs through Client::event. Generation,
+/// permissive host policy and legacy report shaping are application responsibilities.
+pub fn run_public_fixture(
+    p: &Value,
+    before: Vec<Subscription>,
+    after: Vec<Subscription>,
+    store: &MemoryContentStore,
+) -> Result<Value, String> {
+    let execute = || -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        let instructions = p["instructions"].as_str().ok_or("instructions")?;
+        let name = p["name"].as_str().unwrap_or("compaction");
+        let summary_id = p["itemId"].as_str().unwrap_or("summary-1");
+        let content = fixture_content(store);
+        let log = Rc::new(RefCell::new(FixtureLog {
+            bodies: json!({}),
+            instructions: instructions.to_owned(),
+            ..Default::default()
+        }));
+        let make_client = |subscriptions: Vec<Subscription>| {
+            subscriptions.into_iter().fold(
+                Client::new(ToolContext::new(json!({}))),
+                |client, mut subscription| {
+                    subscription.hook = Box::new(RecordingHook {
+                        inner: subscription.hook,
+                        supplier: subscription.id.clone(),
+                        store: store.clone(),
+                        log: log.clone(),
+                    });
+                    client.with_subscription(subscription)
+                },
+            )
+        };
+        let before_client = make_client(before);
+        let before_event = json!({"id":format!("{name}:before"),"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","session":{"id":name},"type":"context.compact.before","trigger":"manual","items":[content_item(&content,&format!("{name}:context"),"user","user","conversation")?],"instructions":content_item(&content,&format!("{name}:instructions"),"instructions","system",instructions)?});
+        let settled = futures::executor::block_on(async {
+            before_client
+                .event(before_event)
+                .content(content.clone())
+                .capabilities(capabilities("before", false)?)
+                .initial_state(Decision::Allow)
+                .await
+                .map_err(|e| e.to_string())
+        })?;
+        let instructions = selected_text(&settled.effective_event["instructions"], &content)?;
+        log.borrow_mut().instructions = instructions.clone();
+        let mut failures: Vec<Value> = settled
+            .outcome
+            .failures
+            .iter()
+            .map(|f| json!({"boundary":"before","supplier":f.subscription_id}))
+            .collect();
+        let mut messages: Vec<Value> = settled
+            .outcome
+            .messages
+            .iter()
+            .map(|message| message["text"].clone())
+            .collect();
+        let mut injections = settled.outcome.injections.clone();
+        let mut denied = settled.outcome.is_denied();
+        let mut generated = false;
+        let mut applied = false;
+        let mut summary = Value::Null;
+        let mut candidate = Value::Null;
+        let mut provenance = Value::Null;
+        if !denied {
+            // The fixture's host explicitly allows the effective input. This is
+            // not evidence of model consumption or an SDK authorization default.
+            let body = if let Some(value) = settled.outcome.candidate.as_ref() {
+                let supplier = log
+                    .borrow()
+                    .returned
+                    .iter()
+                    .rev()
+                    .find(|(id, v)| {
+                        v == value
+                            && !settled
+                                .outcome
+                                .failures
+                                .iter()
+                                .any(|f| &f.subscription_id == id)
+                    })
+                    .map(|(id, _)| id.clone())
+                    .ok_or("candidate supplier")?;
+                candidate = json!({"body":value,"supplier":supplier});
+                provenance = json!({"kind":"supplied","supplier":supplier});
+                value.as_str().ok_or("candidate text")?.to_owned()
+            } else {
+                generated = true;
+                provenance = json!({"kind":"generated"});
+                format!("summary:{instructions}")
+            };
+            let item = content_item(&content, summary_id, "summary", "assistant", &body)?;
+            let reference = item["body"]["ref"].as_str().ok_or("reference")?;
+            log.borrow_mut().bodies[reference] = json!(body);
+            let after_event = json!({"id":format!("{name}:after"),"source":settled.effective_event["source"],"time":settled.effective_event["time"],"session":settled.effective_event["session"],"parentEventId":settled.effective_event["id"],"type":"context.compact.after","summary":item,"removed":[{"id":format!("{name}:context")}],"execution":if generated {json!({"status":"executed"})} else {json!({"status":"skipped","reason":"supplied_result"})}});
+            let after_client = make_client(after);
+            let observe = p["observeOnly"] == true;
+            let settled_after = futures::executor::block_on(async {
+                after_client
+                    .event(after_event)
+                    .content(content.clone())
+                    .capabilities(capabilities("after", observe)?)
+                    .initial_state(Decision::Allow)
+                    .await
+                    .map_err(|e| e.to_string())
+            })?;
+            failures.extend(
+                settled_after
+                    .outcome
+                    .failures
+                    .iter()
+                    .map(|f| json!({"boundary":"after","supplier":f.subscription_id})),
+            );
+            messages.extend(
+                settled_after
+                    .outcome
+                    .messages
+                    .iter()
+                    .map(|message| message["text"].clone()),
+            );
+            injections.extend(settled_after.outcome.injections.clone());
+            denied = settled_after.outcome.is_denied();
+            applied = !denied;
+            let item = &settled_after.effective_event["summary"];
+            let reference = item["body"]["ref"].as_str().ok_or("reference")?;
+            log.borrow_mut().bodies[reference] = json!(selected_text(item, &content)?);
+            summary = json!({"id":item["id"],"ref":reference});
+            // The fixture explicitly schedules observations after settlement;
+            // returned effects have no authority and delivery is best effort.
+            if observe {
+                for observation in settled_after.observations {
+                    let _ = futures::executor::block_on(observation.deliver());
+                }
+            }
+        }
+        let log = log.borrow();
+        Ok(
+            json!({"instructions":instructions,"candidate":candidate,"summary":summary,"bodies":log.bodies,"messages":messages,"injections":injections,"denied":denied,"seen":log.seen,"failures":failures,"generated":generated,"applied":applied,"provenance":provenance}),
+        )
+    };
+    execute().map_err(|e| e.to_string())
+}
+fn evaluate(p: &Value) -> Result<Value, String> {
+    let subscriptions = |boundary: &str| -> Result<Vec<Subscription>, String> {
+        p.get(boundary)
+            .unwrap_or(&json!([]))
+            .as_array()
+            .ok_or("subscriptions")?
             .iter()
             .map(|row| {
-                Ok(CompactionObserver {
-                    supplier: row["supplier"].as_str().ok_or("supplier")?.to_owned(),
-                    run: Arc::new(callback(row)),
-                })
+                fixture_subscription(
+                    row,
+                    boundary,
+                    Box::new(EffectsHook(row.clone())),
+                    boundary == "after" && p["observeOnly"] == true,
+                )
             })
-            .collect::<Result<Vec<_>, String>>()?;
-        return run_compaction_observed(input, item_id, &before_hooks, observers, None);
-    }
-    run_compaction(
-        input,
-        item_id,
-        &before_hooks,
-        &after_hooks,
-        None,
-        p["observeOnly"] == true,
+            .collect()
+    };
+    run_public_fixture(
+        p,
+        subscriptions("before")?,
+        subscriptions("after")?,
+        &MemoryContentStore::new(usize::MAX, usize::MAX, usize::MAX),
     )
 }
 fn receive(request: Value) -> Value {

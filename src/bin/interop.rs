@@ -1,5 +1,15 @@
-use agent_hooks_protocol::interop::{self, Result, Schemas};
+use agenthooksprotocol::client::{
+    Client, Decision, FailurePolicy, Hook, HookError, LocalFuture, Subscription, ToolContext,
+};
+use agenthooksprotocol::interop::{self, Result, Schemas};
+use agenthooksprotocol::server::{
+    Authenticator, Handler, HandlerFuture, Incoming, Outgoing, Principal, Server,
+};
 use serde_json::{Value, json};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 use std::{
     fs,
     io::{BufRead, BufReader, Read, Write},
@@ -206,6 +216,215 @@ impl Peer {
         result
     }
 }
+// The real transport is invoked by the lazy SDK boundary, not before it.
+struct CoreHook {
+    peer: Rc<RefCell<Option<Peer>>>,
+    http: reqwest::blocking::Client,
+    endpoint: String,
+    token: String,
+    acquisition_failed: Rc<Cell<bool>>,
+}
+impl Hook for CoreHook {
+    fn call(&self, request: Value) -> LocalFuture<'_, std::result::Result<Value, HookError>> {
+        Box::pin(async move {
+            let response: Result<Value> = (|| {
+                if let Some(peer) = self.peer.borrow_mut().as_mut() {
+                    peer.call(&request)
+                } else {
+                    Ok(successful(
+                        self.http
+                            .post(&self.endpoint)
+                            .bearer_auth(&self.token)
+                            .json(&request)
+                            .send()?,
+                    )?
+                    .json()?)
+                }
+            })();
+            let response = response.and_then(|response| {
+                if response.get("error").is_some() {
+                    return Err("remote RPC dispatch failed".into());
+                }
+                Ok(response)
+            });
+            response.map_err(|error| {
+                self.acquisition_failed.set(true);
+                HookError(error.to_string())
+            })
+        })
+    }
+}
+// Already-settled conformance probes deliberately exercise the reducer after
+// acquisition. A normal SDK boundary short-circuits deny/stop before transport;
+// these exact fixtures instead require a receipt for their supplied response.
+fn settled_reducer_probe(id: &str) -> bool {
+    matches!(
+        id,
+        "incoming-deny-survives-allow-return"
+            | "empty-preserves-incoming-deny"
+            | "prior-accepted-stop-empty"
+            | "prior-accepted-stop-allow"
+            | "prior-accepted-stop-return"
+    )
+}
+fn ordinary(request: &Value) -> bool {
+    request["params"]["event"]["type"] == "tool.before"
+        && !settled_reducer_probe(string(request, "id"))
+}
+fn settle_core(request: &Value, hook: CoreHook) -> Result<Value> {
+    // No public stopped-state seed exists yet. Unknown fixtures must not gain a
+    // legacy reducer bypass merely by setting state.flow to stop.
+    if request["params"]["state"]["flow"] == "stop" {
+        return Err("initial stopped state is unsupported outside named reducer probes".into());
+    }
+    let client = Client::new(ToolContext::new(request["params"]["event"].clone()))
+        .with_subscription(Subscription::intercept("core", FailurePolicy::Closed, hook));
+    let permission = match string(&request["params"]["state"], "permission") {
+        "allow" => Decision::Allow,
+        "deny" => Decision::Deny,
+        "ask" => Decision::Ask,
+        _ => Decision::None,
+    };
+    let settled = futures::executor::block_on(async {
+        let boundary = client
+            .tool_before(request["params"]["event"]["tool"]["input"].clone())
+            .capabilities(request["params"]["capabilities"].clone());
+        // Omitted state is distinct from explicitly supplied undecided state.
+        // Preserve that distinction in the actual SDK-generated wire request.
+        let boundary = if request["params"].get("state").is_some() {
+            boundary.initial_state(permission)
+        } else {
+            boundary
+        };
+        let candidate = &request["params"]["state"]["candidate"];
+        let boundary = if candidate.is_null() {
+            boundary
+        } else {
+            // Native per-occurrence state preserves the complete descriptor,
+            // including provenance, without manufacturing a return effect.
+            boundary.initial_candidate(candidate.clone())
+        };
+        boundary.await
+    })
+    .map_err(|e| e.to_string())?;
+    if let Some(failure) = settled.outcome.failures.first() {
+        return Err(failure.error.to_string().into());
+    }
+    let outcome = &settled.outcome;
+    let denied = matches!(outcome.decision, Decision::Deny | Decision::Ask);
+    let candidate = outcome
+        .candidate
+        .as_ref()
+        .filter(|_| !denied && !outcome.stopped);
+    // Synthetic host grants undecided permission, including reauthorization.
+    let decision = match outcome.decision {
+        Decision::Deny => "deny",
+        Decision::Ask => "ask",
+        _ => "allow",
+    };
+    let mut actual = json!({"decision":decision,"executed":false,
+        "input":settled.effective_input,
+        "messages":outcome.messages.iter().map(|m| m["text"].clone()).collect::<Vec<_>>()});
+    if outcome.stopped {
+        actual["flow"] = json!("stop");
+    }
+    if !outcome.injections.is_empty() {
+        actual["injections"] = json!(outcome.injections);
+    }
+    if let Some(candidate) = candidate {
+        actual["result"] = candidate.clone();
+    }
+    // Business-schema refusal occurs AFTER protocol settlement and preserves
+    // accepted input/messages. It is never an atomic protocol rejection.
+    let host_accepted = settled.input.as_ref().is_ok_and(|input| {
+        input.is_object() && input["task"].as_u64().is_some_and(|task| task > 0)
+    });
+    if host_accepted && !denied && !outcome.stopped && candidate.is_none() {
+        actual["executed"] = json!(true);
+    }
+    Ok(actual)
+}
+fn settle_event(request: &Value, transport: CoreHook) -> Result<Value> {
+    let mut subscription = Subscription::intercept("core-event", FailurePolicy::Closed, transport);
+    subscription.events = vec![string(&request["params"]["event"], "type").to_owned()];
+    let client = Client::new(ToolContext::new(request["params"]["event"].clone()))
+        .with_subscription(subscription);
+    let settled = futures::executor::block_on(async {
+        let boundary = client
+            .event(request["params"]["event"].clone())
+            .capabilities(request["params"]["capabilities"].clone());
+        let flow = &request["params"]["capabilities"]["flow"];
+        let boundary = match (
+            flow["remainingContinuations"].as_u64(),
+            flow["continuationCount"].as_u64(),
+            flow["maxContinuations"].as_u64(),
+        ) {
+            (Some(remaining), Some(count), Some(maximum)) => {
+                boundary.continuation_budget(remaining, count, maximum)
+            }
+            _ => boundary,
+        };
+        let boundary = if request["params"].get("state").is_some() {
+            let decision = match string(&request["params"]["state"], "permission") {
+                "allow" => Decision::Allow,
+                "deny" => Decision::Deny,
+                "ask" => Decision::Ask,
+                _ => Decision::None,
+            };
+            boundary.initial_state(decision)
+        } else {
+            boundary
+        };
+        let candidate = &request["params"]["state"]["candidate"];
+        let boundary = if candidate.is_null() {
+            boundary
+        } else {
+            boundary.initial_candidate(candidate.clone())
+        };
+        boundary.await
+    })
+    .map_err(|error| error.to_string())?;
+    if let Some(failure) = settled.outcome.failures.first() {
+        return Err(failure.error.to_string().into());
+    }
+    let outcome = &settled.outcome;
+    let decision = match outcome.decision {
+        Decision::Deny => "deny",
+        Decision::Ask => "ask",
+        _ => "allow",
+    };
+    let mut actual = json!({"decision":decision,"executed":false,
+        "input":settled.effective_event["tool"]["input"],
+        "messages":outcome.messages.iter().map(|m| m["text"].clone()).collect::<Vec<_>>()});
+    if !outcome.stopped
+        && !matches!(outcome.decision, Decision::Deny | Decision::Ask)
+        && let Some(candidate) = &outcome.candidate
+    {
+        actual["result"] = candidate.clone();
+    }
+    if !outcome.injections.is_empty() {
+        actual["injections"] = json!(outcome.injections);
+    }
+    // Report SDK-settled continuation evidence; no fixture-side effect reducer.
+    if outcome.stopped || outcome.continuation_requested {
+        actual["flow"] = json!(if outcome.stopped { "stop" } else { "continue" });
+        if let Some(remaining) =
+            request["params"]["capabilities"]["flow"]["remainingContinuations"].as_u64()
+        {
+            actual["continuationInstructions"] = json!(outcome.instructions);
+            actual["continuationRemaining"] = json!(
+                remaining
+                    .checked_sub(u64::from(
+                        !outcome.stopped && outcome.continuation_requested
+                    ))
+                    .ok_or("SDK accepted an exhausted continuation budget")?
+            );
+        } else if !outcome.instructions.is_empty() {
+            actual["continuationInstructions"] = json!(outcome.instructions);
+        }
+    }
+    Ok(actual)
+}
 fn client(c: &Value) -> Result<bool> {
     let schemas = schema(c)?;
     let cases = scenarios(c)?;
@@ -261,13 +480,34 @@ fn client(c: &Value) -> Result<bool> {
         .json()?
     };
     schemas.validate("capabilities", &discovered)?;
+    let peer = Rc::new(RefCell::new(peer));
     let mut results = Vec::new();
     let mut passed = true;
     for s in cases {
+        let acquisition_failed = Rc::new(Cell::new(false));
         // Acquisition failures are never evidence of canonical response rejection.
         let outcome: Result<Result<Value>> = (|| {
             schemas.validate("intercept-request", &s["request"])?;
-            let response = if let Some(peer) = &mut peer {
+            if !settled_reducer_probe(string(&s["request"], "id")) {
+                let hook = CoreHook {
+                    peer: peer.clone(),
+                    http: http.clone(),
+                    endpoint: format!("{base}/intercept"),
+                    token: token.clone(),
+                    acquisition_failed: acquisition_failed.clone(),
+                };
+                let result = if ordinary(&s["request"]) {
+                    settle_core(&s["request"], hook)
+                } else {
+                    settle_event(&s["request"], hook)
+                };
+                if acquisition_failed.get() {
+                    return Err("transport acquisition failed".into());
+                }
+                return Ok(result);
+            }
+            // Only the five exact already-settled reducer probes acquire outside the SDK.
+            let response = if let Some(peer) = peer.borrow_mut().as_mut() {
                 peer.call(&s["request"])?
             } else {
                 successful(
@@ -280,15 +520,29 @@ fn client(c: &Value) -> Result<bool> {
             };
             Ok(interop::apply(&s["request"], &response, &schemas))
         })();
+        let host_refused = ordinary(&s["request"])
+            && outcome
+                .as_ref()
+                .ok()
+                .and_then(|result| result.as_ref().ok())
+                .is_some_and(|actual| {
+                    !actual["input"].is_object()
+                        || !actual["input"]["task"].as_u64().is_some_and(|n| n > 0)
+                });
         let (ok, actual, error) = match outcome {
             Ok(Ok(actual)) => {
-                let matches = s["expected"].as_object().is_some_and(|expected| {
+                let expected = if host_refused {
+                    &s["hostExpected"]
+                } else {
+                    &s["expected"]
+                };
+                let matches = expected.as_object().is_some_and(|expected| {
                     expected
                         .iter()
                         .all(|(key, value)| actual.get(key) == Some(value))
                 });
                 (
-                    matches && s["expectError"] != true,
+                    matches && (s["expectError"] != true || host_refused),
                     actual,
                     if matches {
                         None
@@ -314,6 +568,11 @@ fn client(c: &Value) -> Result<bool> {
             },
             "actual": actual
         });
+        if host_refused {
+            row["sdkAccepted"] = json!(true);
+            row["hostAccepted"] = json!(false);
+            row["rejectionLayer"] = json!("host-input-schema");
+        }
         if let Some(error) = error {
             row["error"] = json!(error);
         }
@@ -325,7 +584,138 @@ fn client(c: &Value) -> Result<bool> {
     )?;
     Ok(passed)
 }
+struct CoreCredentials<'a>(&'a Value);
+impl Authenticator for CoreCredentials<'_> {
+    fn authenticate(&self, authorization: Option<&str>) -> std::result::Result<Principal, String> {
+        if !authenticate(self.0, authorization.unwrap_or("")) {
+            return Err("unauthorized".into());
+        }
+        let subject = match string(&self.0["auth"], "mode") {
+            "bearer" => "verified-bearer",
+            "oauth" => "verified-oauth",
+            "workload" => "verified-workload",
+            _ => "process-or-local-trust",
+        };
+        Ok(Principal {
+            subject: subject.into(),
+        })
+    }
+}
+struct CoreHandler<'a> {
+    cases: &'a [Value],
+    schemas: &'a Schemas,
+    receipts: &'a Mutex<Vec<Value>>,
+    barriers: &'a (Mutex<Vec<String>>, Condvar),
+    raw: &'a Value,
+}
+impl Handler for CoreHandler<'_> {
+    fn handle(&self, principal: Principal, message: Incoming) -> HandlerFuture<'_> {
+        Box::pin(async move {
+            if principal.subject.is_empty() {
+                return Err("missing authenticated principal".into());
+            }
+            let Incoming::Intercept(_) = message else {
+                return Err("unsupported core message".into());
+            };
+            let response = fixture_reply(
+                self.raw,
+                self.cases,
+                self.schemas,
+                self.receipts,
+                self.barriers,
+            )
+            .map_err(|e| e.to_string())?;
+            let parsed = agenthooksprotocol::generated::parse_intercept_response_value(response)
+                .into_value()
+                .ok_or("invalid fixture response")?;
+            Ok(Outgoing::Intercept(parsed.into()))
+        })
+    }
+}
+// Exact conformance fault controls. Neither expectError nor a tag grants a raw
+// response bypass to arbitrary fixtures or application-schema refusals.
+fn raw_adversary(id: &str) -> bool {
+    matches!(
+        id,
+        "modify-then-unknown-rejects-entire-response"
+            | "message-then-unknown-rejects-entire-response"
+            | "return-then-unknown-rejects-entire-response"
+            | "deny-then-unknown-rejects-entire-response"
+            | "allow-then-unknown-rejects-entire-response"
+            | "ask-then-unknown-rejects-entire-response"
+            | "deny-missing-reason"
+            | "message-non-string"
+            | "return-missing-value"
+            | "modify-missing-operation"
+            | "modify-unsupported-operation"
+            | "modify-array-value"
+            | "modify-unadvertised-target"
+            | "unadvertised-deny-rejected"
+            | "unadvertised-allow-rejected"
+            | "unadvertised-ask-rejected"
+            | "unadvertised-message-rejected"
+            | "unadvertised-return-rejected"
+            | "unadvertised-modify-rejected"
+            | "unadvertised-merge-rejects-message"
+            | "unadvertised-replace-rejects-message"
+            | "absent-modify-capability-rejected"
+            | "wrong-response-id"
+            | "wrong-jsonrpc-version"
+            | "wrong-protocol-version"
+            | "missing-effects-array"
+            | "non-array-effects"
+            | "null-result-envelope"
+            | "unadvertised-flow-rejects-message"
+            | "unadvertised-flow-operation"
+            | "flow-stop-then-unknown-is-atomic"
+            | "flow-stop-missing-reason"
+            | "flow-exhausted-allowance-rejects-message"
+            | "flow-unadvertised-stop-rejected"
+            | "unadvertised-inject-rejected"
+            | "unadvertised-injection-delivery-rejects-all"
+            | "unadvertised-injection-append"
+            | "inject-then-unknown-rejects-entire-response"
+            | "inject-missing-delivery"
+    )
+}
 fn reply(
+    request: &Value,
+    cases: &[Value],
+    schemas: &Schemas,
+    receipts: &Mutex<Vec<Value>>,
+    barriers: &(Mutex<Vec<String>>, Condvar),
+    credentials: (&Value, &str),
+) -> Result<Value> {
+    if string(request, "method") == "hooks/capabilities" || raw_adversary(string(request, "id")) {
+        return fixture_reply(request, cases, schemas, receipts, barriers);
+    }
+    let server = Server {
+        handler: CoreHandler {
+            cases,
+            schemas,
+            receipts,
+            barriers,
+            raw: request,
+        },
+        authenticator: CoreCredentials(credentials.0),
+        max_body_bytes: 1048576,
+    };
+    let response =
+        futures::executor::block_on(server.handle(agenthooksprotocol::transport::Request {
+            method: "POST".into(),
+            uri: "/intercept".into(),
+            headers: std::collections::BTreeMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("authorization".into(), credentials.1.into()),
+            ]),
+            body: serde_json::to_vec(request)?,
+        }));
+    if response.status != 200 {
+        return Err(format!("SDK server rejected request: {}", response.status).into());
+    }
+    Ok(serde_json::from_slice(&response.body)?)
+}
+fn fixture_reply(
     request: &Value,
     cases: &[Value],
     schemas: &Schemas,
@@ -416,7 +806,7 @@ fn reply(
         }
     }
     // Negative fixtures intentionally bypass outgoing validation; clients must reject these.
-    if case["expectError"] != true {
+    if !raw_adversary(string(case, "id")) {
         schemas.validate("intercept-response", &case["response"])?;
     }
     Ok(case["response"].clone())
@@ -618,8 +1008,8 @@ fn server(c: &Value) -> Result<()> {
             match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(line) => {
                     let response = match serde_json::from_str::<Value>(&line?) {
-                        Ok(v) => {
-                            reply(&v, &cases, &schemas, &receipts, &barriers).unwrap_or_else(|_| {
+                        Ok(v) => reply(&v, &cases, &schemas, &receipts, &barriers, (c, ""))
+                            .unwrap_or_else(|_| {
                                 json!({
                                     "jsonrpc": "2.0",
                                     "id": v["id"],
@@ -628,8 +1018,7 @@ fn server(c: &Value) -> Result<()> {
                                         "message": "invalid request"
                                     }
                                 })
-                            })
-                        }
+                            }),
                         Err(_) => json!({
                             "jsonrpc": "2.0",
                             "id": null,
@@ -700,6 +1089,7 @@ fn server(c: &Value) -> Result<()> {
                     respond(r, 404, json!({"error":"not found"}));
                     continue;
                 }
+                let auth = auth.to_owned();
                 let mut body = String::new();
                 if r.as_reader()
                     .take(1048577)
@@ -715,7 +1105,16 @@ fn server(c: &Value) -> Result<()> {
                 }
                 let result = serde_json::from_str::<Value>(&body)
                     .map_err(Into::into)
-                    .and_then(|v| reply(&v, &cases, &schemas, &receipts, &barriers));
+                    .and_then(|v| {
+                        reply(
+                            &v,
+                            &cases,
+                            &schemas,
+                            &receipts,
+                            &barriers,
+                            (&internal_config, &auth),
+                        )
+                    });
                 match result {
                     Ok(v) => respond(r, 200, v),
                     Err(_) => respond(r, 400, json!({"error":"invalid request"})),
@@ -755,6 +1154,25 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn settled_reducer_bypass_is_exactly_named_not_state_selected() {
+        let mut request = json!({"id":"arbitrary", "params":{
+            "event":{"type":"tool.before"},"state":{"flow":"stop","permission":"deny"}}});
+        assert!(ordinary(&request));
+        for id in [
+            "incoming-deny-survives-allow-return",
+            "empty-preserves-incoming-deny",
+            "prior-accepted-stop-empty",
+            "prior-accepted-stop-allow",
+            "prior-accepted-stop-return",
+        ] {
+            request["id"] = json!(id);
+            assert!(!ordinary(&request));
+        }
+        request["id"] = json!("prior-accepted-stop-return-not-a-control");
+        assert!(ordinary(&request));
+    }
+
     #[test]
     fn accepted_core_receipt_preserves_the_exact_canonical_message() {
         let schemas = schema(&json!({})).unwrap();
@@ -797,7 +1215,15 @@ mod tests {
         })];
         let receipts = Mutex::new(Vec::new());
         let barriers = (Mutex::new(Vec::new()), Condvar::new());
-        reply(&request, &cases, &schemas, &receipts, &barriers).unwrap();
+        reply(
+            &request,
+            &cases,
+            &schemas,
+            &receipts,
+            &barriers,
+            (&json!({"auth":{"mode":"none"}}), ""),
+        )
+        .unwrap();
         let receipts = receipts.lock().unwrap();
         assert_eq!(receipts.len(), 1);
         assert_eq!(receipts[0]["message"], request);

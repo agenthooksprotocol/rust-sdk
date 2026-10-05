@@ -1,39 +1,154 @@
 //! Offline actual HTTP wire sender/receiver; no expected-based behavior.
-use agent_hooks_protocol::{
-    elicitation::{apply_effects, read_selected, validate_exchange, validate_mode},
+use agenthooksprotocol::{
+    elicitation::{Exchange, stage_boundary, validate_mode},
     interop::Result,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    fs,
     io::{self, Read, Write},
-    path::Path,
 };
-fn localize(v: &mut Value, file: &str) {
-    match v {
-        Value::Object(m) => {
-            m.remove("$id");
-            if let Some(Value::String(r)) = m.get_mut("$ref") {
-                let old = r.clone();
-                let (f, frag) = old.split_once('#').unwrap_or((&old, ""));
-                *r = format!(
-                    "#/$defs/files/{}{}",
-                    if f.is_empty() { file } else { f },
-                    frag
-                );
-            }
-            for x in m.values_mut() {
-                localize(x, file)
+// The host owns uploaded bytes; the public content context verifies descriptors.
+// Check-only explicit fixture import. Network uploads use UploadReceiver below.
+struct HostStore {
+    scope: agenthooksprotocol::content::AuthorizedScope,
+    entries: std::sync::Mutex<BTreeMap<String, Vec<u8>>>,
+}
+impl agenthooksprotocol::content::ContentStore for HostStore {
+    fn resolve(
+        &self,
+        scope: &agenthooksprotocol::content::AuthorizedScope,
+        reference: &agenthooksprotocol::content::ContentReference,
+    ) -> std::result::Result<std::sync::Arc<[u8]>, agenthooksprotocol::content::UploadError> {
+        if scope != &self.scope {
+            return Err(agenthooksprotocol::content::UploadError::Forbidden);
+        }
+        self.entries
+            .lock()
+            .unwrap()
+            .get(&reference.ref_)
+            .map(|b| std::sync::Arc::from(b.as_slice()))
+            .ok_or(agenthooksprotocol::content::UploadError::Unavailable)
+    }
+    fn put(
+        &self,
+        scope: &agenthooksprotocol::content::AuthorizedScope,
+        bytes: std::sync::Arc<[u8]>,
+    ) -> std::result::Result<
+        agenthooksprotocol::content::ContentReference,
+        agenthooksprotocol::content::UploadError,
+    > {
+        if scope != &self.scope {
+            return Err(agenthooksprotocol::content::UploadError::Forbidden);
+        }
+        let digest = sha256(&bytes);
+        let name = format!("urn:ahp:staged:{digest}");
+        let mut entries = self.entries.lock().unwrap();
+        if bytes.len() > 4 * 1024 * 1024
+            || entries.len() >= 4096
+            || entries.values().map(Vec::len).sum::<usize>() + bytes.len() > 64 * 1024 * 1024
+        {
+            return Err(agenthooksprotocol::content::UploadError::Capacity);
+        }
+        entries.insert(name.clone(), bytes.to_vec());
+        serde_json::from_value(json!({"ref":name,"size":bytes.len(),"sha256":digest}))
+            .map_err(|_| agenthooksprotocol::content::UploadError::Descriptor)
+    }
+}
+// A real public Client boundary drives ordinary fixture execution. Only the
+// client wire driver below preserves deliberately malformed raw controls.
+struct FixtureHook(Vec<Value>);
+impl agenthooksprotocol::client::Hook for FixtureHook {
+    fn call(
+        &self,
+        request: Value,
+    ) -> agenthooksprotocol::client::LocalFuture<
+        '_,
+        std::result::Result<Value, agenthooksprotocol::client::HookError>,
+    > {
+        Box::pin(async move {
+            Ok(
+                json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","effects":self.0}}),
+            )
+        })
+    }
+}
+fn execute(
+    request: &Value,
+    effects: &[Value],
+    content: &agenthooksprotocol::content::ContentContext<'_>,
+    original: Option<&Exchange>,
+) -> Result<Value> {
+    use agenthooksprotocol::client::{Client, FailurePolicy, Subscription, ToolContext};
+    // Validate the exact supplied envelope before Client constructs its own wire
+    // envelope; this preserves negative ID/method/envelope controls.
+    let mut staged = stage_boundary(request, &[], content, original)?;
+    let mut subscription = Subscription::intercept(
+        "fixture",
+        FailurePolicy::Closed,
+        FixtureHook(effects.to_vec()),
+    );
+    subscription.events = vec![
+        request["params"]["event"]["type"]
+            .as_str()
+            .ok_or("event type")?
+            .to_owned(),
+    ];
+    let client = Client::new(ToolContext::new(json!({}))).with_subscription(subscription);
+    let mut boundary = client
+        .event(request["params"]["event"].clone())
+        .capabilities(request["params"]["capabilities"].clone())
+        .content(content.clone());
+    if let Some(exchange) = original {
+        boundary = boundary.elicitation_exchange(exchange);
+    }
+    let result = futures::executor::block_on(async { boundary.await })?;
+    if !result.outcome.failures.is_empty() {
+        return Err("Public fixture boundary rejected effects".into());
+    }
+    // A result-stage modify changes the effective event body, not the runtime's
+    // short-circuit candidate. Never reuse the preflight answer in its summary.
+    if result.effective_event["type"] == "user.elicitation.result" {
+        match result.effective_event["elicitation"].get("result") {
+            Some(item) => match content.resolve_selected(item)? {
+                Some(bytes) => staged["candidate"] = serde_json::from_slice(&bytes)?,
+                None => {
+                    staged
+                        .as_object_mut()
+                        .ok_or("staged object")?
+                        .remove("candidate");
+                }
+            },
+            None => {
+                staged
+                    .as_object_mut()
+                    .ok_or("staged object")?
+                    .remove("candidate");
             }
         }
-        Value::Array(a) => {
-            for x in a {
-                localize(x, file)
-            }
-        }
-        _ => {}
+    }
+    staged["event"] = result.effective_event;
+    staged["messages"] = json!(result.outcome.messages);
+    staged["denied"] = json!(result.outcome.is_denied());
+    if result.outcome.is_denied() {
+        staged["candidate"] = json!({"action":"decline"});
+    } else if let Some(candidate) = result.outcome.candidate {
+        staged["candidate"] = candidate;
+    }
+    Ok(staged)
+}
+fn summary(exchange: &Exchange, staged: &Value, principal: &str, effects: &[Value]) -> Value {
+    let event = &staged["event"];
+    if let (Some(request), Some(answer)) = (exchange.original_request(), staged.get("candidate")) {
+        let provenance = if effects.is_empty() {
+            json!({"kind":"mcp","authenticatedSource":principal})
+        } else {
+            json!({"kind":"hook","authenticatedSource":principal,"effects":effects.iter().map(|e|e["type"].clone()).collect::<Vec<_>>()})
+        };
+        json!({"request":request,"result":answer,"provenance":provenance,"externalCompletion":false})
+    } else {
+        json!({"selection":{"request":exchange.original_event()["elicitation"]["request"]["selection"].as_str().unwrap_or("omit"),"result":event["elicitation"]["result"]["selection"].as_str().unwrap_or("omit")},"bodyValidation":"not-selected","provenance":{"kind":"mcp","authenticatedSource":principal},"externalCompletion":false})
     }
 }
 fn sender_token<'a>(plan: &'a Value, step: &Value) -> Result<&'a str> {
@@ -87,65 +202,6 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string(&results)?);
         return Ok(());
     }
-    let mut files = serde_json::Map::new();
-    for entry in fs::read_dir(Path::new(&args[2]))? {
-        let p = entry?.path();
-        if !p.to_string_lossy().ends_with(".schema.json") {
-            continue;
-        }
-        let name = p.file_name().unwrap().to_str().unwrap().to_string();
-        let mut s: Value = serde_json::from_slice(&fs::read(&p)?)?;
-        localize(&mut s, &name);
-        files.insert(name, s);
-    }
-    let mut validators = BTreeMap::new();
-    for name in [
-        "intercept-request",
-        "content-reference",
-        "content-item",
-        "effect",
-        "mcp-elicitation#request",
-        "mcp-elicitation#result",
-    ] {
-        let (file, def) = name.split_once('#').unwrap_or((name, ""));
-        let reference = format!(
-            "#/$defs/files/{file}.schema.json{}",
-            if def.is_empty() {
-                String::new()
-            } else {
-                format!("/$defs/{def}")
-            }
-        );
-        let s = json!({
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$ref": reference,
-            "$defs": {
-                "files": files
-            }
-        });
-        validators.insert(
-            name,
-            jsonschema::options()
-                .should_validate_formats(true)
-                .build(&s)?,
-        );
-    }
-    let validate = |name: &str, value: &Value| -> Result<()> {
-        if name == "form-answer" {
-            jsonschema::options()
-                .should_validate_formats(true)
-                .build(&value["schema"])?
-                .validate(&value["value"])
-                .map_err(|e| e.to_string())?;
-            return Ok(());
-        }
-        validators
-            .get(name)
-            .ok_or("schema")?
-            .validate(value)
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    };
     let token = std::env::var("AHP_ELICITATION_TOKEN")?;
     // Upload authorization is independently configured; event credentials are
     // never an implicit fallback for this resource.
@@ -155,7 +211,7 @@ fn main() -> Result<()> {
         return Err("Missing auth".into());
     }
     let mut store: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    let mut pending: BTreeMap<(String, String), Value> = BTreeMap::new();
+    let mut pending: BTreeMap<(String, String), Exchange> = BTreeMap::new();
     let mut receipts = vec![];
     if args[1] == "check" {
         let cases: Value = serde_json::from_reader(io::stdin())?;
@@ -168,42 +224,43 @@ fn main() -> Result<()> {
                     STANDARD.decode(upload["bytes"].as_str().ok_or("bytes")?)?,
                 );
             }
-            let resolve = |reference: &Value| -> Result<Vec<u8>> {
-                validate("content-reference", reference)?;
-                let b = store
-                    .get(reference["ref"].as_str().ok_or("ref")?)
-                    .ok_or("missing")?;
-                if reference["size"].as_u64() != Some(b.len() as u64)
-                    || reference["sha256"] != sha256(b)
-                {
-                    return Err("integrity".into());
-                }
-                Ok(b.clone())
+            let host = HostStore {
+                scope: agenthooksprotocol::content::AuthorizedScope::new(principal),
+                entries: std::sync::Mutex::new(store.clone()),
+            };
+            let context = agenthooksprotocol::content::ContentContext {
+                store: &host,
+                scope: agenthooksprotocol::content::AuthorizedScope::new(principal),
             };
             let before = c.clone();
-            let checked = match c["op"].as_str() {
-                Some("capability") => validate_mode(
-                    c["mode"].as_str().unwrap_or(""),
-                    c.get("capabilities"),
-                    c["origin"].as_str().unwrap_or("ahp"),
-                ),
-                Some("apply") => apply_effects(
-                    &c["request"],
-                    c.get("result").filter(|x| !x.is_null()),
-                    resolve,
-                    validate,
-                    principal,
-                    c["effects"].as_array().ok_or("effects")?,
-                ),
-                _ => validate_exchange(
-                    &c["request"],
-                    &c["result"],
-                    resolve,
-                    validate,
-                    principal,
-                    c.get("effect"),
-                ),
-            };
+            let checked = (|| -> Result<Value> {
+                if c["op"] == "capability" {
+                    return validate_mode(
+                        c["mode"].as_str().unwrap_or(""),
+                        c.get("capabilities"),
+                        c["origin"].as_str().unwrap_or("ahp"),
+                    );
+                }
+                let exchange = Exchange::new(&c["request"], &context)?;
+                let effects = if c["op"] == "apply" {
+                    c["effects"].as_array().ok_or("effects")?.clone()
+                } else {
+                    c.get("effect").cloned().into_iter().collect()
+                };
+                let result = c.get("result").filter(|r| !r.is_null());
+                let request_effect = effects.first().is_some_and(|e| e["type"] != "modify");
+                // Validate the actual incoming result even when testing a request-stage effect.
+                if request_effect && let Some(result) = result {
+                    execute(result, &[], &context, Some(&exchange))?;
+                }
+                let boundary = if request_effect {
+                    &c["request"]
+                } else {
+                    result.unwrap_or(&c["request"])
+                };
+                let staged = execute(boundary, &effects, &context, Some(&exchange))?;
+                Ok(summary(&exchange, &staged, principal, &effects))
+            })();
             if *c != before {
                 return Err("Input mutated".into());
             }
@@ -218,6 +275,26 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string(&outputs)?);
         return Ok(());
     }
+    // Both independently authenticated credentials are explicitly authorized by
+    // host configuration for this same storage scope. No payload field grants it.
+    let event_scope = agenthooksprotocol::content::AuthorizedScope::new(principal);
+    let upload_scope = event_scope.clone();
+    let upload_authorizer = move |request: &agenthooksprotocol::transport::Request| {
+        if upload_token.is_empty()
+            || request.headers.get("authorization") != Some(&format!("Bearer {upload_token}"))
+        {
+            return Err(agenthooksprotocol::content::UploadError::Unauthorized);
+        }
+        Ok(upload_scope.clone())
+    };
+    let mut upload_receiver = agenthooksprotocol::content::UploadReceiver::new(
+        upload_authorizer,
+        "/upload",
+        4 * 1024 * 1024,
+        64 * 1024 * 1024,
+        4096,
+    );
+    let event_store = upload_receiver.store();
     let server = tiny_http::Server::http("127.0.0.1:0")?;
     println!(
         "{}",
@@ -240,31 +317,32 @@ fn main() -> Result<()> {
             incoming.respond(tiny_http::Response::empty(401))?;
             continue;
         }
-        let header = |name: &str| {
-            incoming
-                .headers()
-                .iter()
-                .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
-                .map(|h| h.value.as_str().to_string())
-                .unwrap_or_default()
-        };
-        let expected_token = if incoming.url() == "/upload" {
-            &upload_token
-        } else {
-            &token
-        };
-        if expected_token.is_empty()
-            || header("Authorization") != format!("Bearer {expected_token}")
+        // Reject duplicate names before collection could collapse exact-case
+        // duplicates. UploadReceiver additionally verifies normalized framing.
+        let mut names = std::collections::BTreeSet::new();
+        if incoming
+            .headers()
+            .iter()
+            .any(|h| !names.insert(h.field.as_str().as_str().to_ascii_lowercase()))
         {
+            incoming.respond(tiny_http::Response::empty(400))?;
+            continue;
+        }
+        let headers: BTreeMap<String, String> = incoming
+            .headers()
+            .iter()
+            .map(|h| {
+                (
+                    h.field.as_str().as_str().to_ascii_lowercase(),
+                    h.value.as_str().to_owned(),
+                )
+            })
+            .collect();
+        let path = incoming.url().to_string();
+        if path != "/upload" && headers.get("authorization") != Some(&format!("Bearer {token}")) {
             incoming.respond(tiny_http::Response::empty(401))?;
             continue;
         }
-        let path = incoming.url().to_string();
-        let length = header("Content-Length").parse::<usize>().ok();
-        let content_type = header("Content-Type");
-        let encoded =
-            !header("Content-Encoding").is_empty() || !header("Transfer-Encoding").is_empty();
-        let digest = header("AHP-Content-SHA256");
         let mut raw = vec![];
         incoming.as_reader().take(4194305).read_to_end(&mut raw)?;
         let operation = (|| -> Result<(u16, Value)> {
@@ -272,18 +350,13 @@ fn main() -> Result<()> {
                 return Ok((413, json!({"error":"size limit"})));
             }
             if path == "/upload" {
-                if incoming.method() != &tiny_http::Method::Post
-                    || encoded
-                    || content_type != "application/octet-stream"
-                    || length != Some(raw.len())
-                    || sha256(&raw) != digest
-                {
-                    return Err("Upload integrity".into());
-                }
-                let reference = format!("urn:ahp:upload:{}", store.len());
-                let descriptor = json!({"ref":reference,"size":raw.len(),"sha256":digest});
-                store.insert(reference, raw);
-                return Ok((201, descriptor));
+                let response = upload_receiver.handle(agenthooksprotocol::transport::Request {
+                    method: incoming.method().as_str().to_owned(),
+                    uri: path.clone(),
+                    headers,
+                    body: raw,
+                });
+                return Ok((response.status, serde_json::from_slice(&response.body)?));
             }
             if path == "/receipts" {
                 return Ok((200, json!(receipts)));
@@ -291,20 +364,11 @@ fn main() -> Result<()> {
             if path != "/hooks/intercept" {
                 return Err("Unknown endpoint".into());
             }
-            let resolve = |reference: &Value| -> Result<Vec<u8>> {
-                validate("content-reference", reference)?;
-                let b = store
-                    .get(reference["ref"].as_str().ok_or("ref")?)
-                    .ok_or("Missing upload")?;
-                if reference["size"].as_u64() != Some(b.len() as u64)
-                    || reference["sha256"] != sha256(b)
-                {
-                    return Err("Upload integrity".into());
-                }
-                Ok(b.clone())
+            let context = agenthooksprotocol::content::ContentContext {
+                store: &event_store,
+                scope: event_scope.clone(),
             };
             let message: Value = serde_json::from_slice(&raw)?;
-            validate("intercept-request", &message)?;
             let event = &message["params"]["event"];
             let meta = &event["elicitation"];
             let parent = if event["type"] == "user.elicitation.request" {
@@ -326,9 +390,11 @@ fn main() -> Result<()> {
                         Some(&json!({"form":{},"url":{}})),
                         "ahp",
                     )?;
-                    let payload = read_selected(meta, "request", &resolve, &validate)?;
+                    let exchange = Exchange::new(&message, &context)?;
+                    execute(&message, &[], &context, None)?;
+                    let payload = exchange.original_request().cloned();
                     let body = if payload.is_some() {
-                        resolve(&meta["request"]["body"])?
+                        context.resolve(&meta["request"]["body"])?.to_vec()
                     } else {
                         vec![]
                     };
@@ -340,15 +406,15 @@ fn main() -> Result<()> {
                             })
                         }
                     };
-                    pending.insert(key.clone(), message.clone());
+                    pending.insert(key.clone(), exchange);
                     (body, summary)
                 }
                 Some("user.elicitation.result") => {
                     let request = pending.get(&key).ok_or("No pending elicitation")?;
-                    let summary =
-                        validate_exchange(request, &message, resolve, validate, principal, None)?;
+                    let staged = execute(&message, &[], &context, Some(request))?;
+                    let summary = summary(request, &staged, principal, &[]);
                     let body = if meta["result"].get("body").is_some() {
-                        resolve(&meta["result"]["body"])?
+                        context.resolve(&meta["result"]["body"])?.to_vec()
                     } else {
                         vec![]
                     };
@@ -414,7 +480,7 @@ fn sha256(bytes: &[u8]) -> String {
         b.push(0);
     }
     b.extend_from_slice(&((bytes.len() as u64) * 8).to_be_bytes());
-    for chunk in b.chunks_exact(64) {
+    for chunk in b.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
         for i in 0..16 {
             w[i] = u32::from_be_bytes(chunk[i * 4..i * 4 + 4].try_into().unwrap());
@@ -474,5 +540,39 @@ mod sender_tests {
         ] {
             assert!(sender_token(&plan, &json!({"path":"/upload"})).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod scoped_fixture_store_tests {
+    use super::*;
+    use agenthooksprotocol::content::{AuthorizedScope, ContentStore, UploadError};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn check_import_scope_is_not_inferred_from_a_reference() {
+        let allowed = AuthorizedScope::new("configured-principal");
+        let other = AuthorizedScope::new("payload-asserted-principal");
+        let store = HostStore {
+            scope: allowed.clone(),
+            entries: Mutex::new(BTreeMap::new()),
+        };
+        let reference = store
+            .put(&allowed, Arc::from(b"original".as_slice()))
+            .unwrap();
+        assert_eq!(
+            store.resolve(&allowed, &reference).unwrap().as_ref(),
+            b"original"
+        );
+        assert_eq!(
+            store.resolve(&other, &reference).unwrap_err(),
+            UploadError::Forbidden
+        );
+        assert_eq!(
+            store
+                .put(&other, Arc::from(b"other".as_slice()))
+                .unwrap_err(),
+            UploadError::Forbidden
+        );
     }
 }

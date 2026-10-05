@@ -15,12 +15,17 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: agenthooksprotocol/agent-hooks-protocol
-          ref: 6efb34f8a3da9c174d69edc8e41a62e1ee60ee71
+          ref: 7544872e5beff69f29b04ae61686cc8ac25c3654
           path: shared-spec
       - run: mv shared-spec ../agent-hooks-protocol
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: clippy, rustfmt
+      - name: Check generated artifacts
+        run: python3 ../agent-hooks-protocol/tools/generate_sdk.py --rust-sdk . --check
       - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo check --locked --no-default-features --lib
+      - run: cargo test --locked --no-default-features
+      - run: cargo test --locked --features reqwest,axum,tokio-process
+      - run: cargo test --locked --features interop

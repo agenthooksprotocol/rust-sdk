@@ -1,4 +1,4 @@
-//! Catalogue delivery uses real transports and the local schema/lineage/registration engines.
+//! Complete-event SDK catalogue delivery over real fixture transports.
 use super::*;
 pub(super) fn manifest() -> Value {
     let kinds = [
@@ -49,7 +49,10 @@ pub(super) fn manifest() -> Value {
             "reason": "Synthetic occurrence source does not implement other boundaries"
         }],
         "transports": ["http", "stdio"],
-        "authentication": ["bearer", "oauth", "workload", "mtls"],
+        // Portable endpoint bindings only (AHP-AUTH-001). The fixture's
+        // workload/mtls launch modes configure deployment HTTP/TLS identity;
+        // they are not portable registration or discovery authentication types.
+        "authentication": ["bearer", "oauth"],
         "toolPaths": ["native"],
         "contentCategories": ["text", "message", "tool_result"],
         "limits": {
@@ -63,6 +66,98 @@ pub(super) fn manifest() -> Value {
         "correlationIdentityFields": ["id", "source", "parentEventId", "call.id", "task.id"]
     })
 }
+// Only observation framing lives in this adapter. Canonical event settlement and
+// deferred notification creation are owned by Client::event, not the fixture.
+struct CatalogueObserver(EventWire);
+impl agenthooksprotocol::client::Hook for CatalogueObserver {
+    fn call(
+        &self,
+        notification: Value,
+    ) -> agenthooksprotocol::client::LocalFuture<
+        '_,
+        std::result::Result<Value, agenthooksprotocol::client::HookError>,
+    > {
+        Box::pin(async move {
+            let sent = (|| -> Result<()> {
+                if notification["method"] != "hooks/observe" || notification.get("id").is_some() {
+                    return Err("catalogue observer requires a one-way notification".into());
+                }
+                if let Some(stdin) = &self.0.stdin {
+                    let mut stdin = stdin.lock().unwrap();
+                    writeln!(stdin, "{notification}")?;
+                    stdin.flush()?;
+                } else {
+                    self.0
+                        .event_http
+                        .post(format!("{}/observe", self.0.endpoint))
+                        .bearer_auth(&self.0.token)
+                        .json(&notification)
+                        .send()?
+                        .error_for_status()?;
+                }
+                Ok(())
+            })();
+            sent.map_err(|e| agenthooksprotocol::client::HookError(e.to_string()))?;
+            // A notification cannot supply effects to the settled occurrence.
+            Ok(Value::Null)
+        })
+    }
+}
+
+fn event_client(
+    hook: impl agenthooksprotocol::client::Hook + 'static,
+) -> agenthooksprotocol::client::Client {
+    use agenthooksprotocol::client::{Client, Subscription, ToolContext};
+    let mut subscription = Subscription::observe("catalogue", hook);
+    subscription.events = vec!["*".into()];
+    Client::new(ToolContext::new(json!({}))).with_subscription(subscription)
+}
+
+async fn deliver_event(client: &agenthooksprotocol::client::Client, event: Value) -> Result<Value> {
+    use agenthooksprotocol::content::{AuthorizedScope, ContentContext, MemoryContentStore};
+    // Catalogue fixtures authorize metadata/omit views, not body access. Even a
+    // metadata-only compaction occurrence needs an explicit verification context.
+    // This empty, zero-capacity store cannot resolve or publish any body; its
+    // trusted scope is never derived from event identity or descriptor fields.
+    let store = MemoryContentStore::new(0, 0, 0);
+    let content = ContentContext {
+        store: &store,
+        scope: AuthorizedScope::new("catalogue-metadata-only"),
+    };
+    let result = client.event(event).content(content).await?;
+    // A fresh complete-event decode is part of the actual public boundary path.
+    let _decoded: Value = result.event?;
+    if !result.outcome.failures.is_empty() || result.observations.len() != 1 {
+        return Err("catalogue event did not settle into one observation".into());
+    }
+    let observation = result.observations.into_iter().next().unwrap();
+    let message = observation.notification.clone();
+    observation.deliver().await?;
+    Ok(message)
+}
+
+fn allow_raw_notification(scenario: &Value, step: &Value) -> bool {
+    let message = &step["message"];
+    step["op"] == "rawNotify"
+        && message["method"] == "hooks/observe"
+        && matches!(
+            (
+                s(scenario, "id"),
+                s(&message["params"]["event"], "id"),
+                s(&message["params"]["event"], "type")
+            ),
+            ("wrong-known-task-parent", "wrong:task", "task.change.after")
+                | ("source-local-cycle", "cycle:self", "task.change.before")
+                | ("no-op-actual-task", "noop:actual", "task.change.after")
+                | (
+                    "typed-model-error-required",
+                    "invalid:model-error",
+                    "model.error"
+                )
+                | ("typed-execution-enum", "invalid:execution", "tool.after")
+        )
+}
+
 pub(super) fn client(c: &Value) -> Result<()> {
     let validation = Validation::new(c)?;
     let fixtures = read(s(c, "scenarioFile"))?;
@@ -76,10 +171,12 @@ pub(super) fn client(c: &Value) -> Result<()> {
         }
     });
     validation.core.validate("capabilities-request", &request)?;
-    let discovery = if let Some(stdin) = &mut transport.stdin {
+    let discovery = if let Some(stdin) = &transport.stdin {
+        let mut stdin = stdin.lock().unwrap();
         let rx = transport.router.register(s(&request, "id"))?;
         writeln!(stdin, "{request}")?;
         stdin.flush()?;
+        drop(stdin);
         transport.receive(s(&request, "id"), rx)?
     } else {
         transport
@@ -97,7 +194,8 @@ pub(super) fn client(c: &Value) -> Result<()> {
     if discovery["id"] != request["id"] {
         return Err("discovery correlation mismatch".into());
     }
-    let mut lineage = agent_hooks_protocol::lineage::TaskLineage::default();
+    let sdk = event_client(CatalogueObserver(transport.event_wire()));
+    let mut lineage = agenthooksprotocol::lineage::TaskLineage::default();
     let mut counts = BTreeMap::<String, u64>::new();
     let mut results = Vec::new();
     for scenario in fixtures["scenarios"]
@@ -109,28 +207,40 @@ pub(super) fn client(c: &Value) -> Result<()> {
         for step in scenario["steps"].as_array().ok_or("missing steps")? {
             match s(step, "op") {
                 "notify" | "rawNotify" => {
-                    let message = &step["message"];
-                    let raw = step["op"] == "rawNotify";
-                    if !raw {
-                        validation.observe(message)?;
-                        lineage.accept(&message["params"]["event"])?;
-                    }
-                    if let Some(stdin) = &mut transport.stdin {
-                        writeln!(stdin, "{message}")?;
-                        stdin.flush()?;
+                    let fixture_message = &step["message"];
+                    let message = if step["op"] == "notify" {
+                        lineage.accept(&fixture_message["params"]["event"])?;
+                        futures::executor::block_on(deliver_event(
+                            &sdk,
+                            fixture_message["params"]["event"].clone(),
+                        ))?
                     } else {
-                        let status = transport
-                            .event_http
-                            .post(format!("{}/observe", transport.endpoint))
-                            .bearer_auth(&transport.token)
-                            .json(message)
-                            .send()?
-                            .status()
-                            .as_u16();
-                        if status != 200 && !(raw && [400, 409].contains(&status)) {
-                            return Err(format!("observation HTTP failure: {status}").into());
+                        // These exact negative receiver probes intentionally bypass
+                        // client validation; they still hit the real SDK server.
+                        if !allow_raw_notification(scenario, step) {
+                            return Err("unsupported catalogue rawNotify operation".into());
                         }
-                    }
+                        if let Some(stdin) = &transport.stdin {
+                            let mut stdin = stdin.lock().unwrap();
+                            writeln!(stdin, "{fixture_message}")?;
+                            stdin.flush()?;
+                        } else {
+                            let status = transport
+                                .event_http
+                                .post(format!("{}/observe", transport.endpoint))
+                                .bearer_auth(&transport.token)
+                                .json(fixture_message)
+                                .send()?
+                                .status()
+                                .as_u16();
+                            if ![200, 204, 400, 409].contains(&status) {
+                                return Err(
+                                    format!("raw observation HTTP failure: {status}").into()
+                                );
+                            }
+                        }
+                        fixture_message.clone()
+                    };
                     let id = s(&message["params"]["event"], "id");
                     let count = counts.entry(id.into()).or_default();
                     *count += 1;
@@ -138,7 +248,7 @@ pub(super) fn client(c: &Value) -> Result<()> {
                     sent.push(message.clone());
                 }
                 "register" => registrations.push(json!({
-                    "accepted": agent_hooks_protocol::registration::validate(
+                    "accepted": agenthooksprotocol::registration::validate(
                         &step["registration"],
                         &discovery["result"]["manifest"],
                         &step["requirements"],
@@ -178,6 +288,113 @@ pub(super) fn client(c: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{cell::RefCell, rc::Rc};
+
+    struct RecordingObserver(Rc<RefCell<Vec<Value>>>);
+    impl agenthooksprotocol::client::Hook for RecordingObserver {
+        fn call(
+            &self,
+            message: Value,
+        ) -> agenthooksprotocol::client::LocalFuture<
+            '_,
+            std::result::Result<Value, agenthooksprotocol::client::HookError>,
+        > {
+            Box::pin(async move {
+                self.0.borrow_mut().push(message);
+                // Even a malicious observer return must never reopen settlement.
+                Ok(json!({"effects":[{"type":"deny","reason":"ignored observer result"}]}))
+            })
+        }
+    }
+    fn progress_event() -> Value {
+        json!({"id":"progress","source":"urn:catalogue-test","time":"2026-09-01T00:00:00Z",
+            "type":"turn.progress","turn":{"id":"turn"},"item":{"id":"item"},"final":false,
+            "delta":{"id":"item","kind":"message","mediaType":"text/plain","selection":"metadata","role":"assistant"}})
+    }
+    #[test]
+    fn complete_event_boundary_is_lazy_and_observation_is_deferred() {
+        let messages = Rc::new(RefCell::new(Vec::new()));
+        let client = event_client(RecordingObserver(messages.clone()));
+        let event = progress_event();
+        let boundary = client.event(event.clone());
+        assert!(messages.borrow().is_empty());
+        let settled = futures::executor::block_on(async { boundary.await }).unwrap();
+        assert!(
+            messages.borrow().is_empty(),
+            "settlement must not perform observer I/O"
+        );
+        assert_eq!(settled.event.unwrap(), event);
+        assert_eq!(settled.observations.len(), 1);
+        let observation = settled.observations.into_iter().next().unwrap();
+        futures::executor::block_on(observation.deliver()).unwrap();
+        assert_eq!(
+            *messages.borrow(),
+            vec![
+                json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":event}})
+            ]
+        );
+        assert_eq!(
+            settled.outcome.decision,
+            agenthooksprotocol::client::Decision::None
+        );
+    }
+    #[test]
+    fn invalid_complete_event_never_reaches_transport_and_next_event_recovers() {
+        let messages = Rc::new(RefCell::new(Vec::new()));
+        let client = event_client(RecordingObserver(messages.clone()));
+        let mut invalid = progress_event();
+        invalid["delta"].as_object_mut().unwrap().remove("role");
+        assert!(futures::executor::block_on(deliver_event(&client, invalid)).is_err());
+        assert!(messages.borrow().is_empty());
+        let message =
+            futures::executor::block_on(deliver_event(&client, progress_event())).unwrap();
+        assert_eq!(*messages.borrow(), vec![message]);
+    }
+    #[test]
+    fn metadata_only_compaction_uses_explicit_content_context() {
+        let messages = Rc::new(RefCell::new(Vec::new()));
+        let client = event_client(RecordingObserver(messages.clone()));
+        let before = json!({"id":"compact-before","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.before","trigger":"auto","items":[]});
+        let after = json!({"id":"compact-after","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":{"id":"summary","kind":"message","mediaType":"text/plain","selection":"metadata","role":"system"},"removed":[],"execution":{"status":"executed"}});
+        for event in [before, after] {
+            let emitted =
+                futures::executor::block_on(deliver_event(&client, event.clone())).unwrap();
+            assert_eq!(emitted["params"]["event"], event);
+        }
+        assert_eq!(messages.borrow().len(), 2);
+    }
+    #[test]
+    fn catalogue_content_context_does_not_grant_body_access() {
+        let messages = Rc::new(RefCell::new(Vec::new()));
+        let client = event_client(RecordingObserver(messages.clone()));
+        let event = json!({"id":"compact-body","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":{"id":"summary","kind":"message","mediaType":"text/plain","selection":"body","role":"system","body":{"ref":"not-authorized","size":0,"sha256":sha256(b"")}},"removed":[],"execution":{"status":"executed"}});
+        assert!(futures::executor::block_on(deliver_event(&client, event)).is_err());
+        assert!(messages.borrow().is_empty());
+    }
+    #[test]
+    fn manifest_advertises_portable_authentication_not_deployment_modes() {
+        let manifest = manifest();
+        // Keep this explicit: an older bundled schema may still accept the
+        // superseded workload/mtls variants while the canonical runner does not.
+        assert_eq!(manifest["authentication"], json!(["bearer", "oauth"]));
+        let response = json!({"jsonrpc":"2.0","id":"discovery","result":{"protocolVersion":"draft","manifest":manifest}});
+        Schemas::bundled()
+            .unwrap()
+            .validate("capabilities-response", &response)
+            .unwrap();
+    }
+    #[test]
+    fn raw_notification_bypass_is_exact_not_caller_controlled() {
+        let scenario = json!({"id":"typed-model-error-required"});
+        let mut step = json!({"op":"rawNotify","message":{"method":"hooks/observe","params":{"event":{"id":"invalid:model-error","type":"model.error"}}}});
+        assert!(allow_raw_notification(&scenario, &step));
+        assert!(!allow_raw_notification(&json!({"id":"ordinary"}), &step));
+        step["message"]["params"]["event"]["id"] = json!("another-occurrence");
+        assert!(!allow_raw_notification(&scenario, &step));
+        step["message"]["params"]["event"]["id"] = json!("invalid:model-error");
+        step["op"] = json!("notify");
+        assert!(!allow_raw_notification(&scenario, &step));
+    }
     fn registration() -> Value {
         json!({
             "protocolVersion": "draft",
@@ -210,7 +427,7 @@ mod tests {
             }
         });
         let check = |r: &Value, q: &Value, c: &Value| {
-            agent_hooks_protocol::registration::validate(r, &host, q, c, &schemas).is_ok()
+            agenthooksprotocol::registration::validate(r, &host, q, c, &schemas).is_ok()
         };
         let mut registration = registration();
         assert!(check(&registration, &json!([]), &context));
@@ -258,7 +475,7 @@ mod tests {
         let schemas = Schemas::bundled().unwrap();
         let context = json!({"interactive":true,"environment":{}});
         let check = |r: &Value| {
-            agent_hooks_protocol::registration::validate(
+            agenthooksprotocol::registration::validate(
                 r,
                 &manifest(),
                 &json!([]),
@@ -309,7 +526,7 @@ mod tests {
             }
         });
         assert!(
-            agent_hooks_protocol::registration::validate(
+            agenthooksprotocol::registration::validate(
                 &registration,
                 &manifest(),
                 &json!([]),
@@ -320,7 +537,7 @@ mod tests {
         );
         registration["hooks"][0]["subscriptions"][0]["events"] = json!(["hook.*"]);
         assert!(
-            agent_hooks_protocol::registration::validate(
+            agenthooksprotocol::registration::validate(
                 &registration,
                 &manifest(),
                 &json!([]),

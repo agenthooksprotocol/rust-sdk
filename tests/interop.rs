@@ -1,4 +1,4 @@
-use agent_hooks_protocol::interop::{Schemas, apply, capabilities};
+use agenthooksprotocol::interop::{Schemas, apply, capabilities};
 use serde_json::{Value, json};
 
 fn schemas() -> Schemas {
@@ -83,7 +83,7 @@ fn continuation_instructions_accumulate_but_consume_one_allowance() {
         .remove("tool");
     req["params"]["event"]["type"] = json!("turn.finish.before");
     req["params"]["capabilities"] =
-        agent_hooks_protocol::interop::capabilities_for("turn.finish.before").unwrap();
+        agenthooksprotocol::interop::capabilities_for("turn.finish.before").unwrap();
     req["params"]["event"]["turn"] = json!({"id":"turn"});
     req["params"]["event"]["continuationCount"] = json!(0);
     req["params"]["event"]["outcome"] = json!("completed");
@@ -140,7 +140,7 @@ fn task_workspace_payloads_and_capabilities_are_enforced() {
         let mut req = request();
         req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","time":"2026-09-01T00:00:00Z","type":event,kind:payload});
         req["params"]["capabilities"] =
-            agent_hooks_protocol::interop::capabilities_for(&event).unwrap();
+            agenthooksprotocol::interop::capabilities_for(&event).unwrap();
         let actual = apply(
             &req,
             &response(json!([{"type":"deny","reason":"policy"}])),
@@ -194,7 +194,7 @@ fn prior_continuation_consumes_no_second_allowance_and_stop_is_sticky() {
     let mut req = request();
     req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","type":"turn.finish.before","time":"2026-09-01T00:00:00Z","turn":{"id":"turn"},"outcome":"completed","items":[],"continuationCount":0});
     req["params"]["capabilities"] =
-        agent_hooks_protocol::interop::capabilities_for("turn.finish.before").unwrap();
+        agenthooksprotocol::interop::capabilities_for("turn.finish.before").unwrap();
     let first = apply(
         &req,
         &response(json!([{"type":"flow","operation":"continue","instruction":"first"}])),
@@ -318,7 +318,7 @@ fn bundled_schemas_enforce_strict_effect_fields_beyond_structural_parsing() {
                 .validate("intercept-response", &response(json!([effect])))
                 .is_ok()
         );
-        assert!(agent_hooks_protocol::generated::parse_effect_value(effect.clone()).is_ok());
+        assert!(agenthooksprotocol::generated::parse_effect_value(effect.clone()).is_ok());
         let mut invalid = effect.clone();
         invalid["future"] = json!(true);
         assert!(
@@ -327,7 +327,7 @@ fn bundled_schemas_enforce_strict_effect_fields_beyond_structural_parsing() {
                 .is_err()
         );
         // Structural codecs preserve unknown fields; canonical validation rejects them.
-        assert!(agent_hooks_protocol::generated::parse_effect_value(invalid).is_ok());
+        assert!(agenthooksprotocol::generated::parse_effect_value(invalid).is_ok());
     }
     // Ask is not an elicitation request and has no reason or message field.
     for field in ["reason", "message"] {
@@ -338,7 +338,7 @@ fn bundled_schemas_enforce_strict_effect_fields_beyond_structural_parsing() {
                 .validate("intercept-response", &response(json!([invalid])))
                 .is_err()
         );
-        assert!(agent_hooks_protocol::generated::parse_effect_value(invalid).is_ok());
+        assert!(agenthooksprotocol::generated::parse_effect_value(invalid).is_ok());
     }
 }
 
@@ -348,7 +348,7 @@ fn continuation_without_instruction_does_not_invent_one() {
     let mut req = request();
     req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","type":"turn.finish.before","time":"2026-09-01T00:00:00Z","turn":{"id":"turn"},"outcome":"completed","items":[],"continuationCount":0});
     req["params"]["capabilities"] =
-        agent_hooks_protocol::interop::capabilities_for("turn.finish.before").unwrap();
+        agenthooksprotocol::interop::capabilities_for("turn.finish.before").unwrap();
     let actual = apply(
         &req,
         &response(json!([{"type":"flow","operation":"continue"}])),

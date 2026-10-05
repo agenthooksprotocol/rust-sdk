@@ -31,41 +31,34 @@ impl TaskLineage {
                     .get(&(source.clone(), p.to_owned()))
                     .and_then(|e| e["parentEventId"].as_str());
             }
-            if event["type"] == "task.change.after" {
-                if let Some(before) = event["parentEventId"]
+            if event["type"] == "task.change.after"
+                && let Some(before) = event["parentEventId"]
                     .as_str()
                     .and_then(|p| staged.get(&(source.clone(), p.to_owned())))
-                {
-                    if before["type"] == "task.change.before"
-                        && (before["task"]["id"] != event["task"]["id"]
-                            || before["task"]["operation"] != event["task"]["operation"])
-                    {
-                        return Err("task pair identity mismatch".into());
-                    }
-                }
+                && before["type"] == "task.change.before"
+                && (before["task"]["id"] != event["task"]["id"]
+                    || before["task"]["operation"] != event["task"]["operation"])
+            {
+                return Err("task pair identity mismatch".into());
             }
-            if event["type"] == "workspace.change.after" {
-                if let Some(before) = event["parentEventId"]
+            if event["type"] == "workspace.change.after"
+                && let Some(before) = event["parentEventId"]
                     .as_str()
                     .and_then(|p| staged.get(&(source.clone(), p.to_owned())))
-                {
-                    if before["type"] == "workspace.change.before"
-                        && before["workspace"]["kind"] != event["workspace"]["kind"]
-                    {
-                        return Err("workspace pair kind mismatch".into());
-                    }
-                }
+                && before["type"] == "workspace.change.before"
+                && before["workspace"]["kind"] != event["workspace"]["kind"]
+            {
+                return Err("workspace pair kind mismatch".into());
             }
             for kind in ["task", "workspace"] {
-                if event["type"] == format!("{kind}.change.after") {
-                    if let (Some(prior), Some(change)) = (
+                if event["type"] == format!("{kind}.change.after")
+                    && let (Some(prior), Some(change)) = (
                         event[kind]["prior"].as_object(),
                         event[kind]["change"].as_object(),
-                    ) {
-                        if change.iter().all(|(k, v)| prior.get(k) == Some(v)) {
-                            return Err("actual change is a no-op".into());
-                        }
-                    }
+                    )
+                    && change.iter().all(|(k, v)| prior.get(k) == Some(v))
+                {
+                    return Err("actual change is a no-op".into());
                 }
             }
         }

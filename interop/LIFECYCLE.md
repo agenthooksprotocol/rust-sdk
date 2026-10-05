@@ -3,8 +3,8 @@
 Build the actual Rust binaries before running a language pair:
 
 ```sh
-cargo build --bin lifecycle_client --bin lifecycle_server
-cargo test --no-fail-fast
+cargo build --features interop --bin lifecycle_client --bin lifecycle_server
+cargo test --features interop --no-fail-fast
 ```
 
 `src/bin/lifecycle` owns transport and settlement; `interop::apply` is the Rust
@@ -75,9 +75,9 @@ proposals or a fabricated before event.
 ## Focused checks
 
 ```sh
-cargo test --lib
-cargo test --bin lifecycle_client binary_upload
-cargo test --bin lifecycle_client disposition_comes
+cargo test --features interop --lib
+cargo test --features interop --bin lifecycle_client binary_upload
+cargo test --features interop --bin lifecycle_client disposition_comes
 ```
 
 Limits: this is a synthetic boundary adapter, not native harness integration.
@@ -90,7 +90,7 @@ indivisible multi-task changeset, or production HTTPS listener is claimed.
 
 ## Verification
 
-Language unit and integration tests: `cargo test --no-fail-fast`.
+Language unit and integration tests: `cargo test --features interop --no-fail-fast`.
 Core self-pairs: `../python-sdk/.venv/bin/python interop/test_local.py`.
 Transport failure/redirect regressions: `../python-sdk/.venv/bin/python interop/test_transport.py`.
 For the Rust lifecycle self-pair across every mode, from workspace root:
