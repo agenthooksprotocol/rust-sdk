@@ -151,6 +151,22 @@ fn summary(exchange: &Exchange, staged: &Value, principal: &str, effects: &[Valu
         json!({"selection":{"request":exchange.original_event()["elicitation"]["request"]["selection"].as_str().unwrap_or("omit"),"result":event["elicitation"]["result"]["selection"].as_str().unwrap_or("omit")},"bodyValidation":"not-selected","provenance":{"kind":"mcp","authenticatedSource":principal},"externalCompletion":false})
     }
 }
+// The single-effect check adapter has a singular report field. Atomic checks
+// retain the executor's plural provenance even when their batch has one effect.
+fn check_summary(mut report: Value, case: &Value) -> Value {
+    if case["op"] != "apply"
+        && case.get("effect").is_some()
+        && report["provenance"]["kind"] == "hook"
+    {
+        let provenance = report["provenance"]
+            .as_object_mut()
+            .expect("summary provenance");
+        provenance.remove("effects");
+        provenance.insert("effect".into(), case["effect"]["type"].clone());
+    }
+    report
+}
+
 fn sender_token<'a>(plan: &'a Value, step: &Value) -> Result<&'a str> {
     let field = if step["path"] == "/upload" {
         "uploadToken"
@@ -249,17 +265,31 @@ fn main() -> Result<()> {
                 };
                 let result = c.get("result").filter(|r| !r.is_null());
                 let request_effect = effects.first().is_some_and(|e| e["type"] != "modify");
-                // Validate the actual incoming result even when testing a request-stage effect.
-                if request_effect && let Some(result) = result {
-                    execute(result, &[], &context, Some(&exchange))?;
-                }
+                // A guard check reports the validated incoming result, not the
+                // atomic executor's replacement/decline candidate. Atomic apply
+                // continues to report the settled candidate instead.
+                let incoming = if request_effect || c["op"] != "apply" {
+                    result
+                        .map(|result| execute(result, &[], &context, Some(&exchange)))
+                        .transpose()?
+                } else {
+                    None
+                };
                 let boundary = if request_effect {
                     &c["request"]
                 } else {
                     result.unwrap_or(&c["request"])
                 };
                 let staged = execute(boundary, &effects, &context, Some(&exchange))?;
-                Ok(summary(&exchange, &staged, principal, &effects))
+                let reported = if c["op"] == "apply" {
+                    &staged
+                } else {
+                    incoming.as_ref().unwrap_or(&staged)
+                };
+                Ok(check_summary(
+                    summary(&exchange, reported, principal, &effects),
+                    c,
+                ))
             })();
             if *c != before {
                 return Err("Input mutated".into());
@@ -573,6 +603,36 @@ mod scoped_fixture_store_tests {
                 .put(&other, Arc::from(b"other".as_slice()))
                 .unwrap_err(),
             UploadError::Forbidden
+        );
+    }
+}
+
+#[cfg(test)]
+mod check_report_tests {
+    use super::*;
+
+    #[test]
+    fn single_effect_report_is_singular_without_changing_atomic_or_runtime_provenance() {
+        let runtime = json!({"provenance":{"kind":"hook","authenticatedSource":"authenticated:hook","effects":["return"]},"result":{"action":"accept"},"externalCompletion":false});
+        let single = check_summary(runtime.clone(), &json!({"effect":{"type":"return"}}));
+        assert_eq!(
+            single["provenance"],
+            json!({"kind":"hook","authenticatedSource":"authenticated:hook","effect":"return"})
+        );
+        assert_eq!(single["result"], runtime["result"]);
+        assert_eq!(single["externalCompletion"], false);
+        assert_eq!(
+            check_summary(
+                runtime.clone(),
+                &json!({"op":"apply","effects":[{"type":"return"}]})
+            ),
+            runtime
+        );
+        assert_eq!(runtime["provenance"]["effects"], json!(["return"]));
+        let mcp = json!({"provenance":{"kind":"mcp","authenticatedSource":"authenticated:hook"}});
+        assert_eq!(
+            check_summary(mcp.clone(), &json!({"effect":{"type":"return"}})),
+            mcp
         );
     }
 }
