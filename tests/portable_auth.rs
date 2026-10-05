@@ -34,23 +34,46 @@ fn portable_registration_accepts_omission_bearer_and_oauth() {
 }
 
 #[test]
-fn registration_preserves_unknown_authentication_but_rejects_admission() {
+fn registration_unknown_authentication_follows_schema_but_rejects_admission() {
     let schemas = Schemas::bundled().unwrap();
     let mut value = registration();
     value["hooks"][0]["authentication"] =
         json!({"type": "com.example.identity", "tokenEnv": "AHP_TOKEN"});
-    // Generated structural models preserve unknown discriminator variants. This
-    // is not authority to use that authentication binding at runtime.
+    // The pinned schema uses an inferred open oneOf discriminator. Main's
+    // auth-discovery contract intentionally uses a closed anyOf instead.
+    // Neither structural contract authorizes an unknown runtime identity.
+    let bundle: Vec<Value> = serde_json::from_str(include_str!("../src/schemas.json")).unwrap();
+    let schema = bundle
+        .iter()
+        .find(|schema| {
+            schema["$id"]
+                .as_str()
+                .unwrap()
+                .ends_with("/registration.schema.json")
+        })
+        .unwrap();
+    let authentication = &schema["$defs"]["authentication"];
     let parsed = generated::parse_registration_value(value.clone());
-    assert!(parsed.is_ok());
-    assert!(parsed.diagnostics().iter().any(|diagnostic| {
-        diagnostic.code == generated::DiagnosticCode::UnknownVariant
-            && diagnostic.severity == generated::DiagnosticSeverity::Warning
-    }));
-    assert_eq!(
-        serde_json::to_value(parsed.value().unwrap()).unwrap(),
-        value
-    );
+    if authentication.get("oneOf").is_some() {
+        assert!(parsed.is_ok(), "{:?}", parsed.diagnostics());
+        assert!(parsed.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == generated::DiagnosticCode::UnknownVariant
+                && diagnostic.severity == generated::DiagnosticSeverity::Warning
+        }));
+        assert_eq!(
+            serde_json::to_value(parsed.value().unwrap()).unwrap(),
+            value
+        );
+    } else {
+        assert!(authentication.get("anyOf").is_some());
+        assert!(!parsed.is_ok());
+        assert!(
+            parsed
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| { diagnostic.code == generated::DiagnosticCode::NoUnionMatch })
+        );
+    }
     assert!(
         agenthooksprotocol::registration::validate(
             &value,
@@ -62,4 +85,37 @@ fn registration_preserves_unknown_authentication_but_rejects_admission() {
         .is_err()
     );
     assert!(schemas.validate("registration", &value).is_err());
+}
+
+#[test]
+fn registration_rejects_structurally_malformed_known_authentication() {
+    let schemas = Schemas::bundled().unwrap();
+    for auth in [
+        json!({"type": "bearer", "tokenEnv": 42}),
+        json!({"type": "bearer"}),
+        json!({"type": "oauth", "resource": "https://policy.example.com/hooks"}),
+        json!({"type": 42, "tokenEnv": "AHP_TOKEN"}),
+    ] {
+        let mut value = registration();
+        value["hooks"][0]["authentication"] = auth;
+        let parsed = generated::parse_registration_value(value.clone());
+        assert!(!parsed.is_ok(), "malformed authentication parsed: {value}");
+        assert!(
+            !parsed
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| { diagnostic.code == generated::DiagnosticCode::UnknownVariant })
+        );
+        assert!(schemas.validate("registration", &value).is_err());
+        assert!(
+            agenthooksprotocol::registration::validate(
+                &value,
+                &json!({}),
+                &json!({}),
+                &json!({}),
+                &schemas,
+            )
+            .is_err()
+        );
+    }
 }
