@@ -34,11 +34,32 @@ fn portable_registration_accepts_omission_bearer_and_oauth() {
 }
 
 #[test]
-fn registration_rejects_unknown_authentication() {
+fn registration_preserves_unknown_authentication_but_rejects_admission() {
     let schemas = Schemas::bundled().unwrap();
     let mut value = registration();
     value["hooks"][0]["authentication"] =
         json!({"type": "com.example.identity", "tokenEnv": "AHP_TOKEN"});
-    assert!(!generated::parse_registration_value(value.clone()).is_ok());
+    // Generated structural models preserve unknown discriminator variants. This
+    // is not authority to use that authentication binding at runtime.
+    let parsed = generated::parse_registration_value(value.clone());
+    assert!(parsed.is_ok());
+    assert!(parsed.diagnostics().iter().any(|diagnostic| {
+        diagnostic.code == generated::DiagnosticCode::UnknownVariant
+            && diagnostic.severity == generated::DiagnosticSeverity::Warning
+    }));
+    assert_eq!(
+        serde_json::to_value(parsed.value().unwrap()).unwrap(),
+        value
+    );
+    assert!(
+        agenthooksprotocol::registration::validate(
+            &value,
+            &json!({}),
+            &json!({}),
+            &json!({}),
+            &schemas,
+        )
+        .is_err()
+    );
     assert!(schemas.validate("registration", &value).is_err());
 }

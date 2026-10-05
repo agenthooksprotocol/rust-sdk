@@ -527,7 +527,7 @@ fn client(c: &Value) -> Result<bool> {
                 .and_then(|result| result.as_ref().ok())
                 .is_some_and(|actual| {
                     !actual["input"].is_object()
-                        || !actual["input"]["task"].as_u64().is_some_and(|n| n > 0)
+                        || actual["input"]["task"].as_u64().is_none_or(|n| n == 0)
                 });
         let (ok, actual, error) = match outcome {
             Ok(Ok(actual)) => {
