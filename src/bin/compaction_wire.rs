@@ -565,10 +565,18 @@ fn main() -> Result<()> {
                 }
             };
             let response = receive(&value, sub, &config, store, &schemas);
-            request.respond(tiny_http::Response::from_string(response.to_string()))?;
+            request.respond(interception_http_response(&response))?;
         }
     }
     Ok(())
+}
+
+// Both successful results and JSON-RPC errors are JSON protocol responses.
+fn interception_http_response(response: &Value) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    tiny_http::Response::from_string(response.to_string()).with_header(
+        tiny_http::Header::from_bytes("Content-Type", "application/json")
+            .expect("static JSON content type"),
+    )
 }
 
 fn sha256(bytes: &[u8]) -> String {
@@ -579,6 +587,40 @@ fn sha256(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod projection_tests {
     use super::*;
+
+    #[test]
+    fn interception_http_replies_advertise_json_for_results_and_errors() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/hooks/intercept", server.server_addr());
+        let replies = [
+            json!({"jsonrpc":"2.0","id":"success","result":{"protocolVersion":"draft","effects":[]}}),
+            json!({"jsonrpc":"2.0","id":"rejected","error":{"code":-32602,"message":"Invalid compaction request"}}),
+        ];
+        let expected = replies.clone();
+        let worker = std::thread::spawn(move || {
+            for reply in replies {
+                let request = server
+                    .recv_timeout(std::time::Duration::from_secs(3))
+                    .unwrap()
+                    .unwrap();
+                request.respond(interception_http_response(&reply)).unwrap();
+            }
+        });
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+            .unwrap();
+        for reply in expected {
+            let response = client.post(&endpoint).json(&json!({})).send().unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK);
+            assert_eq!(
+                response.headers().get("content-type").unwrap(),
+                "application/json"
+            );
+            assert_eq!(response.json::<Value>().unwrap(), reply);
+        }
+        worker.join().unwrap();
+    }
 
     #[test]
     fn after_projection_preserves_absent_items_and_original_correlations() {
