@@ -230,7 +230,14 @@ pub fn run_public_fixture(
                 after_client
                     .event(after_event)
                     .content(content.clone())
-                    .capabilities(capabilities("after", observe)?)
+                    .capabilities(if observe {
+                        // The legacy report includes an empty modify map, but a
+                        // canonical request may advertise modify only when that
+                        // effect is granted. Observers receive no capabilities.
+                        json!({"effects":[]})
+                    } else {
+                        capabilities("after", false)?
+                    })
                     .initial_state(Decision::Allow)
                     .await
                     .map_err(|e| e.to_string())
@@ -411,4 +418,94 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         _ => return Err("unknown mode".into()),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct CanonicalObserver {
+        effects: Value,
+        delivered: Rc<RefCell<usize>>,
+    }
+    impl Hook for CanonicalObserver {
+        fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
+            Box::pin(async move {
+                assert_eq!(request["method"], "hooks/observe");
+                assert!(request.get("id").is_none());
+                assert!(request["params"].get("capabilities").is_none());
+                // Observation::deliver has already performed canonical validation.
+                assert!(
+                    agenthooksprotocol::generated::parse_observe_notification_value(
+                        request.clone()
+                    )
+                    .is_ok()
+                );
+                *self.delivered.borrow_mut() += 1;
+                // Deliberately invalid notification response: never authority.
+                Ok(json!({"jsonrpc":"2.0","id":"unsolicited","result":{
+                    "protocolVersion":"draft","effects":self.effects
+                }}))
+            })
+        }
+    }
+
+    #[test]
+    fn observe_only_compaction_preserves_summary_and_ignores_effects() {
+        let params = json!({"instructions":"base","itemId":"logical-summary","before":[],"after":[
+            {"supplier":"invalid","effects":[{"type":"modify","target":"summary","operation":"replace","value":"leaked"}],"failurePolicy":"fail-closed","throw":false},
+            {"supplier":"watch","effects":[],"failurePolicy":"fail-closed","throw":false}
+        ],"observeOnly":true});
+        let result = evaluate(&params).expect("observe-only public boundary must settle");
+        let delivered = Rc::new(RefCell::new(0));
+        let subscriptions = params["after"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                fixture_subscription(
+                    row,
+                    "after",
+                    Box::new(CanonicalObserver {
+                        effects: row["effects"].clone(),
+                        delivered: delivered.clone(),
+                    }),
+                    true,
+                )
+                .unwrap()
+            })
+            .collect();
+        let observed = run_public_fixture(
+            &params,
+            vec![],
+            subscriptions,
+            &MemoryContentStore::new(4096, 65536, 100),
+        )
+        .unwrap();
+        assert_eq!(*delivered.borrow(), 2);
+        assert_eq!(observed["applied"], true);
+        assert_eq!(
+            observed["bodies"][observed["summary"]["ref"].as_str().unwrap()],
+            "summary:base"
+        );
+        assert_eq!(result["generated"], true);
+        assert_eq!(result["applied"], true);
+        assert_eq!(result["failures"], json!([]));
+        assert_eq!(result["messages"], json!([]));
+        let reference = result["summary"]["ref"].as_str().unwrap();
+        assert_eq!(result["bodies"][reference], "summary:base");
+        assert!(
+            !result["bodies"]
+                .as_object()
+                .unwrap()
+                .values()
+                .any(|v| v == "leaked")
+        );
+        let seen = result["seen"].as_array().unwrap();
+        assert_eq!(seen.len(), 2);
+        for snapshot in seen {
+            assert_eq!(snapshot["capabilities"], json!({"effects":[],"modify":{}}));
+            assert_eq!(snapshot["summary"], result["summary"]);
+        }
+    }
 }
