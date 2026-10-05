@@ -32,3 +32,10 @@ pub use generated::{capabilities, common, effect, event, mcp_elicitation, subscr
 
 /// Lazy complete-event boundaries for every canonical event family.
 pub mod runtime;
+
+/// Registration-driven harness with explicit capabilities and owned shutdown.
+pub mod hooks;
+pub use hooks::Hooks;
+/// Owned async body inputs with bounded spooling.
+pub mod body;
+mod hooks_content;

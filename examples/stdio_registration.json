@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "draft",
+  "hooks": [{
+    "id": "org.example.local-policy",
+    "transport": {
+      "type": "stdio", "command": "python3",
+      "args": ["examples/stdio_policy.py"], "lifecycle": "persistent"
+    },
+    "subscriptions": [
+      {"events": ["tool.before"], "mode": "intercept", "timeoutMs": 3000,
+       "failurePolicy": "fail-closed", "content": {"default": "metadata"}},
+      {"events": ["tool.before"], "mode": "observe", "content": {"default": "metadata"}}
+    ]
+  }]
+}

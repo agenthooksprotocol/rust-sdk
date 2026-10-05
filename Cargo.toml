@@ -19,6 +19,7 @@ interop = ["reqwest", "reqwest/blocking", "dep:tiny_http", "dep:jsonwebtoken", "
 [dependencies]
 tokio = { version = "1", features = ["process", "time", "io-util", "sync", "rt"], optional = true }
 sha2 = "0.10"
+time = { version = "0.3", features = ["formatting"] }
 url = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
@@ -83,3 +84,7 @@ required-features = ["interop"]
 [profile.dev]
 debug = 0
 incremental = false
+
+[[example]]
+name = "registered_hooks"
+required-features = ["reqwest", "tokio-process"]

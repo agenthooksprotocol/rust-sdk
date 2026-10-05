@@ -8,3 +8,6 @@ pub mod stdio;
 pub mod http_hook;
 #[cfg(feature = "tokio-process")]
 pub mod process;
+
+/// Lazy owned registration transports.
+pub mod registered;

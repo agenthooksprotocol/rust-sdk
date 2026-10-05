@@ -18,6 +18,86 @@ The crate is not yet published to crates.io. Until the first release, pin it fro
 agenthooksprotocol = { git = "https://github.com/agenthooksprotocol/rust-sdk", rev = "<commit-sha>" }
 ```
 
+## Registration-driven hooks
+
+`Hooks` accepts an ordinary `generated::Registration` and `HooksOptions` with
+explicit per-event `EventGrant` authority. Registration selects routes; it does
+not grant effects or observation permission. `tool_before(input)` accepts typed
+input, while `tool_before_event(event)` accepts a whole event. The named event
+facade follows the generated catalogue.
+
+Enable `reqwest` for registered HTTP and `tokio-process` for registered stdio.
+Default features remain empty. Construction and unpolled boundaries perform no
+transport I/O. The host supplies an executor; the SDK creates no executor or
+background observation thread. Anonymous HTTP and local HTTP require explicit
+policy, and upload credentials are independent of event credentials.
+
+See [`examples/registered_hooks.rs`](examples/registered_hooks.rs) for JSON
+registration, explicit grants, typed input, and real transports:
+
+```sh
+cargo run --example registered_hooks --features reqwest,tokio-process -- registration.json
+```
+
+Observation routes require an explicit `ObservationScheduler`. The example uses
+`TokioObservationScheduler` inside a host-owned `tokio::task::LocalSet`;
+runtime-neutral hosts can supply their own local executor. Settled boundaries
+schedule observations automatically. `wait_until_idle()` only awaits scheduled
+work; it does not initiate delivery. Await it before `shutdown()` when all queued
+observations should finish. `shutdown()` stops admission, cancels outstanding
+work, and reaps owned subprocesses. Retry shutdown after cleanup failure. Observation failures cannot
+change settled results; reports retain at most 1,024 failure details and count
+additional failures in `omitted_failures`. Reports are cumulative, not drained.
+Typed decoding occurs after settlement, so decoding errors do not roll back
+accepted effects. The host still owns approval and application execution.
+
+### Run both transports locally
+
+From the SDK repository root, the stdio example starts and owns a real Python
+policy process (Python 3 is required):
+
+```sh
+cargo run --example registered_hooks --features reqwest,tokio-process -- examples/stdio_registration.json
+```
+
+For HTTP, start the local fixture in one terminal:
+
+```sh
+REGISTERED_HOOK_TOKEN=local-demo-only python3 examples/http_policy.py
+```
+
+Run the client in another terminal, then stop the fixture with Ctrl-C:
+
+```sh
+REGISTERED_HOOK_TOKEN=local-demo-only cargo run --example registered_hooks --features reqwest,tokio-process -- examples/http_registration.json --allow-loopback-http
+```
+
+The example prints the authorized effective input but never executes it. The
+local HTTP fixture is demonstration code, not a production server. Production
+HTTP requires HTTPS; anonymous access and loopback HTTP are not enabled by
+default. Registered transports currently implement bearer authentication only:
+OAuth and other unsupported mechanisms fail closed rather than downgrading.
+
+### Event envelopes, manifests, and bodies
+
+Named boundaries such as `hooks.session_start(facts).await` supply their event
+`type`, identity, time, and configured source. Session start also supplies the
+configured manifest; do not duplicate those fields in `facts`. Conflicting
+caller values are rejected. Use `HooksOptions::from_manifest(source, manifest)`
+for a complete `generated::StaticCapabilityManifest`, including tool paths,
+limits, and extension fields; the simple event-grant constructor only advertises
+its supported event/mode/capability subset.
+
+`hooks.stage_body(Body::stream(source)).await` transfers ownership without
+reading the stream. `Body::bytes`, `Body::text`, and `Body::json` are available for
+already-owned inputs. Place the returned body descriptor in an event content
+item. Matching subscriptions select body delivery; metadata, omit, and unmatched
+routes do not read it. Selected bodies use bounded capture, immutable storage,
+and size/SHA-256 verification. Configure `max_body_bytes`, `max_stored_bytes`, and
+`max_stored_entries` in `HooksOptions`; upload credentials are resolved separately
+from event credentials. This is bounded in-memory spooling, not unbounded or
+disk-backed streaming.
+
 ## Quick start
 
 Every public AHP schema has a Rust type plus `parse_*` and `encode_*` functions.

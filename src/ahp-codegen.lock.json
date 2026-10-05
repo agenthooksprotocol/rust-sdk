@@ -1,11 +1,11 @@
 {
   "sourceRepository": "agenthooksprotocol/agent-hooks-protocol",
-  "sourceCommit": "7544872e5beff69f29b04ae61686cc8ac25c3654",
+  "sourceCommit": "14ced4a58ee8bb0bc8c88a6660201378b42ff482",
   "schemaRevision": "draft",
   "protocolVersion": "draft",
   "generatorVersion": "0.1.0",
   "language": "rust",
-  "schemaManifestSha256": "5790952c8b55619a64e63b0ad1775ff4ad38e9790474500fa2d4ae0a3008923a",
+  "schemaManifestSha256": "050852ec662d5a29c80d8951252b54a5fa48bb5e6c7ce08d88c45e614964a60a",
   "documents": [
     {
       "path": "schema/draft/capabilities-request.schema.json",
@@ -13,7 +13,7 @@
     },
     {
       "path": "schema/draft/capabilities-response.schema.json",
-      "sha256": "90c09d1eef78a8d95c4c82fa1c978fb55fd60938cffa3ad60c3def6ab7ace8e1"
+      "sha256": "9e3b33d4bde82670770ad598dd70bb276bda120c4429783747dc91defc6911a8"
     },
     {
       "path": "schema/draft/capabilities.schema.json",
@@ -41,7 +41,7 @@
     },
     {
       "path": "schema/draft/content-upload.schema.json",
-      "sha256": "1a516c5bae9e09e1b0cb32536cdd0d0eb1e80540ad29e9b65e392eceef6e4701"
+      "sha256": "a405adb54b8de11f3814840f7cbcd54d76cdcc2e25d00942f1c1755eb05c6753"
     },
     {
       "path": "schema/draft/deny-effect.schema.json",
@@ -93,7 +93,7 @@
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "76f429521eec5c85dfb6ce8e9a56108a4fa582912fc6ddf25d324af86ea557c0"
+      "sha256": "3788ae90ee2aa057473ed03833f5310584d531e90a7f50b00541b013ab0a1c11"
     },
     {
       "path": "schema/draft/schema.json",

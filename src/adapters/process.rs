@@ -21,7 +21,7 @@ use tokio::{
 
 struct Session {
     child: Child,
-    stdin: ChildStdin,
+    stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
 }
 enum State {
@@ -94,7 +94,7 @@ impl Process {
         Ok(Self {
             state: Mutex::new(State::Ready(Session {
                 child,
-                stdin,
+                stdin: Some(stdin),
                 stdout,
             })),
             gate: AsyncMutex::new(()),
@@ -144,9 +144,10 @@ impl Process {
                 State::Closed => return Err(error("process is shut down")),
             };
             let session = lease.session.as_mut().expect("process lease");
-            session.stdin.write_all(&body).await.map_err(error)?;
-            session.stdin.write_all(b"\n").await.map_err(error)?;
-            session.stdin.flush().await.map_err(error)?;
+            let stdin = session.stdin.as_mut().expect("open child stdin");
+            stdin.write_all(&body).await.map_err(error)?;
+            stdin.write_all(b"\n").await.map_err(error)?;
+            stdin.flush().await.map_err(error)?;
             let body = if response_expected {
                 read_frame(&mut session.stdout, self.max_frame_bytes).await?
             } else {
@@ -170,6 +171,54 @@ impl Process {
         session.child.wait().await.map_err(error)?;
         lease.session.take();
         Ok(())
+    }
+
+    /// Close stdin after a per-event notification and allow bounded graceful exit.
+    /// A timeout or unsuccessful exit is a delivery failure, never an acknowledgment.
+    /// Cancellation retains the killed child for a subsequent `shutdown` to reap.
+    pub(crate) async fn finish_notification(&self, grace: Duration) -> Result<(), TransportError> {
+        let _gate = self.gate.lock().await;
+        let state = std::mem::replace(
+            &mut *self.state.lock().expect("process state lock"),
+            State::Closed,
+        );
+        let session = match state {
+            State::Ready(session) => session,
+            State::Retired(session) => {
+                Self::terminate(&mut Lease {
+                    owner: self,
+                    session: Some(session),
+                })
+                .await?;
+                return Err(error("notification process was retired"));
+            }
+            State::Closed => return Err(error("process is shut down")),
+        };
+        let mut lease = Lease {
+            owner: self,
+            session: Some(session),
+        };
+        let session = lease.session.as_mut().expect("process lease");
+        // Dropping the pipe, rather than merely flushing it, delivers EOF.
+        session.stdin.take();
+        match tokio::time::timeout(grace, session.child.wait()).await {
+            Ok(Ok(status)) => {
+                lease.session.take();
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(error("notification child exited unsuccessfully"))
+                }
+            }
+            outcome => {
+                Self::terminate(&mut lease).await?;
+                Err(error(if outcome.is_err() {
+                    "notification child exceeded graceful exit deadline"
+                } else {
+                    "notification child wait failed"
+                }))
+            }
+        }
     }
 
     /// Serialize with active exchanges, terminate and reap the child. Idempotent.

@@ -1,0 +1,13 @@
+{
+  "protocolVersion": "draft",
+  "hooks": [{
+    "id": "org.example.local-policy",
+    "transport": {"type": "http", "url": "http://127.0.0.1:8765/hooks"},
+    "authentication": {"type": "bearer", "tokenRef": "policy-token"},
+    "subscriptions": [
+      {"events": ["tool.before"], "mode": "intercept", "timeoutMs": 3000,
+       "failurePolicy": "fail-closed", "content": {"default": "metadata"}},
+      {"events": ["tool.before"], "mode": "observe", "content": {"default": "metadata"}}
+    ]
+  }]
+}
