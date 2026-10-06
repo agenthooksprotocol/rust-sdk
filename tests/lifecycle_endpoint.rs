@@ -259,3 +259,47 @@ fn cancellation_after_acquisition_never_accepts_or_executes_staged_effects() {
     assert!(acquired < cancelled);
     assert!(!receipts.iter().any(|entry| entry["kind"] == "accepted"));
 }
+
+#[test]
+fn interrupted_sdk_chain_sends_no_new_observations_after_receiver_acquisition() {
+    let fixture = Fixture::new("interrupted-chain");
+    let mut scenario = lifecycle_scenario(json!([
+        {"type":"modify","target":"input","operation":"replace","value":{"value":"late"}},
+        {"type":"deny","reason":"late policy"}
+    ]));
+    scenario["requests"]["a"]["params"]["state"] = json!({"permission":"none","candidate":null});
+    scenario["chain"] = json!({"interrupt":true,"holdObservers":false,"subscriptions":[
+        {"id":"first","backend":"shared","mode":"intercept","failurePolicy":"fail-open","content":"metadata"},
+        {"id":"remaining","backend":"other","mode":"intercept","failurePolicy":"fail-open","content":"omit"},
+        {"id":"audit","backend":"shared","mode":"observe","failurePolicy":"fail-open","content":"metadata"}
+    ]});
+    scenario["steps"] = json!([]);
+    let scenarios = fixture.write("scenarios.json", &json!({"scenarios":[scenario]}));
+    let report = fixture.run_scenarios(&scenarios, json!({}));
+    assert_eq!(
+        report["results"][0]["actual"],
+        json!({
+            "called":["first"],"failures":[],"observations":[],"input":{"value":"original"}
+        })
+    );
+    // Assert receiver evidence as well as the local result. A late reply must
+    // not resume the chain or start a downgraded/explicit observer notification.
+    let receipts = report["receipts"]["entries"].as_array().unwrap();
+    assert!(!receipts.iter().any(|entry| entry["kind"] == "observed"));
+    assert_eq!(
+        receipts
+            .iter()
+            .filter(|entry| entry["kind"] == "received")
+            .count(),
+        1
+    );
+    let position = |kind| {
+        receipts
+            .iter()
+            .position(|entry| entry["kind"] == kind)
+            .unwrap()
+    };
+    assert!(position("received") < position("cancelled"));
+    assert!(position("cancelled") < position("chain-settled"));
+    assert!(position("chain-settled") < position("replied"));
+}

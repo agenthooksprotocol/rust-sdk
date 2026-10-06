@@ -16652,257 +16652,42 @@ pub mod ergonomic_inputs {
 /// Named ergonomic boundaries; runtime retains projection failures and validates assembled events.
 #[macro_export]
 macro_rules! ahp_ergonomic_hook_methods {
-    () => {
-        $crate::ahp_ergonomic_hook_methods!(generated);
-    };
-    ($models:ident) => {
-        pub fn config_change_after(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ConfigChangeAfterInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "config.change.after",
-                input.to_event_value(),
-            )
-        }
-        pub fn config_change_before(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ConfigChangeBeforeInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "config.change.before",
-                input.to_event_value(),
-            )
-        }
-        pub fn context_compact_after(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ContextCompactAfterInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "context.compact.after",
-                input.to_event_value(),
-            )
-        }
-        pub fn context_compact_before(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ContextCompactBeforeInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "context.compact.before",
-                input.to_event_value(),
-            )
-        }
-        pub fn file_changed(
-            &self,
-            input: $crate::$models::ergonomic_inputs::FileChangedInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("file.changed", input.to_event_value())
-        }
-        pub fn hook_failure(
-            &self,
-            input: $crate::$models::ergonomic_inputs::HookFailureInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("hook.failure", input.to_event_value())
-        }
-        pub fn model_error(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ModelErrorInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("model.error", input.to_event_value())
-        }
-        pub fn model_request_before(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ModelRequestBeforeInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "model.request.before",
-                input.to_event_value(),
-            )
-        }
-        pub fn model_response_after(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ModelResponseAfterInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "model.response.after",
-                input.to_event_value(),
-            )
-        }
-        pub fn model_switch_after(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ModelSwitchAfterInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "model.switch.after",
-                input.to_event_value(),
-            )
-        }
-        pub fn model_switch_before(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ModelSwitchBeforeInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "model.switch.before",
-                input.to_event_value(),
-            )
-        }
-        pub fn session_end(
-            &self,
-            input: $crate::$models::ergonomic_inputs::SessionEndInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("session.end", input.to_event_value())
-        }
-        pub fn session_start(
-            &self,
-            input: $crate::$models::ergonomic_inputs::SessionStartInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("session.start", input.to_event_value())
-        }
-        pub fn task_change_after(
-            &self,
-            input: $crate::$models::ergonomic_inputs::TaskChangeAfterInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "task.change.after",
-                input.to_event_value(),
-            )
-        }
-        pub fn task_change_before(
-            &self,
-            input: $crate::$models::ergonomic_inputs::TaskChangeBeforeInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "task.change.before",
-                input.to_event_value(),
-            )
-        }
-        pub fn tool_after<T: serde::Serialize + serde::de::DeserializeOwned>(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ToolAfterInput<T>,
-        ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.projected_event_for::<T>("tool.after", input.to_event_value())
-        }
-        pub fn tool_batch_after(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ToolBatchAfterInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "tool.batch.after",
-                input.to_event_value(),
-            )
-        }
-        pub fn tool_before<T: serde::Serialize + serde::de::DeserializeOwned>(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ToolBeforeInput<T>,
-        ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.projected_event_for::<T>("tool.before", input.to_event_value())
-        }
-        pub fn tool_permission_request<T: serde::Serialize + serde::de::DeserializeOwned>(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ToolPermissionRequestInput<T>,
-        ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.projected_event_for::<T>("tool.permission.request", input.to_event_value())
-        }
-        pub fn tool_permission_resolved<T: serde::Serialize + serde::de::DeserializeOwned>(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ToolPermissionResolvedInput<T>,
-        ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.projected_event_for::<T>("tool.permission.resolved", input.to_event_value())
-        }
-        pub fn tool_progress<T: serde::Serialize + serde::de::DeserializeOwned>(
-            &self,
-            input: $crate::$models::ergonomic_inputs::ToolProgressInput<T>,
-        ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.projected_event_for::<T>("tool.progress", input.to_event_value())
-        }
-        pub fn turn_end(
-            &self,
-            input: $crate::$models::ergonomic_inputs::TurnEndInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("turn.end", input.to_event_value())
-        }
-        pub fn turn_finish_before(
-            &self,
-            input: $crate::$models::ergonomic_inputs::TurnFinishBeforeInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "turn.finish.before",
-                input.to_event_value(),
-            )
-        }
-        pub fn turn_progress(
-            &self,
-            input: $crate::$models::ergonomic_inputs::TurnProgressInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("turn.progress", input.to_event_value())
-        }
-        pub fn turn_start(
-            &self,
-            input: $crate::$models::ergonomic_inputs::TurnStartInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("turn.start", input.to_event_value())
-        }
-        pub fn user_attention(
-            &self,
-            input: $crate::$models::ergonomic_inputs::UserAttentionInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>("user.attention", input.to_event_value())
-        }
-        pub fn user_elicitation_request(
-            &self,
-            input: $crate::$models::ergonomic_inputs::UserElicitationRequestInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "user.elicitation.request",
-                input.to_event_value(),
-            )
-        }
-        pub fn user_elicitation_result(
-            &self,
-            input: $crate::$models::ergonomic_inputs::UserElicitationResultInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "user.elicitation.result",
-                input.to_event_value(),
-            )
-        }
-        pub fn user_message_inbound(
-            &self,
-            input: $crate::$models::ergonomic_inputs::UserMessageInboundInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "user.message.inbound",
-                input.to_event_value(),
-            )
-        }
-        pub fn user_message_outbound(
-            &self,
-            input: $crate::$models::ergonomic_inputs::UserMessageOutboundInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "user.message.outbound",
-                input.to_event_value(),
-            )
-        }
-        pub fn workspace_change_after(
-            &self,
-            input: $crate::$models::ergonomic_inputs::WorkspaceChangeAfterInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "workspace.change.after",
-                input.to_event_value(),
-            )
-        }
-        pub fn workspace_change_before(
-            &self,
-            input: $crate::$models::ergonomic_inputs::WorkspaceChangeBeforeInput,
-        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
-            self.projected_event_for::<serde_json::Value>(
-                "workspace.change.before",
-                input.to_event_value(),
-            )
-        }
-    };
+ () => { $crate::ahp_ergonomic_hook_methods!(generated); };
+ ($models:ident) => {
+pub fn config_change_after(&self, input: $crate::$models::ergonomic_inputs::ConfigChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ConfigChangeAfterInput> { self.input_for("config.change.after", input, $crate::$models::ergonomic_inputs::ConfigChangeAfterInput::to_event_value) }
+pub fn config_change_before(&self, input: $crate::$models::ergonomic_inputs::ConfigChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ConfigChangeBeforeInput> { self.input_for("config.change.before", input, $crate::$models::ergonomic_inputs::ConfigChangeBeforeInput::to_event_value) }
+pub fn context_compact_after(&self, input: $crate::$models::ergonomic_inputs::ContextCompactAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ContextCompactAfterInput> { self.input_for("context.compact.after", input, $crate::$models::ergonomic_inputs::ContextCompactAfterInput::to_event_value) }
+pub fn context_compact_before(&self, input: $crate::$models::ergonomic_inputs::ContextCompactBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ContextCompactBeforeInput> { self.input_for("context.compact.before", input, $crate::$models::ergonomic_inputs::ContextCompactBeforeInput::to_event_value) }
+pub fn file_changed(&self, input: $crate::$models::ergonomic_inputs::FileChangedInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::FileChangedInput> { self.input_for("file.changed", input, $crate::$models::ergonomic_inputs::FileChangedInput::to_event_value) }
+pub fn hook_failure(&self, input: $crate::$models::ergonomic_inputs::HookFailureInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::HookFailureInput> { self.input_for("hook.failure", input, $crate::$models::ergonomic_inputs::HookFailureInput::to_event_value) }
+pub fn model_error(&self, input: $crate::$models::ergonomic_inputs::ModelErrorInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ModelErrorInput> { self.input_for("model.error", input, $crate::$models::ergonomic_inputs::ModelErrorInput::to_event_value) }
+pub fn model_request_before(&self, input: $crate::$models::ergonomic_inputs::ModelRequestBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ModelRequestBeforeInput> { self.input_for("model.request.before", input, $crate::$models::ergonomic_inputs::ModelRequestBeforeInput::to_event_value) }
+pub fn model_response_after(&self, input: $crate::$models::ergonomic_inputs::ModelResponseAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ModelResponseAfterInput> { self.input_for("model.response.after", input, $crate::$models::ergonomic_inputs::ModelResponseAfterInput::to_event_value) }
+pub fn model_switch_after(&self, input: $crate::$models::ergonomic_inputs::ModelSwitchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ModelSwitchAfterInput> { self.input_for("model.switch.after", input, $crate::$models::ergonomic_inputs::ModelSwitchAfterInput::to_event_value) }
+pub fn model_switch_before(&self, input: $crate::$models::ergonomic_inputs::ModelSwitchBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ModelSwitchBeforeInput> { self.input_for("model.switch.before", input, $crate::$models::ergonomic_inputs::ModelSwitchBeforeInput::to_event_value) }
+pub fn session_end(&self, input: $crate::$models::ergonomic_inputs::SessionEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::SessionEndInput> { self.input_for("session.end", input, $crate::$models::ergonomic_inputs::SessionEndInput::to_event_value) }
+pub fn session_start(&self, input: $crate::$models::ergonomic_inputs::SessionStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::SessionStartInput> { self.input_for("session.start", input, $crate::$models::ergonomic_inputs::SessionStartInput::to_event_value) }
+pub fn task_change_after(&self, input: $crate::$models::ergonomic_inputs::TaskChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::TaskChangeAfterInput> { self.input_for("task.change.after", input, $crate::$models::ergonomic_inputs::TaskChangeAfterInput::to_event_value) }
+pub fn task_change_before(&self, input: $crate::$models::ergonomic_inputs::TaskChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::TaskChangeBeforeInput> { self.input_for("task.change.before", input, $crate::$models::ergonomic_inputs::TaskChangeBeforeInput::to_event_value) }
+pub fn tool_after<T: serde::Serialize>(&self, input: $crate::$models::ergonomic_inputs::ToolAfterInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ToolAfterInput<T>> { self.input_for("tool.after", input, $crate::$models::ergonomic_inputs::ToolAfterInput::<T>::to_event_value) }
+pub fn tool_batch_after(&self, input: $crate::$models::ergonomic_inputs::ToolBatchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ToolBatchAfterInput> { self.input_for("tool.batch.after", input, $crate::$models::ergonomic_inputs::ToolBatchAfterInput::to_event_value) }
+pub fn tool_before_event<T: serde::Serialize>(&self, input: $crate::$models::ergonomic_inputs::ToolBeforeInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ToolBeforeInput<T>> { self.input_for("tool.before", input, $crate::$models::ergonomic_inputs::ToolBeforeInput::<T>::to_event_value) }
+pub fn tool_permission_request<T: serde::Serialize>(&self, input: $crate::$models::ergonomic_inputs::ToolPermissionRequestInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ToolPermissionRequestInput<T>> { self.input_for("tool.permission.request", input, $crate::$models::ergonomic_inputs::ToolPermissionRequestInput::<T>::to_event_value) }
+pub fn tool_permission_resolved<T: serde::Serialize>(&self, input: $crate::$models::ergonomic_inputs::ToolPermissionResolvedInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ToolPermissionResolvedInput<T>> { self.input_for("tool.permission.resolved", input, $crate::$models::ergonomic_inputs::ToolPermissionResolvedInput::<T>::to_event_value) }
+pub fn tool_progress<T: serde::Serialize>(&self, input: $crate::$models::ergonomic_inputs::ToolProgressInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::ToolProgressInput<T>> { self.input_for("tool.progress", input, $crate::$models::ergonomic_inputs::ToolProgressInput::<T>::to_event_value) }
+pub fn turn_end(&self, input: $crate::$models::ergonomic_inputs::TurnEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::TurnEndInput> { self.input_for("turn.end", input, $crate::$models::ergonomic_inputs::TurnEndInput::to_event_value) }
+pub fn turn_finish_before(&self, input: $crate::$models::ergonomic_inputs::TurnFinishBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::TurnFinishBeforeInput> { self.input_for("turn.finish.before", input, $crate::$models::ergonomic_inputs::TurnFinishBeforeInput::to_event_value) }
+pub fn turn_progress(&self, input: $crate::$models::ergonomic_inputs::TurnProgressInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::TurnProgressInput> { self.input_for("turn.progress", input, $crate::$models::ergonomic_inputs::TurnProgressInput::to_event_value) }
+pub fn turn_start(&self, input: $crate::$models::ergonomic_inputs::TurnStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::TurnStartInput> { self.input_for("turn.start", input, $crate::$models::ergonomic_inputs::TurnStartInput::to_event_value) }
+pub fn user_attention(&self, input: $crate::$models::ergonomic_inputs::UserAttentionInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::UserAttentionInput> { self.input_for("user.attention", input, $crate::$models::ergonomic_inputs::UserAttentionInput::to_event_value) }
+pub fn user_elicitation_request(&self, input: $crate::$models::ergonomic_inputs::UserElicitationRequestInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::UserElicitationRequestInput> { self.input_for("user.elicitation.request", input, $crate::$models::ergonomic_inputs::UserElicitationRequestInput::to_event_value) }
+pub fn user_elicitation_result(&self, input: $crate::$models::ergonomic_inputs::UserElicitationResultInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::UserElicitationResultInput> { self.input_for("user.elicitation.result", input, $crate::$models::ergonomic_inputs::UserElicitationResultInput::to_event_value) }
+pub fn user_message_inbound(&self, input: $crate::$models::ergonomic_inputs::UserMessageInboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::UserMessageInboundInput> { self.input_for("user.message.inbound", input, $crate::$models::ergonomic_inputs::UserMessageInboundInput::to_event_value) }
+pub fn user_message_outbound(&self, input: $crate::$models::ergonomic_inputs::UserMessageOutboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::UserMessageOutboundInput> { self.input_for("user.message.outbound", input, $crate::$models::ergonomic_inputs::UserMessageOutboundInput::to_event_value) }
+pub fn workspace_change_after(&self, input: $crate::$models::ergonomic_inputs::WorkspaceChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::WorkspaceChangeAfterInput> { self.input_for("workspace.change.after", input, $crate::$models::ergonomic_inputs::WorkspaceChangeAfterInput::to_event_value) }
+pub fn workspace_change_before(&self, input: $crate::$models::ergonomic_inputs::WorkspaceChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::ergonomic_inputs::WorkspaceChangeBeforeInput> { self.input_for("workspace.change.before", input, $crate::$models::ergonomic_inputs::WorkspaceChangeBeforeInput::to_event_value) }
+
+ };
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -17291,6 +17076,98 @@ pub mod capability {
             self.build()
                 .map_err(serde::ser::Error::custom)?
                 .serialize(serializer)
+        }
+    }
+    pub use super::EventType as Event;
+    #[derive(
+        Debug,
+        Clone,
+        Copy,
+        PartialEq,
+        Eq,
+        PartialOrd,
+        Ord,
+        Hash,
+        serde::Serialize,
+        serde::Deserialize,
+    )]
+    pub enum EffectType {
+        #[serde(rename = "allow")]
+        Allow,
+        #[serde(rename = "ask")]
+        Ask,
+        #[serde(rename = "deny")]
+        Deny,
+        #[serde(rename = "flow")]
+        Flow,
+        #[serde(rename = "inject")]
+        Inject,
+        #[serde(rename = "message")]
+        Message,
+        #[serde(rename = "modify")]
+        Modify,
+        #[serde(rename = "return")]
+        Return,
+    }
+    impl EffectType {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Allow => "allow",
+                Self::Ask => "ask",
+                Self::Deny => "deny",
+                Self::Flow => "flow",
+                Self::Inject => "inject",
+                Self::Message => "message",
+                Self::Modify => "modify",
+                Self::Return => "return",
+            }
+        }
+    }
+    #[derive(
+        Debug,
+        Clone,
+        Copy,
+        PartialEq,
+        Eq,
+        PartialOrd,
+        Ord,
+        Hash,
+        serde::Serialize,
+        serde::Deserialize,
+    )]
+    pub enum ModifyTarget {
+        #[serde(rename = "content")]
+        Content,
+        #[serde(rename = "input")]
+        Input,
+        #[serde(rename = "instructions")]
+        Instructions,
+        #[serde(rename = "output")]
+        Output,
+        #[serde(rename = "prompt")]
+        Prompt,
+        #[serde(rename = "request")]
+        Request,
+        #[serde(rename = "response")]
+        Response,
+        #[serde(rename = "summary")]
+        Summary,
+        #[serde(rename = "workspace")]
+        Workspace,
+    }
+    impl ModifyTarget {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Content => "content",
+                Self::Input => "input",
+                Self::Instructions => "instructions",
+                Self::Output => "output",
+                Self::Prompt => "prompt",
+                Self::Request => "request",
+                Self::Response => "response",
+                Self::Summary => "summary",
+                Self::Workspace => "workspace",
+            }
         }
     }
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

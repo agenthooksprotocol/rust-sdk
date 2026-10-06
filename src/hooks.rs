@@ -1368,7 +1368,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
 // Both the named methods and their inventory are generated from the schema catalogue.
 pub const NAMED_BOUNDARIES: &[&str] = crate::ahp_hooks_boundary_methods!(inventory);
 impl Hooks {
-    crate::ahp_hooks_boundary_methods!();
+    crate::ahp_ergonomic_hook_methods!();
 }
 
 fn bounded<'a, T: Send + 'a>(

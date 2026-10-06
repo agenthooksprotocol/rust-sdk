@@ -219,3 +219,91 @@ fn generated_state_candidate_distinguishes_null_from_absence() {
     assert_eq!(empty["candidate"], Value::Null);
     assert_eq!(supplied["candidate"], json!({"value":null}));
 }
+
+#[test]
+fn generated_named_tool_event_is_lazy_and_accepts_serialize_only_arguments() {
+    use agenthooksprotocol::{
+        DeliveryDiagnosticCode, Hooks, Permission,
+        ergonomic_inputs::ToolBeforeInput,
+        generated::ToolBeforeInputOrigin,
+        hooks::{Capabilities, EventGrant, HooksOptions},
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    // Intentionally no Deserialize implementation: full-event projection only
+    // needs to serialize application arguments, not decode them back to T.
+    struct Counted(Arc<AtomicUsize>);
+    impl serde::Serialize for Counted {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            serde::Serialize::serialize(&json!({"count":1}), serializer)
+        }
+    }
+    let serializations = Arc::new(AtomicUsize::new(0));
+    let calls = Arc::new(Mutex::new(vec![]));
+    let registration = json!({"protocolVersion":"draft","hooks":[{"id":"org.example.lazy","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[{"events":["tool.before"],"mode":"intercept","timeoutMs":1000,"failurePolicy":"fail-closed","content":{"default":"metadata"}}]}]});
+    let options = HooksOptions::new(
+        "urn:lazy",
+        [(
+            "tool.before".into(),
+            EventGrant::intercept(Capabilities::none().allow().deny()),
+        )]
+        .into(),
+    )
+    .with_backend("org.example.lazy", Arc::new(Capture(calls.clone())));
+    let hooks = Hooks::new(registration, options).unwrap();
+    let input = || {
+        ToolBeforeInput::new(
+            "call".into(),
+            "explicit-path".into(),
+            Counted(serializations.clone()),
+            "counter".into(),
+            ToolBeforeInputOrigin::Native,
+        )
+    };
+    drop(hooks.tool_before_event(input()));
+    drop(hooks.tool_before_event(input()).into_future());
+    assert_eq!(serializations.load(Ordering::SeqCst), 0);
+    assert!(calls.lock().unwrap().is_empty());
+    let expired = block_on(
+        hooks
+            .tool_before_event(input())
+            .budget(std::future::ready(()))
+            .into_future(),
+    )
+    .err()
+    .unwrap();
+    assert_eq!(expired.code(), DeliveryDiagnosticCode::DeadlineExceeded);
+    assert_eq!(serializations.load(Ordering::SeqCst), 0);
+    assert!(calls.lock().unwrap().is_empty());
+    let result = block_on(
+        hooks
+            .tool_before_event(input())
+            .initial_state(Permission::Allow)
+            .into_future(),
+    )
+    .unwrap();
+    assert_eq!(serializations.load(Ordering::SeqCst), 1);
+    assert_eq!(calls.lock().unwrap().len(), 1);
+    assert_eq!(result.permission(), Permission::Allow);
+    let event = result.event.unwrap();
+    assert_eq!(event["tool"]["input"], json!({"count":1}));
+    assert_eq!(event["path"], "explicit-path");
+    assert_eq!(event["tool"]["origin"], "native");
+    assert_eq!(event["type"], "tool.before");
+    assert_eq!(event["source"], "urn:lazy");
+    block_on(hooks.shutdown()).unwrap();
+}
+
+#[test]
+fn generated_capability_vocabulary_uses_canonical_wire_tags() {
+    use agenthooksprotocol::{
+        EventType,
+        capability::{EffectType, Event, ModifyTarget},
+    };
+    let event: EventType = Event::ToolBefore;
+    assert_eq!(serde_json::to_value(event).unwrap(), "tool.before");
+    assert_eq!(EffectType::Deny.as_str(), "deny");
+    assert_eq!(serde_json::to_value(EffectType::Deny).unwrap(), "deny");
+    assert_eq!(ModifyTarget::Input.as_str(), "input");
+    assert_eq!(serde_json::to_value(ModifyTarget::Input).unwrap(), "input");
+}

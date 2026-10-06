@@ -25,7 +25,11 @@ explicit per-event `EventGrant` authority. Registration selects routes; it does
 not grant effects or observation permission. `tool_before(ToolBeforeInput<T>)`
 accepts flattened typed host facts and preserves the application argument type.
 `tool_input(T).context(...)` and `event(...)` retain advanced canonical paths.
-The named event facade follows the generated catalogue.
+All 32 named event methods accept their generated `ergonomic_inputs::*Input`
+with projection deferred until await. `tool_before_event(ToolBeforeInput<T>)`
+returns the complete effective event; the primary `tool_before` instead preserves
+the application argument type in `result.input`. Capability vocabulary is available
+as `capability::{Event, EffectType, ModifyTarget}` with canonical wire spellings.
 
 Enable `reqwest` for registered HTTP and `tokio-process` for registered stdio.
 Default features remain empty. Construction and unpolled boundaries perform no

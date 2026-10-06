@@ -52,7 +52,10 @@ fn options(backend: Arc<Backend>) -> HooksOptions {
     )
     .with_backend("org.example.test", backend)
 }
-fn facts() -> Value {
+fn facts() -> agenthooksprotocol::ergonomic_inputs::SessionStartInput {
+    serde_json::from_value(canonical_facts()).unwrap()
+}
+fn canonical_facts() -> Value {
     json!({"session":{"id":"session_1"},"trigger":"startup",
         "harness":{"name":"test","version":"1"},"permissionMode":"ask","items":[]})
 }
@@ -73,11 +76,11 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
     );
     let report = pool.run_until(hooks.wait_until_idle());
     assert_eq!(report.delivered, 1, "{:?}", report.failures);
-    let mut same = facts();
+    let mut same = canonical_facts();
     same["type"] = json!("session.start");
     same["manifest"] = hooks.manifest();
     assert!(
-        pool.run_until(hooks.session_start(same).into_future())
+        pool.run_until(hooks.event_for("session.start", same).into_future())
             .is_ok()
     );
     for (field, wrong) in [
@@ -85,10 +88,10 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
         ("type", Value::Null),
         ("manifest", json!({})),
     ] {
-        let mut event = facts();
+        let mut event = canonical_facts();
         event[field] = wrong;
         assert!(
-            pool.run_until(hooks.session_start(event).into_future())
+            pool.run_until(hooks.event_for("session.start", event).into_future())
                 .is_err()
         );
     }
