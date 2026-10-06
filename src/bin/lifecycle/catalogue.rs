@@ -288,9 +288,9 @@ pub(super) fn client(c: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::RefCell, rc::Rc};
+    use std::sync::{Arc, Mutex};
 
-    struct RecordingObserver(Rc<RefCell<Vec<Value>>>);
+    struct RecordingObserver(Arc<Mutex<Vec<Value>>>);
     impl agenthooksprotocol::client::Hook for RecordingObserver {
         fn call(
             &self,
@@ -300,7 +300,7 @@ mod tests {
             std::result::Result<Value, agenthooksprotocol::client::HookError>,
         > {
             Box::pin(async move {
-                self.0.borrow_mut().push(message);
+                self.0.lock().unwrap().push(message);
                 // Even a malicious observer return must never reopen settlement.
                 Ok(json!({"effects":[{"type":"deny","reason":"ignored observer result"}]}))
             })
@@ -313,14 +313,14 @@ mod tests {
     }
     #[test]
     fn complete_event_boundary_is_lazy_and_observation_is_deferred() {
-        let messages = Rc::new(RefCell::new(Vec::new()));
+        let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
         let event = progress_event();
         let boundary = client.event(event.clone());
-        assert!(messages.borrow().is_empty());
+        assert!(messages.lock().unwrap().is_empty());
         let settled = futures::executor::block_on(async { boundary.await }).unwrap();
         assert!(
-            messages.borrow().is_empty(),
+            messages.lock().unwrap().is_empty(),
             "settlement must not perform observer I/O"
         );
         assert_eq!(settled.event.unwrap(), event);
@@ -328,7 +328,7 @@ mod tests {
         let observation = settled.observations.into_iter().next().unwrap();
         futures::executor::block_on(observation.deliver()).unwrap();
         assert_eq!(
-            *messages.borrow(),
+            *messages.lock().unwrap(),
             vec![
                 json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":event}})
             ]
@@ -340,19 +340,19 @@ mod tests {
     }
     #[test]
     fn invalid_complete_event_never_reaches_transport_and_next_event_recovers() {
-        let messages = Rc::new(RefCell::new(Vec::new()));
+        let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
         let mut invalid = progress_event();
         invalid["delta"].as_object_mut().unwrap().remove("role");
         assert!(futures::executor::block_on(deliver_event(&client, invalid)).is_err());
-        assert!(messages.borrow().is_empty());
+        assert!(messages.lock().unwrap().is_empty());
         let message =
             futures::executor::block_on(deliver_event(&client, progress_event())).unwrap();
-        assert_eq!(*messages.borrow(), vec![message]);
+        assert_eq!(*messages.lock().unwrap(), vec![message]);
     }
     #[test]
     fn metadata_only_compaction_uses_explicit_content_context() {
-        let messages = Rc::new(RefCell::new(Vec::new()));
+        let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
         let before = json!({"id":"compact-before","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.before","trigger":"auto","items":[]});
         let after = json!({"id":"compact-after","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":{"id":"summary","kind":"message","mediaType":"text/plain","selection":"metadata","role":"system"},"removed":[],"execution":{"status":"executed"}});
@@ -361,15 +361,15 @@ mod tests {
                 futures::executor::block_on(deliver_event(&client, event.clone())).unwrap();
             assert_eq!(emitted["params"]["event"], event);
         }
-        assert_eq!(messages.borrow().len(), 2);
+        assert_eq!(messages.lock().unwrap().len(), 2);
     }
     #[test]
     fn catalogue_content_context_does_not_grant_body_access() {
-        let messages = Rc::new(RefCell::new(Vec::new()));
+        let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
         let event = json!({"id":"compact-body","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":{"id":"summary","kind":"message","mediaType":"text/plain","selection":"body","role":"system","body":{"ref":"not-authorized","size":0,"sha256":sha256(b"")}},"removed":[],"execution":{"status":"executed"}});
         assert!(futures::executor::block_on(deliver_event(&client, event)).is_err());
-        assert!(messages.borrow().is_empty());
+        assert!(messages.lock().unwrap().is_empty());
     }
     #[test]
     fn manifest_advertises_portable_authentication_not_deployment_modes() {

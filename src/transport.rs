@@ -22,9 +22,9 @@ impl std::fmt::Display for TransportError {
     }
 }
 impl std::error::Error for TransportError {}
-pub trait Http {
+pub trait Http: Send + Sync {
     fn send(
         &self,
         request: Request,
-    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + Send + '_>>;
 }

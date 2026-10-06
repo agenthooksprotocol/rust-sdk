@@ -298,7 +298,7 @@ impl<A: UploadAuthorizer> UploadReceiver<A> {
 
 /// Runtime-neutral immutable storage. References do not confer authorization.
 /// Implementations must retain published bytes for the lifetime of their users.
-pub trait ContentStore {
+pub trait ContentStore: Send + Sync {
     fn resolve(
         &self,
         scope: &AuthorizedScope,

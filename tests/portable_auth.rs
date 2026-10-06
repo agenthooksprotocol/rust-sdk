@@ -119,3 +119,39 @@ fn registration_rejects_structurally_malformed_known_authentication() {
         );
     }
 }
+
+#[cfg(feature = "reqwest")]
+#[test]
+fn provider_does_not_admit_unknown_mechanisms_or_oauth_flows() {
+    use agenthooksprotocol::{
+        adapters::registered::*,
+        client::{HookError, LocalFuture},
+    };
+    use std::sync::Arc;
+    struct Host;
+    impl AuthProvider for Host {
+        fn credential(
+            &self,
+            _: AuthContext,
+        ) -> LocalFuture<'_, Result<Option<BearerCredential>, HookError>> {
+            Box::pin(async { panic!("admission must not invoke provider") })
+        }
+        fn challenge(
+            &self,
+            _: AuthContext,
+            _: AuthChallenge,
+        ) -> LocalFuture<'_, Result<(), HookError>> {
+            Box::pin(async { panic!("admission must not invoke provider") })
+        }
+    }
+    let options = BackendOptions {
+        auth_provider: Some(Arc::new(Host)),
+        ..Default::default()
+    };
+    for authentication in [
+        json!({"type":"unknown"}),
+        json!({"type":"oauth","flow":"password"}),
+    ] {
+        assert!(from_registration(&json!({"id":"example","transport":{"type":"http","url":"https://example.com"},"authentication":authentication}), &options).is_err());
+    }
+}

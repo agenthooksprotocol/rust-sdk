@@ -135,6 +135,67 @@ async fn shutdown_and_drop_terminate_the_real_child() {
     .expect("dropped child must terminate and be reaped");
 }
 
+// Keep an exchange future alive but deliberately stop polling it. Its internal
+// timer cannot release the gate unless polled; shutdown must enforce its own bound.
+#[tokio::test]
+async fn shutdown_deadline_bounds_queueing_and_cleanup_can_be_retried() {
+    let process = child(
+        "import sys,time\nfor line in sys.stdin: time.sleep(10)\n",
+        128,
+        Duration::from_millis(150),
+    )
+    .await;
+    let mut exchange = process.send(request());
+    assert!(futures::poll!(exchange.as_mut()).is_pending());
+
+    let failure = tokio::time::timeout(Duration::from_secs(2), process.shutdown())
+        .await
+        .expect("shutdown must bound its own queue wait")
+        .unwrap_err();
+    assert!(failure.0.contains("shutdown deadline exceeded"));
+    assert!(failure.0.contains("retried"));
+
+    // Timing out while queued cannot steal the live exchange's lease. Dropping
+    // it retires the process; shutdown must still own and reap that child.
+    drop(exchange);
+    process.shutdown().await.unwrap();
+    process.shutdown().await.unwrap();
+    assert!(
+        process
+            .send(request())
+            .await
+            .unwrap_err()
+            .0
+            .contains("shut down")
+    );
+}
+
+#[tokio::test]
+async fn cancelled_queued_shutdown_preserves_child_for_retry() {
+    let process = child(
+        "import sys,time\nfor line in sys.stdin: time.sleep(10)\n",
+        128,
+        Duration::from_secs(2),
+    )
+    .await;
+    let mut exchange = process.send(request());
+    assert!(futures::poll!(exchange.as_mut()).is_pending());
+    let mut shutdown = Box::pin(process.shutdown());
+    assert!(futures::poll!(shutdown.as_mut()).is_pending());
+    drop(shutdown);
+    drop(exchange);
+    process.shutdown().await.unwrap();
+    process.shutdown().await.unwrap();
+    assert!(
+        process
+            .send(request())
+            .await
+            .unwrap_err()
+            .0
+            .contains("shut down")
+    );
+}
+
 #[tokio::test]
 async fn invalid_local_frames_do_not_retire_a_healthy_child() {
     let process = child(

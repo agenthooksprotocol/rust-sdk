@@ -2,16 +2,16 @@ use agenthooksprotocol::client::*;
 use futures::executor::block_on;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
 struct HookFn {
     effects: Value,
-    calls: Rc<RefCell<Vec<Value>>>,
+    calls: Arc<Mutex<Vec<Value>>>,
 }
 impl Hook for HookFn {
     fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
         Box::pin(async move {
-            self.calls.borrow_mut().push(request.clone());
+            self.calls.lock().unwrap().push(request.clone());
             Ok(
                 json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","effects":self.effects}}),
             )
@@ -24,7 +24,7 @@ fn event() -> Value {
 fn client() -> Client {
     Client::new(ToolContext::new(json!({})))
 }
-fn subscription(id: &str, effects: Value, calls: &Rc<RefCell<Vec<Value>>>) -> Subscription {
+fn subscription(id: &str, effects: Value, calls: &Arc<Mutex<Vec<Value>>>) -> Subscription {
     let mut sub = Subscription::intercept(
         id,
         FailurePolicy::Open,
@@ -38,7 +38,7 @@ fn subscription(id: &str, effects: Value, calls: &Rc<RefCell<Vec<Value>>>) -> Su
 }
 #[test]
 fn full_event_is_lazy_and_requires_no_client_tool_context() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription("allow", json!([{"type":"allow"}]), &calls));
     let boundary = c.tool_before_event(event());
     assert_eq!(
@@ -46,7 +46,7 @@ fn full_event_is_lazy_and_requires_no_client_tool_context() {
         BoundaryStatus::NotStarted
     );
     drop(boundary);
-    assert!(calls.borrow().is_empty());
+    assert!(calls.lock().unwrap().is_empty());
     let result = block_on(async { c.event(event()).await.unwrap() });
     assert_eq!(result.outcome.decision, Decision::Allow);
     assert_eq!(result.event.unwrap(), event());
@@ -67,7 +67,7 @@ fn invalid_initial_event_and_name_fail_without_hooks() {
 }
 #[test]
 fn serial_full_event_modification_is_atomic() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client()
         .with_subscription(subscription("first", json!([{"type":"modify","target":"input","operation":"merge","value":{"count":2}},{"type":"return","value":null}]), &calls))
         .with_subscription(subscription("bad", json!([{"type":"deny","reason":"no"},{"type":"modify","target":"workspace","operation":"replace","value":{}}]), &calls))
@@ -78,13 +78,13 @@ fn serial_full_event_modification_is_atomic() {
     assert_eq!(result.outcome.candidate, Some(Value::Null));
     assert_eq!(result.outcome.failures.len(), 1);
     assert_eq!(
-        calls.borrow()[2]["params"]["state"]["candidate"],
+        calls.lock().unwrap()[2]["params"]["state"]["candidate"],
         json!({"value":null})
     );
 }
 #[test]
 fn observe_only_event_is_deferred_and_one_way() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription(
         "observe",
         json!([{"type":"deny","reason":"ignored"}]),
@@ -92,11 +92,11 @@ fn observe_only_event_is_deferred_and_one_way() {
     ));
     let e = json!({"id":"end","source":"https://example.test/runtime","type":"session.end","time":"2026-08-24T08:51:14Z","session":{"id":"s"},"outcome":"completed","reason":"done"});
     let result = block_on(async { c.session_end_event(e).await.unwrap() });
-    assert!(calls.borrow().is_empty());
+    assert!(calls.lock().unwrap().is_empty());
     assert_eq!(result.observations.len(), 1);
     block_on(result.observations.into_iter().next().unwrap().deliver()).unwrap();
-    assert_eq!(calls.borrow()[0]["method"], "hooks/observe");
-    assert!(calls.borrow()[0].get("id").is_none());
+    assert_eq!(calls.lock().unwrap()[0]["method"], "hooks/observe");
+    assert!(calls.lock().unwrap()[0].get("id").is_none());
 }
 #[derive(Serialize, Deserialize)]
 struct TypedEvent {
@@ -116,7 +116,7 @@ struct Input {
 }
 #[test]
 fn full_event_decode_failure_does_not_rollback_protocol_commit() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription("mutate", json!([{"type":"modify","target":"input","operation":"replace","value":{"count":"changed"}},{"type":"allow"}]), &calls));
     let typed: TypedEvent = serde_json::from_value(event()).unwrap();
     let result = block_on(async { c.event(typed).await.unwrap() });
@@ -136,7 +136,7 @@ fn cancellation_keeps_accepted_evidence_without_authorization() {
         future::IntoFuture,
         task::{Context, Poll},
     };
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client()
         .with_subscription(subscription("allow", json!([{"type":"allow"}]), &calls))
         .with_subscription(Subscription::intercept(
@@ -156,7 +156,7 @@ fn cancellation_keeps_accepted_evidence_without_authorization() {
 
 #[test]
 fn missing_content_resolver_rejects_whole_body_response() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription(
         "body",
         json!([
@@ -174,7 +174,7 @@ fn missing_content_resolver_rejects_whole_body_response() {
 
 #[test]
 fn continuation_is_one_requested_step_with_ordered_instructions() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription(
         "continue",
         json!([
@@ -356,7 +356,7 @@ fn generic_body_grants_require_mapping_resolver_selection_and_supported_encoding
         ("text/plain", b"text".as_slice(), "body", false, true, None),
         ("text/plain", b"text".as_slice(), "body", true, false, None),
     ] {
-        let calls = Rc::new(RefCell::new(vec![]));
+        let calls = Arc::new(Mutex::new(vec![]));
         let c = client().with_subscription(subscription("inspect", json!([]), &calls));
         let mut item = selected_item(&content, media, bytes);
         if view != "body" {
@@ -376,7 +376,7 @@ fn generic_body_grants_require_mapping_resolver_selection_and_supported_encoding
         }
         let result = block_on(async { boundary.await });
         assert!(result.is_ok(), "case {media}/{view}/{resolver}/{mapping}");
-        let calls = calls.borrow();
+        let calls = calls.lock().unwrap();
         let caps = &calls[0]["params"]["capabilities"];
         match expected {
             Some(merge) => assert_eq!(
@@ -409,7 +409,7 @@ fn explicit_content_mapping_ignores_misleading_metadata_and_preserves_siblings()
     primary["kind"] = json!("attachment");
     primary["category"] = json!("unrelated");
     primary["role"] = json!("system");
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription(
         "modify",
         json!([{"type":"modify","target":"content","operation":"replace","value":"changed"}]),
@@ -440,7 +440,7 @@ fn restored_generic_body_keeps_original_reference_approval_and_candidate() {
         scope: AuthorizedScope::new("scope"),
     };
     let original = outbound(json!([selected_item(&content, "text/plain", b"original")]));
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription(
         "restore",
         json!([
@@ -466,7 +466,7 @@ fn restored_generic_body_keeps_original_reference_approval_and_candidate() {
 }
 #[test]
 fn content_mapping_rejects_noncanonical_or_nested_locations_before_dispatch() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription("inspect", json!([]), &calls));
     for pointer in [
         "/tool/input",
@@ -485,7 +485,7 @@ fn content_mapping_rejects_noncanonical_or_nested_locations_before_dispatch() {
             .is_err()
         );
     }
-    assert!(calls.borrow().is_empty());
+    assert!(calls.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -510,11 +510,11 @@ fn compaction_unselected_targets_do_not_advertise_modify() {
             } else {
                 event[target] = json!({"id":"target","kind":target,"role":"assistant","mediaType":"text/plain","selection":selection});
             }
-            let calls = Rc::new(RefCell::new(vec![]));
+            let calls = Arc::new(Mutex::new(vec![]));
             let c = client().with_subscription(subscription("inspect", json!([]), &calls));
             let result = block_on(async { c.event(event).content(content.clone()).await });
             assert!(result.is_ok(), "{name}/{selection}");
-            let calls = calls.borrow();
+            let calls = calls.lock().unwrap();
             let caps = &calls[0]["params"]["capabilities"];
             assert!(caps.get("modify").is_none());
             let effects = caps["effects"].as_array().unwrap();
@@ -538,12 +538,12 @@ fn elicitation_unselected_request_advertises_only_independent_messages() {
         if selection != "absent" {
             event["elicitation"]["request"] = json!({"id":"request-item","kind":"elicitation.request","mediaType":"application/json","selection":selection});
         }
-        let calls = Rc::new(RefCell::new(vec![]));
+        let calls = Arc::new(Mutex::new(vec![]));
         let c = client().with_subscription(subscription("inspect", json!([]), &calls));
         let result = block_on(async { c.event(event).content(content.clone()).await });
         assert!(result.is_ok(), "{selection}");
         assert_eq!(
-            calls.borrow()[0]["params"]["capabilities"]["effects"],
+            calls.lock().unwrap()[0]["params"]["capabilities"]["effects"],
             json!(["message"])
         );
     }
@@ -583,7 +583,7 @@ fn elicitation_result_modify_requires_both_original_request_and_current_result_b
         } else {
             json!({"id":"result","kind":"elicitation.result","mediaType":"application/json","selection":"metadata"})
         };
-        let calls = Rc::new(RefCell::new(vec![]));
+        let calls = Arc::new(Mutex::new(vec![]));
         let c = client().with_subscription(subscription("inspect", json!([]), &calls));
         let result = block_on(async {
             c.event(event)
@@ -592,7 +592,7 @@ fn elicitation_result_modify_requires_both_original_request_and_current_result_b
                 .await
         });
         assert!(result.is_ok(), "{original_selected}/{result_selected}");
-        let calls = calls.borrow();
+        let calls = calls.lock().unwrap();
         let caps = &calls[0]["params"]["capabilities"];
         assert_eq!(
             caps.get("modify").is_some(),

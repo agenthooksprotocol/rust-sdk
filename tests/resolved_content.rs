@@ -3,7 +3,7 @@ use agenthooksprotocol::{
     generated::ContentReference,
 };
 use serde_json::{Value, json};
-use std::{cell::Cell, sync::Arc};
+use std::{sync::Arc, sync::Mutex};
 
 fn item(reference: Value) -> Value {
     json!({"id":"stable", "kind":"message", "mediaType":"text/plain", "role":"assistant", "selection":"body", "body":reference, "category":"reasoning", "parentItemId":"owner", "synthesized":true})
@@ -44,7 +44,7 @@ fn shared_store_is_immutable_scoped_and_bounded() {
 }
 
 struct Host {
-    reads: Cell<usize>,
+    reads: Mutex<usize>,
     backing: MemoryContentStore,
     lie_read: bool,
     lie_write: bool,
@@ -55,7 +55,7 @@ impl ContentStore for Host {
         scope: &AuthorizedScope,
         reference: &ContentReference,
     ) -> Result<Arc<[u8]>, UploadError> {
-        self.reads.set(self.reads.get() + 1);
+        *self.reads.lock().unwrap() += 1;
         if self.lie_read {
             Ok(Arc::from(&b"evil"[..]))
         } else {
@@ -81,7 +81,7 @@ impl ContentStore for Host {
 fn host_store_is_not_authoritative_for_digests() {
     for (lie_read, lie_write) in [(true, false), (false, true)] {
         let host = Host {
-            reads: Cell::new(0),
+            reads: Mutex::new(0),
             backing: MemoryContentStore::new(128, 256, 8),
             lie_read,
             lie_write,
@@ -106,7 +106,7 @@ fn host_store_is_not_authoritative_for_digests() {
 #[test]
 fn views_do_not_fetch_and_body_gaps_fail_closed() {
     let host = Host {
-        reads: Cell::new(0),
+        reads: Mutex::new(0),
         backing: MemoryContentStore::new(128, 256, 8),
         lie_read: true,
         lie_write: false,
@@ -127,7 +127,7 @@ fn views_do_not_fetch_and_body_gaps_fail_closed() {
         context.resolve_selected(&json!({"selection":"body", "gap":{"reason":"unavailable"}})),
         Err(UploadError::Unavailable)
     );
-    assert_eq!(host.reads.get(), 0);
+    assert_eq!(*host.reads.lock().unwrap(), 0);
 }
 #[test]
 fn bounded_text_and_json_verify_utf8_and_bytes() {

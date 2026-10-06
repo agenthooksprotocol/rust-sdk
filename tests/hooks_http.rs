@@ -29,7 +29,6 @@ fn context() -> ToolContext {
 
 #[tokio::test(flavor = "current_thread")]
 async fn ordinary_registration_http_dispatch_and_owned_observations() {
-    tokio::task::LocalSet::new().run_until(async {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let url = format!("http://{}/hooks", listener.local_addr().unwrap());
@@ -124,7 +123,6 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
     )]
     .into();
     let mut options = HooksOptions::new("https://host.test/http", grants);
-    options.observation_scheduler = Some(std::rc::Rc::new(TestScheduler));
     options.backend.allow_loopback_http = true;
     options
         .backend
@@ -133,7 +131,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
     options.observation_timeout = Duration::from_secs(2);
     let hooks = Hooks::new(registration, options).unwrap();
     let lazy = hooks
-        .tool_before(Input {
+        .tool_input(Input {
             command: "modify".into(),
             timeout_ms: 100,
         })
@@ -151,7 +149,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
     assert_eq!(effective.command, "safe");
     assert_eq!(effective.timeout_ms, 25);
     let cached = hooks
-        .tool_before(Input {
+        .tool_input(Input {
             command: "cached".into(),
             timeout_ms: 100,
         })
@@ -166,7 +164,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
     );
     assert!(!cached.outcome.can_execute());
     let denied = hooks
-        .tool_before(Input {
+        .tool_input(Input {
             command: "denied".into(),
             timeout_ms: 100,
         })
@@ -180,7 +178,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
     // Occurrence-level authority can narrow, never add an ungranted effect.
     assert!(
         hooks
-            .tool_before(Input {
+            .tool_input(Input {
                 command: "never-sent".into(),
                 timeout_ms: 1
             })
@@ -189,7 +187,15 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
             .await
             .is_err()
     );
-    assert_eq!(requests.lock().unwrap().iter().filter(|request| request.get("id").is_some()).count(), 3);
+    assert_eq!(
+        requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request.get("id").is_some())
+            .count(),
+        3
+    );
     let report = hooks.wait_until_idle().await;
     assert_eq!(report.delivered, 2);
     assert_eq!(report.failures.len(), 1);
@@ -225,43 +231,5 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
             assert!(request["params"].get("capabilities").is_none());
             assert!(request["params"].get("state").is_none());
         }
-    }
-    }).await;
-}
-
-// Test executor also covers reqwest-only builds, without the tokio-process feature.
-struct TestScheduler;
-impl agenthooksprotocol::hooks::ObservationScheduler for TestScheduler {
-    fn schedule(
-        &self,
-        work: agenthooksprotocol::client::LocalFuture<'static, ()>,
-    ) -> std::rc::Rc<dyn agenthooksprotocol::hooks::ObservationTask> {
-        use futures::FutureExt;
-        struct Task {
-            abort: tokio::task::AbortHandle,
-            completion: futures::future::Shared<futures::future::LocalBoxFuture<'static, ()>>,
-        }
-        impl Drop for Task {
-            fn drop(&mut self) {
-                self.abort.abort();
-            }
-        }
-        impl agenthooksprotocol::hooks::ObservationTask for Task {
-            fn cancel(&self) {
-                self.abort.abort();
-            }
-            fn completion(&self) -> agenthooksprotocol::client::LocalFuture<'_, ()> {
-                Box::pin(self.completion.clone())
-            }
-        }
-        let handle = tokio::task::spawn_local(work);
-        std::rc::Rc::new(Task {
-            abort: handle.abort_handle(),
-            completion: async move {
-                handle.await.unwrap();
-            }
-            .boxed_local()
-            .shared(),
-        })
     }
 }

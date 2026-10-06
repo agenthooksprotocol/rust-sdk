@@ -10948,6 +10948,6665 @@ impl From<TaskWorkspaceEventWorkspaceChangeBefore> for WorkspaceChangeBeforeEven
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub enum EventType {
+    #[serde(rename = "config.change.after")]
+    ConfigChangeAfter,
+    #[serde(rename = "config.change.before")]
+    ConfigChangeBefore,
+    #[serde(rename = "context.compact.after")]
+    ContextCompactAfter,
+    #[serde(rename = "context.compact.before")]
+    ContextCompactBefore,
+    #[serde(rename = "file.changed")]
+    FileChanged,
+    #[serde(rename = "hook.failure")]
+    HookFailure,
+    #[serde(rename = "model.error")]
+    ModelError,
+    #[serde(rename = "model.request.before")]
+    ModelRequestBefore,
+    #[serde(rename = "model.response.after")]
+    ModelResponseAfter,
+    #[serde(rename = "model.switch.after")]
+    ModelSwitchAfter,
+    #[serde(rename = "model.switch.before")]
+    ModelSwitchBefore,
+    #[serde(rename = "session.end")]
+    SessionEnd,
+    #[serde(rename = "session.start")]
+    SessionStart,
+    #[serde(rename = "task.change.after")]
+    TaskChangeAfter,
+    #[serde(rename = "task.change.before")]
+    TaskChangeBefore,
+    #[serde(rename = "tool.after")]
+    ToolAfter,
+    #[serde(rename = "tool.batch.after")]
+    ToolBatchAfter,
+    #[serde(rename = "tool.before")]
+    ToolBefore,
+    #[serde(rename = "tool.permission.request")]
+    ToolPermissionRequest,
+    #[serde(rename = "tool.permission.resolved")]
+    ToolPermissionResolved,
+    #[serde(rename = "tool.progress")]
+    ToolProgress,
+    #[serde(rename = "turn.end")]
+    TurnEnd,
+    #[serde(rename = "turn.finish.before")]
+    TurnFinishBefore,
+    #[serde(rename = "turn.progress")]
+    TurnProgress,
+    #[serde(rename = "turn.start")]
+    TurnStart,
+    #[serde(rename = "user.attention")]
+    UserAttention,
+    #[serde(rename = "user.elicitation.request")]
+    UserElicitationRequest,
+    #[serde(rename = "user.elicitation.result")]
+    UserElicitationResult,
+    #[serde(rename = "user.message.inbound")]
+    UserMessageInbound,
+    #[serde(rename = "user.message.outbound")]
+    UserMessageOutbound,
+    #[serde(rename = "workspace.change.after")]
+    WorkspaceChangeAfter,
+    #[serde(rename = "workspace.change.before")]
+    WorkspaceChangeBefore,
+}
+impl EventType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ConfigChangeAfter => "config.change.after",
+            Self::ConfigChangeBefore => "config.change.before",
+            Self::ContextCompactAfter => "context.compact.after",
+            Self::ContextCompactBefore => "context.compact.before",
+            Self::FileChanged => "file.changed",
+            Self::HookFailure => "hook.failure",
+            Self::ModelError => "model.error",
+            Self::ModelRequestBefore => "model.request.before",
+            Self::ModelResponseAfter => "model.response.after",
+            Self::ModelSwitchAfter => "model.switch.after",
+            Self::ModelSwitchBefore => "model.switch.before",
+            Self::SessionEnd => "session.end",
+            Self::SessionStart => "session.start",
+            Self::TaskChangeAfter => "task.change.after",
+            Self::TaskChangeBefore => "task.change.before",
+            Self::ToolAfter => "tool.after",
+            Self::ToolBatchAfter => "tool.batch.after",
+            Self::ToolBefore => "tool.before",
+            Self::ToolPermissionRequest => "tool.permission.request",
+            Self::ToolPermissionResolved => "tool.permission.resolved",
+            Self::ToolProgress => "tool.progress",
+            Self::TurnEnd => "turn.end",
+            Self::TurnFinishBefore => "turn.finish.before",
+            Self::TurnProgress => "turn.progress",
+            Self::TurnStart => "turn.start",
+            Self::UserAttention => "user.attention",
+            Self::UserElicitationRequest => "user.elicitation.request",
+            Self::UserElicitationResult => "user.elicitation.result",
+            Self::UserMessageInbound => "user.message.inbound",
+            Self::UserMessageOutbound => "user.message.outbound",
+            Self::WorkspaceChangeAfter => "workspace.change.after",
+            Self::WorkspaceChangeBefore => "workspace.change.before",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum DeliveryDiagnosticCode {
+    #[serde(rename = "protocol_rejection")]
+    ProtocolRejection,
+    #[serde(rename = "remote_rpc")]
+    RemoteRpc,
+    #[serde(rename = "transport")]
+    Transport,
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    #[serde(rename = "deadline_exceeded")]
+    DeadlineExceeded,
+    #[serde(rename = "preparation")]
+    Preparation,
+    #[serde(rename = "capacity")]
+    Capacity,
+}
+
+pub mod ergonomic_inputs {
+    #[allow(unused_imports)]
+    use super::*;
+    /// Out-of-band source binding, never serialized into wire events.
+    pub struct ContentSourceBinding<S> {
+        pub path: Vec<String>,
+        pub source: S,
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ConfigChangeAfterInput {
+        #[serde(rename = "change")]
+        pub change: ConfigChangeAfterInputChange,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ConfigChangeAfterInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ConfigChangeAfterInputTurn>,
+    }
+    impl ConfigChangeAfterInput {
+        pub const EVENT_TYPE: &'static str = "config.change.after";
+        pub fn new(change: ConfigChangeAfterInputChange) -> Self {
+            Self {
+                change,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ConfigChangeAfterInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ConfigChangeAfterInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("change") {
+                event["change"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod config_change_after_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ConfigChangeBeforeInput {
+        #[serde(rename = "change")]
+        pub change: ConfigChangeBeforeInputChange,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ConfigChangeBeforeInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ConfigChangeBeforeInputTurn>,
+    }
+    impl ConfigChangeBeforeInput {
+        pub const EVENT_TYPE: &'static str = "config.change.before";
+        pub fn new(change: ConfigChangeBeforeInputChange) -> Self {
+            Self {
+                change,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ConfigChangeBeforeInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ConfigChangeBeforeInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("change") {
+                event["change"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod config_change_before_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ContextCompactAfterInput {
+        #[serde(rename = "execution")]
+        pub execution: Box<ExecutionEventExecution>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ContextCompactAfterInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ModelVisibleItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "removed")]
+        pub removed: Vec<ContextCompactAfterInputRemovedItem>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(rename = "summary")]
+        pub summary: Box<ModelVisibleItem>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(
+            rename = "tokenCounts",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub token_counts: Option<Box<ExecutionEventTokencounts>>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ContextCompactAfterInputTurn>,
+    }
+    impl ContextCompactAfterInput {
+        pub const EVENT_TYPE: &'static str = "context.compact.after";
+        pub fn new(
+            execution: Box<ExecutionEventExecution>,
+            removed: Vec<ContextCompactAfterInputRemovedItem>,
+            summary: Box<ModelVisibleItem>,
+        ) -> Self {
+            Self {
+                execution,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                removed,
+                session: None,
+                summary,
+                synthesized: None,
+                time: None,
+                token_counts: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ContextCompactAfterInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ModelVisibleItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_token_counts(mut self, value: Box<ExecutionEventTokencounts>) -> Self {
+            self.token_counts = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ContextCompactAfterInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("execution") {
+                event["execution"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("removed") {
+                event["removed"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("summary") {
+                event["summary"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("tokenCounts") {
+                event["tokenCounts"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod context_compact_after_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+        pub fn summary<S>(source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["summary".to_owned()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ContextCompactBeforeInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ContextCompactBeforeInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(
+            rename = "instructions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub instructions: Option<Box<ContentItem>>,
+        #[serde(rename = "items")]
+        pub items: Vec<Box<ModelVisibleItem>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(
+            rename = "tokenCounts",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub token_counts: Option<Box<ExecutionEventTokencounts>>,
+        #[serde(rename = "trigger")]
+        pub trigger: ContextCompactBeforeInputTrigger,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ContextCompactBeforeInputTurn>,
+    }
+    impl ContextCompactBeforeInput {
+        pub const EVENT_TYPE: &'static str = "context.compact.before";
+        pub fn new(
+            items: Vec<Box<ModelVisibleItem>>,
+            trigger: ContextCompactBeforeInputTrigger,
+        ) -> Self {
+            Self {
+                extensions: None,
+                gaps: None,
+                id: None,
+                instructions: None,
+                items,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                token_counts: None,
+                trigger,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ContextCompactBeforeInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_instructions(mut self, value: Box<ContentItem>) -> Self {
+            self.instructions = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_token_counts(mut self, value: Box<ExecutionEventTokencounts>) -> Self {
+            self.token_counts = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ContextCompactBeforeInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("instructions") {
+                event["instructions"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("tokenCounts") {
+                event["tokenCounts"] = value.clone();
+            }
+            if let Some(value) = flat.get("trigger") {
+                event["trigger"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod context_compact_before_sources {
+        use super::ContentSourceBinding;
+        pub fn instructions<S>(source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["instructions".to_owned()],
+                source,
+            }
+        }
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct FileChangedInput {
+        #[serde(rename = "changes")]
+        pub changes: Vec<FileChangedInputChangesItem>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<FileChangedInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<FileChangedInputTurn>,
+    }
+    impl FileChangedInput {
+        pub const EVENT_TYPE: &'static str = "file.changed";
+        pub fn new(changes: Vec<FileChangedInputChangesItem>) -> Self {
+            Self {
+                changes,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<FileChangedInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: FileChangedInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("changes") {
+                event["changes"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod file_changed_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct HookFailureInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "failure")]
+        pub failure: HookFailureInputFailure,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<HookFailureInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(rename = "parentEventId")]
+        pub parent_event_id: String,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<HookFailureInputTurn>,
+    }
+    impl HookFailureInput {
+        pub const EVENT_TYPE: &'static str = "hook.failure";
+        pub fn new(failure: HookFailureInputFailure, parent_event_id: String) -> Self {
+            Self {
+                extensions: None,
+                failure,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<HookFailureInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: HookFailureInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("failure") {
+                event["failure"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod hook_failure_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ModelErrorInput {
+        #[serde(rename = "attempt")]
+        pub attempt: Box<ExecutionEventAttempt>,
+        #[serde(rename = "error")]
+        pub error: Box<ExecutionEventError>,
+        #[serde(rename = "execution")]
+        pub execution: ModelErrorInputExecution,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ModelErrorInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "latencyMs", default, skip_serializing_if = "Option::is_none")]
+        pub latency_ms: Option<JsonNumber>,
+        #[serde(rename = "model")]
+        pub model: Box<ExecutionEventModel>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "recovery", default, skip_serializing_if = "Option::is_none")]
+        pub recovery: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ModelErrorInputTurn>,
+        #[serde(rename = "usage", default, skip_serializing_if = "Option::is_none")]
+        pub usage: Option<Box<ExecutionEventAttemptusage>>,
+    }
+    impl ModelErrorInput {
+        pub const EVENT_TYPE: &'static str = "model.error";
+        pub fn new(
+            attempt: Box<ExecutionEventAttempt>,
+            error: Box<ExecutionEventError>,
+            execution: ModelErrorInputExecution,
+            model: Box<ExecutionEventModel>,
+        ) -> Self {
+            Self {
+                attempt,
+                error,
+                execution,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                latency_ms: None,
+                model,
+                native: None,
+                parent_event_id: None,
+                recovery: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+                usage: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ModelErrorInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_latency_ms(mut self, value: JsonNumber) -> Self {
+            self.latency_ms = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_recovery(mut self, value: String) -> Self {
+            self.recovery = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ModelErrorInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        pub fn with_usage(mut self, value: Box<ExecutionEventAttemptusage>) -> Self {
+            self.usage = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("attempt") {
+                event["attempt"] = value.clone();
+            }
+            if let Some(value) = flat.get("error") {
+                event["error"] = value.clone();
+            }
+            if let Some(value) = flat.get("execution") {
+                event["execution"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("latencyMs") {
+                event["latencyMs"] = value.clone();
+            }
+            if let Some(value) = flat.get("model") {
+                event["model"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("recovery") {
+                event["recovery"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            if let Some(value) = flat.get("usage") {
+                event["usage"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod model_error_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ModelRequestBeforeInput {
+        #[serde(rename = "attempt")]
+        pub attempt: Box<ExecutionEventAttempt>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ModelRequestBeforeInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items")]
+        pub items: Vec<Box<ModelVisibleItem>>,
+        #[serde(rename = "model")]
+        pub model: Box<ExecutionEventModel>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(rename = "params")]
+        pub params: ModelRequestBeforeInputParams,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ModelRequestBeforeInputTurn>,
+    }
+    impl ModelRequestBeforeInput {
+        pub const EVENT_TYPE: &'static str = "model.request.before";
+        pub fn new(
+            attempt: Box<ExecutionEventAttempt>,
+            items: Vec<Box<ModelVisibleItem>>,
+            model: Box<ExecutionEventModel>,
+            params: ModelRequestBeforeInputParams,
+        ) -> Self {
+            Self {
+                attempt,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items,
+                model,
+                native: None,
+                params,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ModelRequestBeforeInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ModelRequestBeforeInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("attempt") {
+                event["attempt"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("model") {
+                event["model"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("params") {
+                event["params"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod model_request_before_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ModelResponseAfterInput {
+        #[serde(rename = "attempt")]
+        pub attempt: Box<ExecutionEventAttempt>,
+        #[serde(rename = "execution")]
+        pub execution: Box<ExecutionEventExecution>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "finishReason")]
+        pub finish_reason: String,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ModelResponseAfterInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items")]
+        pub items: Vec<Box<ModelVisibleItem>>,
+        #[serde(rename = "latencyMs", default, skip_serializing_if = "Option::is_none")]
+        pub latency_ms: Option<JsonNumber>,
+        #[serde(rename = "model")]
+        pub model: Box<ExecutionEventModel>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ModelResponseAfterInputTurn>,
+        #[serde(rename = "usage", default, skip_serializing_if = "Option::is_none")]
+        pub usage: Option<Box<ExecutionEventAttemptusage>>,
+    }
+    impl ModelResponseAfterInput {
+        pub const EVENT_TYPE: &'static str = "model.response.after";
+        pub fn new(
+            attempt: Box<ExecutionEventAttempt>,
+            execution: Box<ExecutionEventExecution>,
+            finish_reason: String,
+            items: Vec<Box<ModelVisibleItem>>,
+            model: Box<ExecutionEventModel>,
+        ) -> Self {
+            Self {
+                attempt,
+                execution,
+                extensions: None,
+                finish_reason,
+                gaps: None,
+                id: None,
+                items,
+                latency_ms: None,
+                model,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+                usage: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ModelResponseAfterInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_latency_ms(mut self, value: JsonNumber) -> Self {
+            self.latency_ms = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ModelResponseAfterInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        pub fn with_usage(mut self, value: Box<ExecutionEventAttemptusage>) -> Self {
+            self.usage = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("attempt") {
+                event["attempt"] = value.clone();
+            }
+            if let Some(value) = flat.get("execution") {
+                event["execution"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("finishReason") {
+                event["finishReason"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("latencyMs") {
+                event["latencyMs"] = value.clone();
+            }
+            if let Some(value) = flat.get("model") {
+                event["model"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            if let Some(value) = flat.get("usage") {
+                event["usage"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod model_response_after_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ModelSwitchAfterInput {
+        #[serde(rename = "current")]
+        pub current: Box<ExecutionEventModel>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ModelSwitchAfterInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "previous")]
+        pub previous: Box<ExecutionEventModel>,
+        #[serde(rename = "reason")]
+        pub reason: String,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ModelSwitchAfterInputTurn>,
+    }
+    impl ModelSwitchAfterInput {
+        pub const EVENT_TYPE: &'static str = "model.switch.after";
+        pub fn new(
+            current: Box<ExecutionEventModel>,
+            previous: Box<ExecutionEventModel>,
+            reason: String,
+        ) -> Self {
+            Self {
+                current,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                previous,
+                reason,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ModelSwitchAfterInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ModelSwitchAfterInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("current") {
+                event["current"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("previous") {
+                event["previous"] = value.clone();
+            }
+            if let Some(value) = flat.get("reason") {
+                event["reason"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod model_switch_after_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ModelSwitchBeforeInput {
+        #[serde(rename = "current")]
+        pub current: Box<ExecutionEventModel>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ModelSwitchBeforeInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "pricing", default, skip_serializing_if = "Option::is_none")]
+        pub pricing: Option<ModelSwitchBeforeInputPricing>,
+        #[serde(rename = "proposed")]
+        pub proposed: Box<ExecutionEventModel>,
+        #[serde(rename = "reason")]
+        pub reason: String,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ModelSwitchBeforeInputTurn>,
+    }
+    impl ModelSwitchBeforeInput {
+        pub const EVENT_TYPE: &'static str = "model.switch.before";
+        pub fn new(
+            current: Box<ExecutionEventModel>,
+            proposed: Box<ExecutionEventModel>,
+            reason: String,
+        ) -> Self {
+            Self {
+                current,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                pricing: None,
+                proposed,
+                reason,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ModelSwitchBeforeInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_pricing(mut self, value: ModelSwitchBeforeInputPricing) -> Self {
+            self.pricing = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ModelSwitchBeforeInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("current") {
+                event["current"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("pricing") {
+                event["pricing"] = value.clone();
+            }
+            if let Some(value) = flat.get("proposed") {
+                event["proposed"] = value.clone();
+            }
+            if let Some(value) = flat.get("reason") {
+                event["reason"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod model_switch_before_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct SessionEndInput {
+        #[serde(rename = "counters", default, skip_serializing_if = "Option::is_none")]
+        pub counters: Option<SessionEndInputCounters>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<SessionEndInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(rename = "outcome")]
+        pub outcome: SessionEndInputOutcome,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "reason")]
+        pub reason: String,
+        #[serde(rename = "session")]
+        pub session: Box<Session>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<SessionEndInputTurn>,
+    }
+    impl SessionEndInput {
+        pub const EVENT_TYPE: &'static str = "session.end";
+        pub fn new(outcome: SessionEndInputOutcome, reason: String, session: Box<Session>) -> Self {
+            Self {
+                counters: None,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                outcome,
+                parent_event_id: None,
+                reason,
+                session,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_counters(mut self, value: SessionEndInputCounters) -> Self {
+            self.counters = Some(value);
+            self
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<SessionEndInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: SessionEndInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("counters") {
+                event["counters"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("outcome") {
+                event["outcome"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("reason") {
+                event["reason"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod session_end_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct SessionStartInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<SessionStartInputGapsItem>>,
+        #[serde(rename = "harness")]
+        pub harness: SessionStartInputHarness,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items")]
+        pub items: Vec<Box<ModelVisibleItem>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "permissionMode")]
+        pub permission_mode: String,
+        #[serde(
+            rename = "resumedFrom",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub resumed_from: Option<SessionStartInputResumedFrom>,
+        #[serde(rename = "session")]
+        pub session: Box<Session>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "trigger")]
+        pub trigger: SessionStartInputTrigger,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<SessionStartInputTurn>,
+    }
+    impl SessionStartInput {
+        pub const EVENT_TYPE: &'static str = "session.start";
+        pub fn new(
+            harness: SessionStartInputHarness,
+            items: Vec<Box<ModelVisibleItem>>,
+            permission_mode: String,
+            session: Box<Session>,
+            trigger: SessionStartInputTrigger,
+        ) -> Self {
+            Self {
+                extensions: None,
+                gaps: None,
+                harness,
+                id: None,
+                items,
+                native: None,
+                parent_event_id: None,
+                permission_mode,
+                resumed_from: None,
+                session,
+                synthesized: None,
+                time: None,
+                trigger,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<SessionStartInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_resumed_from(mut self, value: SessionStartInputResumedFrom) -> Self {
+            self.resumed_from = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: SessionStartInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("harness") {
+                event["harness"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("permissionMode") {
+                event["permissionMode"] = value.clone();
+            }
+            if let Some(value) = flat.get("resumedFrom") {
+                event["resumedFrom"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("trigger") {
+                event["trigger"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod session_start_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct TaskChangeAfterInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<TaskChangeAfterInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "task")]
+        pub task: TaskChangeAfterInputTask,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<TaskChangeAfterInputTurn>,
+    }
+    impl TaskChangeAfterInput {
+        pub const EVENT_TYPE: &'static str = "task.change.after";
+        pub fn new(task: TaskChangeAfterInputTask) -> Self {
+            Self {
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                task,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<TaskChangeAfterInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: TaskChangeAfterInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("task") {
+                event["task"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod task_change_after_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct TaskChangeBeforeInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<TaskChangeBeforeInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "task")]
+        pub task: TaskChangeBeforeInputTask,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<TaskChangeBeforeInputTurn>,
+    }
+    impl TaskChangeBeforeInput {
+        pub const EVENT_TYPE: &'static str = "task.change.before";
+        pub fn new(task: TaskChangeBeforeInputTask) -> Self {
+            Self {
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                task,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<TaskChangeBeforeInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: TaskChangeBeforeInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("task") {
+                event["task"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod task_change_before_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ToolAfterInput<T = serde_json::Value> {
+        #[serde(rename = "batch", default, skip_serializing_if = "Option::is_none")]
+        pub batch: Option<Box<ExecutionEventBatch>>,
+        #[serde(rename = "callId")]
+        pub call_id: String,
+        #[serde(
+            rename = "callSynthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub call_synthesized: Option<bool>,
+        #[serde(
+            rename = "durationMs",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub duration_ms: Option<JsonNumber>,
+        #[serde(rename = "error", default, skip_serializing_if = "Option::is_none")]
+        pub error: Option<Box<ExecutionEventError>>,
+        #[serde(rename = "execution")]
+        pub execution: Box<ExecutionEventExecution>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(
+            rename = "fileChanges",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub file_changes: Option<Vec<Box<ExecutionEventFilechange>>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ToolAfterInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items")]
+        pub items: Vec<Box<ModelVisibleItem>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(rename = "outcome")]
+        pub outcome: ToolAfterInputOutcome,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "path")]
+        pub path: String,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "input")]
+        pub input: T,
+        #[serde(rename = "toolKind", default, skip_serializing_if = "Option::is_none")]
+        pub tool_kind: Option<String>,
+        #[serde(rename = "toolMcp", default, skip_serializing_if = "Option::is_none")]
+        pub tool_mcp: Option<Box<ExecutionEventMcp>>,
+        #[serde(rename = "name")]
+        pub name: String,
+        #[serde(rename = "origin")]
+        pub origin: ToolAfterInputOrigin,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ToolAfterInputTurn>,
+    }
+    impl<T: serde::Serialize> ToolAfterInput<T> {
+        pub const EVENT_TYPE: &'static str = "tool.after";
+        pub fn new(
+            call_id: String,
+            execution: Box<ExecutionEventExecution>,
+            items: Vec<Box<ModelVisibleItem>>,
+            outcome: ToolAfterInputOutcome,
+            path: String,
+            input: T,
+            name: String,
+            origin: ToolAfterInputOrigin,
+        ) -> Self {
+            Self {
+                batch: None,
+                call_id,
+                call_synthesized: None,
+                duration_ms: None,
+                error: None,
+                execution,
+                extensions: None,
+                file_changes: None,
+                gaps: None,
+                id: None,
+                items,
+                native: None,
+                outcome,
+                parent_event_id: None,
+                path,
+                session: None,
+                synthesized: None,
+                time: None,
+                input,
+                tool_kind: None,
+                tool_mcp: None,
+                name,
+                origin,
+                turn: None,
+            }
+        }
+        pub fn with_batch(mut self, value: Box<ExecutionEventBatch>) -> Self {
+            self.batch = Some(value);
+            self
+        }
+        pub fn with_call_synthesized(mut self, value: bool) -> Self {
+            self.call_synthesized = Some(value);
+            self
+        }
+        pub fn with_duration_ms(mut self, value: JsonNumber) -> Self {
+            self.duration_ms = Some(value);
+            self
+        }
+        pub fn with_error(mut self, value: Box<ExecutionEventError>) -> Self {
+            self.error = Some(value);
+            self
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_file_changes(mut self, value: Vec<Box<ExecutionEventFilechange>>) -> Self {
+            self.file_changes = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ToolAfterInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_tool_kind(mut self, value: String) -> Self {
+            self.tool_kind = Some(value);
+            self
+        }
+        pub fn with_tool_mcp(mut self, value: Box<ExecutionEventMcp>) -> Self {
+            self.tool_mcp = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ToolAfterInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("batch") {
+                event["batch"] = value.clone();
+            }
+            if let Some(value) = flat.get("callId") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("callSynthesized") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("durationMs") {
+                event["durationMs"] = value.clone();
+            }
+            if let Some(value) = flat.get("error") {
+                event["error"] = value.clone();
+            }
+            if let Some(value) = flat.get("execution") {
+                event["execution"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("fileChanges") {
+                event["fileChanges"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("outcome") {
+                event["outcome"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("path") {
+                event["path"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("input") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["input"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolKind") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["kind"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolMcp") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["mcp"] = value.clone();
+            }
+            if let Some(value) = flat.get("name") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["name"] = value.clone();
+            }
+            if let Some(value) = flat.get("origin") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["origin"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod tool_after_sources {
+        use super::ContentSourceBinding;
+        pub fn file_changes_after<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec![
+                    "fileChanges".to_owned(),
+                    index.to_string(),
+                    "after".to_owned(),
+                ],
+                source,
+            }
+        }
+        pub fn file_changes_before<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec![
+                    "fileChanges".to_owned(),
+                    index.to_string(),
+                    "before".to_owned(),
+                ],
+                source,
+            }
+        }
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ToolBatchAfterInput {
+        #[serde(rename = "batch")]
+        pub batch: ToolBatchAfterInputBatch,
+        #[serde(rename = "calls")]
+        pub calls: Vec<ToolBatchAfterInputCallsItem>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ToolBatchAfterInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ToolBatchAfterInputTurn>,
+    }
+    impl ToolBatchAfterInput {
+        pub const EVENT_TYPE: &'static str = "tool.batch.after";
+        pub fn new(
+            batch: ToolBatchAfterInputBatch,
+            calls: Vec<ToolBatchAfterInputCallsItem>,
+        ) -> Self {
+            Self {
+                batch,
+                calls,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ToolBatchAfterInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ToolBatchAfterInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("batch") {
+                event["batch"] = value.clone();
+            }
+            if let Some(value) = flat.get("calls") {
+                event["calls"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod tool_batch_after_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ToolBeforeInput<T = serde_json::Value> {
+        #[serde(rename = "batch", default, skip_serializing_if = "Option::is_none")]
+        pub batch: Option<Box<ExecutionEventBatch>>,
+        #[serde(rename = "callId")]
+        pub call_id: String,
+        #[serde(
+            rename = "callSynthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub call_synthesized: Option<bool>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ToolBeforeInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "path")]
+        pub path: String,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "input")]
+        pub input: T,
+        #[serde(rename = "toolKind", default, skip_serializing_if = "Option::is_none")]
+        pub tool_kind: Option<String>,
+        #[serde(rename = "toolMcp", default, skip_serializing_if = "Option::is_none")]
+        pub tool_mcp: Option<Box<ExecutionEventMcp>>,
+        #[serde(rename = "name")]
+        pub name: String,
+        #[serde(rename = "origin")]
+        pub origin: ToolBeforeInputOrigin,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ToolBeforeInputTurn>,
+    }
+    impl<T: serde::Serialize> ToolBeforeInput<T> {
+        pub const EVENT_TYPE: &'static str = "tool.before";
+        pub fn new(
+            call_id: String,
+            path: String,
+            input: T,
+            name: String,
+            origin: ToolBeforeInputOrigin,
+        ) -> Self {
+            Self {
+                batch: None,
+                call_id,
+                call_synthesized: None,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                path,
+                session: None,
+                synthesized: None,
+                time: None,
+                input,
+                tool_kind: None,
+                tool_mcp: None,
+                name,
+                origin,
+                turn: None,
+            }
+        }
+        pub fn with_batch(mut self, value: Box<ExecutionEventBatch>) -> Self {
+            self.batch = Some(value);
+            self
+        }
+        pub fn with_call_synthesized(mut self, value: bool) -> Self {
+            self.call_synthesized = Some(value);
+            self
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ToolBeforeInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_tool_kind(mut self, value: String) -> Self {
+            self.tool_kind = Some(value);
+            self
+        }
+        pub fn with_tool_mcp(mut self, value: Box<ExecutionEventMcp>) -> Self {
+            self.tool_mcp = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ToolBeforeInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("batch") {
+                event["batch"] = value.clone();
+            }
+            if let Some(value) = flat.get("callId") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("callSynthesized") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("path") {
+                event["path"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("input") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["input"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolKind") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["kind"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolMcp") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["mcp"] = value.clone();
+            }
+            if let Some(value) = flat.get("name") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["name"] = value.clone();
+            }
+            if let Some(value) = flat.get("origin") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["origin"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod tool_before_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ToolPermissionRequestInput<T = serde_json::Value> {
+        #[serde(rename = "batch", default, skip_serializing_if = "Option::is_none")]
+        pub batch: Option<Box<ExecutionEventBatch>>,
+        #[serde(rename = "callId")]
+        pub call_id: String,
+        #[serde(
+            rename = "callSynthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub call_synthesized: Option<bool>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ToolPermissionRequestInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "path")]
+        pub path: String,
+        #[serde(rename = "sandboxBypass")]
+        pub sandbox_bypass: bool,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(rename = "suggestions")]
+        pub suggestions: Vec<ToolPermissionRequestInputSuggestionsItem>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "input")]
+        pub input: T,
+        #[serde(rename = "toolKind", default, skip_serializing_if = "Option::is_none")]
+        pub tool_kind: Option<String>,
+        #[serde(rename = "toolMcp", default, skip_serializing_if = "Option::is_none")]
+        pub tool_mcp: Option<Box<ExecutionEventMcp>>,
+        #[serde(rename = "name")]
+        pub name: String,
+        #[serde(rename = "origin")]
+        pub origin: ToolPermissionRequestInputOrigin,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ToolPermissionRequestInputTurn>,
+    }
+    impl<T: serde::Serialize> ToolPermissionRequestInput<T> {
+        pub const EVENT_TYPE: &'static str = "tool.permission.request";
+        pub fn new(
+            call_id: String,
+            path: String,
+            sandbox_bypass: bool,
+            suggestions: Vec<ToolPermissionRequestInputSuggestionsItem>,
+            input: T,
+            name: String,
+            origin: ToolPermissionRequestInputOrigin,
+        ) -> Self {
+            Self {
+                batch: None,
+                call_id,
+                call_synthesized: None,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                path,
+                sandbox_bypass,
+                session: None,
+                suggestions,
+                synthesized: None,
+                time: None,
+                input,
+                tool_kind: None,
+                tool_mcp: None,
+                name,
+                origin,
+                turn: None,
+            }
+        }
+        pub fn with_batch(mut self, value: Box<ExecutionEventBatch>) -> Self {
+            self.batch = Some(value);
+            self
+        }
+        pub fn with_call_synthesized(mut self, value: bool) -> Self {
+            self.call_synthesized = Some(value);
+            self
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ToolPermissionRequestInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_tool_kind(mut self, value: String) -> Self {
+            self.tool_kind = Some(value);
+            self
+        }
+        pub fn with_tool_mcp(mut self, value: Box<ExecutionEventMcp>) -> Self {
+            self.tool_mcp = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ToolPermissionRequestInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("batch") {
+                event["batch"] = value.clone();
+            }
+            if let Some(value) = flat.get("callId") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("callSynthesized") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("path") {
+                event["path"] = value.clone();
+            }
+            if let Some(value) = flat.get("sandboxBypass") {
+                event["sandboxBypass"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("suggestions") {
+                event["suggestions"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("input") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["input"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolKind") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["kind"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolMcp") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["mcp"] = value.clone();
+            }
+            if let Some(value) = flat.get("name") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["name"] = value.clone();
+            }
+            if let Some(value) = flat.get("origin") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["origin"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod tool_permission_request_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ToolPermissionResolvedInput<T = serde_json::Value> {
+        #[serde(rename = "batch", default, skip_serializing_if = "Option::is_none")]
+        pub batch: Option<Box<ExecutionEventBatch>>,
+        #[serde(rename = "callId")]
+        pub call_id: String,
+        #[serde(
+            rename = "callSynthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub call_synthesized: Option<bool>,
+        #[serde(rename = "decidedBy")]
+        pub decided_by: ToolPermissionResolvedInputDecidedBy,
+        #[serde(rename = "decision")]
+        pub decision: ToolPermissionResolvedInputDecision,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ToolPermissionResolvedInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "path")]
+        pub path: String,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "input")]
+        pub input: T,
+        #[serde(rename = "toolKind", default, skip_serializing_if = "Option::is_none")]
+        pub tool_kind: Option<String>,
+        #[serde(rename = "toolMcp", default, skip_serializing_if = "Option::is_none")]
+        pub tool_mcp: Option<Box<ExecutionEventMcp>>,
+        #[serde(rename = "name")]
+        pub name: String,
+        #[serde(rename = "origin")]
+        pub origin: ToolPermissionResolvedInputOrigin,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ToolPermissionResolvedInputTurn>,
+    }
+    impl<T: serde::Serialize> ToolPermissionResolvedInput<T> {
+        pub const EVENT_TYPE: &'static str = "tool.permission.resolved";
+        pub fn new(
+            call_id: String,
+            decided_by: ToolPermissionResolvedInputDecidedBy,
+            decision: ToolPermissionResolvedInputDecision,
+            path: String,
+            input: T,
+            name: String,
+            origin: ToolPermissionResolvedInputOrigin,
+        ) -> Self {
+            Self {
+                batch: None,
+                call_id,
+                call_synthesized: None,
+                decided_by,
+                decision,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                path,
+                session: None,
+                synthesized: None,
+                time: None,
+                input,
+                tool_kind: None,
+                tool_mcp: None,
+                name,
+                origin,
+                turn: None,
+            }
+        }
+        pub fn with_batch(mut self, value: Box<ExecutionEventBatch>) -> Self {
+            self.batch = Some(value);
+            self
+        }
+        pub fn with_call_synthesized(mut self, value: bool) -> Self {
+            self.call_synthesized = Some(value);
+            self
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ToolPermissionResolvedInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_tool_kind(mut self, value: String) -> Self {
+            self.tool_kind = Some(value);
+            self
+        }
+        pub fn with_tool_mcp(mut self, value: Box<ExecutionEventMcp>) -> Self {
+            self.tool_mcp = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ToolPermissionResolvedInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("batch") {
+                event["batch"] = value.clone();
+            }
+            if let Some(value) = flat.get("callId") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("callSynthesized") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("decidedBy") {
+                event["decidedBy"] = value.clone();
+            }
+            if let Some(value) = flat.get("decision") {
+                event["decision"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("path") {
+                event["path"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("input") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["input"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolKind") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["kind"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolMcp") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["mcp"] = value.clone();
+            }
+            if let Some(value) = flat.get("name") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["name"] = value.clone();
+            }
+            if let Some(value) = flat.get("origin") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["origin"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod tool_permission_resolved_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct ToolProgressInput<T = serde_json::Value> {
+        #[serde(rename = "backgrounded")]
+        pub backgrounded: bool,
+        #[serde(rename = "batch", default, skip_serializing_if = "Option::is_none")]
+        pub batch: Option<Box<ExecutionEventBatch>>,
+        #[serde(rename = "callId")]
+        pub call_id: String,
+        #[serde(
+            rename = "callSynthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub call_synthesized: Option<bool>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<ToolProgressInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "partialOutput")]
+        pub partial_output: Box<ModelVisibleItem>,
+        #[serde(rename = "path")]
+        pub path: String,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "input")]
+        pub input: T,
+        #[serde(rename = "toolKind", default, skip_serializing_if = "Option::is_none")]
+        pub tool_kind: Option<String>,
+        #[serde(rename = "toolMcp", default, skip_serializing_if = "Option::is_none")]
+        pub tool_mcp: Option<Box<ExecutionEventMcp>>,
+        #[serde(rename = "name")]
+        pub name: String,
+        #[serde(rename = "origin")]
+        pub origin: ToolProgressInputOrigin,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<ToolProgressInputTurn>,
+    }
+    impl<T: serde::Serialize> ToolProgressInput<T> {
+        pub const EVENT_TYPE: &'static str = "tool.progress";
+        pub fn new(
+            backgrounded: bool,
+            call_id: String,
+            partial_output: Box<ModelVisibleItem>,
+            path: String,
+            input: T,
+            name: String,
+            origin: ToolProgressInputOrigin,
+        ) -> Self {
+            Self {
+                backgrounded,
+                batch: None,
+                call_id,
+                call_synthesized: None,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                partial_output,
+                path,
+                session: None,
+                synthesized: None,
+                time: None,
+                input,
+                tool_kind: None,
+                tool_mcp: None,
+                name,
+                origin,
+                turn: None,
+            }
+        }
+        pub fn with_batch(mut self, value: Box<ExecutionEventBatch>) -> Self {
+            self.batch = Some(value);
+            self
+        }
+        pub fn with_call_synthesized(mut self, value: bool) -> Self {
+            self.call_synthesized = Some(value);
+            self
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<ToolProgressInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_tool_kind(mut self, value: String) -> Self {
+            self.tool_kind = Some(value);
+            self
+        }
+        pub fn with_tool_mcp(mut self, value: Box<ExecutionEventMcp>) -> Self {
+            self.tool_mcp = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: ToolProgressInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("backgrounded") {
+                event["backgrounded"] = value.clone();
+            }
+            if let Some(value) = flat.get("batch") {
+                event["batch"] = value.clone();
+            }
+            if let Some(value) = flat.get("callId") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("callSynthesized") {
+                if event["call"].is_null() {
+                    event["call"] = serde_json::json!({});
+                }
+                event["call"]["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("partialOutput") {
+                event["partialOutput"] = value.clone();
+            }
+            if let Some(value) = flat.get("path") {
+                event["path"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("input") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["input"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolKind") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["kind"] = value.clone();
+            }
+            if let Some(value) = flat.get("toolMcp") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["mcp"] = value.clone();
+            }
+            if let Some(value) = flat.get("name") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["name"] = value.clone();
+            }
+            if let Some(value) = flat.get("origin") {
+                if event["tool"].is_null() {
+                    event["tool"] = serde_json::json!({});
+                }
+                event["tool"]["origin"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod tool_progress_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+        pub fn partial_output<S>(source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["partialOutput".to_owned()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct TurnEndInput {
+        #[serde(rename = "continuationCount")]
+        pub continuation_count: Integer,
+        #[serde(rename = "error", default, skip_serializing_if = "Option::is_none")]
+        pub error: Option<Box<ExecutionEventError>>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<TurnEndInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items")]
+        pub items: Vec<Box<ModelVisibleItem>>,
+        #[serde(
+            rename = "lastAssistantItem",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub last_assistant_item: Option<TurnEndInputLastAssistantItem>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(rename = "outcome")]
+        pub outcome: TurnEndInputOutcome,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn")]
+        pub turn: TurnEndInputTurn,
+        #[serde(rename = "usage", default, skip_serializing_if = "Option::is_none")]
+        pub usage: Option<Box<ExecutionEventTurnusage>>,
+    }
+    impl TurnEndInput {
+        pub const EVENT_TYPE: &'static str = "turn.end";
+        pub fn new(
+            continuation_count: Integer,
+            items: Vec<Box<ModelVisibleItem>>,
+            outcome: TurnEndInputOutcome,
+            turn: TurnEndInputTurn,
+        ) -> Self {
+            Self {
+                continuation_count,
+                error: None,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items,
+                last_assistant_item: None,
+                native: None,
+                outcome,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn,
+                usage: None,
+            }
+        }
+        pub fn with_error(mut self, value: Box<ExecutionEventError>) -> Self {
+            self.error = Some(value);
+            self
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<TurnEndInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_last_assistant_item(mut self, value: TurnEndInputLastAssistantItem) -> Self {
+            self.last_assistant_item = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_usage(mut self, value: Box<ExecutionEventTurnusage>) -> Self {
+            self.usage = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("continuationCount") {
+                event["continuationCount"] = value.clone();
+            }
+            if let Some(value) = flat.get("error") {
+                event["error"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("lastAssistantItem") {
+                event["lastAssistantItem"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("outcome") {
+                event["outcome"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            if let Some(value) = flat.get("usage") {
+                event["usage"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod turn_end_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct TurnFinishBeforeInput {
+        #[serde(rename = "continuationCount")]
+        pub continuation_count: Integer,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<TurnFinishBeforeInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items")]
+        pub items: Vec<Box<ModelVisibleItem>>,
+        #[serde(
+            rename = "lastAssistantItem",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub last_assistant_item: Option<TurnFinishBeforeInputLastAssistantItem>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(rename = "outcome")]
+        pub outcome: TurnFinishBeforeInputOutcome,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn")]
+        pub turn: TurnFinishBeforeInputTurn,
+        #[serde(rename = "usage", default, skip_serializing_if = "Option::is_none")]
+        pub usage: Option<Box<ExecutionEventTurnusage>>,
+    }
+    impl TurnFinishBeforeInput {
+        pub const EVENT_TYPE: &'static str = "turn.finish.before";
+        pub fn new(
+            continuation_count: Integer,
+            items: Vec<Box<ModelVisibleItem>>,
+            outcome: TurnFinishBeforeInputOutcome,
+            turn: TurnFinishBeforeInputTurn,
+        ) -> Self {
+            Self {
+                continuation_count,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items,
+                last_assistant_item: None,
+                native: None,
+                outcome,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn,
+                usage: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<TurnFinishBeforeInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_last_assistant_item(
+            mut self,
+            value: TurnFinishBeforeInputLastAssistantItem,
+        ) -> Self {
+            self.last_assistant_item = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_usage(mut self, value: Box<ExecutionEventTurnusage>) -> Self {
+            self.usage = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("continuationCount") {
+                event["continuationCount"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("lastAssistantItem") {
+                event["lastAssistantItem"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("outcome") {
+                event["outcome"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            if let Some(value) = flat.get("usage") {
+                event["usage"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod turn_finish_before_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct TurnProgressInput {
+        #[serde(rename = "delta")]
+        pub delta: Box<ModelVisibleItem>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "final")]
+        pub final_: bool,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<TurnProgressInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "item")]
+        pub item: TurnProgressInputItem,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn")]
+        pub turn: TurnProgressInputTurn,
+    }
+    impl TurnProgressInput {
+        pub const EVENT_TYPE: &'static str = "turn.progress";
+        pub fn new(
+            delta: Box<ModelVisibleItem>,
+            final_: bool,
+            item: TurnProgressInputItem,
+            turn: TurnProgressInputTurn,
+        ) -> Self {
+            Self {
+                delta,
+                extensions: None,
+                final_,
+                gaps: None,
+                id: None,
+                item,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<TurnProgressInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("delta") {
+                event["delta"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("final") {
+                event["final"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("item") {
+                event["item"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod turn_progress_sources {
+        use super::ContentSourceBinding;
+        pub fn delta<S>(source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["delta".to_owned()],
+                source,
+            }
+        }
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct TurnStartInput {
+        #[serde(
+            rename = "expandedFrom",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub expanded_from: Option<String>,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<TurnStartInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items")]
+        pub items: Vec<Box<ModelVisibleItem>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "trigger")]
+        pub trigger: TurnStartInputTrigger,
+        #[serde(rename = "turn")]
+        pub turn: TurnStartInputTurn,
+    }
+    impl TurnStartInput {
+        pub const EVENT_TYPE: &'static str = "turn.start";
+        pub fn new(
+            items: Vec<Box<ModelVisibleItem>>,
+            trigger: TurnStartInputTrigger,
+            turn: TurnStartInputTurn,
+        ) -> Self {
+            Self {
+                expanded_from: None,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                trigger,
+                turn,
+            }
+        }
+        pub fn with_expanded_from(mut self, value: String) -> Self {
+            self.expanded_from = Some(value);
+            self
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<TurnStartInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("expandedFrom") {
+                event["expandedFrom"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("trigger") {
+                event["trigger"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod turn_start_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct UserAttentionInput {
+        #[serde(rename = "attention")]
+        pub attention: UserAttentionInputAttention,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<UserAttentionInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<UserAttentionInputTurn>,
+    }
+    impl UserAttentionInput {
+        pub const EVENT_TYPE: &'static str = "user.attention";
+        pub fn new(attention: UserAttentionInputAttention) -> Self {
+            Self {
+                attention,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<UserAttentionInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: UserAttentionInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("attention") {
+                event["attention"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod user_attention_sources {
+        use super::ContentSourceBinding;
+        pub fn attention_message<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec![
+                    "attention".to_owned(),
+                    "message".to_owned(),
+                    index.to_string(),
+                ],
+                source,
+            }
+        }
+        pub fn attention_title<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec![
+                    "attention".to_owned(),
+                    "title".to_owned(),
+                    index.to_string(),
+                ],
+                source,
+            }
+        }
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct UserElicitationRequestInput {
+        #[serde(rename = "elicitation")]
+        pub elicitation: UserElicitationRequestInputElicitation,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<UserElicitationRequestInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<UserElicitationRequestInputTurn>,
+    }
+    impl UserElicitationRequestInput {
+        pub const EVENT_TYPE: &'static str = "user.elicitation.request";
+        pub fn new(elicitation: UserElicitationRequestInputElicitation) -> Self {
+            Self {
+                elicitation,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<UserElicitationRequestInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: UserElicitationRequestInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("elicitation") {
+                event["elicitation"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod user_elicitation_request_sources {
+        use super::ContentSourceBinding;
+        pub fn elicitation_request<S>(source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["elicitation".to_owned(), "request".to_owned()],
+                source,
+            }
+        }
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct UserElicitationResultInput {
+        #[serde(rename = "elicitation")]
+        pub elicitation: UserElicitationResultInputElicitation,
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<UserElicitationResultInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<UserElicitationResultInputTurn>,
+    }
+    impl UserElicitationResultInput {
+        pub const EVENT_TYPE: &'static str = "user.elicitation.result";
+        pub fn new(elicitation: UserElicitationResultInputElicitation) -> Self {
+            Self {
+                elicitation,
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<UserElicitationResultInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: UserElicitationResultInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("elicitation") {
+                event["elicitation"] = value.clone();
+            }
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod user_elicitation_result_sources {
+        use super::ContentSourceBinding;
+        pub fn elicitation_result<S>(source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["elicitation".to_owned(), "result".to_owned()],
+                source,
+            }
+        }
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct UserMessageInboundInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<UserMessageInboundInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "message")]
+        pub message: UserMessageInboundInputMessage,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<UserMessageInboundInputTurn>,
+    }
+    impl UserMessageInboundInput {
+        pub const EVENT_TYPE: &'static str = "user.message.inbound";
+        pub fn new(message: UserMessageInboundInputMessage) -> Self {
+            Self {
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                message,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<UserMessageInboundInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: UserMessageInboundInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("message") {
+                event["message"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod user_message_inbound_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+        pub fn message_text<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["message".to_owned(), "text".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct UserMessageOutboundInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<UserMessageOutboundInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "message")]
+        pub message: UserMessageOutboundInputMessage,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<UserMessageOutboundInputTurn>,
+    }
+    impl UserMessageOutboundInput {
+        pub const EVENT_TYPE: &'static str = "user.message.outbound";
+        pub fn new(message: UserMessageOutboundInputMessage) -> Self {
+            Self {
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                message,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<UserMessageOutboundInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: UserMessageOutboundInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("message") {
+                event["message"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod user_message_outbound_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+        pub fn message_payload<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec![
+                    "message".to_owned(),
+                    "payload".to_owned(),
+                    index.to_string(),
+                ],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct WorkspaceChangeAfterInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<WorkspaceChangeAfterInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<WorkspaceChangeAfterInputTurn>,
+        #[serde(rename = "workspace")]
+        pub workspace: WorkspaceChangeAfterInputWorkspace,
+    }
+    impl WorkspaceChangeAfterInput {
+        pub const EVENT_TYPE: &'static str = "workspace.change.after";
+        pub fn new(workspace: WorkspaceChangeAfterInputWorkspace) -> Self {
+            Self {
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+                workspace,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<WorkspaceChangeAfterInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: WorkspaceChangeAfterInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            if let Some(value) = flat.get("workspace") {
+                event["workspace"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod workspace_change_after_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct WorkspaceChangeBeforeInput {
+        #[serde(
+            rename = "extensions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub extensions: Option<Box<Extensions>>,
+        #[serde(rename = "gaps", default, skip_serializing_if = "Option::is_none")]
+        pub gaps: Option<Vec<WorkspaceChangeBeforeInputGapsItem>>,
+        #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(rename = "items", default, skip_serializing_if = "Option::is_none")]
+        pub items: Option<Vec<Box<ContentItem>>>,
+        #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+        pub native: Option<Box<NativeEvent>>,
+        #[serde(
+            rename = "parentEventId",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub parent_event_id: Option<String>,
+        #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+        pub session: Option<Box<Session>>,
+        #[serde(
+            rename = "synthesized",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub synthesized: Option<bool>,
+        #[serde(rename = "time", default, skip_serializing_if = "Option::is_none")]
+        pub time: Option<String>,
+        #[serde(rename = "turn", default, skip_serializing_if = "Option::is_none")]
+        pub turn: Option<WorkspaceChangeBeforeInputTurn>,
+        #[serde(rename = "workspace")]
+        pub workspace: WorkspaceChangeBeforeInputWorkspace,
+    }
+    impl WorkspaceChangeBeforeInput {
+        pub const EVENT_TYPE: &'static str = "workspace.change.before";
+        pub fn new(workspace: WorkspaceChangeBeforeInputWorkspace) -> Self {
+            Self {
+                extensions: None,
+                gaps: None,
+                id: None,
+                items: None,
+                native: None,
+                parent_event_id: None,
+                session: None,
+                synthesized: None,
+                time: None,
+                turn: None,
+                workspace,
+            }
+        }
+        pub fn with_extensions(mut self, value: Box<Extensions>) -> Self {
+            self.extensions = Some(value);
+            self
+        }
+        pub fn with_gaps(mut self, value: Vec<WorkspaceChangeBeforeInputGapsItem>) -> Self {
+            self.gaps = Some(value);
+            self
+        }
+        pub fn with_id(mut self, value: String) -> Self {
+            self.id = Some(value);
+            self
+        }
+        pub fn with_items(mut self, value: Vec<Box<ContentItem>>) -> Self {
+            self.items = Some(value);
+            self
+        }
+        pub fn with_native(mut self, value: Box<NativeEvent>) -> Self {
+            self.native = Some(value);
+            self
+        }
+        pub fn with_parent_event_id(mut self, value: String) -> Self {
+            self.parent_event_id = Some(value);
+            self
+        }
+        pub fn with_session(mut self, value: Box<Session>) -> Self {
+            self.session = Some(value);
+            self
+        }
+        pub fn with_synthesized(mut self, value: bool) -> Self {
+            self.synthesized = Some(value);
+            self
+        }
+        pub fn with_time(mut self, value: String) -> Self {
+            self.time = Some(value);
+            self
+        }
+        pub fn with_turn(mut self, value: WorkspaceChangeBeforeInputTurn) -> Self {
+            self.turn = Some(value);
+            self
+        }
+        /// Project host facts; the runtime supplies owned fields and validates the complete request.
+        pub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            let flat = serde_json::to_value(self)?;
+            let mut event = serde_json::json!({"type": Self::EVENT_TYPE});
+            if let Some(value) = flat.get("extensions") {
+                event["extensions"] = value.clone();
+            }
+            if let Some(value) = flat.get("gaps") {
+                event["gaps"] = value.clone();
+            }
+            if let Some(value) = flat.get("id") {
+                event["id"] = value.clone();
+            }
+            if let Some(value) = flat.get("items") {
+                event["items"] = value.clone();
+            }
+            if let Some(value) = flat.get("native") {
+                event["native"] = value.clone();
+            }
+            if let Some(value) = flat.get("parentEventId") {
+                event["parentEventId"] = value.clone();
+            }
+            if let Some(value) = flat.get("session") {
+                event["session"] = value.clone();
+            }
+            if let Some(value) = flat.get("synthesized") {
+                event["synthesized"] = value.clone();
+            }
+            if let Some(value) = flat.get("time") {
+                event["time"] = value.clone();
+            }
+            if let Some(value) = flat.get("turn") {
+                event["turn"] = value.clone();
+            }
+            if let Some(value) = flat.get("workspace") {
+                event["workspace"] = value.clone();
+            }
+            Ok(event)
+        }
+    }
+    pub mod workspace_change_before_sources {
+        use super::ContentSourceBinding;
+        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["items".to_owned(), index.to_string()],
+                source,
+            }
+        }
+    }
+}
+/// Named ergonomic boundaries; runtime retains projection failures and validates assembled events.
+#[macro_export]
+macro_rules! ahp_ergonomic_hook_methods {
+    () => {
+        $crate::ahp_ergonomic_hook_methods!(generated);
+    };
+    ($models:ident) => {
+        pub fn config_change_after(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ConfigChangeAfterInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "config.change.after",
+                input.to_event_value(),
+            )
+        }
+        pub fn config_change_before(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ConfigChangeBeforeInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "config.change.before",
+                input.to_event_value(),
+            )
+        }
+        pub fn context_compact_after(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ContextCompactAfterInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "context.compact.after",
+                input.to_event_value(),
+            )
+        }
+        pub fn context_compact_before(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ContextCompactBeforeInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "context.compact.before",
+                input.to_event_value(),
+            )
+        }
+        pub fn file_changed(
+            &self,
+            input: $crate::$models::ergonomic_inputs::FileChangedInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("file.changed", input.to_event_value())
+        }
+        pub fn hook_failure(
+            &self,
+            input: $crate::$models::ergonomic_inputs::HookFailureInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("hook.failure", input.to_event_value())
+        }
+        pub fn model_error(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ModelErrorInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("model.error", input.to_event_value())
+        }
+        pub fn model_request_before(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ModelRequestBeforeInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "model.request.before",
+                input.to_event_value(),
+            )
+        }
+        pub fn model_response_after(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ModelResponseAfterInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "model.response.after",
+                input.to_event_value(),
+            )
+        }
+        pub fn model_switch_after(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ModelSwitchAfterInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "model.switch.after",
+                input.to_event_value(),
+            )
+        }
+        pub fn model_switch_before(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ModelSwitchBeforeInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "model.switch.before",
+                input.to_event_value(),
+            )
+        }
+        pub fn session_end(
+            &self,
+            input: $crate::$models::ergonomic_inputs::SessionEndInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("session.end", input.to_event_value())
+        }
+        pub fn session_start(
+            &self,
+            input: $crate::$models::ergonomic_inputs::SessionStartInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("session.start", input.to_event_value())
+        }
+        pub fn task_change_after(
+            &self,
+            input: $crate::$models::ergonomic_inputs::TaskChangeAfterInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "task.change.after",
+                input.to_event_value(),
+            )
+        }
+        pub fn task_change_before(
+            &self,
+            input: $crate::$models::ergonomic_inputs::TaskChangeBeforeInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "task.change.before",
+                input.to_event_value(),
+            )
+        }
+        pub fn tool_after<T: serde::Serialize + serde::de::DeserializeOwned>(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ToolAfterInput<T>,
+        ) -> $crate::hooks::EventBoundary<'_, T> {
+            self.projected_event_for::<T>("tool.after", input.to_event_value())
+        }
+        pub fn tool_batch_after(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ToolBatchAfterInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "tool.batch.after",
+                input.to_event_value(),
+            )
+        }
+        pub fn tool_before<T: serde::Serialize + serde::de::DeserializeOwned>(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ToolBeforeInput<T>,
+        ) -> $crate::hooks::EventBoundary<'_, T> {
+            self.projected_event_for::<T>("tool.before", input.to_event_value())
+        }
+        pub fn tool_permission_request<T: serde::Serialize + serde::de::DeserializeOwned>(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ToolPermissionRequestInput<T>,
+        ) -> $crate::hooks::EventBoundary<'_, T> {
+            self.projected_event_for::<T>("tool.permission.request", input.to_event_value())
+        }
+        pub fn tool_permission_resolved<T: serde::Serialize + serde::de::DeserializeOwned>(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ToolPermissionResolvedInput<T>,
+        ) -> $crate::hooks::EventBoundary<'_, T> {
+            self.projected_event_for::<T>("tool.permission.resolved", input.to_event_value())
+        }
+        pub fn tool_progress<T: serde::Serialize + serde::de::DeserializeOwned>(
+            &self,
+            input: $crate::$models::ergonomic_inputs::ToolProgressInput<T>,
+        ) -> $crate::hooks::EventBoundary<'_, T> {
+            self.projected_event_for::<T>("tool.progress", input.to_event_value())
+        }
+        pub fn turn_end(
+            &self,
+            input: $crate::$models::ergonomic_inputs::TurnEndInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("turn.end", input.to_event_value())
+        }
+        pub fn turn_finish_before(
+            &self,
+            input: $crate::$models::ergonomic_inputs::TurnFinishBeforeInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "turn.finish.before",
+                input.to_event_value(),
+            )
+        }
+        pub fn turn_progress(
+            &self,
+            input: $crate::$models::ergonomic_inputs::TurnProgressInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("turn.progress", input.to_event_value())
+        }
+        pub fn turn_start(
+            &self,
+            input: $crate::$models::ergonomic_inputs::TurnStartInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("turn.start", input.to_event_value())
+        }
+        pub fn user_attention(
+            &self,
+            input: $crate::$models::ergonomic_inputs::UserAttentionInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>("user.attention", input.to_event_value())
+        }
+        pub fn user_elicitation_request(
+            &self,
+            input: $crate::$models::ergonomic_inputs::UserElicitationRequestInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "user.elicitation.request",
+                input.to_event_value(),
+            )
+        }
+        pub fn user_elicitation_result(
+            &self,
+            input: $crate::$models::ergonomic_inputs::UserElicitationResultInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "user.elicitation.result",
+                input.to_event_value(),
+            )
+        }
+        pub fn user_message_inbound(
+            &self,
+            input: $crate::$models::ergonomic_inputs::UserMessageInboundInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "user.message.inbound",
+                input.to_event_value(),
+            )
+        }
+        pub fn user_message_outbound(
+            &self,
+            input: $crate::$models::ergonomic_inputs::UserMessageOutboundInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "user.message.outbound",
+                input.to_event_value(),
+            )
+        }
+        pub fn workspace_change_after(
+            &self,
+            input: $crate::$models::ergonomic_inputs::WorkspaceChangeAfterInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "workspace.change.after",
+                input.to_event_value(),
+            )
+        }
+        pub fn workspace_change_before(
+            &self,
+            input: $crate::$models::ergonomic_inputs::WorkspaceChangeBeforeInput,
+        ) -> $crate::hooks::EventBoundary<'_, serde_json::Value> {
+            self.projected_event_for::<serde_json::Value>(
+                "workspace.change.before",
+                input.to_event_value(),
+            )
+        }
+    };
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Permission {
+    None,
+    Allow,
+    Ask,
+    Deny,
+}
+pub mod state {
+    use super::*;
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct Candidate {
+        pub value: serde_json::Value,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub provenance: Option<BTreeMap<String, serde_json::Value>>,
+    }
+    impl Candidate {
+        pub fn new(value: serde_json::Value) -> Self {
+            Self {
+                value,
+                provenance: None,
+            }
+        }
+        pub fn try_new<T: serde::Serialize>(value: T) -> Result<Self, serde_json::Error> {
+            serde_json::to_value(value).map(Self::new)
+        }
+        pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> Self {
+            self.provenance = Some(provenance);
+            self
+        }
+    }
+    pub type InitialState = ErgonomicInitialState;
+    pub fn initial(permission: Permission) -> InitialState {
+        ErgonomicInitialState::new(
+            (),
+            match permission {
+                Permission::None => ErgonomicInitialStatePermission::None,
+                Permission::Allow => ErgonomicInitialStatePermission::Allow,
+                Permission::Ask => ErgonomicInitialStatePermission::Ask,
+                Permission::Deny => ErgonomicInitialStatePermission::Deny,
+            },
+        )
+    }
+}
+impl ErgonomicInitialState {
+    pub fn candidate(mut self, candidate: state::Candidate) -> Self {
+        let mut value = ErgonomicInitialStateCandidateObject::new(candidate.value);
+        if let Some(provenance) = candidate.provenance {
+            value.provenance = Presence::Present(ErgonomicInitialStateCandidateObjectProvenance {
+                additional_properties: provenance,
+            });
+        }
+        self.candidate = value.into();
+        self
+    }
+}
+
+pub mod effects {
+    use super::*;
+    pub fn deny(reason: String) -> Effect {
+        DenyEffect::new(reason).into()
+    }
+    pub fn allow() -> Effect {
+        EffectAllow::new().into()
+    }
+    pub fn ask() -> Effect {
+        EffectAsk::new().into()
+    }
+    pub fn modify(
+        operation: EffectModifyOperation,
+        target: EffectModifyTarget,
+        value: JsonValue,
+    ) -> Effect {
+        EffectModify::new(operation, target, value).into()
+    }
+    pub fn message(text: String) -> Effect {
+        EffectMessage::new(text).into()
+    }
+    pub fn return_(value: JsonValue) -> Effect {
+        EffectReturn::new(value).into()
+    }
+    pub fn try_return<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+        serde_json::to_value(value).map(return_)
+    }
+    pub fn flow_stop(reason: String) -> Effect {
+        EffectFlowStop::new(reason).into()
+    }
+    pub fn flow_continue() -> Effect {
+        EffectFlowContinue::new().into()
+    }
+    pub fn inject_append(
+        deliver_at: EffectInjectAppendContextDeliverAt,
+        value: JsonValue,
+    ) -> Effect {
+        EffectInjectAppendContext::new(deliver_at, value).into()
+    }
+    pub mod modify_input {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Input,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Input,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+    pub mod modify_output {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Output,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Output,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+    pub mod modify_prompt {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Prompt,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Prompt,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+    pub mod modify_request {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Request,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Request,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+    pub mod modify_response {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Response,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Response,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+    pub mod modify_content {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Content,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Content,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+    pub mod modify_instructions {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Instructions,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Instructions,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+    pub mod modify_summary {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Summary,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Summary,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+    pub mod modify_workspace {
+        use super::*;
+        pub fn replace(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Replace,
+                EffectModifyTarget::Workspace,
+                value,
+            )
+            .into()
+        }
+        pub fn try_replace<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(replace)
+        }
+        pub fn merge(value: JsonValue) -> Effect {
+            EffectModify::new(
+                EffectModifyOperation::Merge,
+                EffectModifyTarget::Workspace,
+                value,
+            )
+            .into()
+        }
+        pub fn try_merge<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {
+            serde_json::to_value(value).map(merge)
+        }
+    }
+}
+
+/// Immutable declarations only; boundary admission and per-call narrowing are runtime-owned.
+pub mod capability {
+    use super::Capabilities;
+    use serde::Serialize;
+    use serde_json::{Value, json};
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Error(pub String);
+    impl std::fmt::Display for Error {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&self.0)
+        }
+    }
+    impl std::error::Error for Error {}
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum Mode {
+        Intercept,
+        Observe,
+    }
+    #[derive(Debug, Clone, Serialize)]
+    pub struct Declaration {
+        pub modes: Vec<Mode>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub capabilities: Option<Capabilities>,
+    }
+    #[derive(Debug, Clone)]
+    pub struct Builder {
+        value: Value,
+    }
+    /// Deliberately advertises BOTH intercept and observe, unlike raw manifests.
+    pub fn intercept() -> Builder {
+        Builder {
+            value: json!({"effects": []}),
+        }
+    }
+    pub fn observe() -> Declaration {
+        Declaration {
+            modes: vec![Mode::Observe],
+            capabilities: None,
+        }
+    }
+    fn merge(a: &mut Value, b: Value) {
+        match (a, b) {
+            (Value::Object(a), Value::Object(b)) => {
+                for (k, v) in b {
+                    merge(a.entry(k).or_insert(Value::Null), v);
+                }
+            }
+            (Value::Array(a), Value::Array(b)) => {
+                for v in b {
+                    if !a.contains(&v) {
+                        a.push(v);
+                    }
+                }
+            }
+            (Value::Bool(a), Value::Bool(b)) => *a |= b,
+            (a, b) => *a = b,
+        }
+    }
+    impl Serialize for Builder {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.build()
+                .map_err(serde::ser::Error::custom)?
+                .serialize(serializer)
+        }
+    }
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ModifyOperation {
+        Merge,
+        Replace,
+    }
+    impl ModifyOperation {
+        fn wire(self) -> &'static str {
+            match self {
+                Self::Merge => "merge",
+                Self::Replace => "replace",
+            }
+        }
+    }
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum FlowOperation {
+        Continue,
+        Stop,
+    }
+    impl FlowOperation {
+        fn wire(self) -> &'static str {
+            match self {
+                Self::Continue => "continue",
+                Self::Stop => "stop",
+            }
+        }
+    }
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Delivery {
+        NextTurn,
+        Now,
+    }
+    impl Delivery {
+        fn wire(self) -> &'static str {
+            match self {
+                Self::NextTurn => "next_turn",
+                Self::Now => "now",
+            }
+        }
+    }
+    impl Builder {
+        pub fn allow(&self) -> Self {
+            self.add(Some("allow"), serde_json::json!({}))
+        }
+        pub fn ask(&self) -> Self {
+            self.add(Some("ask"), serde_json::json!({}))
+        }
+        pub fn deny(&self) -> Self {
+            self.add(Some("deny"), serde_json::json!({}))
+        }
+        pub fn message(&self) -> Self {
+            self.add(Some("message"), serde_json::json!({}))
+        }
+        pub fn r#return(&self) -> Self {
+            self.add(Some("return"), serde_json::json!({}))
+        }
+        pub fn modify_content(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"content": grant}}),
+            ))
+        }
+        pub fn modify_input(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"input": grant}}),
+            ))
+        }
+        pub fn modify_instructions(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"instructions": grant}}),
+            ))
+        }
+        pub fn modify_output(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"output": grant}}),
+            ))
+        }
+        pub fn modify_prompt(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"prompt": grant}}),
+            ))
+        }
+        pub fn modify_request(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"request": grant}}),
+            ))
+        }
+        pub fn modify_response(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"response": grant}}),
+            ))
+        }
+        pub fn modify_summary(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"summary": grant}}),
+            ))
+        }
+        pub fn modify_workspace(
+            &self,
+            operations: impl IntoIterator<Item = ModifyOperation>,
+        ) -> Result<Self, Error> {
+            let mut grant = serde_json::json!({ "merge": false,"replace": false });
+            let mut any = false;
+            for operation in operations {
+                grant[operation.wire()] = serde_json::json!(true);
+                any = true;
+            }
+            if !any {
+                return Err(Error("nonempty modify operations required".into()));
+            }
+            Ok(self.add(
+                Some("modify"),
+                serde_json::json!({"modify": {"workspace": grant}}),
+            ))
+        }
+        pub fn elicitation_form(&self) -> Self {
+            self.add(None, serde_json::json!({"elicitation": {"form": {}}}))
+        }
+        pub fn elicitation_url(&self) -> Self {
+            self.add(None, serde_json::json!({"elicitation": {"url": {}}}))
+        }
+
+        fn add(&self, effect: Option<&str>, grant: Value) -> Self {
+            let mut next = self.clone();
+            merge(&mut next.value, grant);
+            if let Some(effect) = effect {
+                merge(&mut next.value, json!({"effects": [effect]}));
+            }
+            next
+        }
+        pub fn build(&self) -> Result<Declaration, Error> {
+            let effects = self
+                .value
+                .get("effects")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            let modes = self
+                .value
+                .get("elicitation")
+                .and_then(Value::as_object)
+                .map_or(0, |v| v.len());
+            if effects == 0 && modes == 0 {
+                return Err(Error("empty interception declaration".into()));
+            }
+            let capabilities = serde_json::from_value(self.value.clone())
+                .map_err(|e| Error(format!("invalid capability declaration: {e}")))?;
+            Ok(Declaration {
+                modes: vec![Mode::Intercept, Mode::Observe],
+                capabilities: Some(capabilities),
+            })
+        }
+        pub fn flow(
+            &self,
+            operations: impl IntoIterator<Item = FlowOperation>,
+            counts: ContinuationCounts,
+        ) -> Result<Self, Error> {
+            let operations: Vec<_> = operations.into_iter().map(FlowOperation::wire).collect();
+            if operations.is_empty() {
+                return Err(Error("nonempty flow operations required".into()));
+            }
+            if operations.contains(&"continue")
+                && (counts.remaining_continuations.is_none() || counts.continuation_count.is_none())
+            {
+                return Err(Error("continue requires counts".into()));
+            }
+            let mut flow = json!({"operations": []});
+            for operation in operations {
+                merge(&mut flow, json!({"operations": [operation]}));
+            }
+            for (key, value) in [
+                ("remainingContinuations", counts.remaining_continuations),
+                ("continuationCount", counts.continuation_count),
+                ("maxContinuations", counts.max_continuations),
+            ] {
+                if let Some(value) = value {
+                    if value > 9_007_199_254_740_991 {
+                        return Err(Error(
+                            "continuation count exceeds safe integer range".into(),
+                        ));
+                    }
+                    flow[key] = json!(value);
+                }
+            }
+            Ok(self.add(Some("flow"), json!({"flow":flow})))
+        }
+        pub fn inject_context(
+            &self,
+            deliver_at: impl IntoIterator<Item = Delivery>,
+        ) -> Result<Self, Error> {
+            let mut values = Vec::new();
+            for value in deliver_at {
+                let value = value.wire();
+                if !values.contains(&value) {
+                    values.push(value);
+                }
+            }
+            if values.is_empty() {
+                return Err(Error("nonempty delivery operations required".into()));
+            }
+            Ok(self.add(
+                Some("inject"),
+                json!({"inject":{"context":{"append":true,"deliverAt":values}}}),
+            ))
+        }
+    }
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct ContinuationCounts {
+        pub remaining_continuations: Option<u64>,
+        pub continuation_count: Option<u64>,
+        pub max_continuations: Option<u64>,
+    }
+}
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -39007,6 +45666,5239 @@ impl WorkspaceChangeBeforeCapabilitiesModify {
 impl Default for WorkspaceChangeBeforeCapabilitiesModify {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterInputChangeMcpServersItem {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ConfigChangeAfterInputChangeMcpServersItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for ConfigChangeAfterInputChangeMcpServersItem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterInputChange {
+    #[serde(rename = "mcpServers")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub mcp_servers: Presence<Vec<ConfigChangeAfterInputChangeMcpServersItem>>,
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "scope")]
+    pub scope: String,
+    #[serde(rename = "settings")]
+    pub settings: Vec<String>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "summary")]
+    pub summary: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ConfigChangeAfterInputChange {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        scope: impl Into<String>,
+        settings: impl Into<Vec<String>>,
+        source: impl Into<String>,
+        summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            mcp_servers: Presence::Missing,
+            path: Presence::Missing,
+            scope: scope.into(),
+            settings: settings.into(),
+            source: source.into(),
+            summary: summary.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_mcp_servers(
+        mut self,
+        value: impl Into<Vec<ConfigChangeAfterInputChangeMcpServersItem>>,
+    ) -> Self {
+        self.mcp_servers = Presence::Present(value.into());
+        self
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_scope(mut self, value: impl Into<String>) -> Self {
+        self.scope = value.into();
+        self
+    }
+    pub fn with_settings(mut self, value: impl Into<Vec<String>>) -> Self {
+        self.settings = value.into();
+        self
+    }
+    pub fn with_source(mut self, value: impl Into<String>) -> Self {
+        self.source = value.into();
+        self
+    }
+    pub fn with_summary(mut self, value: impl Into<String>) -> Self {
+        self.summary = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ConfigChangeAfterInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeAfterInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ConfigChangeAfterInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeInputChange {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "scope")]
+    pub scope: String,
+    #[serde(rename = "settings")]
+    pub settings: Vec<String>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "summary")]
+    pub summary: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ConfigChangeBeforeInputChange {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        scope: impl Into<String>,
+        settings: impl Into<Vec<String>>,
+        source: impl Into<String>,
+        summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            path: Presence::Missing,
+            scope: scope.into(),
+            settings: settings.into(),
+            source: source.into(),
+            summary: summary.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_scope(mut self, value: impl Into<String>) -> Self {
+        self.scope = value.into();
+        self
+    }
+    pub fn with_settings(mut self, value: impl Into<Vec<String>>) -> Self {
+        self.settings = value.into();
+        self
+    }
+    pub fn with_source(mut self, value: impl Into<String>) -> Self {
+        self.source = value.into();
+        self
+    }
+    pub fn with_summary(mut self, value: impl Into<String>) -> Self {
+        self.summary = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ConfigChangeBeforeInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigChangeBeforeInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ConfigChangeBeforeInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ContextCompactAfterInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterInputRemovedItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ContextCompactAfterInputRemovedItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactAfterInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ContextCompactAfterInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ContextCompactBeforeInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextCompactBeforeInputTrigger {
+    Auto,
+    Manual,
+    Hook,
+    Unknown(String),
+}
+
+impl Serialize for ContextCompactBeforeInputTrigger {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Auto => {
+                let value: JsonValue =
+                    serde_json::from_str("\"auto\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Manual => {
+                let value: JsonValue =
+                    serde_json::from_str("\"manual\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Hook => {
+                let value: JsonValue =
+                    serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactBeforeInputTrigger {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"auto\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Auto);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"manual\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Manual);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Hook);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContextCompactBeforeInputTrigger: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCompactBeforeInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ContextCompactBeforeInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileChangedInputChangesItemOperation {
+    Create,
+    Update,
+    Remove,
+    Unknown(String),
+}
+
+impl Serialize for FileChangedInputChangesItemOperation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Create => {
+                let value: JsonValue =
+                    serde_json::from_str("\"create\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Update => {
+                let value: JsonValue =
+                    serde_json::from_str("\"update\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Remove => {
+                let value: JsonValue =
+                    serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for FileChangedInputChangesItemOperation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"create\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Create);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"update\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Update);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Remove);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for FileChangedInputChangesItemOperation: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileChangedInputChangesItem {
+    #[serde(rename = "after")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub after: Presence<Box<ContentReference>>,
+    #[serde(rename = "agentCaused")]
+    pub agent_caused: bool,
+    #[serde(rename = "before")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub before: Presence<Box<ContentReference>>,
+    #[serde(rename = "operation")]
+    pub operation: FileChangedInputChangesItemOperation,
+    #[serde(rename = "path")]
+    pub path: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl FileChangedInputChangesItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        agent_caused: impl Into<bool>,
+        operation: impl Into<FileChangedInputChangesItemOperation>,
+        path: impl Into<String>,
+    ) -> Self {
+        Self {
+            after: Presence::Missing,
+            agent_caused: agent_caused.into(),
+            before: Presence::Missing,
+            operation: operation.into(),
+            path: path.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_after(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.after = Presence::Present(value.into());
+        self
+    }
+    pub fn with_agent_caused(mut self, value: impl Into<bool>) -> Self {
+        self.agent_caused = value.into();
+        self
+    }
+    pub fn with_before(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.before = Presence::Present(value.into());
+        self
+    }
+    pub fn with_operation(
+        mut self,
+        value: impl Into<FileChangedInputChangesItemOperation>,
+    ) -> Self {
+        self.operation = value.into();
+        self
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileChangedInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl FileChangedInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileChangedInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl FileChangedInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HookFailureInputFailurePolicy {
+    FailOpen,
+    FailClosed,
+    Unknown(String),
+}
+
+impl Serialize for HookFailureInputFailurePolicy {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::FailOpen => {
+                let value: JsonValue = serde_json::from_str("\"fail-open\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::FailClosed => {
+                let value: JsonValue = serde_json::from_str("\"fail-closed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for HookFailureInputFailurePolicy {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"fail-open\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FailOpen);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"fail-closed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::FailClosed);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for HookFailureInputFailurePolicy: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookFailureInputFailure {
+    #[serde(rename = "backendId")]
+    pub backend_id: String,
+    #[serde(rename = "policy")]
+    pub policy: HookFailureInputFailurePolicy,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl HookFailureInputFailure {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        backend_id: impl Into<String>,
+        policy: impl Into<HookFailureInputFailurePolicy>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            backend_id: backend_id.into(),
+            policy: policy.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_backend_id(mut self, value: impl Into<String>) -> Self {
+        self.backend_id = value.into();
+        self
+    }
+    pub fn with_policy(mut self, value: impl Into<HookFailureInputFailurePolicy>) -> Self {
+        self.policy = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookFailureInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl HookFailureInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookFailureInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl HookFailureInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelErrorInputExecution(pub JsonValue);
+
+impl ModelErrorInputExecution {
+    pub fn new(value: impl Into<JsonValue>) -> Self {
+        Self(value.into())
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelErrorInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelErrorInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelErrorInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelErrorInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelRequestBeforeInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeInputParams {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelRequestBeforeInputParams {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for ModelRequestBeforeInputParams {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestBeforeInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelRequestBeforeInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelResponseAfterInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelResponseAfterInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelResponseAfterInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchAfterInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelSwitchAfterInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchAfterInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelSwitchAfterInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelSwitchBeforeInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeInputPricing {
+    #[serde(rename = "currency")]
+    pub currency: String,
+    #[serde(rename = "inputPerMillionTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub input_per_million_tokens: Presence<JsonNumber>,
+    #[serde(rename = "outputPerMillionTokens")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub output_per_million_tokens: Presence<JsonNumber>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelSwitchBeforeInputPricing {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(currency: impl Into<String>) -> Self {
+        Self {
+            currency: currency.into(),
+            input_per_million_tokens: Presence::Missing,
+            output_per_million_tokens: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_currency(mut self, value: impl Into<String>) -> Self {
+        self.currency = value.into();
+        self
+    }
+    pub fn with_input_per_million_tokens(mut self, value: impl Into<JsonNumber>) -> Self {
+        self.input_per_million_tokens = Presence::Present(value.into());
+        self
+    }
+    pub fn with_output_per_million_tokens(mut self, value: impl Into<JsonNumber>) -> Self {
+        self.output_per_million_tokens = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelSwitchBeforeInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelSwitchBeforeInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionEndInputCounters {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl SessionEndInputCounters {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for SessionEndInputCounters {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionEndInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl SessionEndInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionEndInputOutcome {
+    Completed,
+    Cancelled,
+    Error,
+    Unknown2,
+    Unknown(String),
+}
+
+impl Serialize for SessionEndInputOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Completed => {
+                let value: JsonValue = serde_json::from_str("\"completed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Error => {
+                let value: JsonValue =
+                    serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown2 => {
+                let value: JsonValue = serde_json::from_str("\"unknown\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionEndInputOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"completed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Completed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"error\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Error);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Unknown2);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for SessionEndInputOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionEndInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl SessionEndInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl SessionStartInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartInputHarness {
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "version")]
+    pub version: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl SessionStartInputHarness {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(name: impl Into<String>, version: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            version: version.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_name(mut self, value: impl Into<String>) -> Self {
+        self.name = value.into();
+        self
+    }
+    pub fn with_version(mut self, value: impl Into<String>) -> Self {
+        self.version = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartInputResumedFrom {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl SessionStartInputResumedFrom {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionStartInputTrigger {
+    Startup,
+    Resume,
+    Clear,
+    Compact,
+    Fork,
+    Unknown(String),
+}
+
+impl Serialize for SessionStartInputTrigger {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Startup => {
+                let value: JsonValue = serde_json::from_str("\"startup\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Resume => {
+                let value: JsonValue =
+                    serde_json::from_str("\"resume\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Clear => {
+                let value: JsonValue =
+                    serde_json::from_str("\"clear\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Compact => {
+                let value: JsonValue = serde_json::from_str("\"compact\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Fork => {
+                let value: JsonValue =
+                    serde_json::from_str("\"fork\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionStartInputTrigger {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"startup\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Startup);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"resume\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Resume);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"clear\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Clear);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"compact\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Compact);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"fork\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Fork);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for SessionStartInputTrigger: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionStartInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl SessionStartInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeAfterInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeAfterInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeAfterInputTaskChange {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeAfterInputTaskChange {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for TaskChangeAfterInputTaskChange {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskChangeAfterInputTaskOperation {
+    Create,
+    Update,
+    Remove,
+    Unknown(String),
+}
+
+impl Serialize for TaskChangeAfterInputTaskOperation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Create => {
+                let value: JsonValue =
+                    serde_json::from_str("\"create\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Update => {
+                let value: JsonValue =
+                    serde_json::from_str("\"update\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Remove => {
+                let value: JsonValue =
+                    serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskChangeAfterInputTaskOperation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"create\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Create);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"update\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Update);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Remove);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskChangeAfterInputTaskOperation: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeAfterInputTaskPrior {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeAfterInputTaskPrior {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for TaskChangeAfterInputTaskPrior {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeAfterInputTask {
+    #[serde(rename = "change")]
+    pub change: TaskChangeAfterInputTaskChange,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "operation")]
+    pub operation: TaskChangeAfterInputTaskOperation,
+    #[serde(rename = "prior")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prior: Presence<TaskChangeAfterInputTaskPrior>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeAfterInputTask {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        change: impl Into<TaskChangeAfterInputTaskChange>,
+        id: impl Into<String>,
+        operation: impl Into<TaskChangeAfterInputTaskOperation>,
+    ) -> Self {
+        Self {
+            change: change.into(),
+            description: Presence::Missing,
+            id: id.into(),
+            operation: operation.into(),
+            prior: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_change(mut self, value: impl Into<TaskChangeAfterInputTaskChange>) -> Self {
+        self.change = value.into();
+        self
+    }
+    pub fn with_description(mut self, value: impl Into<String>) -> Self {
+        self.description = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_operation(mut self, value: impl Into<TaskChangeAfterInputTaskOperation>) -> Self {
+        self.operation = value.into();
+        self
+    }
+    pub fn with_prior(mut self, value: impl Into<TaskChangeAfterInputTaskPrior>) -> Self {
+        self.prior = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeAfterInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeAfterInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeBeforeInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeInputTaskChange {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeBeforeInputTaskChange {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for TaskChangeBeforeInputTaskChange {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskChangeBeforeInputTaskOperation {
+    Create,
+    Update,
+    Remove,
+    Unknown(String),
+}
+
+impl Serialize for TaskChangeBeforeInputTaskOperation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Create => {
+                let value: JsonValue =
+                    serde_json::from_str("\"create\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Update => {
+                let value: JsonValue =
+                    serde_json::from_str("\"update\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Remove => {
+                let value: JsonValue =
+                    serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskChangeBeforeInputTaskOperation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"create\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Create);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"update\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Update);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"remove\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Remove);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskChangeBeforeInputTaskOperation: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeInputTaskPrior {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeBeforeInputTaskPrior {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for TaskChangeBeforeInputTaskPrior {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeInputTask {
+    #[serde(rename = "change")]
+    pub change: TaskChangeBeforeInputTaskChange,
+    #[serde(rename = "description")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub description: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "operation")]
+    pub operation: TaskChangeBeforeInputTaskOperation,
+    #[serde(rename = "prior")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prior: Presence<TaskChangeBeforeInputTaskPrior>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeBeforeInputTask {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        change: impl Into<TaskChangeBeforeInputTaskChange>,
+        id: impl Into<String>,
+        operation: impl Into<TaskChangeBeforeInputTaskOperation>,
+    ) -> Self {
+        Self {
+            change: change.into(),
+            description: Presence::Missing,
+            id: id.into(),
+            operation: operation.into(),
+            prior: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_change(mut self, value: impl Into<TaskChangeBeforeInputTaskChange>) -> Self {
+        self.change = value.into();
+        self
+    }
+    pub fn with_description(mut self, value: impl Into<String>) -> Self {
+        self.description = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_operation(mut self, value: impl Into<TaskChangeBeforeInputTaskOperation>) -> Self {
+        self.operation = value.into();
+        self
+    }
+    pub fn with_prior(mut self, value: impl Into<TaskChangeBeforeInputTaskPrior>) -> Self {
+        self.prior = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskChangeBeforeInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TaskChangeBeforeInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolAfterInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolAfterInputOutcome {
+    Ok,
+    Error,
+    Denied,
+    Cancelled,
+    Timeout,
+    Unknown(String),
+}
+
+impl Serialize for ToolAfterInputOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Ok => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ok\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Error => {
+                let value: JsonValue =
+                    serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Denied => {
+                let value: JsonValue =
+                    serde_json::from_str("\"denied\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Timeout => {
+                let value: JsonValue = serde_json::from_str("\"timeout\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolAfterInputOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ok\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ok);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"error\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Error);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"denied\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Denied);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"timeout\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Timeout);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolAfterInputOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolAfterInputOrigin {
+    Native,
+    Mcp,
+    Unknown(String),
+}
+
+impl Serialize for ToolAfterInputOrigin {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Native => {
+                let value: JsonValue =
+                    serde_json::from_str("\"native\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mcp => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolAfterInputOrigin {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"native\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Native);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mcp);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolAfterInputOrigin: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolAfterInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolAfterInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterInputBatch {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolBatchAfterInputBatch {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterInputCallsItemCall {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolBatchAfterInputCallsItemCall {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolBatchAfterInputCallsItemOutcome {
+    Ok,
+    Error,
+    Denied,
+    Cancelled,
+    Timeout,
+    Unknown(String),
+}
+
+impl Serialize for ToolBatchAfterInputCallsItemOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Ok => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ok\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Error => {
+                let value: JsonValue =
+                    serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Denied => {
+                let value: JsonValue =
+                    serde_json::from_str("\"denied\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Timeout => {
+                let value: JsonValue = serde_json::from_str("\"timeout\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBatchAfterInputCallsItemOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ok\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ok);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"error\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Error);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"denied\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Denied);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"timeout\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Timeout);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolBatchAfterInputCallsItemOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterInputCallsItem {
+    #[serde(rename = "batch")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub batch: Presence<Box<ExecutionEventBatch>>,
+    #[serde(rename = "call")]
+    pub call: ToolBatchAfterInputCallsItemCall,
+    #[serde(rename = "execution")]
+    pub execution: Box<ExecutionEventExecution>,
+    #[serde(rename = "outcome")]
+    pub outcome: ToolBatchAfterInputCallsItemOutcome,
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "tool")]
+    pub tool: Box<ExecutionEventTool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolBatchAfterInputCallsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        call: impl Into<ToolBatchAfterInputCallsItemCall>,
+        execution: impl Into<Box<ExecutionEventExecution>>,
+        outcome: impl Into<ToolBatchAfterInputCallsItemOutcome>,
+        path: impl Into<String>,
+        tool: impl Into<Box<ExecutionEventTool>>,
+    ) -> Self {
+        Self {
+            batch: Presence::Missing,
+            call: call.into(),
+            execution: execution.into(),
+            outcome: outcome.into(),
+            path: path.into(),
+            tool: tool.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_batch(mut self, value: impl Into<Box<ExecutionEventBatch>>) -> Self {
+        self.batch = Presence::Present(value.into());
+        self
+    }
+    pub fn with_call(mut self, value: impl Into<ToolBatchAfterInputCallsItemCall>) -> Self {
+        self.call = value.into();
+        self
+    }
+    pub fn with_execution(mut self, value: impl Into<Box<ExecutionEventExecution>>) -> Self {
+        self.execution = value.into();
+        self
+    }
+    pub fn with_outcome(mut self, value: impl Into<ToolBatchAfterInputCallsItemOutcome>) -> Self {
+        self.outcome = value.into();
+        self
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_tool(mut self, value: impl Into<Box<ExecutionEventTool>>) -> Self {
+        self.tool = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolBatchAfterInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBatchAfterInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolBatchAfterInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolBeforeInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolBeforeInputOrigin {
+    Native,
+    Mcp,
+    Unknown(String),
+}
+
+impl Serialize for ToolBeforeInputOrigin {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Native => {
+                let value: JsonValue =
+                    serde_json::from_str("\"native\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mcp => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBeforeInputOrigin {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"native\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Native);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mcp);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolBeforeInputOrigin: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolBeforeInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolBeforeInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionRequestInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolPermissionRequestInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionRequestInputSuggestionsItem {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolPermissionRequestInputSuggestionsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for ToolPermissionRequestInputSuggestionsItem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolPermissionRequestInputOrigin {
+    Native,
+    Mcp,
+    Unknown(String),
+}
+
+impl Serialize for ToolPermissionRequestInputOrigin {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Native => {
+                let value: JsonValue =
+                    serde_json::from_str("\"native\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mcp => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolPermissionRequestInputOrigin {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"native\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Native);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mcp);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolPermissionRequestInputOrigin: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionRequestInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolPermissionRequestInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolPermissionResolvedInputDecidedBy {
+    User,
+    Policy,
+    Hook,
+    Auto,
+    Classifier,
+    Unknown(String),
+}
+
+impl Serialize for ToolPermissionResolvedInputDecidedBy {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Policy => {
+                let value: JsonValue =
+                    serde_json::from_str("\"policy\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Hook => {
+                let value: JsonValue =
+                    serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Auto => {
+                let value: JsonValue =
+                    serde_json::from_str("\"auto\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Classifier => {
+                let value: JsonValue = serde_json::from_str("\"classifier\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolPermissionResolvedInputDecidedBy {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"policy\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Policy);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Hook);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"auto\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Auto);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"classifier\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Classifier);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolPermissionResolvedInputDecidedBy: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolPermissionResolvedInputDecision {
+    Allow,
+    Deny,
+    Unknown(String),
+}
+
+impl Serialize for ToolPermissionResolvedInputDecision {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Allow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolPermissionResolvedInputDecision {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Allow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolPermissionResolvedInputDecision: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionResolvedInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolPermissionResolvedInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolPermissionResolvedInputOrigin {
+    Native,
+    Mcp,
+    Unknown(String),
+}
+
+impl Serialize for ToolPermissionResolvedInputOrigin {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Native => {
+                let value: JsonValue =
+                    serde_json::from_str("\"native\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mcp => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolPermissionResolvedInputOrigin {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"native\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Native);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mcp);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolPermissionResolvedInputOrigin: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolPermissionResolvedInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolPermissionResolvedInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolProgressInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolProgressInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolProgressInputOrigin {
+    Native,
+    Mcp,
+    Unknown(String),
+}
+
+impl Serialize for ToolProgressInputOrigin {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Native => {
+                let value: JsonValue =
+                    serde_json::from_str("\"native\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mcp => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolProgressInputOrigin {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"native\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Native);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mcp\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mcp);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolProgressInputOrigin: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolProgressInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ToolProgressInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnEndInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnEndInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnEndInputLastAssistantItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnEndInputLastAssistantItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnEndInputOutcome {
+    Completed,
+    Failed,
+    Cancelled,
+    MaxIterations,
+    Unknown(String),
+}
+
+impl Serialize for TurnEndInputOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Completed => {
+                let value: JsonValue = serde_json::from_str("\"completed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Failed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"failed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::MaxIterations => {
+                let value: JsonValue = serde_json::from_str("\"max_iterations\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnEndInputOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"completed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Completed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"failed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Failed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"max_iterations\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::MaxIterations);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnEndInputOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnEndInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnEndInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnFinishBeforeInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeInputLastAssistantItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnFinishBeforeInputLastAssistantItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnFinishBeforeInputOutcome {
+    Completed,
+    Failed,
+    Cancelled,
+    MaxIterations,
+    Unknown(String),
+}
+
+impl Serialize for TurnFinishBeforeInputOutcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Completed => {
+                let value: JsonValue = serde_json::from_str("\"completed\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Failed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"failed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancelled => {
+                let value: JsonValue = serde_json::from_str("\"cancelled\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::MaxIterations => {
+                let value: JsonValue = serde_json::from_str("\"max_iterations\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnFinishBeforeInputOutcome {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"completed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Completed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"failed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Failed);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancelled\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancelled);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"max_iterations\"")
+                .expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::MaxIterations);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnFinishBeforeInputOutcome: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnFinishBeforeInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnFinishBeforeInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnProgressInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnProgressInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnProgressInputItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnProgressInputItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnProgressInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnProgressInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnStartInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnStartInputTrigger {
+    User,
+    Continuation,
+    Hook,
+    External,
+    Unknown(String),
+}
+
+impl Serialize for TurnStartInputTrigger {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continuation => {
+                let value: JsonValue = serde_json::from_str("\"continuation\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Hook => {
+                let value: JsonValue =
+                    serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::External => {
+                let value: JsonValue = serde_json::from_str("\"external\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnStartInputTrigger {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continuation\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continuation);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Hook);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"external\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::External);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnStartInputTrigger: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnStartInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TurnStartInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserAttentionInputAttention {
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "message")]
+    pub message: Vec<Box<ContentItem>>,
+    #[serde(rename = "title")]
+    pub title: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserAttentionInputAttention {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        kind: impl Into<String>,
+        message: impl Into<Vec<Box<ContentItem>>>,
+        title: impl Into<Vec<Box<ContentItem>>>,
+    ) -> Self {
+        Self {
+            kind: kind.into(),
+            message: message.into(),
+            title: title.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_message(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.message = value.into();
+        self
+    }
+    pub fn with_title(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.title = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserAttentionInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserAttentionInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserAttentionInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserAttentionInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationRequestInputElicitationMode {
+    Form,
+    Url,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationRequestInputElicitationMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Form => {
+                let value: JsonValue =
+                    serde_json::from_str("\"form\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Url => {
+                let value: JsonValue =
+                    serde_json::from_str("\"url\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"form\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Form);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"url\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Url);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationRequestInputElicitationMode: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationRequestInputElicitationRequest(pub JsonValue);
+
+impl UserElicitationRequestInputElicitationRequest {
+    pub fn new(value: impl Into<JsonValue>) -> Self {
+        Self(value.into())
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestInputElicitation {
+    #[serde(rename = "mode")]
+    pub mode: UserElicitationRequestInputElicitationMode,
+    #[serde(rename = "request")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub request: Presence<UserElicitationRequestInputElicitationRequest>,
+    #[serde(rename = "server")]
+    pub server: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestInputElicitation {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        mode: impl Into<UserElicitationRequestInputElicitationMode>,
+        server: impl Into<String>,
+    ) -> Self {
+        Self {
+            mode: mode.into(),
+            request: Presence::Missing,
+            server: server.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_mode(
+        mut self,
+        value: impl Into<UserElicitationRequestInputElicitationMode>,
+    ) -> Self {
+        self.mode = value.into();
+        self
+    }
+    pub fn with_request(
+        mut self,
+        value: impl Into<UserElicitationRequestInputElicitationRequest>,
+    ) -> Self {
+        self.request = Presence::Present(value.into());
+        self
+    }
+    pub fn with_server(mut self, value: impl Into<String>) -> Self {
+        self.server = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationResultInputElicitationAction {
+    Accept,
+    Decline,
+    Cancel,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationResultInputElicitationAction {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Accept => {
+                let value: JsonValue =
+                    serde_json::from_str("\"accept\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Decline => {
+                let value: JsonValue = serde_json::from_str("\"decline\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Cancel => {
+                let value: JsonValue =
+                    serde_json::from_str("\"cancel\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationAction {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"accept\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Accept);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"decline\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Decline);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cancel\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cancel);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationResultInputElicitationAction: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationResultInputElicitationMode {
+    Form,
+    Url,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationResultInputElicitationMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Form => {
+                let value: JsonValue =
+                    serde_json::from_str("\"form\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Url => {
+                let value: JsonValue =
+                    serde_json::from_str("\"url\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"form\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Form);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"url\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Url);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationResultInputElicitationMode: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserElicitationResultInputElicitationResult(pub JsonValue);
+
+impl UserElicitationResultInputElicitationResult {
+    pub fn new(value: impl Into<JsonValue>) -> Self {
+        Self(value.into())
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultInputElicitation {
+    #[serde(rename = "action")]
+    pub action: UserElicitationResultInputElicitationAction,
+    #[serde(rename = "mode")]
+    pub mode: UserElicitationResultInputElicitationMode,
+    #[serde(rename = "result")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub result: Presence<UserElicitationResultInputElicitationResult>,
+    #[serde(rename = "server")]
+    pub server: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultInputElicitation {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        action: impl Into<UserElicitationResultInputElicitationAction>,
+        mode: impl Into<UserElicitationResultInputElicitationMode>,
+        server: impl Into<String>,
+    ) -> Self {
+        Self {
+            action: action.into(),
+            mode: mode.into(),
+            result: Presence::Missing,
+            server: server.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_action(
+        mut self,
+        value: impl Into<UserElicitationResultInputElicitationAction>,
+    ) -> Self {
+        self.action = value.into();
+        self
+    }
+    pub fn with_mode(
+        mut self,
+        value: impl Into<UserElicitationResultInputElicitationMode>,
+    ) -> Self {
+        self.mode = value.into();
+        self
+    }
+    pub fn with_result(
+        mut self,
+        value: impl Into<UserElicitationResultInputElicitationResult>,
+    ) -> Self {
+        self.result = Presence::Present(value.into());
+        self
+    }
+    pub fn with_server(mut self, value: impl Into<String>) -> Self {
+        self.server = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageInboundInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundInputMessage {
+    #[serde(rename = "channel")]
+    pub channel: String,
+    #[serde(rename = "sender")]
+    pub sender: String,
+    #[serde(rename = "text")]
+    pub text: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageInboundInputMessage {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        channel: impl Into<String>,
+        sender: impl Into<String>,
+        text: impl Into<Vec<Box<ContentItem>>>,
+    ) -> Self {
+        Self {
+            channel: channel.into(),
+            sender: sender.into(),
+            text: text.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_channel(mut self, value: impl Into<String>) -> Self {
+        self.channel = value.into();
+        self
+    }
+    pub fn with_sender(mut self, value: impl Into<String>) -> Self {
+        self.sender = value.into();
+        self
+    }
+    pub fn with_text(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.text = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageInboundInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageInboundInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageOutboundInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundInputMessage {
+    #[serde(rename = "channel")]
+    pub channel: String,
+    #[serde(rename = "payload")]
+    pub payload: Vec<Box<ContentItem>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageOutboundInputMessage {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(channel: impl Into<String>, payload: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        Self {
+            channel: channel.into(),
+            payload: payload.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_channel(mut self, value: impl Into<String>) -> Self {
+        self.channel = value.into();
+        self
+    }
+    pub fn with_payload(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.payload = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMessageOutboundInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageOutboundInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeAfterInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeAfterInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeAfterInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeAfterInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeAfterInputWorkspaceChange {
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "workspaceRoots")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace_roots: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeAfterInputWorkspaceChange {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            cwd: Presence::Missing,
+            workspace_roots: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_cwd(mut self, value: impl Into<String>) -> Self {
+        self.cwd = Presence::Present(value.into());
+        self
+    }
+    pub fn with_workspace_roots(mut self, value: impl Into<Vec<String>>) -> Self {
+        self.workspace_roots = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for WorkspaceChangeAfterInputWorkspaceChange {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceChangeAfterInputWorkspaceKind {
+    Cwd,
+    Roots,
+    Switch,
+    Unknown(String),
+}
+
+impl Serialize for WorkspaceChangeAfterInputWorkspaceKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Cwd => {
+                let value: JsonValue =
+                    serde_json::from_str("\"cwd\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Roots => {
+                let value: JsonValue =
+                    serde_json::from_str("\"roots\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Switch => {
+                let value: JsonValue =
+                    serde_json::from_str("\"switch\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkspaceChangeAfterInputWorkspaceKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cwd\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cwd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"roots\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Roots);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"switch\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Switch);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for WorkspaceChangeAfterInputWorkspaceKind: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeAfterInputWorkspacePrior {
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "workspaceRoots")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace_roots: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeAfterInputWorkspacePrior {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            cwd: Presence::Missing,
+            workspace_roots: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_cwd(mut self, value: impl Into<String>) -> Self {
+        self.cwd = Presence::Present(value.into());
+        self
+    }
+    pub fn with_workspace_roots(mut self, value: impl Into<Vec<String>>) -> Self {
+        self.workspace_roots = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for WorkspaceChangeAfterInputWorkspacePrior {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeAfterInputWorkspace {
+    #[serde(rename = "change")]
+    pub change: WorkspaceChangeAfterInputWorkspaceChange,
+    #[serde(rename = "kind")]
+    pub kind: WorkspaceChangeAfterInputWorkspaceKind,
+    #[serde(rename = "prior")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prior: Presence<WorkspaceChangeAfterInputWorkspacePrior>,
+    #[serde(rename = "reason")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub reason: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeAfterInputWorkspace {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        change: impl Into<WorkspaceChangeAfterInputWorkspaceChange>,
+        kind: impl Into<WorkspaceChangeAfterInputWorkspaceKind>,
+    ) -> Self {
+        Self {
+            change: change.into(),
+            kind: kind.into(),
+            prior: Presence::Missing,
+            reason: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_change(
+        mut self,
+        value: impl Into<WorkspaceChangeAfterInputWorkspaceChange>,
+    ) -> Self {
+        self.change = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<WorkspaceChangeAfterInputWorkspaceKind>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_prior(mut self, value: impl Into<WorkspaceChangeAfterInputWorkspacePrior>) -> Self {
+        self.prior = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeInputGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeBeforeInputGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeInputTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeBeforeInputTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeInputWorkspaceChange {
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "workspaceRoots")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace_roots: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeBeforeInputWorkspaceChange {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            cwd: Presence::Missing,
+            workspace_roots: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_cwd(mut self, value: impl Into<String>) -> Self {
+        self.cwd = Presence::Present(value.into());
+        self
+    }
+    pub fn with_workspace_roots(mut self, value: impl Into<Vec<String>>) -> Self {
+        self.workspace_roots = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for WorkspaceChangeBeforeInputWorkspaceChange {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceChangeBeforeInputWorkspaceKind {
+    Cwd,
+    Roots,
+    Switch,
+    Unknown(String),
+}
+
+impl Serialize for WorkspaceChangeBeforeInputWorkspaceKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Cwd => {
+                let value: JsonValue =
+                    serde_json::from_str("\"cwd\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Roots => {
+                let value: JsonValue =
+                    serde_json::from_str("\"roots\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Switch => {
+                let value: JsonValue =
+                    serde_json::from_str("\"switch\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkspaceChangeBeforeInputWorkspaceKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"cwd\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Cwd);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"roots\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Roots);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"switch\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Switch);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for WorkspaceChangeBeforeInputWorkspaceKind: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeInputWorkspacePrior {
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "workspaceRoots")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub workspace_roots: Presence<Vec<String>>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeBeforeInputWorkspacePrior {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            cwd: Presence::Missing,
+            workspace_roots: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_cwd(mut self, value: impl Into<String>) -> Self {
+        self.cwd = Presence::Present(value.into());
+        self
+    }
+    pub fn with_workspace_roots(mut self, value: impl Into<Vec<String>>) -> Self {
+        self.workspace_roots = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for WorkspaceChangeBeforeInputWorkspacePrior {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceChangeBeforeInputWorkspace {
+    #[serde(rename = "change")]
+    pub change: WorkspaceChangeBeforeInputWorkspaceChange,
+    #[serde(rename = "kind")]
+    pub kind: WorkspaceChangeBeforeInputWorkspaceKind,
+    #[serde(rename = "prior")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub prior: Presence<WorkspaceChangeBeforeInputWorkspacePrior>,
+    #[serde(rename = "reason")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub reason: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl WorkspaceChangeBeforeInputWorkspace {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        change: impl Into<WorkspaceChangeBeforeInputWorkspaceChange>,
+        kind: impl Into<WorkspaceChangeBeforeInputWorkspaceKind>,
+    ) -> Self {
+        Self {
+            change: change.into(),
+            kind: kind.into(),
+            prior: Presence::Missing,
+            reason: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_change(
+        mut self,
+        value: impl Into<WorkspaceChangeBeforeInputWorkspaceChange>,
+    ) -> Self {
+        self.change = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<WorkspaceChangeBeforeInputWorkspaceKind>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_prior(
+        mut self,
+        value: impl Into<WorkspaceChangeBeforeInputWorkspacePrior>,
+    ) -> Self {
+        self.prior = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ErgonomicInitialStateCandidateObjectProvenance {
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ErgonomicInitialStateCandidateObjectProvenance {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for ErgonomicInitialStateCandidateObjectProvenance {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ErgonomicInitialStateCandidateObject {
+    #[serde(rename = "provenance")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub provenance: Presence<ErgonomicInitialStateCandidateObjectProvenance>,
+    #[serde(rename = "value")]
+    pub value: JsonValue,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ErgonomicInitialStateCandidateObject {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(value: impl Into<JsonValue>) -> Self {
+        Self {
+            provenance: Presence::Missing,
+            value: value.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_provenance(
+        mut self,
+        value: impl Into<ErgonomicInitialStateCandidateObjectProvenance>,
+    ) -> Self {
+        self.provenance = Presence::Present(value.into());
+        self
+    }
+    pub fn with_value(mut self, value: impl Into<JsonValue>) -> Self {
+        self.value = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ErgonomicInitialStateCandidate {
+    Null(()),
+    Object(ErgonomicInitialStateCandidateObject),
+}
+
+impl From<()> for ErgonomicInitialStateCandidate {
+    fn from(value: ()) -> Self {
+        Self::Null(value)
+    }
+}
+
+impl From<ErgonomicInitialStateCandidateObject> for ErgonomicInitialStateCandidate {
+    fn from(value: ErgonomicInitialStateCandidateObject) -> Self {
+        Self::Object(value)
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ErgonomicInitialStateFlow {
+    None,
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ErgonomicInitialStateFlow {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::None => {
+                let value: JsonValue =
+                    serde_json::from_str("\"none\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ErgonomicInitialStateFlow {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"none\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::None);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ErgonomicInitialStateFlow: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ErgonomicInitialStatePermission {
+    None,
+    Allow,
+    Ask,
+    Deny,
+    Unknown(String),
+}
+
+impl Serialize for ErgonomicInitialStatePermission {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::None => {
+                let value: JsonValue =
+                    serde_json::from_str("\"none\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Allow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Ask => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ErgonomicInitialStatePermission {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"none\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::None);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Allow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ask);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ErgonomicInitialStatePermission: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ErgonomicInitialState {
+    #[serde(rename = "candidate")]
+    pub candidate: ErgonomicInitialStateCandidate,
+    #[serde(rename = "flow")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub flow: Presence<ErgonomicInitialStateFlow>,
+    #[serde(rename = "injections")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub injections: Presence<Vec<JsonValue>>,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<Vec<String>>,
+    #[serde(rename = "permission")]
+    pub permission: ErgonomicInitialStatePermission,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ErgonomicInitialState {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        candidate: impl Into<ErgonomicInitialStateCandidate>,
+        permission: impl Into<ErgonomicInitialStatePermission>,
+    ) -> Self {
+        Self {
+            candidate: candidate.into(),
+            flow: Presence::Missing,
+            injections: Presence::Missing,
+            instructions: Presence::Missing,
+            permission: permission.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_candidate(mut self, value: impl Into<ErgonomicInitialStateCandidate>) -> Self {
+        self.candidate = value.into();
+        self
+    }
+    pub fn with_flow(mut self, value: impl Into<ErgonomicInitialStateFlow>) -> Self {
+        self.flow = Presence::Present(value.into());
+        self
+    }
+    pub fn with_injections(mut self, value: impl Into<Vec<JsonValue>>) -> Self {
+        self.injections = Presence::Present(value.into());
+        self
+    }
+    pub fn with_instructions(mut self, value: impl Into<Vec<String>>) -> Self {
+        self.instructions = Presence::Present(value.into());
+        self
+    }
+    pub fn with_permission(mut self, value: impl Into<ErgonomicInitialStatePermission>) -> Self {
+        self.permission = value.into();
+        self
     }
 }
 

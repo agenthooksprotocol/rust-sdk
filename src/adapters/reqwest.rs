@@ -48,7 +48,7 @@ impl Http for ReqwestHttp {
     fn send(
         &self,
         request: Request,
-    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + Send + '_>> {
         Box::pin(async move {
             let url =
                 reqwest::Url::parse(&request.uri).map_err(|e| TransportError(e.to_string()))?;

@@ -230,7 +230,7 @@ fn http_hook_bridge_checks_status_correlation_and_credentials() {
             &self,
             request: Request,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<Response, TransportError>> + '_>,
+            Box<dyn std::future::Future<Output = Result<Response, TransportError>> + Send + '_>,
         > {
             assert_eq!(request.headers["authorization"], "Bearer scoped");
             Box::pin(async { Ok(self.0.clone()) })
@@ -252,12 +252,9 @@ fn http_hook_bridge_checks_status_correlation_and_credentials() {
     hook.authorization = "Bearer scoped".into();
     hook.http.0.status = 503;
     hook.http.0.body = b"upstream diagnostic".to_vec();
-    assert!(
-        block_on(hook.call(message.clone()))
-            .unwrap_err()
-            .0
-            .contains("upstream diagnostic")
-    );
+    let error = block_on(hook.call(message.clone())).unwrap_err();
+    assert!(error.to_string().contains("503"));
+    assert!(!error.to_string().contains("upstream diagnostic"));
     hook.http.0 = good;
     let mut body: serde_json::Value = serde_json::from_slice(&hook.http.0.body).unwrap();
     body["id"] = "wrong".into();
@@ -265,7 +262,7 @@ fn http_hook_bridge_checks_status_correlation_and_credentials() {
     assert!(
         block_on(hook.call(message))
             .unwrap_err()
-            .0
+            .to_string()
             .contains("correlation")
     );
 }
@@ -440,7 +437,7 @@ fn selected_item(reference: serde_json::Value) -> serde_json::Value {
 }
 struct CountingContentStore {
     store: agenthooksprotocol::content::MemoryContentStore,
-    reads: std::cell::Cell<usize>,
+    reads: std::sync::atomic::AtomicUsize,
 }
 impl agenthooksprotocol::content::ContentStore for CountingContentStore {
     fn resolve(
@@ -448,7 +445,8 @@ impl agenthooksprotocol::content::ContentStore for CountingContentStore {
         scope: &agenthooksprotocol::content::AuthorizedScope,
         reference: &agenthooksprotocol::generated::ContentReference,
     ) -> Result<std::sync::Arc<[u8]>, agenthooksprotocol::content::UploadError> {
-        self.reads.set(self.reads.get() + 1);
+        self.reads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.store.resolve(scope, reference)
     }
     fn put(
@@ -467,14 +465,14 @@ fn authenticated_automatic_resolution_reaches_verified_callback() {
     use agenthooksprotocol::content::{AuthorizedScope, ContentContext, MemoryContentStore};
     let store = CountingContentStore {
         store: MemoryContentStore::new(128, 512, 8),
-        reads: std::cell::Cell::new(0),
+        reads: std::sync::atomic::AtomicUsize::new(0),
     };
     let context = ContentContext {
         store: &store,
         scope: AuthorizedScope::new("local-demo-user"),
     };
     let reference = context.put(b"verified bytes").unwrap();
-    store.reads.set(0);
+    store.reads.store(0, std::sync::atomic::Ordering::Relaxed);
     let server = Server {
         handler: VerifiedPolicy {
             calls: 0.into(),
@@ -488,7 +486,7 @@ fn authenticated_automatic_resolution_reaches_verified_callback() {
     fn assert_send<T: Send>(_: &T) {}
     assert_send(&future);
     assert_eq!(block_on(future).status, 200);
-    assert_eq!(store.reads.get(), 1);
+    assert_eq!(store.reads.load(std::sync::atomic::Ordering::Relaxed), 1);
     assert_eq!(
         server
             .handler
@@ -559,7 +557,7 @@ fn metadata_omit_and_open_tool_input_never_trigger_content_reads() {
     use agenthooksprotocol::content::MemoryContentStore;
     let store = CountingContentStore {
         store: MemoryContentStore::new(128, 512, 8),
-        reads: std::cell::Cell::new(0),
+        reads: std::sync::atomic::AtomicUsize::new(0),
     };
     let server = Server {
         handler: VerifiedPolicy {
@@ -584,7 +582,7 @@ fn metadata_omit_and_open_tool_input_never_trigger_content_reads() {
         block_on(server.handle_with_content(request, &store)).status,
         200
     );
-    assert_eq!(store.reads.get(), 0);
+    assert_eq!(store.reads.load(std::sync::atomic::Ordering::Relaxed), 0);
     assert_eq!(
         server
             .handler
@@ -598,7 +596,7 @@ fn authentication_failure_happens_before_resolution() {
     use agenthooksprotocol::content::MemoryContentStore;
     let store = CountingContentStore {
         store: MemoryContentStore::new(128, 512, 8),
-        reads: std::cell::Cell::new(0),
+        reads: std::sync::atomic::AtomicUsize::new(0),
     };
     let mut request = content_request(serde_json::json!([selected_item(
         serde_json::json!({"ref":"missing", "size":0, "sha256":"0".repeat(64)})
@@ -608,7 +606,7 @@ fn authentication_failure_happens_before_resolution() {
         block_on(server().handle_with_content(request, &store)).status,
         401
     );
-    assert_eq!(store.reads.get(), 0);
+    assert_eq!(store.reads.load(std::sync::atomic::Ordering::Relaxed), 0);
 }
 
 #[test]

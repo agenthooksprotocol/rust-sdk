@@ -12,15 +12,15 @@ pub const DEFAULT_MAX_CHUNKS: usize = 65_536;
 
 /// A lazy, runtime-neutral read of one owned body chunk.
 pub type BodyChunkFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<Option<Vec<u8>>, BodyError>> + 'a>>;
+    Pin<Box<dyn Future<Output = Result<Option<Vec<u8>>, BodyError>> + Send + 'a>>;
 
-/// A caller-owned chunk source. Neither the source nor its futures need `Send`.
+/// A caller-owned chunk source. Sources and their futures are `Send` so operations can move between executor threads.
 ///
 /// `None` marks EOF. Sources must yield control themselves when waiting for
 /// input; chunk limits cannot interrupt a source future that never completes.
 /// Each returned chunk is already allocated by the source, so callers must also
 /// bound individual source allocations where that is required.
-pub trait BodyStream {
+pub trait BodyStream: Send {
     fn next_chunk(&mut self) -> BodyChunkFuture<'_>;
 }
 
@@ -179,14 +179,32 @@ const DEFERRED_PREFIX: &str = "ahp-deferred:";
 
 #[derive(Clone)]
 pub(crate) struct DeferredBodies {
-    inner: std::rc::Rc<DeferredInner>,
+    inner: std::sync::Arc<DeferredInner>,
 }
 
 struct DeferredInner {
     namespace: u64,
     max_bytes: usize,
     max_entries: usize,
-    entries: std::cell::RefCell<Vec<DeferredState>>,
+    entries: std::sync::Mutex<DeferredEntries>,
+}
+
+#[derive(Default)]
+struct DeferredEntries {
+    closed: bool,
+    next_index: usize,
+    states: std::collections::BTreeMap<usize, DeferredState>,
+}
+
+/// Retires an operation-owned body on success, failure, or future cancellation.
+pub(crate) struct DeferredBodyGuard {
+    bodies: DeferredBodies,
+    reference: serde_json::Value,
+}
+impl Drop for DeferredBodyGuard {
+    fn drop(&mut self) {
+        self.bodies.retire(&self.reference);
+    }
 }
 
 enum DeferredState {
@@ -200,7 +218,7 @@ impl DeferredBodies {
     pub(crate) fn new(max_bytes: usize, max_entries: usize) -> Self {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         Self {
-            inner: std::rc::Rc::new(DeferredInner {
+            inner: std::sync::Arc::new(DeferredInner {
                 namespace: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 max_bytes,
                 max_entries,
@@ -220,21 +238,66 @@ impl DeferredBodies {
     /// Transfer ownership without polling the source. The returned handle is local
     /// to this Hooks instance and must only be used in a registered content body.
     pub(crate) fn register(&self, body: Body) -> Result<serde_json::Value, BodyError> {
-        let mut entries = self.inner.entries.borrow_mut();
-        if entries.len() >= self.inner.max_entries {
+        let mut entries = self
+            .inner
+            .entries
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if entries.closed {
+            return Err(BodyError::Read("deferred body registry is closed".into()));
+        }
+        if entries.states.len() >= self.inner.max_entries {
             return Err(BodyError::Capacity);
         }
-        entries.try_reserve(1).map_err(|_| BodyError::Capacity)?;
-        let handle = self.handle(entries.len());
-        entries.push(DeferredState::Pending(body));
+        let index = entries.next_index;
+        entries.next_index = index.checked_add(1).ok_or(BodyError::Capacity)?;
+        let handle = self.handle(index);
+        entries.states.insert(index, DeferredState::Pending(body));
         Ok(handle)
     }
 
-    pub(crate) fn clear(&self) {
-        // Never recycle indices: old handles must not identify a new source.
-        for entry in self.inner.entries.borrow_mut().iter_mut() {
-            *entry = DeferredState::Consumed;
+    pub(crate) fn guard(&self, reference: &serde_json::Value) -> DeferredBodyGuard {
+        DeferredBodyGuard {
+            bodies: self.clone(),
+            reference: reference.clone(),
         }
+    }
+
+    /// Retire only this registry's unmodified handle. Never recycle its identity.
+    pub(crate) fn retire(&self, reference: &serde_json::Value) {
+        let prefix = format!("{DEFERRED_PREFIX}{}:", self.inner.namespace);
+        let Some(index) = reference["ref"]
+            .as_str()
+            .and_then(|name| name.strip_prefix(&prefix))
+            .and_then(|index| index.parse::<usize>().ok())
+        else {
+            return;
+        };
+        if *reference != self.handle(index) {
+            return;
+        }
+        // Drop caller-owned resources outside the registry lock (Drop may reenter).
+        let removed = self
+            .inner
+            .entries
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .states
+            .remove(&index);
+        drop(removed);
+    }
+
+    pub(crate) fn clear(&self) {
+        let removed = {
+            let mut entries = self
+                .inner
+                .entries
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            entries.closed = true;
+            std::mem::take(&mut entries.states)
+        };
+        drop(removed);
     }
 
     pub(crate) async fn materialize(
@@ -258,12 +321,27 @@ impl DeferredBodies {
             return Err(BodyError::Read("modified deferred body handle".into()));
         }
         let body = {
-            let mut entries = self.inner.entries.borrow_mut();
+            let mut entries = self
+                .inner
+                .entries
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
             let entry = entries
-                .get_mut(index)
+                .states
+                .get_mut(&index)
                 .ok_or_else(|| BodyError::Read("unknown deferred body".into()))?;
             match entry {
-                DeferredState::Snapshot(reference) => return Ok(Some(reference.clone())),
+                DeferredState::Snapshot(reference) => {
+                    if reference["size"]
+                        .as_u64()
+                        .is_some_and(|size| size > route_max_bytes as u64)
+                    {
+                        return Err(BodyError::TooLarge {
+                            limit: route_max_bytes,
+                        });
+                    }
+                    return Ok(Some(reference.clone()));
+                }
                 DeferredState::Consumed => {
                     return Err(BodyError::Read(
                         "deferred body failed, was cancelled, or is already being read".into(),
@@ -279,9 +357,29 @@ impl DeferredBodies {
         let bytes = body
             .into_bytes(self.inner.max_bytes.min(route_max_bytes))
             .await?;
+        if !self
+            .inner
+            .entries
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .states
+            .contains_key(&index)
+        {
+            return Err(BodyError::Read("deferred body was retired".into()));
+        }
         // ContentContext checks the descriptor and an exact-byte readback.
         let reference = context.put(&bytes).map_err(BodyError::Upload)?;
-        self.inner.entries.borrow_mut()[index] = DeferredState::Snapshot(reference.clone());
+        let mut entries = self
+            .inner
+            .entries
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if !entries.states.contains_key(&index) {
+            return Err(BodyError::Read("deferred body was retired".into()));
+        }
+        entries
+            .states
+            .insert(index, DeferredState::Snapshot(reference.clone()));
         Ok(Some(reference))
     }
 }
@@ -304,25 +402,25 @@ mod deferred_tests {
     use crate::content::{AuthorizedScope, MemoryContentStore};
     use futures::{executor::block_on, task::noop_waker};
     use std::{
-        cell::Cell,
-        rc::Rc,
+        sync::Arc,
+        sync::Mutex,
         task::{Context, Poll},
     };
 
     struct Source {
-        calls: Rc<Cell<usize>>,
+        calls: Arc<Mutex<usize>>,
         pending: bool,
         fail: bool,
     }
     impl BodyStream for Source {
         fn next_chunk(&mut self) -> BodyChunkFuture<'_> {
-            self.calls.set(self.calls.get() + 1);
+            *self.calls.lock().unwrap() += 1;
             Box::pin(async move {
                 if self.pending {
                     std::future::pending().await
                 } else if self.fail {
                     Err(BodyError::Read("failure".into()))
-                } else if self.calls.get() == 1 {
+                } else if *self.calls.lock().unwrap() == 1 {
                     Ok(Some(vec![1, 2, 3]))
                 } else {
                     Ok(None)
@@ -334,7 +432,7 @@ mod deferred_tests {
     #[test]
     fn snapshot_is_verified_and_reused_without_rereading() {
         let registry = DeferredBodies::new(3, 1);
-        let calls = Rc::new(Cell::new(0));
+        let calls = Arc::new(Mutex::new(0));
         let handle = registry
             .register(Body::stream(Source {
                 calls: calls.clone(),
@@ -342,7 +440,7 @@ mod deferred_tests {
                 fail: false,
             }))
             .unwrap();
-        assert_eq!(calls.get(), 0);
+        assert_eq!(*calls.lock().unwrap(), 0);
         let store = MemoryContentStore::new(3, 3, 1);
         let context = ContentContext {
             store: &store,
@@ -353,20 +451,134 @@ mod deferred_tests {
             .unwrap();
         assert!(!contains_deferred(&first));
         assert_eq!(&*context.resolve(&first).unwrap(), &[1, 2, 3]);
-        assert_eq!(calls.get(), 2);
+        assert_eq!(*calls.lock().unwrap(), 2);
         assert_eq!(
             block_on(registry.materialize(&handle, &context, 3)).unwrap(),
             Some(first)
         );
-        assert_eq!(calls.get(), 2);
+        assert_eq!(*calls.lock().unwrap(), 2);
+        assert!(matches!(
+            block_on(registry.materialize(&handle, &context, 2)),
+            Err(BodyError::TooLarge { limit: 2 })
+        ));
         assert!(registry.register(Body::bytes([])).is_err());
+    }
+
+    #[test]
+    fn retired_in_flight_source_cannot_restore_snapshot() {
+        struct Delayed(Option<futures::channel::oneshot::Receiver<()>>);
+        impl BodyStream for Delayed {
+            fn next_chunk(&mut self) -> BodyChunkFuture<'_> {
+                Box::pin(async move {
+                    if let Some(receiver) = self.0.take() {
+                        receiver
+                            .await
+                            .map_err(|_| BodyError::Read("cancelled".into()))?;
+                        Ok(Some(vec![1]))
+                    } else {
+                        Ok(None)
+                    }
+                })
+            }
+        }
+        fn assert_send<T: Send>(_: &T) {}
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<DeferredBodies>();
+        let registry = DeferredBodies::new(3, 1);
+        let (sender, receiver) = futures::channel::oneshot::channel();
+        let handle = registry
+            .register(Body::stream(Delayed(Some(receiver))))
+            .unwrap();
+        let store = MemoryContentStore::new(3, 3, 1);
+        let context = ContentContext {
+            store: &store,
+            scope: AuthorizedScope::new("test"),
+        };
+        let mut future = Box::pin(registry.materialize(&handle, &context, 3));
+        assert_send(&future);
+        let waker = noop_waker();
+        assert!(
+            future
+                .as_mut()
+                .poll(&mut Context::from_waker(&waker))
+                .is_pending()
+        );
+        // A competing reader cannot race the source or reopen it.
+        assert!(block_on(registry.materialize(&handle, &context, 3)).is_err());
+        registry.clear();
+        sender.send(()).unwrap();
+        assert!(block_on(future).is_err());
+        assert!(block_on(registry.materialize(&handle, &context, 3)).is_err());
+    }
+
+    #[test]
+    fn scoped_guard_drops_unused_source_and_reclaims_capacity_without_reusing_handle() {
+        struct Unused(Arc<Mutex<bool>>);
+        impl BodyStream for Unused {
+            fn next_chunk(&mut self) -> BodyChunkFuture<'_> {
+                panic!("unused body must not be read");
+            }
+        }
+        impl Drop for Unused {
+            fn drop(&mut self) {
+                *self.0.lock().unwrap() = true;
+            }
+        }
+        let registry = DeferredBodies::new(3, 1);
+        let dropped = Arc::new(Mutex::new(false));
+        let first = registry
+            .register(Body::stream(Unused(dropped.clone())))
+            .unwrap();
+        let guard = registry.guard(&first);
+        assert!(!*dropped.lock().unwrap());
+        drop(guard);
+        assert!(*dropped.lock().unwrap());
+        registry.retire(&first); // Repeated retirement is harmless.
+        let second = registry.register(Body::bytes([2])).unwrap();
+        assert_ne!(first, second);
+        let store = MemoryContentStore::new(3, 3, 1);
+        let context = ContentContext {
+            store: &store,
+            scope: AuthorizedScope::new("test"),
+        };
+        assert!(block_on(registry.materialize(&first, &context, 3)).is_err());
+        let second_guard = registry.guard(&second);
+        assert!(block_on(registry.materialize(&second, &context, 3)).is_ok());
+        drop(second_guard);
+        assert!(block_on(registry.materialize(&second, &context, 3)).is_err());
+        assert!(registry.register(Body::bytes([3])).is_ok());
+    }
+
+    #[test]
+    fn clearing_registry_permanently_closes_and_drops_late_sources_unread() {
+        struct Unused(Arc<Mutex<bool>>);
+        impl BodyStream for Unused {
+            fn next_chunk(&mut self) -> BodyChunkFuture<'_> {
+                panic!("closed registry must not read");
+            }
+        }
+        impl Drop for Unused {
+            fn drop(&mut self) {
+                *self.0.lock().unwrap() = true;
+            }
+        }
+        let registry = DeferredBodies::new(3, 1);
+        registry.clear();
+        registry.clear();
+        let dropped = Arc::new(Mutex::new(false));
+        assert!(
+            registry
+                .register(Body::stream(Unused(dropped.clone())))
+                .is_err()
+        );
+        assert!(*dropped.lock().unwrap());
     }
 
     #[test]
     fn cancelled_and_failed_sources_are_never_reopened() {
         for (pending, fail, limit) in [(true, false, 3), (false, true, 3), (false, false, 2)] {
             let registry = DeferredBodies::new(3, 1);
-            let calls = Rc::new(Cell::new(0));
+            let calls = Arc::new(Mutex::new(0));
             let handle = registry
                 .register(Body::stream(Source {
                     calls: calls.clone(),
@@ -389,7 +601,7 @@ mod deferred_tests {
             }
             drop(future);
             assert!(block_on(registry.materialize(&handle, &context, 3)).is_err());
-            assert_eq!(calls.get(), 1);
+            assert_eq!(*calls.lock().unwrap(), 1);
         }
     }
 }

@@ -4,39 +4,69 @@ pub use crate::generated::client::*;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
-    cell::RefCell,
     fmt,
     future::{Future, IntoFuture},
     pin::Pin,
-    rc::Rc,
+    sync::{Arc, Mutex},
     task::{Poll, Waker},
     time::{Duration, Instant},
 };
 
-/// Futures deliberately have no `Send` requirement.
-pub type LocalFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
+/// Executor-neutral, movable futures; no runtime or background worker is required.
+pub type LocalFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HookError(pub String);
+pub struct HookError {
+    message: String,
+    code: Option<crate::generated::DeliveryDiagnosticCode>,
+}
+/// Compatibility constructor for an unclassified transport failure.
+#[allow(non_snake_case)]
+pub fn HookError(message: String) -> HookError {
+    HookError {
+        message,
+        code: None,
+    }
+}
+impl HookError {
+    pub fn classified(mut self, code: crate::generated::DeliveryDiagnosticCode) -> Self {
+        self.code = Some(code);
+        self
+    }
+    pub fn code(&self) -> crate::generated::DeliveryDiagnosticCode {
+        self.code
+            .unwrap_or(crate::generated::DeliveryDiagnosticCode::Transport)
+    }
+    pub(crate) fn classify_if_unset(
+        mut self,
+        code: crate::generated::DeliveryDiagnosticCode,
+    ) -> Self {
+        if self.code.is_none() {
+            self.code = Some(code);
+        }
+        self
+    }
+}
 impl fmt::Display for HookError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.message)
     }
 }
 impl std::error::Error for HookError {}
 /// One subscription's transport. Adapters MUST enforce their configured deadline,
 /// reject late responses, authenticate without fallback, and apply the existing
 /// content permissions/selections before delivery. `hooks/observe` is one-way.
-pub trait Hook {
+pub trait Hook: Send + Sync {
     fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>>;
 }
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Decision {
-    #[default]
-    None,
-    Allow,
-    Ask,
-    Deny,
+/// Shared generated permission vocabulary; no independent settlement state.
+pub use crate::generated::Permission;
+pub use crate::generated::Permission as Decision;
+// The permission enum is generated; keep its runtime default without editing artifacts.
+#[allow(clippy::derivable_impls)]
+impl Default for Permission {
+    fn default() -> Self {
+        Self::None
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailurePolicy {
@@ -137,7 +167,7 @@ impl Client {
     }
     /// Creating or dropping this builder performs no serialization or I/O.
     /// The application input needs only `Serialize + DeserializeOwned`; no
-    /// `Clone`, `Default`, `Send`, or `Sync` bound is imposed.
+    /// `Clone`, `Default`, or `Sync` bound is imposed. Awaiting requires `Send`.
     ///
     /// Inputs which cannot be serialized fail at compile time:
     /// ```compile_fail
@@ -162,6 +192,7 @@ impl Client {
             input,
             initial: Decision::None,
             initial_candidate: None,
+            initial_snapshot: None,
             state_present: false,
             capabilities: capabilities(),
             gates_passed: true,
@@ -181,6 +212,7 @@ pub struct ToolBefore<'a, T> {
     input: T,
     initial: Decision,
     initial_candidate: Option<Value>,
+    initial_snapshot: Option<Value>,
     state_present: bool,
     capabilities: Value,
     gates_passed: bool,
@@ -199,6 +231,13 @@ impl<T> ToolBefore<'_, T> {
     /// even for `Decision::None`; otherwise native state is absent by default.
     pub fn initial_state(mut self, decision: Decision) -> Self {
         self.initial = decision;
+        if let Some(snapshot) = self
+            .initial_snapshot
+            .as_mut()
+            .and_then(Value::as_object_mut)
+        {
+            snapshot.insert("permission".into(), json!(decision));
+        }
         self.state_present = true;
         self
     }
@@ -207,7 +246,22 @@ impl<T> ToolBefore<'_, T> {
     /// descriptor; optional fields and their presence are preserved until the
     /// candidate is replaced or invalidated. `null` means no candidate.
     /// Validation occurs only when awaited, including on an initially denied path.
+    /// Preserve a complete native snapshot, including optional flow and context.
+    /// This records a decision already made for this occurrence, not authorization.
+    pub fn initial_snapshot(mut self, snapshot: impl Serialize) -> Result<Self, HookError> {
+        self.initial_snapshot =
+            Some(serde_json::to_value(snapshot).map_err(|e| error(e.to_string()))?);
+        self.state_present = true;
+        Ok(self)
+    }
     pub fn initial_candidate(mut self, candidate: Value) -> Self {
+        if let Some(snapshot) = self
+            .initial_snapshot
+            .as_mut()
+            .and_then(Value::as_object_mut)
+        {
+            snapshot.insert("candidate".into(), candidate.clone());
+        }
         self.initial_candidate = Some(candidate);
         self.state_present = true;
         self
@@ -258,8 +312,15 @@ pub struct ProtocolOutcome {
     /// Permission is allow and all mandatory gates passed. No execution occurred.
     pub authorized: bool,
     pub failures: Vec<SubscriptionFailure>,
+    /// Accepted canonical backend responses in subscription order, for advanced consumers.
+    /// Their presence is not authorization or evidence of host execution.
+    pub responses: Vec<Value>,
 }
 impl ProtocolOutcome {
+    /// Settled protocol permission, not proof that all host execution gates passed.
+    pub fn permission(&self) -> Decision {
+        self.decision
+    }
     pub fn is_denied(&self) -> bool {
         self.decision == Decision::Deny
     }
@@ -306,7 +367,7 @@ pub struct BoundarySnapshot {
 /// A local, cloneable audit handle which survives dropping the boundary future.
 /// No transport, serialization, callbacks or external work occur on creation.
 #[derive(Debug, Clone, Default)]
-pub struct BoundaryProgress(pub(crate) Rc<RefCell<ProgressState>>);
+pub struct BoundaryProgress(pub(crate) Arc<Mutex<ProgressState>>);
 #[derive(Debug, Default)]
 pub(crate) struct ProgressState {
     snapshot: BoundarySnapshot,
@@ -314,14 +375,18 @@ pub(crate) struct ProgressState {
 }
 impl BoundaryProgress {
     pub fn snapshot(&self) -> BoundarySnapshot {
-        self.0.borrow().snapshot.clone()
+        self.0
+            .lock()
+            .expect("progress lock poisoned")
+            .snapshot
+            .clone()
     }
     /// Interrupt a pending boundary and wake its executor. Interruption never
     /// applies fail-open, publishes pending effects, or authorizes prior approval.
     /// Returns false if the boundary has already finished or been interrupted.
     pub fn interrupt(&self) -> bool {
         let waker = {
-            let mut state = self.0.borrow_mut();
+            let mut state = self.0.lock().expect("progress lock poisoned");
             if !matches!(
                 state.snapshot.status,
                 BoundaryStatus::NotStarted | BoundaryStatus::Running
@@ -337,12 +402,21 @@ impl BoundaryProgress {
         true
     }
     pub(crate) fn interrupted(&self) -> bool {
-        self.0.borrow().snapshot.status == BoundaryStatus::Interrupted
+        self.0
+            .lock()
+            .expect("progress lock poisoned")
+            .snapshot
+            .status
+            == BoundaryStatus::Interrupted
     }
     pub(crate) fn publish(&self, outcome: &ProtocolOutcome, input: &Value) {
         let mut outcome = outcome.clone();
         outcome.authorized = false;
-        self.0.borrow_mut().snapshot.partial = Some(BoundaryPartial {
+        self.0
+            .lock()
+            .expect("progress lock poisoned")
+            .snapshot
+            .partial = Some(BoundaryPartial {
             outcome,
             effective_input: input.clone(),
         });
@@ -388,7 +462,12 @@ pub(crate) struct ProgressGuard {
 impl ProgressGuard {
     pub(crate) fn new(progress: BoundaryProgress) -> Self {
         if !progress.interrupted() {
-            progress.0.borrow_mut().snapshot.status = BoundaryStatus::Running;
+            progress
+                .0
+                .lock()
+                .expect("progress lock poisoned")
+                .snapshot
+                .status = BoundaryStatus::Running;
         }
         Self {
             progress,
@@ -396,7 +475,7 @@ impl ProgressGuard {
         }
     }
     pub(crate) fn finish(&mut self, status: BoundaryStatus) {
-        let mut state = self.progress.0.borrow_mut();
+        let mut state = self.progress.0.lock().expect("progress lock poisoned");
         state.snapshot.status = status;
         state.waker = None;
         self.finished = true;
@@ -405,13 +484,28 @@ impl ProgressGuard {
 impl Drop for ProgressGuard {
     fn drop(&mut self) {
         if !self.finished {
-            let mut state = self.progress.0.borrow_mut();
+            let mut state = self.progress.0.lock().expect("progress lock poisoned");
             state.snapshot.status = BoundaryStatus::Interrupted;
             state.waker = None;
         }
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DeliveryDiagnostic {
+    pub code: crate::generated::DeliveryDiagnosticCode,
+    pub stage: DeliveryStage,
+    pub subscription_id: String,
+    pub backend_id: Option<String>,
+    pub policy: Option<FailurePolicy>,
+    pub synthetic_denial: bool,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeliveryStage {
+    Preparation,
+    Intercept,
+    Observe,
+}
 #[derive(Debug, Clone)]
 pub struct SubscriptionFailure {
     pub subscription_id: String,
@@ -439,9 +533,109 @@ pub struct BoundaryResult<'a, T> {
     /// Freshly decoded after protocol acceptance; failure never rolls back effects.
     pub input: Result<T, InputDecodeError>,
     pub observations: Vec<Observation<'a>>,
+    pub diagnostics: Vec<DeliveryDiagnostic>,
 }
+impl<T> BoundaryResult<'_, T> {
+    pub fn permission(&self) -> Decision {
+        self.outcome.permission()
+    }
+}
+pub(crate) fn delivery_diagnostics(state: &ProtocolOutcome) -> Vec<DeliveryDiagnostic> {
+    state
+        .failures
+        .iter()
+        .map(|failure| DeliveryDiagnostic {
+            code: failure.error.code(),
+            stage: if failure.error.code() == crate::generated::DeliveryDiagnosticCode::Preparation
+            {
+                DeliveryStage::Preparation
+            } else {
+                DeliveryStage::Intercept
+            },
+            subscription_id: failure.subscription_id.clone(),
+            backend_id: None,
+            policy: Some(failure.policy),
+            synthetic_denial: failure.policy == FailurePolicy::Closed,
+        })
+        .collect()
+}
+
+pub(crate) fn native_outcome(native: &Value) -> Result<(ProtocolOutcome, Value), HookError> {
+    let decision = match native["permission"].as_str() {
+        Some("none") => Decision::None,
+        Some("allow") => Decision::Allow,
+        Some("ask") => Decision::Ask,
+        Some("deny") => Decision::Deny,
+        _ => return Err(error("invalid native permission")),
+    };
+    let candidate = native
+        .get("candidate")
+        .cloned()
+        .ok_or_else(|| error("native state requires candidate"))?;
+    Ok((
+        ProtocolOutcome {
+            decision,
+            stopped: native["flow"] == "stop",
+            continuation_requested: native["flow"] == "continue",
+            instructions: serde_json::from_value(
+                native.get("instructions").cloned().unwrap_or(json!([])),
+            )
+            .map_err(|_| error("invalid native instructions"))?,
+            candidate: candidate.get("value").cloned(),
+            messages: vec![],
+            injections: serde_json::from_value(
+                native.get("injections").cloned().unwrap_or(json!([])),
+            )
+            .map_err(|_| error("invalid native injections"))?,
+            approval_invalidated: false,
+            authorized: false,
+            failures: vec![],
+            responses: vec![],
+        },
+        candidate,
+    ))
+}
+
+pub(crate) fn snapshot_value(native: &Value, state: &ProtocolOutcome, candidate: &Value) -> Value {
+    let mut snapshot = native.clone();
+    snapshot["permission"] = json!(state.decision);
+    snapshot["candidate"] = candidate.clone();
+    if state.stopped {
+        snapshot["flow"] = json!("stop");
+    } else if state.continuation_requested {
+        snapshot["flow"] = json!("continue");
+    }
+    if !state.instructions.is_empty() || native.get("instructions").is_some() {
+        snapshot["instructions"] = json!(state.instructions);
+    }
+    if !state.injections.is_empty() || native.get("injections").is_some() {
+        snapshot["injections"] = json!(state.injections);
+    }
+    snapshot
+}
+
 pub(crate) fn error(message: impl Into<String>) -> HookError {
     HookError(message.into())
+}
+/// Classify a remote JSON-RPC error only after validating its envelope.
+/// Backend message/data are intentionally excluded from diagnostics.
+pub(crate) fn check_rpc_error(response: &Value, expected_id: &Value) -> Result<(), HookError> {
+    if let Some(remote) = response.get("error") {
+        let valid = response["jsonrpc"] == "2.0"
+            && response.get("id") == Some(expected_id)
+            && response.get("result").is_none()
+            && remote.is_object()
+            && remote["code"].as_i64().is_some()
+            && remote["message"].is_string();
+        return Err(if valid {
+            error("backend JSON-RPC error")
+                .classified(crate::generated::DeliveryDiagnosticCode::RemoteRpc)
+        } else {
+            error("malformed JSON-RPC error envelope")
+                .classified(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)
+        });
+    }
+    Ok(())
 }
 pub(crate) fn validate_request(request: &Value) -> Result<(), HookError> {
     crate::canonical::validate("intercept-request", request).map_err(HookError)?;
@@ -471,6 +665,7 @@ fn stage(
     response: &Value,
     prior: &ProtocolOutcome,
 ) -> Result<(Value, ProtocolOutcome, bool), HookError> {
+    check_rpc_error(response, &request["id"])?;
     crate::canonical::validate("intercept-response", response).map_err(HookError)?;
     if let crate::generated::ParseResult::Failure { diagnostics, .. } =
         crate::generated::parse_intercept_response_value(response.clone())
@@ -562,7 +757,7 @@ fn stage(
     let replaced_candidate = effects.iter().any(|effect| effect["type"] == "return");
     Ok((input, state, replaced_candidate))
 }
-impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for ToolBefore<'a, T> {
+impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<'a, T> {
     type Output = Result<BoundaryResult<'a, T>, BoundaryError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(self) -> Self::IntoFuture {
@@ -590,22 +785,11 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for ToolBefore<'a, T> 
             event["type"] = json!("tool.before");
             event["tool"]["input"] = input.clone();
             let mut state_present = self.state_present;
-            let mut candidate_descriptor = self.initial_candidate.unwrap_or(Value::Null);
-            let mut state = ProtocolOutcome {
-                decision: self.initial,
-                stopped: false,
-                continuation_requested: false,
-                instructions: vec![],
-                candidate: candidate_descriptor.get("value").cloned(),
-                messages: vec![],
-                injections: vec![],
-                approval_invalidated: false,
-                authorized: false,
-                failures: vec![],
-            };
+            let native = self.initial_snapshot.unwrap_or_else(|| json!({"permission":self.initial,"candidate":self.initial_candidate.unwrap_or(Value::Null)}));
+            let (mut state, mut candidate_descriptor) = native_outcome(&native)?;
             let mut request = json!({"jsonrpc":"2.0","id":event["id"],"method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":self.capabilities}});
             // Validate the full native descriptor even if initial denial skips all hooks.
-            if state_present { request["params"]["state"] = json!({"permission":state.decision,"candidate":candidate_descriptor}); }
+            if state_present { request["params"]["state"] = snapshot_value(&native, &state, &candidate_descriptor); }
             validate_request(&request)?;
             if state.decision == Decision::Deny { state.candidate = None; candidate_descriptor = Value::Null; }
             self.progress.publish(&state, &input);
@@ -621,7 +805,7 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for ToolBefore<'a, T> 
                     continue;
                 };
                 if state_present {
-                    request["params"]["state"] = json!({"permission":state.decision,"candidate":candidate_descriptor});
+                    request["params"]["state"] = snapshot_value(&native, &state, &candidate_descriptor);
                     // Optional fields are not parser defaults. Absent native state
                     // stays absent until an interceptor has accepted a response.
                     if state.stopped { request["params"]["state"]["flow"] = json!("stop"); }
@@ -636,19 +820,20 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for ToolBefore<'a, T> 
                         let mut pending = subscription.hook.call(request.clone());
                         std::future::poll_fn(|cx| {
                             if self.progress.interrupted() { return Poll::Ready(Err(error("boundary interrupted"))); }
-                            self.progress.0.borrow_mut().waker = Some(cx.waker().clone());
+                            self.progress.0.lock().expect("progress lock poisoned").waker = Some(cx.waker().clone());
                             pending.as_mut().poll(cx)
                         }).await
                     }
                     Err(error) => Err(error),
                 };
-                self.progress.0.borrow_mut().waker = None;
+                self.progress.0.lock().expect("progress lock poisoned").waker = None;
                 if self.progress.interrupted() { return Err(error("boundary interrupted")); }
-                let accepted = response.and_then(|response| stage(&request, &response, &state));
+                let raw_response = response.as_ref().ok().cloned();
+                let accepted = response.and_then(|response| stage(&request, &response, &state).map_err(|e| e.classify_if_unset(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)));
                 // Check the original monotonic budget after full parsing/staging,
                 // immediately before atomic publication. Never salvage a late deny.
                 let accepted = if started.elapsed() >= subscription.timeout {
-                    Err(error("interception deadline exceeded"))
+                    Err(error("interception deadline exceeded").classified(crate::generated::DeliveryDiagnosticCode::DeadlineExceeded))
                 } else { accepted };
                 match accepted {
                     Ok((next, next_state, replaced_candidate)) => {
@@ -660,6 +845,7 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for ToolBefore<'a, T> 
                         }
                         input = next;
                         state = next_state;
+                        if let Some(response) = raw_response { state.responses.push(response); }
                         request["params"]["event"]["tool"]["input"] = input.clone();
                         if state.approval_invalidated
                             && state.decision == Decision::None
@@ -697,6 +883,7 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for ToolBefore<'a, T> 
             self.progress.publish(&state, &input);
             let decoded = serde_json::from_value(input.clone()).map_err(InputDecodeError);
             Ok(BoundaryResult {
+                diagnostics: delivery_diagnostics(&state),
                 outcome: state,
                 effective_input: input,
                 input: decoded,

@@ -1,6 +1,9 @@
 //! Runtime-neutral, canonical full-event transactions. No application execution occurs here.
 use crate::client::*;
-use crate::client::{ProgressGuard, error, has, subset, validate_request};
+use crate::client::{
+    ProgressGuard, delivery_diagnostics, error, has, native_outcome, snapshot_value, subset,
+    validate_request,
+};
 use crate::content::ContentContext;
 use crate::elicitation::Exchange;
 use serde::{Serialize, de::DeserializeOwned};
@@ -14,6 +17,7 @@ pub struct EventBoundary<'a, T> {
     event: T,
     initial: Decision,
     initial_candidate: Option<Value>,
+    initial_snapshot: Option<Value>,
     state_present: bool,
     capabilities: Option<Value>,
     gates_passed: bool,
@@ -32,6 +36,7 @@ impl<'a, T> EventBoundary<'a, T> {
             event,
             initial: Decision::None,
             initial_candidate: None,
+            initial_snapshot: None,
             state_present: false,
             capabilities: None,
             gates_passed: true,
@@ -53,10 +58,32 @@ impl<'a, T> EventBoundary<'a, T> {
     }
     pub fn initial_state(mut self, decision: Decision) -> Self {
         self.initial = decision;
+        if let Some(snapshot) = self
+            .initial_snapshot
+            .as_mut()
+            .and_then(Value::as_object_mut)
+        {
+            snapshot.insert("permission".into(), json!(decision));
+        }
         self.state_present = true;
         self
     }
+    /// Preserve a complete native snapshot, including optional flow and context.
+    /// This records a decision already made for this occurrence, not authorization.
+    pub fn initial_snapshot(mut self, snapshot: impl Serialize) -> Result<Self, HookError> {
+        self.initial_snapshot =
+            Some(serde_json::to_value(snapshot).map_err(|e| error(e.to_string()))?);
+        self.state_present = true;
+        Ok(self)
+    }
     pub fn initial_candidate(mut self, candidate: Value) -> Self {
+        if let Some(snapshot) = self
+            .initial_snapshot
+            .as_mut()
+            .and_then(Value::as_object_mut)
+        {
+            snapshot.insert("candidate".into(), candidate.clone());
+        }
         self.initial_candidate = Some(candidate);
         self.state_present = true;
         self
@@ -96,6 +123,12 @@ pub struct EventResult<'a, T> {
     pub effective_event: Value,
     pub event: Result<T, InputDecodeError>,
     pub observations: Vec<Observation<'a>>,
+    pub diagnostics: Vec<DeliveryDiagnostic>,
+}
+impl<T> EventResult<'_, T> {
+    pub fn permission(&self) -> Decision {
+        self.outcome.permission()
+    }
 }
 fn matches_event(subscription: &Subscription, name: &str) -> bool {
     subscription.events.iter().any(|pattern| {
@@ -107,7 +140,7 @@ fn matches_event(subscription: &Subscription, name: &str) -> bool {
             })
     })
 }
-impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for EventBoundary<'a, T> {
+impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBoundary<'a, T> {
     type Output = Result<EventResult<'a, T>, BoundaryError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(self) -> Self::IntoFuture {
@@ -135,22 +168,11 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for EventBoundary<'a, 
             }
             let event = input.clone();
             let mut state_present = self.state_present;
-            let mut candidate_descriptor = self.initial_candidate.unwrap_or(Value::Null);
-            let mut state = ProtocolOutcome {
-                decision: self.initial,
-                stopped: false,
-                continuation_requested: false,
-                instructions: vec![],
-                candidate: candidate_descriptor.get("value").cloned(),
-                messages: vec![],
-                injections: vec![],
-                approval_invalidated: false,
-                authorized: false,
-                failures: vec![],
-            };
+            let native = self.initial_snapshot.unwrap_or_else(|| json!({"permission":self.initial,"candidate":self.initial_candidate.unwrap_or(Value::Null)}));
+            let (mut state, mut candidate_descriptor) = native_outcome(&native)?;
             let mut request = json!({"jsonrpc":"2.0","id":event["id"],"method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":capabilities}});
             // Validate the full native descriptor even if initial denial skips all hooks.
-            if state_present { request["params"]["state"] = json!({"permission":state.decision,"candidate":candidate_descriptor}); }
+            if state_present { request["params"]["state"] = snapshot_value(&native, &state, &candidate_descriptor); }
             if interceptable { validate_request(&request)?; } else {
                 crate::canonical::validate("observe-notification", &json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":input}})).map_err(HookError)?;
             }
@@ -183,7 +205,7 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for EventBoundary<'a, 
                     continue;
                 };
                 if state_present {
-                    request["params"]["state"] = json!({"permission":state.decision,"candidate":candidate_descriptor});
+                    request["params"]["state"] = snapshot_value(&native, &state, &candidate_descriptor);
                     // Optional fields are not parser defaults. Absent native state
                     // stays absent until an interceptor has accepted a response.
                     if state.stopped { request["params"]["state"]["flow"] = json!("stop"); }
@@ -206,19 +228,20 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for EventBoundary<'a, 
                         let mut pending = subscription.hook.call(request.clone());
                         std::future::poll_fn(|cx| {
                             if self.progress.interrupted() { return Poll::Ready(Err(error("boundary interrupted"))); }
-                            self.progress.0.borrow_mut().waker = Some(cx.waker().clone());
+                            self.progress.0.lock().expect("progress lock poisoned").waker = Some(cx.waker().clone());
                             pending.as_mut().poll(cx)
                         }).await
                     }
                     Err(error) => Err(error),
                 };
-                self.progress.0.borrow_mut().waker = None;
+                self.progress.0.lock().expect("progress lock poisoned").waker = None;
                 if self.progress.interrupted() { return Err(error("boundary interrupted")); }
-                let accepted = response.and_then(|response| stage(&request, &response, &state, self.content.as_ref(), self.exchange, &self.content_targets));
+                let raw_response = response.as_ref().ok().cloned();
+                let accepted = response.and_then(|response| stage(&request, &response, &state, self.content.as_ref(), self.exchange, &self.content_targets).map_err(|e| e.classify_if_unset(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)));
                 // Check the original monotonic budget after full parsing/staging,
                 // immediately before atomic publication. Never salvage a late deny.
                 let accepted = if started.elapsed() >= subscription.timeout {
-                    Err(error("interception deadline exceeded"))
+                    Err(error("interception deadline exceeded").classified(crate::generated::DeliveryDiagnosticCode::DeadlineExceeded))
                 } else { accepted };
                 match accepted {
                     Ok((next, next_state, replaced_candidate)) => {
@@ -230,6 +253,7 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for EventBoundary<'a, 
                         }
                         input = next;
                         state = next_state;
+                        if let Some(response) = raw_response { state.responses.push(response); }
                         request["params"]["event"] = input.clone();
                         if state.approval_invalidated
                             && state.decision == Decision::None
@@ -267,6 +291,7 @@ impl<'a, T: Serialize + DeserializeOwned + 'a> IntoFuture for EventBoundary<'a, 
             self.progress.publish(&state, &input);
             let decoded = serde_json::from_value(input.clone()).map_err(InputDecodeError);
             Ok(EventResult {
+                diagnostics: delivery_diagnostics(&state),
                 outcome: state,
                 effective_event: input,
                 event: decoded,
@@ -373,6 +398,7 @@ fn stage(
     exchange: Option<&Exchange>,
     targets: &std::collections::BTreeMap<String, String>,
 ) -> Result<(Value, ProtocolOutcome, bool), HookError> {
+    crate::client::check_rpc_error(response, &request["id"])?;
     crate::canonical::validate("intercept-response", response).map_err(HookError)?;
     if let crate::generated::ParseResult::Failure { diagnostics, .. } =
         crate::generated::parse_intercept_response_value(response.clone())

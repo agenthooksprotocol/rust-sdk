@@ -5,18 +5,64 @@
 use crate::client::{HookError, LocalFuture};
 use serde_json::Value;
 #[cfg(any(feature = "reqwest", feature = "tokio-process"))]
-use std::cell::Cell;
-use std::{collections::BTreeMap, rc::Rc, time::Duration};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+
+/// Destination-specific authorization. Upload credentials never inherit event credentials.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthPurpose {
+    Event,
+    Upload,
+}
+#[derive(Clone, Debug)]
+pub struct AuthContext {
+    pub backend_id: String,
+    pub authentication: Option<Value>,
+    pub destination: String,
+    pub purpose: AuthPurpose,
+    /// The operation owns this deadline and cancellation (by dropping the future).
+    pub deadline: std::time::Instant,
+}
+/// Deliberately has no Debug implementation: tokens must not enter diagnostics.
+#[derive(Clone)]
+pub struct BearerCredential {
+    pub token: String,
+    /// Opaque host identity, not the token or a reversible representation of it.
+    pub attempt_id: String,
+}
+#[derive(Clone, Debug)]
+pub struct AuthChallenge {
+    pub status: u16,
+    pub headers: BTreeMap<String, String>,
+    pub attempt_id: Option<String>,
+}
+/// Host owns secret storage, OAuth, refresh coordination and provider lifecycle.
+/// Implementations must not detach work from the lifetime of these futures.
+pub trait AuthProvider: Send + Sync {
+    fn credential(
+        &self,
+        context: AuthContext,
+    ) -> LocalFuture<'_, Result<Option<BearerCredential>, HookError>>;
+    fn challenge(
+        &self,
+        context: AuthContext,
+        challenge: AuthChallenge,
+    ) -> LocalFuture<'_, Result<(), HookError>>;
+}
 
 /// A backend owns its transport and can be shared across subscriptions.
-pub trait ManagedBackend {
+pub trait ManagedBackend: Send + Sync {
     fn call(&self, request: Value, timeout: Duration) -> LocalFuture<'_, Result<Value, HookError>>;
     fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>>;
 }
 #[derive(Clone)]
 pub struct BackendOptions {
+    /// Host-owned authentication; futures are cancelled with the operation.
+    pub auth_provider: Option<Arc<dyn AuthProvider>>,
     /// Explicit bearer references. `tokenEnv` authorizes an environment lookup.
     pub credentials: BTreeMap<String, String>,
+    /// Retained for compatibility. Absent authentication permits anonymous delivery;
+    /// configured authentication always fails closed if its credential is unavailable.
     pub allow_anonymous_http: bool,
     pub allow_loopback_http: bool,
     pub max_frame_bytes: usize,
@@ -24,6 +70,7 @@ pub struct BackendOptions {
 impl Default for BackendOptions {
     fn default() -> Self {
         Self {
+            auth_provider: None,
             credentials: BTreeMap::new(),
             allow_anonymous_http: false,
             allow_loopback_http: false,
@@ -32,7 +79,26 @@ impl Default for BackendOptions {
     }
 }
 fn error(message: &str) -> HookError {
-    HookError(message.into())
+    use crate::generated::DeliveryDiagnosticCode;
+    let code = if message.contains("deadline") {
+        DeliveryDiagnosticCode::DeadlineExceeded
+    } else if matches!(
+        message,
+        "invalid protocol JSON response"
+            | "response correlation mismatch"
+            | "invalid protocol response"
+            | "unsupported response effects"
+            | "expected one application/json response header"
+            | "invalid notification acknowledgment"
+            | "response exceeds frame limit"
+            | "unsupported protocol method"
+            | "request correlation mismatch"
+    ) {
+        DeliveryDiagnosticCode::ProtocolRejection
+    } else {
+        DeliveryDiagnosticCode::Transport
+    };
+    HookError(message.into()).classified(code)
 }
 
 /// Validate configuration without opening sockets or spawning children.
@@ -40,17 +106,24 @@ fn error(message: &str) -> HookError {
 pub fn from_registration(
     backend: &Value,
     options: &BackendOptions,
-) -> Result<Rc<dyn ManagedBackend>, HookError> {
+) -> Result<Arc<dyn ManagedBackend>, HookError> {
     if options.max_frame_bytes == 0 {
         return Err(error("frame limit must be positive"));
     }
     let transport = &backend["transport"];
     let auth = backend.get("authentication");
     if let Some(auth) = auth {
-        if auth["type"] != "bearer" {
-            return Err(error(
-                "unsupported backend authentication (only bearer is implemented)",
-            ));
+        match auth["type"].as_str() {
+            Some("bearer") => {}
+            Some("oauth") if options.auth_provider.is_some() => {
+                if !matches!(
+                    auth["flow"].as_str(),
+                    Some("authorization_code_pkce" | "client_credentials")
+                ) {
+                    return Err(error("unsupported OAuth flow"));
+                }
+            }
+            _ => return Err(error("unsupported backend authentication")),
         }
     }
     match transport["type"].as_str() {
@@ -81,15 +154,13 @@ pub fn from_registration(
                     "HTTPS required; loopback HTTP requires explicit opt-in",
                 ));
             }
-            let authorization = match auth {
-                None if options.allow_anonymous_http => None,
-                None => {
-                    return Err(error(
-                        "HTTP authentication required; anonymous access requires explicit opt-in",
-                    ));
-                }
-                Some(auth) => {
-                    let token = match (auth.get("tokenRef"), auth.get("tokenEnv")) {
+            let authorization = if options.auth_provider.is_some() {
+                None
+            } else {
+                match auth {
+                    None => None,
+                    Some(auth) => {
+                        let token = match (auth.get("tokenRef"), auth.get("tokenEnv")) {
                         (Some(reference), None) => reference
                             .as_str()
                             .and_then(|key| options.credentials.get(key))
@@ -115,16 +186,19 @@ pub fn from_registration(
                         !token.is_empty() && token.bytes().all(|b| b.is_ascii_graphic())
                     })
                     .ok_or_else(|| error("bearer credential unavailable or invalid"))?;
-                    Some(format!("Bearer {token}"))
+                        Some(format!("Bearer {token}"))
+                    }
                 }
             };
             #[cfg(feature = "reqwest")]
             {
-                Ok(Rc::new(HttpBackend {
+                Ok(Arc::new(HttpBackend {
                     endpoint: endpoint.into(),
+                    backend_id: backend["id"].as_str().unwrap_or("").into(),
+                    authentication: auth.cloned(),
                     authorization,
                     options: options.clone(),
-                    closed: Cell::new(false),
+                    closed: AtomicBool::new(false),
                 }))
             }
             #[cfg(not(feature = "reqwest"))]
@@ -169,14 +243,14 @@ pub fn from_registration(
                 .transpose()?;
             #[cfg(feature = "tokio-process")]
             {
-                Ok(Rc::new(StdioBackend {
+                Ok(Arc::new(StdioBackend {
                     command: command.into(),
                     args,
                     cwd,
                     per_event,
                     limit: options.max_frame_bytes,
-                    closed: Cell::new(false),
-                    process: std::cell::RefCell::new(None),
+                    closed: AtomicBool::new(false),
+                    process: std::sync::Mutex::new(None),
                     gate: tokio::sync::Mutex::new(()),
                 }))
             }
@@ -197,7 +271,7 @@ fn validate_request(request: &Value) -> Result<bool, HookError> {
         Some("hooks/observe") => ("observe-notification", true),
         _ => return Err(error("unsupported protocol method")),
     };
-    crate::canonical::validate(schema, request).map_err(HookError)?;
+    crate::canonical::validate(schema, request).map_err(|_| error("invalid protocol response"))?;
     if schema == "intercept-request" && request["id"] != request["params"]["event"]["id"] {
         return Err(error("request correlation mismatch"));
     }
@@ -210,9 +284,7 @@ fn validate_response(request: &Value, body: &[u8]) -> Result<Value, HookError> {
     if value["id"] != request["id"] {
         return Err(error("response correlation mismatch"));
     }
-    if value.get("error").is_some() {
-        return Err(error("backend returned a protocol error"));
-    }
+    crate::client::check_rpc_error(&value, &request["id"])?;
     let intercept = request["method"] == "hooks/intercept";
     crate::canonical::validate(
         if intercept {
@@ -231,101 +303,173 @@ fn validate_response(request: &Value, body: &[u8]) -> Result<Value, HookError> {
 }
 #[cfg(feature = "reqwest")]
 struct HttpBackend {
+    backend_id: String,
+    authentication: Option<Value>,
     endpoint: String,
     authorization: Option<String>,
     options: BackendOptions,
-    closed: Cell<bool>,
+    closed: AtomicBool,
 }
 #[cfg(feature = "reqwest")]
 impl ManagedBackend for HttpBackend {
     fn call(&self, request: Value, timeout: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
         Box::pin(async move {
-            let started = std::time::Instant::now();
-            if self.closed.get() {
-                return Err(error("backend is shut down"));
-            }
-            let notification = validate_request(&request)?;
-            let body = serde_json::to_vec(&request).map_err(|_| error("invalid request"))?;
-            if body.len() > self.options.max_frame_bytes {
-                return Err(error("request exceeds frame limit"));
-            }
-            let remaining = timeout
-                .checked_sub(started.elapsed())
-                .filter(|d| !d.is_zero())
-                .ok_or_else(|| error("HTTP deadline exceeded"))?;
-            let client = reqwest::Client::builder()
-                .timeout(remaining)
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .map_err(|_| error("HTTP client initialization failed"))?;
-            let mut outgoing = client
-                .post(&self.endpoint)
-                .header("content-type", "application/json")
-                .body(body);
-            if let Some(auth) = &self.authorization {
-                outgoing = outgoing.header("authorization", auth);
-            }
-            let mut response = outgoing
-                .send()
-                .await
-                .map_err(|_| error("HTTP transport failed or deadline exceeded"))?;
-            let status = response.status().as_u16();
-            if !notification {
-                if status != 200 {
-                    return Err(error("unexpected HTTP response status"));
+            tokio::time::timeout(timeout, async move {
+                let started = std::time::Instant::now();
+                if self.closed.load(Ordering::Acquire) {
+                    return Err(error("backend is shut down"));
                 }
-                // Inspect HeaderMap before flattening: duplicate media headers are invalid.
-                let types: Vec<_> = response
-                    .headers()
-                    .get_all(reqwest::header::CONTENT_TYPE)
-                    .iter()
-                    .collect();
-                if types.len() != 1
-                    || !types[0]
-                        .to_str()
-                        .unwrap_or("")
-                        .split(';')
-                        .next()
-                        .unwrap_or("")
-                        .trim()
-                        .eq_ignore_ascii_case("application/json")
-                {
-                    return Err(error("expected one application/json response header"));
+                let notification = validate_request(&request)?;
+                let body = serde_json::to_vec(&request).map_err(|_| error("invalid request"))?;
+                if body.len() > self.options.max_frame_bytes {
+                    return Err(error("request exceeds frame limit"));
                 }
-            }
-            let limit = self.options.max_frame_bytes;
-            if response.content_length().is_some_and(|n| n > limit as u64) {
-                return Err(error("response exceeds frame limit"));
-            }
-            let mut body = Vec::new();
-            while let Some(chunk) = response
-                .chunk()
-                .await
-                .map_err(|_| error("HTTP body failed or deadline exceeded"))?
-            {
-                if chunk.len() > limit.saturating_sub(body.len()) {
+                let context = AuthContext {
+                    backend_id: self.backend_id.clone(),
+                    authentication: self.authentication.clone(),
+                    destination: self.endpoint.clone(),
+                    purpose: AuthPurpose::Event,
+                    deadline: started
+                        .checked_add(timeout)
+                        .ok_or_else(|| error("invalid deadline"))?,
+                };
+                let client = reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .map_err(|_| error("HTTP client initialization failed"))?;
+                let mut retry = false;
+                let mut response = loop {
+                    let credential = if let Some(provider) = &self.options.auth_provider {
+                        provider
+                            .credential(context.clone())
+                            .await
+                            .map_err(|_| error("authentication provider failed"))?
+                    } else {
+                        None
+                    };
+                    if self.options.auth_provider.is_some()
+                        && credential.is_none()
+                        && self.authentication.is_some()
+                    {
+                        return Err(error("configured credential unavailable"));
+                    }
+                    let mut outgoing = client
+                        .post(&self.endpoint)
+                        .header("content-type", "application/json")
+                        .body(body.clone());
+                    if let Some(credential) = &credential {
+                        if credential.token.is_empty()
+                            || !credential.token.bytes().all(|b| b.is_ascii_graphic())
+                        {
+                            return Err(error("invalid bearer credential"));
+                        }
+                        outgoing = outgoing.bearer_auth(&credential.token);
+                    } else if let Some(auth) = &self.authorization {
+                        outgoing = outgoing.header("authorization", auth);
+                    }
+                    let remaining = timeout
+                        .checked_sub(started.elapsed())
+                        .filter(|d| !d.is_zero())
+                        .ok_or_else(|| error("HTTP deadline exceeded"))?;
+                    let response = outgoing.timeout(remaining).send().await.map_err(|e| {
+                        error(if e.is_timeout() {
+                            "HTTP deadline exceeded"
+                        } else {
+                            "HTTP transport failed"
+                        })
+                    })?;
+                    if response.status().as_u16() == 401
+                        && let Some(provider) = &self.options.auth_provider
+                    {
+                        // Only authentication metadata is exposed, never response bodies.
+                        let headers = response
+                            .headers()
+                            .get_all(reqwest::header::WWW_AUTHENTICATE)
+                            .iter()
+                            .filter_map(|v| v.to_str().ok())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        provider
+                            .challenge(
+                                context.clone(),
+                                AuthChallenge {
+                                    status: 401,
+                                    headers: BTreeMap::from([("www-authenticate".into(), headers)]),
+                                    attempt_id: credential.as_ref().map(|c| c.attempt_id.clone()),
+                                },
+                            )
+                            .await
+                            .map_err(|_| error("authentication challenge failed"))?;
+                        // Auth recovery does not authorize replaying effectful deliveries.
+                        if !retry && request["method"] == "hooks/capabilities" {
+                            retry = true;
+                            continue;
+                        }
+                    }
+                    break response;
+                };
+                let status = response.status().as_u16();
+                if !notification {
+                    if status != 200 {
+                        return Err(error("unexpected HTTP response status"));
+                    }
+                    // Inspect HeaderMap before flattening: duplicate media headers are invalid.
+                    let types: Vec<_> = response
+                        .headers()
+                        .get_all(reqwest::header::CONTENT_TYPE)
+                        .iter()
+                        .collect();
+                    if types.len() != 1
+                        || !types[0]
+                            .to_str()
+                            .unwrap_or("")
+                            .split(';')
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .eq_ignore_ascii_case("application/json")
+                    {
+                        return Err(error("expected one application/json response header"));
+                    }
+                }
+                let limit = self.options.max_frame_bytes;
+                if response.content_length().is_some_and(|n| n > limit as u64) {
                     return Err(error("response exceeds frame limit"));
                 }
-                body.extend_from_slice(&chunk);
-            }
-            let result = if notification {
-                if matches!(status, 202 | 204) && body.is_empty() {
-                    Ok(Value::Null)
-                } else {
-                    Err(error("invalid notification acknowledgment"))
+                let mut body = Vec::new();
+                while let Some(chunk) = response.chunk().await.map_err(|e| {
+                    error(if e.is_timeout() {
+                        "HTTP deadline exceeded"
+                    } else {
+                        "HTTP body failed"
+                    })
+                })? {
+                    if chunk.len() > limit.saturating_sub(body.len()) {
+                        return Err(error("response exceeds frame limit"));
+                    }
+                    body.extend_from_slice(&chunk);
                 }
-            } else {
-                validate_response(&request, &body)
-            };
-            if started.elapsed() >= timeout {
-                return Err(error("HTTP deadline exceeded"));
-            }
-            result
+                let result = if notification {
+                    if matches!(status, 202 | 204) && body.is_empty() {
+                        Ok(Value::Null)
+                    } else {
+                        Err(error("invalid notification acknowledgment"))
+                    }
+                } else {
+                    validate_response(&request, &body)
+                };
+                if started.elapsed() >= timeout {
+                    return Err(error("HTTP deadline exceeded"));
+                }
+                result
+            })
+            .await
+            .map_err(|_| error("HTTP deadline exceeded"))?
         })
     }
     fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
         Box::pin(async {
-            self.closed.set(true);
+            self.closed.store(true, Ordering::Release);
             Ok(())
         })
     }
@@ -337,20 +481,20 @@ struct StdioBackend {
     cwd: Option<String>,
     per_event: bool,
     limit: usize,
-    closed: Cell<bool>,
-    process: std::cell::RefCell<Option<Rc<super::process::Process>>>,
+    closed: AtomicBool,
+    process: std::sync::Mutex<Option<Arc<super::process::Process>>>,
     gate: tokio::sync::Mutex<()>,
 }
 #[cfg(feature = "tokio-process")]
 impl StdioBackend {
     async fn reap(&self) -> Result<(), HookError> {
-        let process = self.process.borrow().clone();
+        let process = self.process.lock().expect("process lock poisoned").clone();
         if let Some(process) = process {
             process
                 .shutdown()
                 .await
                 .map_err(|_| error("subprocess shutdown failed"))?;
-            self.process.borrow_mut().take();
+            self.process.lock().expect("process lock poisoned").take();
         }
         Ok(())
     }
@@ -369,7 +513,7 @@ impl ManagedBackend for StdioBackend {
             let started = std::time::Instant::now();
             tokio::time::timeout(timeout, async {
                 let _gate = self.gate.lock().await;
-                if self.closed.get() {
+                if self.closed.load(Ordering::Acquire) {
                     return Err(error("backend is shut down"));
                 }
                 let notification = validate_request(&request)?;
@@ -383,7 +527,12 @@ impl ManagedBackend for StdioBackend {
                 if self.per_event {
                     self.reap().await?;
                 }
-                if self.process.borrow().is_none() {
+                if self
+                    .process
+                    .lock()
+                    .expect("process lock poisoned")
+                    .is_none()
+                {
                     let mut command = tokio::process::Command::new(&self.command);
                     command.args(&self.args);
                     if let Some(cwd) = &self.cwd {
@@ -395,11 +544,12 @@ impl ManagedBackend for StdioBackend {
                         super::process::Process::spawn(command, self.limit, Duration::MAX)
                             .await
                             .map_err(|_| error("subprocess spawn failed"))?;
-                    *self.process.borrow_mut() = Some(Rc::new(process));
+                    *self.process.lock().expect("process lock poisoned") = Some(Arc::new(process));
                 }
                 let process = self
                     .process
-                    .borrow()
+                    .lock()
+                    .expect("process lock poisoned")
                     .as_ref()
                     .expect("initialized process")
                     .clone();
@@ -445,7 +595,7 @@ impl ManagedBackend for StdioBackend {
     }
     fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
         Box::pin(async {
-            self.closed.set(true);
+            self.closed.store(true, Ordering::Release);
             let _gate = self.gate.lock().await;
             self.reap().await
         })

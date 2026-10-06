@@ -10,14 +10,12 @@ use agenthooksprotocol::{
 };
 use serde_json::{Value, json};
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     fs,
     io::{self, BufRead, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    rc::Rc,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 #[allow(dead_code)]
 #[path = "compaction.rs"]
@@ -159,6 +157,7 @@ impl Http for BlockingUploadHttp<'_> {
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = std::result::Result<HttpResponse, TransportError>>
+                + Send
                 + '_,
         >,
     > {
@@ -290,7 +289,7 @@ async fn exchange(
     mut request: Value,
     store: &MemoryContentStore,
     schemas: &Schemas,
-    trace: &RefCell<Vec<Value>>,
+    trace: &Mutex<Vec<Value>>,
 ) -> Result<Value> {
     let content = fixture::fixture_content(store);
     // Translate only body descriptors into the receiver's upload allocation
@@ -349,7 +348,8 @@ async fn exchange(
         serde_json::from_slice(&output.stdout)?
     };
     trace
-        .borrow_mut()
+        .lock()
+        .unwrap()
         .push(json!({"subscription":sub,"request":request,"response":response}));
     schemas.validate("intercept-response", &response)?;
     if request["id"] != response["id"] {
@@ -362,8 +362,8 @@ struct WireHook {
     plan: Value,
     subscription: String,
     store: MemoryContentStore,
-    schemas: Rc<Schemas>,
-    trace: Rc<RefCell<Vec<Value>>>,
+    schemas: Arc<Schemas>,
+    trace: Arc<Mutex<Vec<Value>>>,
 }
 impl Hook for WireHook {
     fn call(&self, request: Value) -> LocalFuture<'_, std::result::Result<Value, HookError>> {
@@ -391,7 +391,7 @@ fn main() -> Result<()> {
     }
     if args[0] == "host" {
         let plan: Value = serde_json::from_reader(io::stdin())?;
-        let schemas = Rc::new(Schemas::load(Path::new(
+        let schemas = Arc::new(Schemas::load(Path::new(
             plan["schema"].as_str().ok_or("schema")?,
         ))?);
         let client = reqwest::blocking::Client::builder()
@@ -401,7 +401,7 @@ fn main() -> Result<()> {
         let mut out = vec![];
         for row in plan["cases"].as_array().ok_or("cases")? {
             let name = row["name"].as_str().ok_or("name")?;
-            let trace = Rc::new(RefCell::new(vec![]));
+            let trace = Arc::new(Mutex::new(vec![]));
             let store = MemoryContentStore::new(usize::MAX, usize::MAX, usize::MAX);
             let subscriptions = |boundary: &str| -> Result<Vec<_>> {
                 row[boundary]
@@ -438,7 +438,7 @@ fn main() -> Result<()> {
             out.push(json!({
                 "name": name,
                 "result": result,
-                "trace": trace.borrow().clone(),
+                "trace": trace.lock().unwrap().clone(),
                 "downstream": downstream
             }));
         }

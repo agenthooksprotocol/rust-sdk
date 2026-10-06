@@ -4,16 +4,16 @@ use agenthooksprotocol::{
 };
 use futures::executor::block_on;
 use serde_json::json;
-use std::{cell::RefCell, collections::BTreeMap, future::Future, pin::Pin};
+use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Mutex};
 
 type Authorizer = fn(&Request) -> Result<AuthorizedScope, UploadError>;
-struct Local(RefCell<UploadReceiver<Authorizer>>);
+struct Local(Mutex<UploadReceiver<Authorizer>>);
 impl Http for Local {
     fn send(
         &self,
         request: Request,
-    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + '_>> {
-        Box::pin(async move { Ok(self.0.borrow_mut().handle(request)) })
+    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + Send + '_>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().handle(request)) })
     }
 }
 fn authorize(request: &Request) -> Result<AuthorizedScope, UploadError> {
@@ -25,7 +25,7 @@ fn authorize(request: &Request) -> Result<AuthorizedScope, UploadError> {
     }
 }
 fn local() -> Local {
-    Local(RefCell::new(UploadReceiver::new(
+    Local(Mutex::new(UploadReceiver::new(
         authorize as Authorizer,
         "https://uploads.test/raw?purpose=hook",
         128,
@@ -48,14 +48,16 @@ fn exact_binary_bytes_scoped_immutable_and_receiver_allocated() {
     let reference = block_on(uploader.upload(&bytes)).unwrap();
     let retained = local
         .0
-        .borrow()
+        .lock()
+        .unwrap()
         .resolve(&AuthorizedScope::new("tenant-a"), &reference)
         .unwrap();
     assert_eq!(&*retained, bytes);
     assert!(matches!(
         local
             .0
-            .borrow()
+            .lock()
+            .unwrap()
             .resolve(&AuthorizedScope::new("tenant-b"), &reference),
         Err(UploadError::Unavailable)
     ));
@@ -64,7 +66,8 @@ fn exact_binary_bytes_scoped_immutable_and_receiver_allocated() {
     assert!(matches!(
         local
             .0
-            .borrow()
+            .lock()
+            .unwrap()
             .resolve(&AuthorizedScope::new("tenant-a"), &tampered),
         Err(UploadError::Descriptor)
     ));
@@ -109,7 +112,7 @@ impl Http for Fixed {
     fn send(
         &self,
         _: Request,
-    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + Send + '_>> {
         Box::pin(async {
             Ok(Response {
                 status: self.0.status,
@@ -226,9 +229,9 @@ fn invalid_framing_never_allocates_or_publishes_a_reference() {
     ] {
         let mut bad = request.clone();
         bad.headers.insert(name.into(), value.into());
-        assert_eq!(local.0.borrow_mut().handle(bad).status, 400, "{name}");
+        assert_eq!(local.0.lock().unwrap().handle(bad).status, 400, "{name}");
     }
-    let response = local.0.borrow_mut().handle(request);
+    let response = local.0.lock().unwrap().handle(request);
     assert_eq!(response.status, 201);
     let reference: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
     assert_eq!(reference["ref"], "content-1");

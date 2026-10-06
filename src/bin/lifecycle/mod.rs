@@ -1467,7 +1467,8 @@ impl agenthooksprotocol::transport::Http for BlockingUploadHttp {
                         agenthooksprotocol::transport::Response,
                         agenthooksprotocol::transport::TransportError,
                     >,
-                > + '_,
+                > + Send
+                + '_,
         >,
     > {
         Box::pin(async move {

@@ -1,6 +1,8 @@
 //! Agent Hooks Protocol models and structural codecs.
 
 mod canonical;
+// Canonical constructors expose each required schema field.
+#[allow(clippy::too_many_arguments)]
 pub mod generated;
 
 pub mod interop;
@@ -28,7 +30,15 @@ pub mod transport;
 pub mod client;
 
 // Semantic model modules are generated from the canonical schema, not curated aliases.
-pub use generated::{capabilities, common, effect, event, mcp_elicitation, subscription};
+pub use generated::{
+    DeliveryDiagnosticCode, EventType, Permission, capability, ergonomic_inputs, state,
+};
+pub use generated::{capabilities, common, event, mcp_elicitation, subscription};
+/// Canonical effect models and shared-metadata ergonomic constructors.
+pub mod effect {
+    pub use crate::generated::effect::*;
+    pub use crate::generated::effects::*;
+}
 
 /// Lazy complete-event boundaries for every canonical event family.
 pub mod runtime;

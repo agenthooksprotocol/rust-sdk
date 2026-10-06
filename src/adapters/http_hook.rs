@@ -14,7 +14,10 @@ pub struct HttpHook<T> {
     pub endpoint: String,
     pub authorization: String,
 }
-impl<T: Http> Hook for HttpHook<T> {
+fn protocol_error(message: &str) -> HookError {
+    HookError(message.into()).classified(g::DeliveryDiagnosticCode::ProtocolRejection)
+}
+impl<T: Http + Send + Sync> Hook for HttpHook<T> {
     fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
         Box::pin(async move {
             if self.authorization.trim().is_empty() {
@@ -37,14 +40,15 @@ impl<T: Http> Hook for HttpHook<T> {
                 _ => false,
             };
             if !valid {
-                return Err(HookError("invalid outgoing protocol message".into()));
+                return Err(protocol_error("invalid outgoing protocol message"));
             }
             let schema = match method {
                 "hooks/intercept" => "intercept-request",
                 "hooks/observe" => "observe-notification",
                 _ => "capabilities-request",
             };
-            crate::canonical::validate(schema, &request).map_err(HookError)?;
+            crate::canonical::validate(schema, &request)
+                .map_err(|_| protocol_error("invalid protocol message"))?;
             let response = self
                 .http
                 .send(Request {
@@ -57,23 +61,18 @@ impl<T: Http> Hook for HttpHook<T> {
                     body: serde_json::to_vec(&request).map_err(|e| HookError(e.to_string()))?,
                 })
                 .await
-                .map_err(|e| HookError(e.to_string()))?;
+                .map_err(|_| HookError("HTTP transport failed".into()))?;
             if method == "hooks/observe" {
                 return if matches!(response.status, 202 | 204) && response.body.is_empty() {
                     Ok(Value::Null)
                 } else {
-                    Err(HookError(format!(
-                        "invalid notification acknowledgment (HTTP {}): {}",
-                        response.status,
-                        String::from_utf8_lossy(&response.body)
-                    )))
+                    Err(protocol_error("invalid notification acknowledgment"))
                 };
             }
             if response.status != 200 {
                 return Err(HookError(format!(
-                    "HTTP {}: {}",
-                    response.status,
-                    String::from_utf8_lossy(&response.body)
+                    "unexpected HTTP response status {}",
+                    response.status
                 )));
             }
             let content_types: Vec<_> = response
@@ -90,17 +89,14 @@ impl<T: Http> Hook for HttpHook<T> {
                     .trim()
                     .eq_ignore_ascii_case("application/json")
             {
-                return Err(HookError("invalid response media type".into()));
+                return Err(protocol_error("invalid response media type"));
             }
-            let value: Value =
-                serde_json::from_slice(&response.body).map_err(|e| HookError(e.to_string()))?;
+            let value: Value = serde_json::from_slice(&response.body)
+                .map_err(|_| protocol_error("invalid protocol JSON response"))?;
             if value["id"] != request["id"] {
-                return Err(HookError("response correlation mismatch".into()));
+                return Err(protocol_error("response correlation mismatch"));
             }
-            // Error envelopes remain operational failures even when sent with HTTP 200.
-            if value.get("error").is_some() {
-                return Err(HookError(format!("protocol error: {}", value["error"])));
-            }
+            crate::client::check_rpc_error(&value, &request["id"])?;
             let valid = if method == "hooks/intercept" {
                 g::parse_intercept_response_value(value.clone())
                     .into_value()
@@ -111,16 +107,18 @@ impl<T: Http> Hook for HttpHook<T> {
                     .is_some()
             };
             if !valid {
-                return Err(HookError("invalid protocol response".into()));
+                return Err(protocol_error("invalid protocol response"));
             }
             let schema = if method == "hooks/intercept" {
                 "intercept-response"
             } else {
                 "capabilities-response"
             };
-            crate::canonical::validate(schema, &value).map_err(HookError)?;
+            crate::canonical::validate(schema, &value)
+                .map_err(|_| protocol_error("invalid protocol message"))?;
             if method == "hooks/intercept" {
-                crate::server::validate_effect_capabilities(&request, &value).map_err(HookError)?;
+                crate::server::validate_effect_capabilities(&request, &value)
+                    .map_err(|_| protocol_error("invalid protocol message"))?;
             }
             Ok(value)
         })

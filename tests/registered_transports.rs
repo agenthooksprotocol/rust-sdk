@@ -16,13 +16,12 @@ fn authentication_and_network_policy_fail_closed() {
         let backend = json!({"transport":{"type":"http","url":"https://example.com/hook"},"authentication":authentication});
         assert!(from_registration(&backend, &options).is_err());
     }
-    assert!(
-        from_registration(
-            &json!({"transport":{"type":"http","url":"https://example.com"}}),
-            &options
-        )
-        .is_err()
+    let unconfigured = from_registration(
+        &json!({"transport":{"type":"http","url":"https://example.com"}}),
+        &options,
     );
+    // An absent authentication binding permits anonymous construction when HTTP is enabled.
+    assert_eq!(unconfigured.is_ok(), cfg!(feature = "reqwest"));
     let anonymous = BackendOptions {
         allow_anonymous_http: true,
         ..options
@@ -51,7 +50,7 @@ fn http_feature_is_explicit() {
     )
     .err()
     .unwrap();
-    assert!(err.0.contains("reqwest"));
+    assert!(err.to_string().contains("reqwest"));
 }
 #[cfg(not(feature = "tokio-process"))]
 #[test]
@@ -62,7 +61,7 @@ fn stdio_feature_is_explicit() {
     )
     .err()
     .unwrap();
-    assert!(err.0.contains("tokio-process"));
+    assert!(err.to_string().contains("tokio-process"));
 }
 #[cfg(any(feature = "reqwest", feature = "tokio-process"))]
 fn request() -> serde_json::Value {
@@ -152,7 +151,7 @@ mod http {
     }
     fn backend(
         url: String,
-    ) -> std::rc::Rc<dyn agenthooksprotocol::adapters::registered::ManagedBackend> {
+    ) -> std::sync::Arc<dyn agenthooksprotocol::adapters::registered::ManagedBackend> {
         from_registration(&json!({"transport":{"type":"http","url":url},"authentication":{"type":"bearer","tokenRef":"fixture"}}), &options()).unwrap()
     }
     #[tokio::test]
@@ -227,7 +226,7 @@ mod http {
             .await
             .unwrap_err();
         assert!(start.elapsed() < Duration::from_secs(2));
-        assert!(!err.0.contains("private-token"));
+        assert!(!err.to_string().contains("private-token"));
         task.join().unwrap();
     }
     #[test]
@@ -242,7 +241,7 @@ mod stdio {
     fn backend(
         script: &str,
         lifecycle: &str,
-    ) -> std::rc::Rc<dyn agenthooksprotocol::adapters::registered::ManagedBackend> {
+    ) -> std::sync::Arc<dyn agenthooksprotocol::adapters::registered::ManagedBackend> {
         from_registration(&json!({"transport":{"type":"stdio","command":"python3","args":["-u","-c",script],"lifecycle":lifecycle}}), &BackendOptions::default()).unwrap()
     }
     #[test]

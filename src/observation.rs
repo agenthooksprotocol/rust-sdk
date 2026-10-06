@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::{
     collections::HashSet,
     panic::{AssertUnwindSafe, catch_unwind},
-    rc::Rc,
+    sync::Arc,
 };
 
 /// One deferred observation. Creating, dropping, or collecting this value runs
@@ -12,8 +12,8 @@ use std::{
 pub struct DeferredObservation<P, N> {
     event: Value,
     subscription: Value,
-    prepare: Rc<P>,
-    notify: Rc<N>,
+    prepare: Arc<P>,
+    notify: Arc<N>,
 }
 impl<P, N> DeferredObservation<P, N>
 where
@@ -67,8 +67,8 @@ where
     P: Fn(Value, &Value) -> Result<Value, String>,
     N: Fn(Value) -> Result<(), String>,
 {
-    let prepare = Rc::new(prepare);
-    let notify = Rc::new(notify);
+    let prepare = Arc::new(prepare);
+    let notify = Arc::new(notify);
     subscriptions
         .into_iter()
         .filter(|subscription| {
@@ -79,8 +79,8 @@ where
         .map(|subscription| DeferredObservation {
             event: event.clone(),
             subscription,
-            prepare: Rc::clone(&prepare),
-            notify: Rc::clone(&notify),
+            prepare: Arc::clone(&prepare),
+            notify: Arc::clone(&notify),
         })
         .collect()
 }

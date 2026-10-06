@@ -109,180 +109,169 @@ fn configured(log: &Log, lifecycle: &str, observe: bool) -> Hooks {
         [("tool.before".into(), grant)].into(),
     );
     options.observation_timeout = Duration::from_secs(3);
-    options.observation_scheduler = Some(std::rc::Rc::new(
-        agenthooksprotocol::hooks::TokioObservationScheduler,
-    ));
     Hooks::new(registration, options).unwrap()
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn ordinary_registration_persistent_stdio_drains_and_reaps_child() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let log = Log::new();
-            let hooks = configured(&log, "persistent", true);
-            let lazy = hooks
-                .tool_before(Input {
-                    command: "modify".into(),
-                    timeout_ms: 100,
-                })
-                .context(context())
-                .initial_state(Decision::Allow);
-            assert!(!log.0.exists(), "construction must not spawn or dispatch");
-            let modified = lazy.await.unwrap();
-            assert!(
-                modified.outcome.failures.is_empty(),
-                "{:?}",
-                modified.outcome.failures
-            );
-            assert!(modified.outcome.can_execute());
-            let input = modified.input.unwrap();
-            assert_eq!(input.command, "safe");
-            assert_eq!(input.timeout_ms, 25);
-            let denied = hooks
-                .tool_before(Input {
-                    command: "denied".into(),
-                    timeout_ms: 100,
-                })
-                .context(context())
-                .initial_state(Decision::Allow)
-                .await
-                .unwrap();
-            assert!(denied.outcome.failures.is_empty());
-            assert!(denied.outcome.is_denied());
-            assert!(!denied.outcome.can_execute());
-            assert!(denied.outcome.supplied_result().is_none());
-            assert_eq!(
-                log.read()
-                    .iter()
-                    .filter(|row| row["request"].get("id").is_some())
-                    .count(),
-                2
-            );
-            let report = hooks.wait_until_idle().await;
-            assert_eq!(report.delivered, 2);
-            assert!(report.failures.is_empty());
-            // Notification delivery means bytes were written, not a remote application
-            // acknowledgment. Wait for the fixture's separate evidence before shutdown.
-            let rows = tokio::time::timeout(Duration::from_secs(3), async {
-                loop {
-                    let rows = log.read();
-                    if rows.len() == 4 {
-                        break rows;
-                    }
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                }
-            })
-            .await
-            .unwrap();
-            let pid = rows[0]["pid"].as_u64().unwrap();
-            assert!(rows.iter().all(|row| row["pid"] == pid));
-            let intercepts: Vec<_> = rows
-                .iter()
-                .filter(|row| row["request"].get("id").is_some())
-                .collect();
-            let observations: Vec<_> = rows
-                .iter()
-                .filter(|row| row["request"].get("id").is_none())
-                .collect();
-            let first = &intercepts[0]["request"]["params"]["event"];
-            let second = &intercepts[1]["request"]["params"]["event"];
-            assert_ne!(first["id"], second["id"]);
-            assert_eq!(
-                observations[0]["request"]["params"]["event"]["tool"]["input"]["command"],
-                "safe"
-            );
-            for row in observations {
-                assert!(row["request"].get("id").is_none());
-                assert!(row["request"]["params"].get("capabilities").is_none());
-            }
-            let report = tokio::time::timeout(Duration::from_secs(3), hooks.shutdown())
-                .await
-                .unwrap()
-                .unwrap();
-            assert_eq!(report.delivered, 2);
-            assert!(report.failures.is_empty());
-            assert!(
-                !Command::new("kill")
-                    .args(["-0", &pid.to_string()])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status()
-                    .unwrap()
-                    .success(),
-                "shutdown must reap its child"
-            );
-            assert_eq!(hooks.shutdown().await.unwrap().delivered, 2);
-            assert!(
-                hooks
-                    .tool_before(Input {
-                        command: "denied".into(),
-                        timeout_ms: 1
-                    })
-                    .context(context())
-                    .await
-                    .is_err()
-            );
-            assert_eq!(log.read().len(), 4);
+    let log = Log::new();
+    let hooks = configured(&log, "persistent", true);
+    let lazy = hooks
+        .tool_input(Input {
+            command: "modify".into(),
+            timeout_ms: 100,
         })
-        .await;
+        .context(context())
+        .initial_state(Decision::Allow);
+    assert!(!log.0.exists(), "construction must not spawn or dispatch");
+    let modified = lazy.await.unwrap();
+    assert!(
+        modified.outcome.failures.is_empty(),
+        "{:?}",
+        modified.outcome.failures
+    );
+    assert!(modified.outcome.can_execute());
+    let input = modified.input.unwrap();
+    assert_eq!(input.command, "safe");
+    assert_eq!(input.timeout_ms, 25);
+    let denied = hooks
+        .tool_input(Input {
+            command: "denied".into(),
+            timeout_ms: 100,
+        })
+        .context(context())
+        .initial_state(Decision::Allow)
+        .await
+        .unwrap();
+    assert!(denied.outcome.failures.is_empty());
+    assert!(denied.outcome.is_denied());
+    assert!(!denied.outcome.can_execute());
+    assert!(denied.outcome.supplied_result().is_none());
+    assert_eq!(
+        log.read()
+            .iter()
+            .filter(|row| row["request"].get("id").is_some())
+            .count(),
+        2
+    );
+    let report = hooks.wait_until_idle().await;
+    assert_eq!(report.delivered, 2);
+    assert!(report.failures.is_empty());
+    // Notification delivery means bytes were written, not a remote application
+    // acknowledgment. Wait for the fixture's separate evidence before shutdown.
+    let rows = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let rows = log.read();
+            if rows.len() == 4 {
+                break rows;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let pid = rows[0]["pid"].as_u64().unwrap();
+    assert!(rows.iter().all(|row| row["pid"] == pid));
+    let intercepts: Vec<_> = rows
+        .iter()
+        .filter(|row| row["request"].get("id").is_some())
+        .collect();
+    let observations: Vec<_> = rows
+        .iter()
+        .filter(|row| row["request"].get("id").is_none())
+        .collect();
+    let first = &intercepts[0]["request"]["params"]["event"];
+    let second = &intercepts[1]["request"]["params"]["event"];
+    assert_ne!(first["id"], second["id"]);
+    assert_eq!(
+        observations[0]["request"]["params"]["event"]["tool"]["input"]["command"],
+        "safe"
+    );
+    for row in observations {
+        assert!(row["request"].get("id").is_none());
+        assert!(row["request"]["params"].get("capabilities").is_none());
+    }
+    let report = tokio::time::timeout(Duration::from_secs(3), hooks.shutdown())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(report.delivered, 2);
+    assert!(report.failures.is_empty());
+    assert!(
+        !Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success(),
+        "shutdown must reap its child"
+    );
+    assert_eq!(hooks.shutdown().await.unwrap().delivered, 2);
+    assert!(
+        hooks
+            .tool_input(Input {
+                command: "denied".into(),
+                timeout_ms: 1
+            })
+            .context(context())
+            .await
+            .is_err()
+    );
+    assert_eq!(log.read().len(), 4);
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn ordinary_registration_per_event_stdio_uses_fresh_children() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let log = Log::new();
-            let hooks = configured(&log, "per_event", true);
-            for _ in 0..2 {
-                let result = hooks
-                    .tool_before(Input {
-                        command: "modify".into(),
-                        timeout_ms: 100,
-                    })
-                    .context(context())
-                    .initial_state(Decision::Allow)
-                    .await
-                    .unwrap();
-                assert!(
-                    result.outcome.failures.is_empty(),
-                    "{:?}",
-                    result.outcome.failures
-                );
-                assert!(result.outcome.can_execute());
-                assert_eq!(result.input.unwrap().command, "safe");
-            }
-            let report = hooks.wait_until_idle().await;
-            assert_eq!(report.delivered, 2);
-            assert!(report.failures.is_empty());
-            let rows = log.read();
-            assert_eq!(rows.len(), 4);
-            assert_eq!(
-                rows.iter()
-                    .map(|row| row["pid"].as_u64().unwrap())
-                    .collect::<std::collections::BTreeSet<_>>()
-                    .len(),
-                4
-            );
-            assert_ne!(rows[0]["pid"], rows[1]["pid"]);
-            for row in &rows {
-                let pid = row["pid"].as_u64().unwrap().to_string();
-                assert!(
-                    !Command::new("kill")
-                        .args(["-0", &pid])
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status()
-                        .unwrap()
-                        .success()
-                );
-            }
-            let report = tokio::time::timeout(Duration::from_secs(3), hooks.shutdown())
-                .await
+    let log = Log::new();
+    let hooks = configured(&log, "per_event", true);
+    for _ in 0..2 {
+        let result = hooks
+            .tool_input(Input {
+                command: "modify".into(),
+                timeout_ms: 100,
+            })
+            .context(context())
+            .initial_state(Decision::Allow)
+            .await
+            .unwrap();
+        assert!(
+            result.outcome.failures.is_empty(),
+            "{:?}",
+            result.outcome.failures
+        );
+        assert!(result.outcome.can_execute());
+        assert_eq!(result.input.unwrap().command, "safe");
+    }
+    let report = hooks.wait_until_idle().await;
+    assert_eq!(report.delivered, 2);
+    assert!(report.failures.is_empty());
+    let rows = log.read();
+    assert_eq!(rows.len(), 4);
+    assert_eq!(
+        rows.iter()
+            .map(|row| row["pid"].as_u64().unwrap())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        4
+    );
+    assert_ne!(rows[0]["pid"], rows[1]["pid"]);
+    for row in &rows {
+        let pid = row["pid"].as_u64().unwrap().to_string();
+        assert!(
+            !Command::new("kill")
+                .args(["-0", &pid])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
                 .unwrap()
-                .unwrap();
-            assert_eq!(report.delivered, 2);
-            assert!(report.failures.is_empty());
-        })
-        .await;
+                .success()
+        );
+    }
+    let report = tokio::time::timeout(Duration::from_secs(3), hooks.shutdown())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(report.delivered, 2);
+    assert!(report.failures.is_empty());
 }

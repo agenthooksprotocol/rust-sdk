@@ -13,12 +13,16 @@
 //! application, not the hook SDK, owns execution and approval policy.
 
 use agenthooksprotocol::{
-    client::{Decision, ToolContext},
+    EventType,
+    capability::{self, ModifyOperation},
+    client::Decision,
+    ergonomic_inputs::ToolBeforeInput,
     generated::Registration,
-    hooks::{Capabilities, EventGrant, Hooks, HooksOptions, TokioObservationScheduler},
+    generated::ToolBeforeInputOrigin,
+    hooks::{Hooks, HooksOptions},
+    state,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ShellInput {
@@ -29,7 +33,7 @@ struct ShellInput {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tokio::task::LocalSet::new().run_until(run()).await
+    run().await
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -51,19 +55,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let registration = serde_json::from_str::<Registration>(&configuration)?;
     // Authority is separate from configuration and limited to one named event.
     // No wildcard grants or implicit elicitation modes are enabled.
-    let grants = [(
-        "tool.before".into(),
-        EventGrant::intercept(
-            Capabilities::none()
+    let mut options = HooksOptions::from_declarations(
+        "https://example.test/registered-hooks-demo",
+        [(
+            EventType::ToolBefore,
+            capability::intercept()
                 .allow()
                 .deny()
-                .return_value()
-                .modify_input(),
-        )
-        .with_observe(),
-    )]
-    .into();
-    let mut options = HooksOptions::new("https://example.test/registered-hooks-demo", grants);
+                .r#return()
+                .modify_input([ModifyOperation::Replace, ModifyOperation::Merge])?,
+        )],
+    )?;
     options.backend.allow_loopback_http = allow_loopback_http;
     if let Ok(token) = std::env::var("REGISTERED_HOOK_TOKEN") {
         options
@@ -73,25 +75,28 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Registration selects the actual built-in HTTP or process transport.
     // Construction performs validation but does not start I/O.
-    options.observation_scheduler = Some(std::rc::Rc::new(TokioObservationScheduler));
     let hooks = Hooks::new(registration, options)?;
     let pending = hooks
-        .tool_before(ShellInput {
-            command: "echo hello".into(),
-            timeout_ms: 1000,
-        })
-        .context(ToolContext::new(json!({
-            "path":"native",
-            "call":{"id":"demo-call"},
-            "tool":{"name":"shell","kind":"shell","origin":"native"}
-        })))
-        // Explicit local policy for this harmless proposal; real hosts must decide.
-        .initial_state(Decision::Allow);
+        .tool_before(
+            ToolBeforeInput::new(
+                "demo-call".into(),
+                "native".into(),
+                ShellInput {
+                    command: "echo hello".into(),
+                    timeout_ms: 1000,
+                },
+                "shell".into(),
+                ToolBeforeInputOrigin::Native,
+            )
+            .with_tool_kind("shell".into()),
+        )
+        // Native policy already decided for this exact occurrence; not execution.
+        .initial_snapshot(state::initial(Decision::Allow))?;
     // Dispatch is lazy. Event identity/time are generated and source is bound
     // to the explicit host authority when this boundary is awaited.
     let result = pending.await;
-    // Observations are scheduled automatically on the host LocalSet. Waiting
-    // only joins delivery; shutdown cancels outstanding work and reaps children.
+    // This awaited operation has completed its owned observation deliveries.
+    // Idle waiting only reports; shutdown cancels outstanding work and reaps children.
     let report = hooks.wait_until_idle().await;
     hooks.shutdown().await?;
     eprintln!(

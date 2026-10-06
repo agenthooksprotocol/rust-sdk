@@ -235,11 +235,14 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
         },
         content::{ContentReference, ContentStore, UploadError},
     };
-    use std::{cell::Cell, sync::Arc};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     struct CountedStore {
         inner: MemoryContentStore,
-        puts: Cell<usize>,
+        puts: AtomicUsize,
     }
     impl ContentStore for CountedStore {
         fn resolve(
@@ -254,7 +257,7 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
             scope: &AuthorizedScope,
             bytes: Arc<[u8]>,
         ) -> Result<ContentReference, UploadError> {
-            self.puts.set(self.puts.get() + 1);
+            self.puts.fetch_add(1, Ordering::Relaxed);
             self.inner.put(scope, bytes)
         }
     }
@@ -270,7 +273,7 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
     }
     let store = CountedStore {
         inner: MemoryContentStore::new(100000, 1000000, 100),
-        puts: Cell::new(0),
+        puts: AtomicUsize::new(0),
     };
     let context = ContentContext {
         store: &store,
@@ -290,7 +293,7 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
     item["body"] = reference.clone();
     item["size"] = reference["size"].clone();
     item["sha256"] = reference["sha256"].clone();
-    let before = store.puts.get();
+    let before = store.puts.load(Ordering::Relaxed);
     let replace =
         json!({"type":"modify","target":"content","operation":"replace","value":{"answer":"yes"}});
     for effects in [
@@ -303,7 +306,7 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
     ] {
         let staged = stage_boundary(&result, &effects, &context, Some(&exchange)).unwrap();
         assert_eq!(staged["event"], result["params"]["event"]);
-        assert_eq!(store.puts.get(), before);
+        assert_eq!(store.puts.load(Ordering::Relaxed), before);
         assert_eq!(
             context
                 .resolve_selected(&staged["event"]["elicitation"]["result"])
@@ -332,6 +335,6 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
         assert_eq!(settled.outcome.decision, Decision::Allow);
         assert!(settled.outcome.authorized);
         assert!(!settled.outcome.approval_invalidated);
-        assert_eq!(store.puts.get(), before);
+        assert_eq!(store.puts.load(Ordering::Relaxed), before);
     }
 }

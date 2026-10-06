@@ -2,9 +2,9 @@ use agenthooksprotocol::client::*;
 use futures::executor::block_on;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
 };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -13,12 +13,12 @@ struct Input {
 }
 struct Fake {
     effects: Value,
-    calls: Rc<RefCell<Vec<Value>>>,
+    calls: Arc<Mutex<Vec<Value>>>,
 }
 impl Hook for Fake {
     fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
         Box::pin(async move {
-            self.calls.borrow_mut().push(request.clone());
+            self.calls.lock().unwrap().push(request.clone());
             Ok(
                 json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","effects":self.effects}}),
             )
@@ -34,7 +34,7 @@ fn hook(
     id: &str,
     effects: Value,
     policy: FailurePolicy,
-    calls: &Rc<RefCell<Vec<Value>>>,
+    calls: &Arc<Mutex<Vec<Value>>>,
 ) -> Subscription {
     Subscription::intercept(
         id,
@@ -51,7 +51,7 @@ fn replace(value: Value) -> Value {
 
 #[test]
 fn protocol_commit_precedes_fresh_typed_decode_and_observation() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context())
         .with_subscription(hook("mutator", json!([replace(json!({"count":"not a u64"})),{"type":"message","text":"accepted"},{"type":"allow"}]), FailurePolicy::Closed, &calls))
         .with_subscription(Subscription::observe("audit", Fake { effects: json!([]), calls: calls.clone() }));
@@ -61,18 +61,24 @@ fn protocol_commit_precedes_fresh_typed_decode_and_observation() {
     assert_eq!(result.outcome.decision, Decision::Allow);
     assert_eq!(result.outcome.messages.len(), 1);
     assert!(result.outcome.failures.is_empty());
-    assert_eq!(calls.borrow().len(), 1); // observers never delay settlement
+    assert_eq!(calls.lock().unwrap().len(), 1); // observers never delay settlement
     block_on(result.observations.into_iter().next().unwrap().deliver()).unwrap();
     assert_eq!(
-        calls.borrow()[1]["params"]["event"]["tool"]["input"]["count"],
+        calls.lock().unwrap()[1]["params"]["event"]["tool"]["input"]["count"],
         "not a u64"
     );
-    assert!(calls.borrow()[1].get("id").is_none());
-    assert_eq!(calls.borrow()[1]["params"].as_object().unwrap().len(), 2);
+    assert!(calls.lock().unwrap()[1].get("id").is_none());
+    assert_eq!(
+        calls.lock().unwrap()[1]["params"]
+            .as_object()
+            .unwrap()
+            .len(),
+        2
+    );
 }
 #[test]
 fn serial_candidates_and_approval_are_invalidated_only_on_change() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context())
         .with_subscription(hook(
             "first",
@@ -102,11 +108,11 @@ fn serial_candidates_and_approval_are_invalidated_only_on_change() {
     });
     assert_eq!(result.input.unwrap().count, 2);
     assert_eq!(
-        calls.borrow()[2]["params"]["state"]["candidate"]["value"],
+        calls.lock().unwrap()[2]["params"]["state"]["candidate"]["value"],
         7
     );
     assert_eq!(
-        calls.borrow()[3]["params"]["state"]["candidate"],
+        calls.lock().unwrap()[3]["params"]["state"]["candidate"],
         Value::Null
     );
     assert_eq!(result.outcome.decision, Decision::None);
@@ -115,7 +121,7 @@ fn serial_candidates_and_approval_are_invalidated_only_on_change() {
 }
 #[test]
 fn atomic_invalid_compound_does_not_salvage_deny_or_mutation() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context())
         .with_subscription(hook("accepted", json!([replace(json!({"count":2}))]), FailurePolicy::Closed, &calls))
         .with_subscription(hook("bad", json!([replace(json!({"count":3})),{"type":"deny","reason":"no"},{"type":"flow","operation":"continue"}]), FailurePolicy::Open, &calls))
@@ -124,11 +130,11 @@ fn atomic_invalid_compound_does_not_salvage_deny_or_mutation() {
     assert_eq!(result.input.unwrap(), json!({"count":2}));
     assert_eq!(result.outcome.failures.len(), 1);
     assert_eq!(result.outcome.decision, Decision::Allow);
-    assert_eq!(calls.borrow().len(), 3);
+    assert_eq!(calls.lock().unwrap().len(), 3);
 }
 #[test]
 fn deny_wins_and_only_uncalled_or_explicit_observers_get_notifications() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let mut unmatched = hook("other", json!([]), FailurePolicy::Open, &calls);
     unmatched.events = vec!["tool.after".into()];
     let client = Client::new(context())
@@ -149,7 +155,7 @@ fn deny_wins_and_only_uncalled_or_explicit_observers_get_notifications() {
         .with_subscription(unmatched);
     let result = block_on(async { client.tool_before(Input { count: 1 }).await.unwrap() });
     assert_eq!(result.outcome.decision, Decision::Deny);
-    assert_eq!(calls.borrow().len(), 1);
+    assert_eq!(calls.lock().unwrap().len(), 1);
     assert_eq!(
         result
             .observations
@@ -161,7 +167,7 @@ fn deny_wins_and_only_uncalled_or_explicit_observers_get_notifications() {
 }
 #[test]
 fn ask_persists_and_mandatory_gates_block_supplied_results() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context()).with_subscription(hook(
         "policy",
         json!([{"type":"allow"},{"type":"return","value":42}]),
@@ -189,7 +195,7 @@ fn ask_persists_and_mandatory_gates_block_supplied_results() {
 }
 #[test]
 fn fail_closed_is_distinct_and_capability_narrowing_is_enforced() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context())
         .with_subscription(hook(
             "bad",
@@ -207,7 +213,7 @@ fn fail_closed_is_distinct_and_capability_narrowing_is_enforced() {
     });
     assert_eq!(result.outcome.decision, Decision::Deny);
     assert_eq!(result.outcome.failures.len(), 1);
-    assert_eq!(calls.borrow().len(), 1);
+    assert_eq!(calls.lock().unwrap().len(), 1);
     assert_eq!(result.observations.len(), 1);
 }
 #[test]
@@ -218,7 +224,7 @@ fn strict_invalid_effects_are_atomic_and_fail_open() {
         json!({"type":"mystery"}),
         json!({"type":"modify","target":"input","operation":"replace","value":null}),
     ] {
-        let calls = Rc::new(RefCell::new(vec![]));
+        let calls = Arc::new(Mutex::new(vec![]));
         let client = Client::new(context()).with_subscription(hook("invalid", json!([replace(json!({"count":99})), {"type":"message","text":"must not leak"}, invalid]), FailurePolicy::Open, &calls));
         let result = block_on(async {
             client
@@ -235,7 +241,7 @@ fn strict_invalid_effects_are_atomic_and_fail_open() {
 }
 #[test]
 fn return_binds_after_modifications_and_stop_discards_candidate() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context()).with_subscription(hook(
         "compound",
         json!([
@@ -264,7 +270,7 @@ fn return_binds_after_modifications_and_stop_discards_candidate() {
 }
 #[test]
 fn changed_approval_without_reauthorization_refuses_path() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context())
         .with_subscription(hook(
             "modify",
@@ -288,27 +294,27 @@ fn changed_approval_without_reauthorization_refuses_path() {
     });
     assert_eq!(result.input.unwrap().count, 2);
     assert!(result.outcome.is_denied());
-    assert_eq!(calls.borrow().len(), 1);
+    assert_eq!(calls.lock().unwrap().len(), 1);
 }
 #[test]
 fn builder_is_lazy_and_initial_permission_is_per_occurrence() {
     #[derive(Deserialize)]
     struct Lazy {
         #[serde(skip)]
-        count: Rc<Cell<usize>>,
+        count: Arc<AtomicUsize>,
     }
     impl Serialize for Lazy {
         fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-            self.count.set(self.count.get() + 1);
+            self.count.fetch_add(1, Ordering::Relaxed);
             json!({}).serialize(s)
         }
     }
-    let count = Rc::new(Cell::new(0));
+    let count = Arc::new(AtomicUsize::new(0));
     let client = Client::new(context());
     drop(client.tool_before(Lazy {
         count: count.clone(),
     }));
-    assert_eq!(count.get(), 0);
+    assert_eq!(count.load(Ordering::Relaxed), 0);
     let first = block_on(async {
         client
             .tool_before(Input { count: 1 })
@@ -323,11 +329,11 @@ fn builder_is_lazy_and_initial_permission_is_per_occurrence() {
 }
 
 struct PendingHook {
-    calls: Rc<Cell<usize>>,
+    calls: Arc<AtomicUsize>,
 }
 impl Hook for PendingHook {
     fn call(&self, _: Value) -> LocalFuture<'_, Result<Value, HookError>> {
-        self.calls.set(self.calls.get() + 1);
+        self.calls.fetch_add(1, Ordering::Relaxed);
         Box::pin(std::future::pending())
     }
 }
@@ -338,8 +344,8 @@ fn dropping_pending_boundary_retains_nonexecutable_accepted_evidence() {
         future::IntoFuture,
         task::{Context, Poll},
     };
-    let calls = Rc::new(RefCell::new(vec![]));
-    let pending_calls = Rc::new(Cell::new(0));
+    let calls = Arc::new(Mutex::new(vec![]));
+    let pending_calls = Arc::new(AtomicUsize::new(0));
     let client = Client::new(context())
         .with_subscription(hook("accepted", json!([replace(json!({"count":2})), {"type":"message","text":"accepted"}, {"type":"allow"}]), FailurePolicy::Closed, &calls))
         .with_subscription(Subscription::intercept("pending", FailurePolicy::Open, PendingHook { calls: pending_calls.clone() }))
@@ -364,8 +370,8 @@ fn dropping_pending_boundary_retains_nonexecutable_accepted_evidence() {
     assert!(!partial.outcome.authorized);
     assert!(!partial.outcome.can_execute());
     assert!(partial.outcome.supplied_result().is_none());
-    assert_eq!(pending_calls.get(), 1);
-    assert_eq!(calls.borrow().len(), 1);
+    assert_eq!(pending_calls.load(Ordering::Relaxed), 1);
+    assert_eq!(calls.lock().unwrap().len(), 1);
 }
 
 #[test]
@@ -374,7 +380,7 @@ fn explicit_interruption_overrides_fail_open_and_preserves_prior_commit() {
         future::IntoFuture,
         task::{Context, Poll},
     };
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context())
         .with_subscription(hook(
             "accepted",
@@ -386,7 +392,7 @@ fn explicit_interruption_overrides_fail_open_and_preserves_prior_commit() {
             "pending",
             FailurePolicy::Open,
             PendingHook {
-                calls: Rc::new(Cell::new(0)),
+                calls: Arc::new(AtomicUsize::new(0)),
             },
         ))
         .with_subscription(hook("never", json!([]), FailurePolicy::Open, &calls));
@@ -405,13 +411,13 @@ fn explicit_interruption_overrides_fail_open_and_preserves_prior_commit() {
     assert_eq!(partial.effective_input, json!({"count":2}));
     assert!(!partial.outcome.authorized);
     assert!(partial.outcome.failures.is_empty()); // not a fail-open operational failure
-    assert_eq!(calls.borrow().len(), 1);
+    assert_eq!(calls.lock().unwrap().len(), 1);
     assert_eq!(progress.snapshot().status, BoundaryStatus::Interrupted);
 }
 
 #[test]
 fn preflight_error_is_classified_without_fabricated_partial_acceptance() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(ToolContext::new(json!({}))).with_subscription(hook(
         "never",
         json!([]),
@@ -428,7 +434,7 @@ fn preflight_error_is_classified_without_fabricated_partial_acceptance() {
     assert!(error.partial.is_none());
     assert_eq!(progress.snapshot().status, BoundaryStatus::Failed);
     assert!(progress.snapshot().partial.is_none());
-    assert!(calls.borrow().is_empty());
+    assert!(calls.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -446,7 +452,7 @@ fn original_deadline_rejects_whole_late_response_once() {
         }
     }
     for policy in [FailurePolicy::Open, FailurePolicy::Closed] {
-        let calls = Rc::new(RefCell::new(vec![]));
+        let calls = Arc::new(Mutex::new(vec![]));
         let client = Client::new(context())
             .with_subscription(hook(
                 "accepted",
@@ -472,7 +478,7 @@ fn original_deadline_rejects_whole_late_response_once() {
             }
         );
         assert_eq!(
-            calls.borrow().len(),
+            calls.lock().unwrap().len(),
             if policy == FailurePolicy::Open { 2 } else { 1 }
         );
     }
@@ -480,7 +486,7 @@ fn original_deadline_rejects_whole_late_response_once() {
 
 #[test]
 fn native_candidate_preserves_provenance_without_advertising_return() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let descriptor =
         json!({"value":null,"provenance":{"native":"cache","trace":{"id":"original"}}});
     let client = Client::new(context())
@@ -497,8 +503,8 @@ fn native_candidate_preserves_provenance_without_advertising_return() {
     });
     assert!(result.outcome.failures.is_empty());
     assert_eq!(result.outcome.supplied_result(), Some(&Value::Null));
-    assert_eq!(calls.borrow().len(), 2);
-    for request in calls.borrow().iter() {
+    assert_eq!(calls.lock().unwrap().len(), 2);
+    for request in calls.lock().unwrap().iter() {
         assert_eq!(request["params"]["state"]["candidate"], descriptor);
         assert_eq!(request["params"]["state"].as_object().unwrap().len(), 2);
         assert!(request["params"]["state"].get("flow").is_none());
@@ -508,7 +514,7 @@ fn native_candidate_preserves_provenance_without_advertising_return() {
 
 #[test]
 fn native_candidate_is_invalidated_by_changed_effective_input() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let descriptor = json!({"value":7,"provenance":{"source":"native"}});
     let client = Client::new(context())
         .with_subscription(hook(
@@ -527,11 +533,11 @@ fn native_candidate_is_invalidated_by_changed_effective_input() {
             .unwrap()
     });
     assert_eq!(
-        calls.borrow()[0]["params"]["state"]["candidate"],
+        calls.lock().unwrap()[0]["params"]["state"]["candidate"],
         descriptor
     );
     assert_eq!(
-        calls.borrow()[1]["params"]["state"]["candidate"],
+        calls.lock().unwrap()[1]["params"]["state"]["candidate"],
         Value::Null
     );
     assert!(result.outcome.candidate.is_none());
@@ -540,7 +546,7 @@ fn native_candidate_is_invalidated_by_changed_effective_input() {
 
 #[test]
 fn accepted_equal_return_replaces_native_provenance() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let descriptor = json!({"value":7,"provenance":{"source":"native"}});
     let client = Client::new(context())
         .with_subscription(hook(
@@ -565,11 +571,11 @@ fn accepted_equal_return_replaces_native_provenance() {
             .unwrap()
     });
     assert_eq!(
-        calls.borrow()[1]["params"]["state"]["candidate"],
+        calls.lock().unwrap()[1]["params"]["state"]["candidate"],
         descriptor
     );
     assert_eq!(
-        calls.borrow()[2]["params"]["state"]["candidate"],
+        calls.lock().unwrap()[2]["params"]["state"]["candidate"],
         json!({"value":7})
     );
     assert_eq!(result.outcome.supplied_result(), Some(&json!(7)));
@@ -577,7 +583,7 @@ fn accepted_equal_return_replaces_native_provenance() {
 
 #[test]
 fn malformed_native_candidate_fails_preflight_even_on_initial_denial() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context()).with_subscription(hook(
         "never",
         json!([]),
@@ -601,22 +607,22 @@ fn malformed_native_candidate_fails_preflight_even_on_initial_denial() {
         assert_eq!(error.kind, BoundaryErrorKind::Preflight);
         assert!(error.partial.is_none());
     }
-    assert!(calls.borrow().is_empty());
+    assert!(calls.lock().unwrap().is_empty());
 }
 
 #[test]
 fn omitted_native_state_differs_from_explicit_none_until_first_acceptance() {
-    let calls = Rc::new(RefCell::new(vec![]));
+    let calls = Arc::new(Mutex::new(vec![]));
     let client = Client::new(context())
         .with_subscription(hook("first", json!([]), FailurePolicy::Closed, &calls))
         .with_subscription(hook("second", json!([]), FailurePolicy::Closed, &calls));
     block_on(async { client.tool_before(Input { count: 1 }).await.unwrap() });
-    assert!(calls.borrow()[0]["params"].get("state").is_none());
+    assert!(calls.lock().unwrap()[0]["params"].get("state").is_none());
     assert_eq!(
-        calls.borrow()[1]["params"]["state"],
+        calls.lock().unwrap()[1]["params"]["state"],
         json!({"permission":"none","candidate":null})
     );
-    calls.borrow_mut().clear();
+    calls.lock().unwrap().clear();
     block_on(async {
         client
             .tool_before(Input { count: 1 })
@@ -624,7 +630,7 @@ fn omitted_native_state_differs_from_explicit_none_until_first_acceptance() {
             .await
             .unwrap()
     });
-    for request in calls.borrow().iter() {
+    for request in calls.lock().unwrap().iter() {
         assert_eq!(
             request["params"]["state"],
             json!({"permission":"none","candidate":null})

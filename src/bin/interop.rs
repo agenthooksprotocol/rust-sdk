@@ -7,10 +7,6 @@ use agenthooksprotocol::server::{
 };
 use serde_json::{Value, json};
 use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
-use std::{
     fs,
     io::{BufRead, BufReader, Read, Write},
     path::Path,
@@ -218,17 +214,17 @@ impl Peer {
 }
 // The real transport is invoked by the lazy SDK boundary, not before it.
 struct CoreHook {
-    peer: Rc<RefCell<Option<Peer>>>,
+    peer: Arc<Mutex<Option<Peer>>>,
     http: reqwest::blocking::Client,
     endpoint: String,
     token: String,
-    acquisition_failed: Rc<Cell<bool>>,
+    acquisition_failed: Arc<AtomicBool>,
 }
 impl Hook for CoreHook {
     fn call(&self, request: Value) -> LocalFuture<'_, std::result::Result<Value, HookError>> {
         Box::pin(async move {
             let response: Result<Value> = (|| {
-                if let Some(peer) = self.peer.borrow_mut().as_mut() {
+                if let Some(peer) = self.peer.lock().unwrap().as_mut() {
                     peer.call(&request)
                 } else {
                     Ok(successful(
@@ -248,7 +244,7 @@ impl Hook for CoreHook {
                 Ok(response)
             });
             response.map_err(|error| {
-                self.acquisition_failed.set(true);
+                self.acquisition_failed.store(true, Ordering::Relaxed);
                 HookError(error.to_string())
             })
         })
@@ -480,11 +476,11 @@ fn client(c: &Value) -> Result<bool> {
         .json()?
     };
     schemas.validate("capabilities", &discovered)?;
-    let peer = Rc::new(RefCell::new(peer));
+    let peer = Arc::new(Mutex::new(peer));
     let mut results = Vec::new();
     let mut passed = true;
     for s in cases {
-        let acquisition_failed = Rc::new(Cell::new(false));
+        let acquisition_failed = Arc::new(AtomicBool::new(false));
         // Acquisition failures are never evidence of canonical response rejection.
         let outcome: Result<Result<Value>> = (|| {
             schemas.validate("intercept-request", &s["request"])?;
@@ -501,13 +497,13 @@ fn client(c: &Value) -> Result<bool> {
                 } else {
                     settle_event(&s["request"], hook)
                 };
-                if acquisition_failed.get() {
+                if acquisition_failed.load(Ordering::Relaxed) {
                     return Err("transport acquisition failed".into());
                 }
                 return Ok(result);
             }
             // Only the five exact already-settled reducer probes acquire outside the SDK.
-            let response = if let Some(peer) = peer.borrow_mut().as_mut() {
+            let response = if let Some(peer) = peer.lock().unwrap().as_mut() {
                 peer.call(&s["request"])?
             } else {
                 successful(

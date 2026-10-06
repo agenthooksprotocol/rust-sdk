@@ -4,7 +4,9 @@
 //! created implicitly. Deadlines cover queueing, writes and reads. Cancellation,
 //! timeout, EOF or framing failure permanently retires this process: a subsequent
 //! call reaps it rather than reusing a possibly desynchronized stream. `shutdown`
-//! deterministically kills and waits; dropping only initiates termination (Tokio
+//! kills and waits within its configured deadline, including queueing. A cleanup
+//! timeout retains the child for a later shutdown attempt, never reports it reaped.
+//! Dropping only initiates termination (Tokio
 //! performs best-effort reaping while its runtime remains alive).
 //!
 //! Stdio has no HTTP status or headers. `Http::send` returns status 200 and the
@@ -168,16 +170,28 @@ impl Process {
         let session = lease.session.as_mut().expect("process lease");
         // start_kill can fail if the child already exited; wait is authoritative.
         let _ = session.child.start_kill();
-        session.child.wait().await.map_err(error)?;
+        tokio::time::timeout(lease.owner.deadline, session.child.wait())
+            .await
+            .map_err(|_| {
+                error("subprocess cleanup deadline exceeded; child retained for shutdown")
+            })?
+            .map_err(error)?;
         lease.session.take();
         Ok(())
     }
 
     /// Close stdin after a per-event notification and allow bounded graceful exit.
     /// A timeout or unsuccessful exit is a delivery failure, never an acknowledgment.
-    /// Cancellation retains the killed child for a subsequent `shutdown` to reap.
+    /// Queueing and graceful exit share `grace`; kill/reap then has at most the
+    /// configured process deadline. Cancellation while owning the child retains
+    /// it retired for a subsequent `shutdown` to reap.
     pub(crate) async fn finish_notification(&self, grace: Duration) -> Result<(), TransportError> {
-        let _gate = self.gate.lock().await;
+        let graceful_deadline = tokio::time::Instant::now() + grace;
+        let _gate = tokio::time::timeout_at(graceful_deadline, self.gate.lock())
+            .await
+            .map_err(|_| {
+                error("notification queue deadline exceeded; child retained for shutdown")
+            })?;
         let state = std::mem::replace(
             &mut *self.state.lock().expect("process state lock"),
             State::Closed,
@@ -201,7 +215,7 @@ impl Process {
         let session = lease.session.as_mut().expect("process lease");
         // Dropping the pipe, rather than merely flushing it, delivers EOF.
         session.stdin.take();
-        match tokio::time::timeout(grace, session.child.wait()).await {
+        match tokio::time::timeout_at(graceful_deadline, session.child.wait()).await {
             Ok(Ok(status)) => {
                 lease.session.take();
                 if status.success() {
@@ -222,9 +236,17 @@ impl Process {
     }
 
     /// Serialize with active exchanges, terminate and reap the child. Idempotent.
-    /// If this future is cancelled, termination is initiated and a later shutdown
-    /// can finish waiting. An active exchange has its configured deadline.
+    /// The configured process deadline bounds queueing and kill/reap together.
+    /// Success means the child was reaped. Timeout or cancellation while reaping
+    /// retains a retired child for retry; while queued, the active exchange keeps
+    /// ownership and is not cancelled. Drop that exchange before retrying cleanup.
     pub async fn shutdown(&self) -> Result<(), TransportError> {
+        tokio::time::timeout(self.deadline, self.shutdown_inner())
+            .await
+            .map_err(|_| error("subprocess shutdown deadline exceeded; cleanup must be retried"))?
+    }
+
+    async fn shutdown_inner(&self) -> Result<(), TransportError> {
         let _gate = self.gate.lock().await;
         let state = std::mem::replace(
             &mut *self.state.lock().expect("process state lock"),
@@ -246,7 +268,7 @@ impl Http for Process {
     fn send(
         &self,
         request: Request,
-    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Response, TransportError>> + Send + '_>> {
         Box::pin(self.exchange(request.body, true))
     }
 }

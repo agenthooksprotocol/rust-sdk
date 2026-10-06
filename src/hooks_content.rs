@@ -1,9 +1,11 @@
 //! Private, registration-driven projection. Never walk arbitrary application JSON.
+use crate::adapters::registered::{AuthContext, AuthPurpose};
 use crate::{adapters::registered::BackendOptions, client::HookError, content::ContentContext};
 use serde_json::Value;
+use std::time::{Duration, Instant};
 
 fn error(message: impl ToString) -> HookError {
-    HookError(message.to_string())
+    HookError(message.to_string()).classified(crate::generated::DeliveryDiagnosticCode::Preparation)
 }
 
 fn category(item: &Value) -> &str {
@@ -98,13 +100,13 @@ fn locations(event: &Value) -> Vec<String> {
             .filter(|p| event.pointer(p).is_some())
             .map(|p| p.to_string()),
     );
-    if event["type"] == "tool.after" {
-        if let Some(changes) = event["fileChanges"].as_array() {
-            for (i, change) in changes.iter().enumerate() {
-                for stage in ["before", "after"] {
-                    if change.get(stage).is_some() {
-                        paths.push(format!("/fileChanges/{i}/{stage}"));
-                    }
+    if event["type"] == "tool.after"
+        && let Some(changes) = event["fileChanges"].as_array()
+    {
+        for (i, change) in changes.iter().enumerate() {
+            for stage in ["before", "after"] {
+                if change.get(stage).is_some() {
+                    paths.push(format!("/fileChanges/{i}/{stage}"));
                 }
             }
         }
@@ -117,13 +119,9 @@ fn upload_credential(
     options: &BackendOptions,
 ) -> Result<Option<crate::content::UploadCredential>, HookError> {
     let Some(auth) = upload.get("auth") else {
-        return if options.allow_anonymous_http {
-            Ok(None)
-        } else {
-            Err(error(
-                "upload authentication required (independent of event authentication)",
-            ))
-        };
+        // An absent upload binding authorizes anonymous upload, never inheritance
+        // of the selected backend's event credentials.
+        return Ok(None);
     };
     if auth["type"] != "bearer" {
         return Err(error("unsupported upload authentication"));
@@ -148,6 +146,118 @@ fn upload_credential(
         .map_err(error)
 }
 
+fn remaining_upload_budget(deadline: Instant) -> Result<Duration, HookError> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|d| !d.is_zero())
+        .ok_or_else(|| {
+            HookError("upload deadline exceeded".into())
+                .classified(crate::generated::DeliveryDiagnosticCode::DeadlineExceeded)
+        })
+}
+
+async fn await_upload_phase<T>(
+    deadline: Instant,
+    future: impl std::future::Future<Output = Result<T, HookError>>,
+) -> Result<T, HookError> {
+    let remaining = remaining_upload_budget(deadline)?;
+    #[cfg(feature = "reqwest")]
+    {
+        tokio::time::timeout(remaining, future).await.map_err(|_| {
+            HookError("upload deadline exceeded".into())
+                .classified(crate::generated::DeliveryDiagnosticCode::DeadlineExceeded)
+        })?
+    }
+    #[cfg(not(feature = "reqwest"))]
+    {
+        let _ = remaining;
+        future.await
+    }
+}
+
+async fn prepare_upload_credential(
+    upload: &Value,
+    options: &BackendOptions,
+    context: &AuthContext,
+) -> Result<(Option<crate::content::UploadCredential>, Option<String>), HookError> {
+    remaining_upload_budget(context.deadline)?;
+    let Some(provider) = &options.auth_provider else {
+        return upload_credential(upload, options).map(|credential| (credential, None));
+    };
+    let credential = await_upload_phase(context.deadline, async {
+        provider
+            .credential(context.clone())
+            .await
+            .map_err(|_| error("upload authentication provider failed"))
+    })
+    .await?;
+    remaining_upload_budget(context.deadline)?;
+    match credential {
+        Some(credential) => Ok((
+            Some(
+                crate::content::UploadCredential::bearer(credential.token)
+                    .map_err(|_| error("invalid upload bearer credential"))?,
+            ),
+            Some(credential.attempt_id),
+        )),
+        None if context.authentication.is_none() => Ok((None, None)),
+        None => Err(error("configured upload credential unavailable")),
+    }
+}
+
+#[cfg(any(feature = "reqwest", test))]
+struct ChallengeHttp<'a, H> {
+    inner: &'a H,
+    provider: Option<&'a dyn crate::adapters::registered::AuthProvider>,
+    context: &'a AuthContext,
+    attempt_id: Option<&'a str>,
+}
+#[cfg(any(feature = "reqwest", test))]
+impl<H: crate::transport::Http> crate::transport::Http for ChallengeHttp<'_, H> {
+    fn send(
+        &self,
+        request: crate::transport::Request,
+    ) -> crate::client::LocalFuture<
+        '_,
+        Result<crate::transport::Response, crate::transport::TransportError>,
+    > {
+        Box::pin(async move {
+            use crate::{adapters::registered::AuthChallenge, transport::TransportError};
+            remaining_upload_budget(self.context.deadline)
+                .map_err(|e| TransportError(e.to_string()))?;
+            let response = self.inner.send(request).await?;
+            if response.status == 401
+                && let Some(provider) = self.provider
+            {
+                remaining_upload_budget(self.context.deadline)
+                    .map_err(|e| TransportError(e.to_string()))?;
+                await_upload_phase(self.context.deadline, async {
+                    provider
+                        .challenge(
+                            self.context.clone(),
+                            AuthChallenge {
+                                status: response.status,
+                                headers: response
+                                    .headers
+                                    .iter()
+                                    .filter(|(key, _)| key.eq_ignore_ascii_case("www-authenticate"))
+                                    .map(|(key, value)| (key.to_ascii_lowercase(), value.clone()))
+                                    .collect(),
+                                attempt_id: self.attempt_id.map(str::to_owned),
+                            },
+                        )
+                        .await
+                        .map_err(|_| error("upload authentication challenge failed"))
+                })
+                .await
+                .map_err(|e| TransportError(e.to_string()))?;
+            }
+            // Upload allocation is effectful: authentication recovery does not grant replay.
+            Ok(response)
+        })
+    }
+}
+
 fn selected_body(item: &Value) -> bool {
     item["selection"] == "body" && item.get("body").is_some() && item.get("gap").is_none()
 }
@@ -156,10 +266,10 @@ fn remove_effect(caps: &mut Value, kind: &str) {
     if let Some(effects) = caps["effects"].as_array_mut() {
         effects.retain(|effect| effect != kind);
     }
-    if kind == "modify" {
-        if let Some(object) = caps.as_object_mut() {
-            object.remove("modify");
-        }
+    if kind == "modify"
+        && let Some(object) = caps.as_object_mut()
+    {
+        object.remove("modify");
     }
 }
 
@@ -289,6 +399,7 @@ pub(crate) fn validate_response_grants(request: &Value, response: &Value) -> Res
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn project_with_bodies(
     request: Value,
     selection: &Value,
@@ -296,8 +407,20 @@ pub(crate) async fn project_with_bodies(
     content: &ContentContext<'_>,
     options: &BackendOptions,
     bodies: &crate::body::DeferredBodies,
+    backend_id: &str,
+    deadline: Instant,
 ) -> Result<Value, HookError> {
-    project_inner(request, selection, upload, content, options, Some(bodies)).await
+    project_inner(
+        request,
+        selection,
+        upload,
+        content,
+        options,
+        Some(bodies),
+        backend_id,
+        deadline,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -308,9 +431,20 @@ pub(crate) async fn project(
     content: &ContentContext<'_>,
     options: &BackendOptions,
 ) -> Result<Value, HookError> {
-    project_inner(request, selection, upload, content, options, None).await
+    project_inner(
+        request,
+        selection,
+        upload,
+        content,
+        options,
+        None,
+        "test",
+        Instant::now() + Duration::from_secs(30),
+    )
+    .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn project_inner(
     mut request: Value,
     selection: &Value,
@@ -318,6 +452,8 @@ async fn project_inner(
     content: &ContentContext<'_>,
     options: &BackendOptions,
     deferred: Option<&crate::body::DeferredBodies>,
+    backend_id: &str,
+    deadline: Instant,
 ) -> Result<Value, HookError> {
     crate::canonical::validate("content-selection", selection).map_err(error)?;
     let event = request
@@ -373,25 +509,41 @@ async fn project_inner(
         .as_u64()
         .filter(|n| *n > 0)
         .ok_or_else(|| error("positive upload timeoutMs is required"))?;
-    let credential = upload_credential(upload, options)?;
+    let deadline = deadline.min(
+        Instant::now()
+            .checked_add(Duration::from_millis(timeout))
+            .ok_or_else(|| error("invalid upload deadline"))?,
+    );
+    let auth_context = AuthContext {
+        backend_id: backend_id.into(),
+        authentication: upload.get("auth").cloned(),
+        destination: endpoint.into(),
+        purpose: AuthPurpose::Upload,
+        deadline,
+    };
+    let (credential, attempt_id) =
+        prepare_upload_credential(upload, options, &auth_context).await?;
     // Verify the complete batch before performing any upload. Failed uploads may
     // leave immutable receiver allocations, but no partial wire request escapes.
     let mut bodies = Vec::new();
     for path in selected {
+        remaining_upload_budget(deadline)?;
         let item = event
             .pointer_mut(&path)
             .ok_or_else(|| error("missing content item"))?;
         if item.get("gap").is_some() {
             return Err(error("selected body unavailable"));
         }
-        if let Some(deferred) = deferred {
-            if let Some(reference) = deferred
-                .materialize(&item["body"], content, max_bytes)
-                .await
-                .map_err(error)?
-            {
-                item["body"] = reference;
-            }
+        if let Some(deferred) = deferred
+            && let Some(reference) = await_upload_phase(deadline, async {
+                deferred
+                    .materialize(&item["body"], content, max_bytes)
+                    .await
+                    .map_err(error)
+            })
+            .await?
+        {
+            item["body"] = reference;
         }
         if item["body"]["size"]
             .as_u64()
@@ -412,32 +564,41 @@ async fn project_inner(
     reject_deferred(&request)?;
     #[cfg(not(feature = "reqwest"))]
     {
-        let _ = (endpoint, timeout, credential, bodies);
+        let _ = (endpoint, timeout, credential, bodies, attempt_id);
         Err(error(
             "selected body upload requires the reqwest feature, including for stdio hooks",
         ))
     }
     #[cfg(feature = "reqwest")]
     {
-        let http = crate::adapters::reqwest::ReqwestHttp::with_timeout(
-            options.max_frame_bytes.min(8192),
-            options.allow_loopback_http,
-            std::time::Duration::from_millis(timeout),
-        )
-        .map_err(error)?;
-        let uploader = crate::content::Uploader::new(
-            &http,
-            endpoint,
-            max_bytes,
-            credential,
-            options.allow_loopback_http,
-        )
-        .map_err(error)?;
         let event = request
             .pointer_mut("/params/event")
             .ok_or_else(|| error("missing event"))?;
         for (path, bytes) in bodies {
-            let reference = uploader.upload(&bytes).await.map_err(error)?;
+            let remaining = remaining_upload_budget(deadline)?;
+            let transport = crate::adapters::reqwest::ReqwestHttp::with_timeout(
+                options.max_frame_bytes.min(8192),
+                options.allow_loopback_http,
+                remaining,
+            )
+            .map_err(error)?;
+            let http = ChallengeHttp {
+                inner: &transport,
+                provider: options.auth_provider.as_deref(),
+                context: &auth_context,
+                attempt_id: attempt_id.as_deref(),
+            };
+            let uploader = crate::content::Uploader::new(
+                &http,
+                endpoint,
+                max_bytes,
+                credential.clone(),
+                options.allow_loopback_http,
+            )
+            .map_err(error)?;
+            let result = uploader.upload(&bytes).await;
+            remaining_upload_budget(deadline)?;
+            let reference = result.map_err(error)?;
             let reference = serde_json::to_value(reference).map_err(error)?;
             let item = event
                 .pointer_mut(&path)
@@ -486,6 +647,7 @@ mod tests {
     fn options() -> BackendOptions {
         BackendOptions {
             credentials: BTreeMap::new(),
+            auth_provider: None,
             allow_anonymous_http: false,
             allow_loopback_http: false,
             max_frame_bytes: 8192,
@@ -502,6 +664,188 @@ mod tests {
             scope: AuthorizedScope::new("test"),
         }
     }
+    #[derive(Default)]
+    struct Provider {
+        contexts: std::sync::Mutex<Vec<AuthContext>>,
+        challenges: std::sync::Mutex<Vec<crate::adapters::registered::AuthChallenge>>,
+        missing: bool,
+        fail: bool,
+    }
+    impl crate::adapters::registered::AuthProvider for Provider {
+        fn credential(
+            &self,
+            context: AuthContext,
+        ) -> crate::client::LocalFuture<
+            '_,
+            Result<Option<crate::adapters::registered::BearerCredential>, HookError>,
+        > {
+            Box::pin(async move {
+                self.contexts.lock().unwrap().push(context);
+                if self.fail {
+                    return Err(error("secret-provider-detail"));
+                }
+                Ok(if self.missing {
+                    None
+                } else {
+                    Some(crate::adapters::registered::BearerCredential {
+                        token: "upload-only-token".into(),
+                        attempt_id: "opaque-attempt".into(),
+                    })
+                })
+            })
+        }
+        fn challenge(
+            &self,
+            context: AuthContext,
+            challenge: crate::adapters::registered::AuthChallenge,
+        ) -> crate::client::LocalFuture<'_, Result<(), HookError>> {
+            Box::pin(async move {
+                self.contexts.lock().unwrap().push(context);
+                self.challenges.lock().unwrap().push(challenge);
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_provider_gets_independent_binding_and_challenge_without_replay() {
+        struct Rejected(std::sync::atomic::AtomicUsize);
+        impl crate::transport::Http for Rejected {
+            fn send(
+                &self,
+                request: crate::transport::Request,
+            ) -> crate::client::LocalFuture<
+                '_,
+                Result<crate::transport::Response, crate::transport::TransportError>,
+            > {
+                Box::pin(async move {
+                    self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    assert_eq!(request.headers["authorization"], "Bearer upload-only-token");
+                    Ok(crate::transport::Response {
+                        status: 401,
+                        headers: BTreeMap::from([
+                            (
+                                "WWW-Authenticate".into(),
+                                "Bearer error=invalid_token".into(),
+                            ),
+                            ("set-cookie".into(), "secret".into()),
+                        ]),
+                        body: vec![],
+                    })
+                })
+            }
+        }
+        let provider = Arc::new(Provider::default());
+        let mut options = options();
+        options.auth_provider = Some(provider.clone());
+        options
+            .credentials
+            .insert("event".into(), "event-only-token".into());
+        let upload = json!({"auth":{"type":"bearer","tokenRef":"upload"}});
+        let context = AuthContext {
+            backend_id: "selected-backend".into(),
+            authentication: upload.get("auth").cloned(),
+            destination: "https://upload.example.test/content".into(),
+            purpose: AuthPurpose::Upload,
+            deadline: Instant::now() + Duration::from_secs(10),
+        };
+        let (credential, attempt) =
+            futures::executor::block_on(prepare_upload_credential(&upload, &options, &context))
+                .unwrap();
+        let inner = Rejected(std::sync::atomic::AtomicUsize::new(0));
+        let http = ChallengeHttp {
+            inner: &inner,
+            provider: Some(provider.as_ref()),
+            context: &context,
+            attempt_id: attempt.as_deref(),
+        };
+        let uploader =
+            crate::content::Uploader::new(&http, &context.destination, 8, credential, false)
+                .unwrap();
+        assert!(futures::executor::block_on(uploader.upload(b"body")).is_err());
+        assert_eq!(inner.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        let contexts = provider.contexts.lock().unwrap();
+        assert_eq!(contexts.len(), 2);
+        for actual in contexts.iter() {
+            assert_eq!(actual.backend_id, context.backend_id);
+            assert_eq!(actual.authentication, context.authentication);
+            assert_eq!(actual.destination, context.destination);
+            assert_eq!(actual.purpose, AuthPurpose::Upload);
+            assert_eq!(actual.deadline, context.deadline);
+        }
+        let challenges = provider.challenges.lock().unwrap();
+        assert_eq!(challenges[0].attempt_id.as_deref(), Some("opaque-attempt"));
+        assert_eq!(challenges[0].headers.len(), 1);
+        assert_eq!(
+            challenges[0].headers["www-authenticate"],
+            "Bearer error=invalid_token"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_provider_missing_credentials_fail_closed_and_errors_are_sanitized() {
+        let upload = json!({"auth":{"type":"bearer","tokenRef":"upload"}});
+        for (missing, fail) in [(true, false), (false, true)] {
+            let mut options = options();
+            options.auth_provider = Some(Arc::new(Provider {
+                missing,
+                fail,
+                ..Default::default()
+            }));
+            let context = AuthContext {
+                backend_id: "selected-backend".into(),
+                authentication: upload.get("auth").cloned(),
+                destination: "https://upload.example.test/content".into(),
+                purpose: AuthPurpose::Upload,
+                deadline: Instant::now() + Duration::from_secs(10),
+            };
+            let result =
+                futures::executor::block_on(prepare_upload_credential(&upload, &options, &context));
+            let Err(error) = result else {
+                panic!("must fail closed");
+            };
+            assert!(!error.to_string().contains("secret-provider-detail"));
+            assert_eq!(
+                error.code(),
+                crate::generated::DeliveryDiagnosticCode::Preparation
+            );
+        }
+        let provider = Arc::new(Provider::default());
+        let mut options = options();
+        options.auth_provider = Some(provider.clone());
+        let context = AuthContext {
+            backend_id: "selected-backend".into(),
+            authentication: upload.get("auth").cloned(),
+            destination: "https://upload.example.test/content".into(),
+            purpose: AuthPurpose::Upload,
+            deadline: Instant::now(),
+        };
+        let result =
+            futures::executor::block_on(prepare_upload_credential(&upload, &options, &context));
+        let Err(error) = result else {
+            panic!("expired budget must fail");
+        };
+        assert_eq!(
+            error.code(),
+            crate::generated::DeliveryDiagnosticCode::DeadlineExceeded
+        );
+        assert!(provider.contexts.lock().unwrap().is_empty());
+    }
+
+    #[cfg(feature = "reqwest")]
+    #[tokio::test]
+    async fn pending_upload_auth_is_interrupted_by_phase_budget() {
+        let result = await_upload_phase::<()>(
+            Instant::now() + Duration::from_millis(5),
+            std::future::pending(),
+        )
+        .await;
+        assert_eq!(
+            result.unwrap_err().code(),
+            crate::generated::DeliveryDiagnosticCode::DeadlineExceeded
+        );
+    }
+
     #[test]
     fn misplaced_deferred_handles_cannot_escape_in_arbitrary_json() {
         let registry = crate::body::DeferredBodies::new(8, 1);
@@ -515,6 +859,8 @@ mod tests {
                 &context(),
                 &options(),
                 &registry,
+                "test",
+                Instant::now() + Duration::from_secs(30),
             ))
             .is_err()
         );
@@ -611,7 +957,7 @@ mod tests {
             &options,
         ))
         .unwrap_err();
-        assert!(err.0.contains("unavailable"));
+        assert!(err.to_string().contains("unavailable"));
     }
     #[test]
     fn upload_credentials_never_fall_back_to_event_credentials() {
@@ -619,7 +965,7 @@ mod tests {
         options
             .credentials
             .insert("event-token".into(), "secret".into());
-        assert!(upload_credential(&json!({}), &options).is_err());
+        assert!(upload_credential(&json!({}), &options).unwrap().is_none());
         assert!(
             upload_credential(
                 &json!({"auth":{"type":"bearer","tokenRef":"upload-token"}}),

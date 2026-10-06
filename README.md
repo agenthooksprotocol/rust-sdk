@@ -1,6 +1,6 @@
 # Agent Hooks Protocol SDK for Rust
 
-The active draft also provides MCP-aligned elicitation, deferred short-circuit
+The active draft also provides MCP-aligned elicitation, operation-owned short-circuit
 observations, and before/after compaction controls. See the shared
 [boundary API guide](https://github.com/agenthooksprotocol/agent-hooks-protocol/blob/main/docs/accepted-boundary-apis.md)
 for entrypoints, upload binding, trusted-host obligations, and test scope.
@@ -22,15 +22,17 @@ agenthooksprotocol = { git = "https://github.com/agenthooksprotocol/rust-sdk", r
 
 `Hooks` accepts an ordinary `generated::Registration` and `HooksOptions` with
 explicit per-event `EventGrant` authority. Registration selects routes; it does
-not grant effects or observation permission. `tool_before(input)` accepts typed
-input, while `tool_before_event(event)` accepts a whole event. The named event
-facade follows the generated catalogue.
+not grant effects or observation permission. `tool_before(ToolBeforeInput<T>)`
+accepts flattened typed host facts and preserves the application argument type.
+`tool_input(T).context(...)` and `event(...)` retain advanced canonical paths.
+The named event facade follows the generated catalogue.
 
 Enable `reqwest` for registered HTTP and `tokio-process` for registered stdio.
 Default features remain empty. Construction and unpolled boundaries perform no
 transport I/O. The host supplies an executor; the SDK creates no executor or
-background observation thread. Anonymous HTTP and local HTTP require explicit
-policy, and upload credentials are independent of event credentials.
+background observation thread. Local HTTP requires explicit policy; upload
+credentials are independent of event credentials. Absent authentication permits
+anonymous delivery, but does not authorize discovery or credential disclosure.
 
 See [`examples/registered_hooks.rs`](examples/registered_hooks.rs) for JSON
 registration, explicit grants, typed input, and real transports:
@@ -39,17 +41,39 @@ registration, explicit grants, typed input, and real transports:
 cargo run --example registered_hooks --features reqwest,tokio-process -- registration.json
 ```
 
-Observation routes require an explicit `ObservationScheduler`. The example uses
-`TokioObservationScheduler` inside a host-owned `tokio::task::LocalSet`;
-runtime-neutral hosts can supply their own local executor. Settled boundaries
-schedule observations automatically. `wait_until_idle()` only awaits scheduled
-work; it does not initiate delivery. Await it before `shutdown()` when all queued
-observations should finish. `shutdown()` stops admission, cancels outstanding
-work, and reaps owned subprocesses. Retry shutdown after cleanup failure. Observation failures cannot
-change settled results; reports retain at most 1,024 failure details and count
-additional failures in `omitted_failures`. Reports are cumulative, not drained.
-Typed decoding occurs after settlement, so decoding errors do not roll back
-accepted effects. The host still owns approval and application execution.
+A `Hooks` operation owns interception, selected content preparation, authentication,
+and best-effort observation delivery. Its normal completion leaves no detached
+observation work. The host can spawn the **whole operation** on its own executor;
+ordinary futures are `Send`, and no `LocalSet`, scheduler injection, private runtime,
+or background observation thread is required. Hosts must still await interception
+before acting on permission. `permission()` reports `None`, `Allow`, `Ask`, or
+`Deny`; it is not a replacement for interruption, host approval, decoding, and
+execution gates.
+
+`wait_until_idle()` waits for active operations and reports cumulative delivery
+failures; it never starts delivery. `shutdown()` stops admission, cancels owned
+work, closes owned content sources, and reaps SDK-created subprocesses. It does not
+drain normal best-effort observations or close a harness-shared auth provider.
+Retry shutdown after cleanup failure. Observation failures cannot change settled
+results; reports retain at most 1,024 failure details and count additional failures
+in `omitted_failures`.
+
+A boundary can use `.budget(expiry)` or `.cancel_when(signal)` with a host-native
+`Send` future. `.deadline_with(deadline, expiry)` also propagates the absolute
+monotonic deadline to shorten transport work. The supplied expiry future provides
+timer wakeups; the SDK does not create a timer runtime. The one operation budget
+covers preparation, authentication, uploads, interception and owned observations;
+phase changes do not reset it. Dropping or cancelling a call never authorizes an
+incomplete interception. Bounded transport cleanup/reaping can outlast expiry.
+
+Typed decoding occurs after settlement: `result.input` is a fresh
+`Result<T, InputDecodeError>`, not an unchecked cast. A decoding error does not roll
+back accepted effects. The host still owns application validation and execution.
+`result.diagnostics` carries generated cause codes separately from delivery stage,
+backend/subscription attribution, failure policy, and synthetic-denial evidence;
+backend messages, bodies, and credentials are excluded. Canonical protocol denial
+is not a delivery failure. Accepted raw responses remain in
+`result.outcome.responses` for advanced consumers.
 
 ### Run both transports locally
 
@@ -74,9 +98,14 @@ REGISTERED_HOOK_TOKEN=local-demo-only cargo run --example registered_hooks --fea
 
 The example prints the authorized effective input but never executes it. The
 local HTTP fixture is demonstration code, not a production server. Production
-HTTP requires HTTPS; anonymous access and loopback HTTP are not enabled by
-default. Registered transports currently implement bearer authentication only:
-OAuth and other unsupported mechanisms fail closed rather than downgrading.
+HTTP requires HTTPS; loopback HTTP is not enabled by default. Registered HTTP supports bearer delivery through a registration-aware
+`BackendOptions::auth_provider`. The provider receives the selected binding,
+backend identity, destination, event/upload purpose, and remaining deadline;
+authentication challenges include the opaque attempted-credential identity.
+Bearer `tokenEnv` remains available without a custom provider. The harness owns
+OAuth discovery/trust, consent, token acquisition/refresh, and provider lifecycle.
+Configured unsupported mechanisms and missing credentials fail closed. Event
+credentials are never an implicit fallback for independently bound uploads.
 
 ### Event envelopes, manifests, and bodies
 
@@ -88,7 +117,14 @@ for a complete `generated::StaticCapabilityManifest`, including tool paths,
 limits, and extension fields; the simple event-grant constructor only advertises
 its supported event/mode/capability subset.
 
-`hooks.stage_body(Body::stream(source)).await` transfers ownership without
+Use generated named source bindings, for example
+`.body_source(ergonomic_inputs::tool_before_sources::items(index, Body::stream(source)))`,
+to transfer a source into an operation without raw JSON-pointer strings. The
+source is dropped on success, failure, cancellation, or an unused metadata/omit
+route; it is not read until body delivery is selected. Capture is shared immutably
+across fan-out, but each destination has independent upload authority.
+
+The advanced `hooks.stage_body(Body::stream(source)).await` transfers ownership without
 reading the stream. `Body::bytes`, `Body::text`, and `Body::json` are available for
 already-owned inputs. Place the returned body descriptor in an event content
 item. Matching subscriptions select body delivery; metadata, omit, and unmatched
@@ -96,7 +132,8 @@ routes do not read it. Selected bodies use bounded capture, immutable storage,
 and size/SHA-256 verification. Configure `max_body_bytes`, `max_stored_bytes`, and
 `max_stored_entries` in `HooksOptions`; upload credentials are resolved separately
 from event credentials. This is bounded in-memory spooling, not unbounded or
-disk-backed streaming.
+disk-backed streaming. Advanced staged sources live until consumed or Hooks shutdown;
+prefer operation-scoped bindings when a source belongs to one call.
 
 ## Quick start
 
@@ -184,6 +221,11 @@ must carry canonical event metadata and fresh logical event IDs. A per-occurrenc
 `.initial_candidate(descriptor)` preserves a native candidate and optional provenance;
 this provenance is not authorization. Absent initial state remains absent on the
 first outgoing request, while explicit initial state is preserved.
+`.initial_snapshot(snapshot)?` retains the complete canonical native snapshot,
+including candidate provenance, flow, instructions, injections, and extensions.
+A candidate whose value is JSON null remains distinct from no candidate. Native
+state describes a decision already made for this occurrence; it grants neither
+authenticated identity nor evidence of execution.
 
 ### Complete-event boundaries
 

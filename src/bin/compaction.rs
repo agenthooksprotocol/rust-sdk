@@ -10,7 +10,7 @@ use agenthooksprotocol::{
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Read, Write};
 use std::process::{Command, Stdio};
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
 pub fn fixture_content(store: &MemoryContentStore) -> ContentContext<'_> {
     ContentContext {
@@ -45,7 +45,7 @@ struct RecordingHook {
     inner: Box<dyn Hook>,
     supplier: String,
     store: MemoryContentStore,
-    log: Rc<RefCell<FixtureLog>>,
+    log: Arc<Mutex<FixtureLog>>,
 }
 impl Hook for RecordingHook {
     fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
@@ -54,7 +54,7 @@ impl Hook for RecordingHook {
             let before = event["type"] == "context.compact.before";
             let content = fixture_content(&self.store);
             {
-                let mut log = self.log.borrow_mut();
+                let mut log = self.log.lock().unwrap();
                 let instructions = if before {
                     selected_text(&event["instructions"], &content)
                         .map_err(|e| HookError(e.to_string()))?
@@ -80,7 +80,8 @@ impl Hook for RecordingHook {
                 for effect in effects {
                     if effect["type"] == "return" {
                         self.log
-                            .borrow_mut()
+                            .lock()
+                            .unwrap()
                             .returned
                             .push((self.supplier.clone(), effect["value"].clone()));
                     }
@@ -142,7 +143,7 @@ pub fn run_public_fixture(
         let name = p["name"].as_str().unwrap_or("compaction");
         let summary_id = p["itemId"].as_str().unwrap_or("summary-1");
         let content = fixture_content(store);
-        let log = Rc::new(RefCell::new(FixtureLog {
+        let log = Arc::new(Mutex::new(FixtureLog {
             bodies: json!({}),
             instructions: instructions.to_owned(),
             ..Default::default()
@@ -173,7 +174,7 @@ pub fn run_public_fixture(
                 .map_err(|e| e.to_string())
         })?;
         let instructions = selected_text(&settled.effective_event["instructions"], &content)?;
-        log.borrow_mut().instructions = instructions.clone();
+        log.lock().unwrap().instructions = instructions.clone();
         let mut failures: Vec<Value> = settled
             .outcome
             .failures
@@ -198,7 +199,8 @@ pub fn run_public_fixture(
             // not evidence of model consumption or an SDK authorization default.
             let body = if let Some(value) = settled.outcome.candidate.as_ref() {
                 let supplier = log
-                    .borrow()
+                    .lock()
+                    .unwrap()
                     .returned
                     .iter()
                     .rev()
@@ -222,7 +224,7 @@ pub fn run_public_fixture(
             };
             let item = content_item(&content, summary_id, "summary", "assistant", &body)?;
             let reference = item["body"]["ref"].as_str().ok_or("reference")?;
-            log.borrow_mut().bodies[reference] = json!(body);
+            log.lock().unwrap().bodies[reference] = json!(body);
             let after_event = json!({"id":format!("{name}:after"),"source":settled.effective_event["source"],"time":settled.effective_event["time"],"session":settled.effective_event["session"],"parentEventId":settled.effective_event["id"],"type":"context.compact.after","summary":item,"removed":[{"id":format!("{name}:context")}],"execution":if generated {json!({"status":"executed"})} else {json!({"status":"skipped","reason":"supplied_result"})}});
             let after_client = make_client(after);
             let observe = p["observeOnly"] == true;
@@ -261,7 +263,7 @@ pub fn run_public_fixture(
             applied = !denied;
             let item = &settled_after.effective_event["summary"];
             let reference = item["body"]["ref"].as_str().ok_or("reference")?;
-            log.borrow_mut().bodies[reference] = json!(selected_text(item, &content)?);
+            log.lock().unwrap().bodies[reference] = json!(selected_text(item, &content)?);
             summary = json!({"id":item["id"],"ref":reference});
             // The fixture explicitly schedules observations after settlement;
             // returned effects have no authority and delivery is best effort.
@@ -271,7 +273,7 @@ pub fn run_public_fixture(
                 }
             }
         }
-        let log = log.borrow();
+        let log = log.lock().unwrap();
         Ok(
             json!({"instructions":instructions,"candidate":candidate,"summary":summary,"bodies":log.bodies,"messages":messages,"injections":injections,"denied":denied,"seen":log.seen,"failures":failures,"generated":generated,"applied":applied,"provenance":provenance}),
         )
@@ -426,7 +428,7 @@ mod tests {
 
     struct CanonicalObserver {
         effects: Value,
-        delivered: Rc<RefCell<usize>>,
+        delivered: Arc<Mutex<usize>>,
     }
     impl Hook for CanonicalObserver {
         fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
@@ -441,7 +443,7 @@ mod tests {
                     )
                     .is_ok()
                 );
-                *self.delivered.borrow_mut() += 1;
+                *self.delivered.lock().unwrap() += 1;
                 // Deliberately invalid notification response: never authority.
                 Ok(json!({"jsonrpc":"2.0","id":"unsolicited","result":{
                     "protocolVersion":"draft","effects":self.effects
@@ -457,7 +459,7 @@ mod tests {
             {"supplier":"watch","effects":[],"failurePolicy":"fail-closed","throw":false}
         ],"observeOnly":true});
         let result = evaluate(&params).expect("observe-only public boundary must settle");
-        let delivered = Rc::new(RefCell::new(0));
+        let delivered = Arc::new(Mutex::new(0));
         let subscriptions = params["after"]
             .as_array()
             .unwrap()
@@ -482,7 +484,7 @@ mod tests {
             &MemoryContentStore::new(4096, 65536, 100),
         )
         .unwrap();
-        assert_eq!(*delivered.borrow(), 2);
+        assert_eq!(*delivered.lock().unwrap(), 2);
         assert_eq!(observed["applied"], true);
         assert_eq!(
             observed["bodies"][observed["summary"]["ref"].as_str().unwrap()],

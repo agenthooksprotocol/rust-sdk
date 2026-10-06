@@ -10,7 +10,7 @@ repository = "https://github.com/agenthooksprotocol/rust-sdk"
 
 [features]
 default = []
-reqwest = ["dep:reqwest"]
+reqwest = ["dep:reqwest", "dep:tokio"]
 axum = ["dep:axum"]
 tokio-process = ["dep:tokio"]
 # Existing executable interoperability harnesses, not the core SDK.
