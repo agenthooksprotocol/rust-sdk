@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/agenthooksprotocol/rust-sdk/compare/v0.1.0...v0.1.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* expose models and codecs at the crate root ([#9](https://github.com/agenthooksprotocol/rust-sdk/issues/9)) ([9567fe9](https://github.com/agenthooksprotocol/rust-sdk/commit/9567fe9ade3d08a0033ee540b5fe6f525a49dbc6))
+
 ## 0.1.0 (2026-10-07)
 
 
