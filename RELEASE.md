@@ -8,11 +8,15 @@ release; subsequent versions follow Conventional Commits.
 
 ## One-time setup
 
-1. Add the repository Actions secret `RELEASE_PLEASE_TOKEN`: a fine-grained GitHub
-   PAT limited to `agenthooksprotocol/rust-sdk`, with **Contents: read/write** and
-   **Pull requests: read/write**. Approve it for the organization if required.
-   Using a PAT lets release PRs trigger normal PR checks. Keep existing branch
-   protection and required CI checks enabled.
+1. Use the existing **Agent Hooks Protocol Bot** GitHub App. Install it on this
+   repository with **Contents: read/write** and **Pull requests: read/write**.
+   Set Actions variable **`RELEASE_APP_ID`** to its App ID and Actions secret
+   **`RELEASE_APP_PRIVATE_KEY`** to a PEM private key generated in its settings.
+   Organization-level values may be shared with just the four SDK repositories.
+   The workflow mints a short-lived installation token scoped to this repository
+   and those two permissions; it is revoked when the job ends. Release PRs,
+   tags, and GitHub releases use the bot identity and trigger normal PR CI.
+   No personal access token is needed. Keep branch protection enabled.
 2. Create the GitHub environment **release**, restrict deployments to **main**,
    and configure required reviewers as appropriate. The workflow runs on main
    but checks out the exact release commit for publishing.
