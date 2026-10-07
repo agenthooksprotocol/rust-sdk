@@ -1,4 +1,4 @@
-use agent_hooks_protocol::compaction::{
+use agenthooksprotocol::compaction::{
     CompactionHook, CompactionObserver, capabilities, run_compaction, run_compaction_observed,
 };
 use serde_json::{Value, json};
@@ -203,9 +203,13 @@ fn blocked_observers_do_not_gate_settlement_or_downstream() {
         }),
     };
     let host = thread::spawn(move || {
-        let result =
+        let deferred =
             run_compaction_observed("base", "summary-1", &[], vec![observer, throwing], None)
                 .unwrap();
+        let result = deferred.result;
+        for observation in deferred.observations {
+            thread::spawn(move || observation.deliver());
+        }
         let downstream = if result["applied"] == true {
             vec![result["bodies"][result["summary"]["ref"].as_str().unwrap()].clone()]
         } else {

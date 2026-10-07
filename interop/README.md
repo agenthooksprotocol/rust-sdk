@@ -3,12 +3,12 @@
 Run from `rust-sdk`:
 
 ```sh
-cargo build --bin interop
-cargo test --test interop
+cargo build --features interop --bin interop
+cargo test --features interop --test interop
 python3 interop/test_local.py
 python3 interop/test_transport.py
-cargo run --quiet --bin interop -- server --config /absolute/server.json
-cargo run --quiet --bin interop -- client --config /absolute/client.json
+cargo run --features interop --quiet --bin interop -- server --config /absolute/server.json
+cargo run --features interop --quiet --bin interop -- client --config /absolute/client.json
 ```
 
 `adapter.json` provides the central runner's launch commands. Configuration follows
@@ -30,9 +30,6 @@ with one allowance consumed per accepted continuation response. Stop preserves t
 instructions and allowance without scheduling continuation. Injections represent accepted scheduled
 work, not proof of content delivery. The tool.before, turn.finish.before, task.change.before and
 workspace.change.before boundaries are implemented; other boundaries are rejected.
-
-OAuth protected-resource discovery is not implemented; OAuth requires explicit
-test issuer configuration.
 
 HTTP supports bearer, actual OAuth client-credentials token acquisition, signed
 HS256 workload assertion verification, and actual mutual TLS with CA-based client

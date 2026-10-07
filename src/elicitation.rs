@@ -328,7 +328,7 @@ mod tests {
                 resolve,
                 validate,
                 "principal",
-                &[valid.clone()]
+                std::slice::from_ref(&valid)
             )
             .is_ok()
         );
@@ -359,4 +359,198 @@ mod tests {
             json!({"original":true})
         );
     }
+}
+
+/// Immutable original envelope and complete resolved MCP request snapshot.
+#[derive(Clone, Debug)]
+pub struct Exchange {
+    envelope: Value,
+    request: Option<Value>,
+}
+impl Exchange {
+    pub fn new(envelope: &Value, content: &crate::content::ContentContext<'_>) -> Result<Self> {
+        public_validate("intercept-request", envelope)?;
+        let event = &envelope["params"]["event"];
+        if event["type"] != "user.elicitation.request" || envelope["id"] != event["id"] {
+            return Err("Invalid elicitation request boundary".into());
+        }
+        let request = read_public_selected(&event["elicitation"], "request", content)?;
+        Ok(Self {
+            envelope: envelope.clone(),
+            request,
+        })
+    }
+    pub fn original_envelope(&self) -> &Value {
+        &self.envelope
+    }
+    pub fn original_event(&self) -> &Value {
+        &self.envelope["params"]["event"]
+    }
+    pub fn original_request(&self) -> Option<&Value> {
+        self.request.as_ref()
+    }
+}
+
+fn read_public_selected(
+    meta: &Value,
+    stage: &str,
+    content: &crate::content::ContentContext<'_>,
+) -> Result<Option<Value>> {
+    read_selected(
+        meta,
+        stage,
+        &|_| {
+            Ok(content
+                .resolve_selected(&meta[stage])?
+                .ok_or("Selected body unavailable")?
+                .to_vec())
+        },
+        &public_validate,
+    )
+}
+
+// Public stages use bundled pinned validators, never application policy.
+fn public_validate(name: &str, value: &Value) -> Result<()> {
+    if name == "form-answer" {
+        jsonschema::options()
+            .should_validate_formats(true)
+            .build(&value["schema"])?
+            .validate(&value["value"])
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    crate::canonical::validate(name, value)?;
+    Ok(())
+}
+
+/// Atomically stage a boundary. `candidate` is absent, not null, when no answer
+/// is selected. Changed complete JSON is uploaded and verified before publish.
+pub fn stage_boundary(
+    request: &Value,
+    effects: &[Value],
+    content: &crate::content::ContentContext<'_>,
+    original: Option<&Exchange>,
+) -> Result<Value> {
+    public_validate("intercept-request", request)?;
+    let mut event = request["params"]["event"].clone();
+    if request["id"] != event["id"] {
+        return Err("Request/event ID mismatch".into());
+    }
+    let result_stage = event["type"] == "user.elicitation.result";
+    let owned;
+    let exchange = if result_stage {
+        let exchange = original.ok_or("Result requires original elicitation exchange")?;
+        validate_correlation(&exchange.envelope, request)?;
+        let first = exchange.original_event();
+        if event.get("call") != first.get("call")
+            || event["elicitation"]["mode"] != first["elicitation"]["mode"]
+            || event["elicitation"]["server"] != first["elicitation"]["server"]
+        {
+            return Err("Elicitation correlation metadata mismatch".into());
+        }
+        exchange
+    } else {
+        owned = Exchange::new(request, content)?;
+        &owned
+    };
+    let payload = exchange.request.as_ref();
+    let mut answer = if result_stage {
+        read_public_selected(&event["elicitation"], "result", content)?
+    } else {
+        None
+    };
+    if let (Some(payload), Some(answer)) = (payload, answer.as_ref()) {
+        validate_answer(payload, answer, &public_validate)?;
+    }
+    let caps = &request["params"]["capabilities"];
+    let mut denied = false;
+    let mut terminal = false;
+    let mut messages = Vec::new();
+    // Compare final semantic state, not the occurrence of modify effects. This
+    // preserves the original exact bytes, hints and reference for no-op batches.
+    let original_answer = answer.clone();
+    for effect in effects {
+        public_validate("effect", effect)?;
+        let kind = effect["type"].as_str().ok_or("Effect type")?;
+        if !caps["effects"]
+            .as_array()
+            .is_some_and(|a| a.contains(&json!(kind)))
+        {
+            return Err("Effect not granted".into());
+        }
+        if kind == "message" {
+            messages.push(effect.clone());
+            continue;
+        }
+        validate_mode(
+            event["elicitation"]["mode"].as_str().ok_or("Mode")?,
+            caps.get("elicitation"),
+            "ahp",
+        )?;
+        payload.ok_or("Effects require original selected request")?;
+        if !result_stage && ["return", "deny"].contains(&kind) {
+            if terminal {
+                return Err("Conflicting terminal effects".into());
+            }
+            terminal = true;
+            denied = kind == "deny";
+            answer = Some(if denied {
+                json!({"action":"decline"})
+            } else {
+                effect["value"].clone()
+            });
+        } else if result_stage && kind == "modify" {
+            let op = effect["operation"].as_str().ok_or("Modify operation")?;
+            if effect["target"] != "content"
+                || !["replace", "merge"].contains(&op)
+                || caps["modify"]["content"][op] != true
+            {
+                return Err("Modify not granted".into());
+            }
+            let answer = answer.as_mut().ok_or("Modify requires selected result")?;
+            if op == "replace" {
+                answer["content"] = effect["value"].clone();
+            } else {
+                let patch = effect["value"].as_object().ok_or("Merge object")?;
+                if !patch.is_empty() {
+                    if answer.get("content").is_none() {
+                        answer["content"] = json!({});
+                    }
+                    let map = answer["content"].as_object_mut().ok_or("Content object")?;
+                    for (k, v) in patch {
+                        map.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+        } else {
+            return Err("Effect not permitted at elicitation boundary".into());
+        }
+    }
+    if let Some(answer) = answer.as_ref() {
+        if let Some(payload) = payload {
+            validate_answer(payload, answer, &public_validate)?;
+        }
+        if original_answer.as_ref() != Some(answer) {
+            let bytes = serde_json::to_vec(answer)?;
+            let reference = serde_json::to_value(content.put(&bytes)?)?;
+            if content.resolve(&reference)?.as_ref() != bytes.as_slice() {
+                return Err("Published answer integrity".into());
+            }
+            if result_stage {
+                let item = &mut event["elicitation"]["result"];
+                for hint in ["size", "sha256"] {
+                    if item.get(hint).is_some() {
+                        item[hint] = reference[hint].clone();
+                    }
+                }
+                item["body"] = reference;
+            }
+        }
+    }
+    let mut staged =
+        json!({"event":event,"denied":denied,"messages":messages,"externalCompletion":false});
+    if let Some(answer) = answer {
+        staged["candidate"] = answer;
+    }
+    Ok(staged)
 }

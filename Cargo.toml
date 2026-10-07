@@ -1,5 +1,5 @@
 [package]
-name = "agent-hooks-protocol"
+name = "agenthooksprotocol"
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.88"
@@ -8,14 +8,83 @@ description = "Official non-normative Rust SDK for the Agent Hooks Protocol"
 license = "Apache-2.0"
 repository = "https://github.com/agenthooksprotocol/rust-sdk"
 
+[features]
+default = []
+reqwest = ["dep:reqwest", "dep:tokio"]
+axum = ["dep:axum"]
+tokio-process = ["dep:tokio"]
+# Existing executable interoperability harnesses, not the core SDK.
+interop = ["reqwest", "reqwest/blocking", "dep:tiny_http", "dep:jsonwebtoken", "dep:rustls", "dep:rustls-pemfile", "dep:base64", "dep:futures"]
+
 [dependencies]
+tokio = { version = "1", features = ["process", "time", "io-util", "sync", "rt"], optional = true }
+sha2 = "0.10"
+time = { version = "0.3", features = ["formatting"] }
+url = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
-jsonschema = "0.33"
-reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
-tiny_http = { version = "0.12", features = ["ssl-rustls"] }
-jsonwebtoken = "9"
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-rustls-pemfile = "2"
+jsonschema = { version = "0.33", default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false, optional = true }
+tiny_http = { version = "0.12", features = ["ssl-rustls"], optional = true }
+jsonwebtoken = { version = "9", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+rustls-pemfile = { version = "2", optional = true }
 
-base64 = "0.22"
+base64 = { version = "0.22", optional = true }
+axum = { version = "0.8", optional = true }
+futures = { version = "0.3", optional = true }
+
+[[example]]
+name = "http_roundtrip"
+required-features = ["reqwest", "axum"]
+
+[dev-dependencies]
+futures = "0.3"
+tokio = { version = "1", features = ["macros", "rt", "net"] }
+
+[[bin]]
+name = "lifecycle_server"
+path = "src/bin/lifecycle_server.rs"
+required-features = ["interop"]
+
+[[bin]]
+name = "lifecycle_client"
+path = "src/bin/lifecycle_client.rs"
+required-features = ["interop"]
+
+[[bin]]
+name = "compaction_wire"
+path = "src/bin/compaction_wire.rs"
+required-features = ["interop"]
+
+[[bin]]
+name = "elicitation"
+path = "src/bin/elicitation.rs"
+required-features = ["interop"]
+
+[[bin]]
+name = "compaction"
+path = "src/bin/compaction.rs"
+required-features = ["interop"]
+
+[[bin]]
+name = "interop"
+path = "src/bin/interop.rs"
+required-features = ["interop"]
+
+[[test]]
+name = "elicitation_endpoint"
+required-features = ["interop"]
+
+[[test]]
+name = "lifecycle_endpoint"
+required-features = ["interop"]
+
+# Large schema-generated models otherwise produce multi-gigabyte local caches.
+[profile.dev]
+debug = 0
+incremental = false
+
+[[example]]
+name = "registered_hooks"
+required-features = ["reqwest", "tokio-process"]

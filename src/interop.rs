@@ -268,10 +268,10 @@ pub fn apply(request: &Value, response: &Value, schemas: &Schemas) -> Result<Val
             "return" => candidate = Some(e["value"].clone()),
             "message" => messages.push(e["text"].clone()),
             "flow" => {
-                if e["operation"] == "continue" {
-                    if let Some(instruction) = e.get("instruction") {
-                        continuation_instructions.push(instruction.clone());
-                    }
+                if e["operation"] == "continue"
+                    && let Some(instruction) = e.get("instruction")
+                {
+                    continuation_instructions.push(instruction.clone());
                 }
                 if flow != Some("stop") {
                     flow = e["operation"].as_str();

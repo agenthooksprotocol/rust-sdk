@@ -80,5 +80,94 @@ fn upload_authorization_never_inherits_the_event_token() {
                 .unwrap();
             assert_eq!(response.status().as_u16(), expected);
         }
+        if configured {
+            // Duplicate headers must fail before conversion to the SDK map can
+            // collapse an exact-name duplicate into a single valid value.
+            let response = client
+                .post(&endpoint)
+                .bearer_auth("TEST-UPLOAD-TOKEN")
+                .header("Content-Type", "application/octet-stream")
+                .header(
+                    "AHP-Content-SHA256",
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                )
+                .header(
+                    "AHP-Content-SHA256",
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                )
+                .body(Vec::new())
+                .send()
+                .unwrap();
+            assert_eq!(response.status().as_u16(), 400);
+            // Independent upload authorization never grants event authorization.
+            let response = client
+                .post(format!("{}/receipts", ready["endpoint"].as_str().unwrap()))
+                .bearer_auth("TEST-UPLOAD-TOKEN")
+                .body(Vec::new())
+                .send()
+                .unwrap();
+            assert_eq!(response.status().as_u16(), 401);
+        }
+    }
+}
+
+#[test]
+fn check_summaries_use_modified_effective_result_not_preflight_answer() {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+
+    let payload = json!({"message":"Answer","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}});
+    let answer =
+        json!({"action":"accept","content":{"answer":"original"},"_meta":{"preserved":true}});
+    let mut uploads = vec![];
+    let mut make = |stage: &str, body: &Value| {
+        let bytes = serde_json::to_vec(body).unwrap();
+        let reference =
+            json!({"ref":stage,"size":bytes.len(),"sha256":format!("{:x}",Sha256::digest(&bytes))});
+        uploads.push(json!({"ref":stage,"bytes":STANDARD.encode(&bytes)}));
+        let mut meta = json!({"server":"server","mode":"form"});
+        meta[stage] = json!({"id":format!("{stage}-item"),"kind":format!("elicitation.{stage}"),"mediaType":"application/json","selection":"body","body":reference});
+        let mut event = json!({"id":stage,"source":"urn:test:host","time":"2026-09-15T12:00:00Z","type":format!("user.elicitation.{stage}"),"session":{"id":"session"},"elicitation":meta});
+        if stage == "result" {
+            event["parentEventId"] = json!("request");
+            event["elicitation"]["action"] = body["action"].clone();
+        }
+        let caps = if stage == "request" {
+            json!({"effects":[],"elicitation":{"form":{}}})
+        } else {
+            json!({"effects":["modify"],"elicitation":{"form":{}},"modify":{"content":{"replace":true,"merge":true}}})
+        };
+        json!({"jsonrpc":"2.0","id":stage,"method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":caps}})
+    };
+    let request = make("request", &payload);
+    let result = make("result", &answer);
+    let cases: Vec<Value> = ["replace", "merge"].into_iter().map(|operation| {
+        json!({"op":"apply","request":request,"result":result,"uploads":uploads,"effects":[{"type":"modify","target":"content","operation":operation,"value":{"answer":"modified"}}]})
+    }).collect();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_elicitation"))
+        .args(["check", "unused-schema-directory", "test-principal"])
+        .env("AHP_ELICITATION_TOKEN", "TEST-EVENT-TOKEN")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&serde_json::to_vec(&cases).unwrap())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    let rows: Vec<Value> = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        assert_eq!(row["accepted"], true);
+        assert_eq!(row["summary"]["result"]["content"]["answer"], "modified");
+        assert_eq!(row["summary"]["result"]["_meta"]["preserved"], true);
+        assert_eq!(row["inputUnchanged"], true);
     }
 }

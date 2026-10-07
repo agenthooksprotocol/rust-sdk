@@ -71,12 +71,28 @@ def main():
                 path = write(directory / 'client.json',client_config)
                 result = subprocess.run([binary,'client','--config',path],cwd=SDK,timeout=60)
                 rows = json.loads(report.read_text())['results'] if report.exists() else []
-                expected_status = {s['id']: bool(s.get('expectError'))
-                                   for s in scenarios['scenarios']}
-                assert len(rows) == len(expected_status)
-                assert {r['id'] for r in rows} == set(expected_status)
-                failed = [r for r in rows if r['status'] != 'passed'
-                          or (expected_status[r['id']] and r['actual'] != {'rejected': True})]
+                expected = {s['id']: s for s in scenarios['scenarios']}
+                assert len(rows) == len(expected)
+                assert {r['id'] for r in rows} == set(expected)
+                failed = []
+                for row in rows:
+                    case = expected[row['id']]
+                    actual = row.get('actual')
+                    passed = row['status'] == 'passed' and isinstance(actual, dict)
+                    if case.get('expectError'):
+                        host_report = any(k in row for k in ('sdkAccepted', 'hostAccepted', 'rejectionLayer'))
+                        if host_report:
+                            passed = (passed and 'application-invalid' in case.get('tags', [])
+                                      and 'hostExpected' in case and actual == case['hostExpected']
+                                      and row.get('sdkAccepted') is True and row.get('hostAccepted') is False
+                                      and row.get('rejectionLayer') == 'host-input-schema'
+                                      and actual.get('executed') is False)
+                        else:
+                            passed = passed and actual == {'rejected': True}
+                    else:
+                        passed = passed and all(k in actual and actual[k] == v for k, v in case['expected'].items())
+                    if not passed:
+                        failed.append(row)
                 if result.returncode or failed:
                     print(json.dumps(failed[:8],indent=2))
                     raise AssertionError(f'{transport}/{mode}: exit={result.returncode}')

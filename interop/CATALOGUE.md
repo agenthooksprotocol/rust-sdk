@@ -42,8 +42,8 @@ lookup. Reports never include credential values.
 ## Verification
 
 ```sh
-cargo test --no-fail-fast
-cargo build --bins
+cargo test --features interop --no-fail-fast
+cargo build --features interop --bins
 # From workspace root:
 python-sdk/.venv/bin/python agent-hooks-protocol/interop/catalogue_matrix.py \
   --client rust --server rust --timeout 45 --output /tmp/rust-catalogue-all.json

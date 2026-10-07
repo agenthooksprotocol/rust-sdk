@@ -1,4 +1,4 @@
-//! Test-controlled lifecycle runtime. No core adapter behavior is changed.
+//! Test-controlled lifecycle runtime exercising the public SDK client and server.
 #![allow(dead_code)]
 use base64::Engine;
 mod auth;
@@ -6,7 +6,11 @@ mod catalogue;
 mod evaluator;
 mod observation_chain;
 mod router;
-use agent_hooks_protocol::{
+use agenthooksprotocol::{
+    content::{
+        AuthorizedScope, ContentContext, ContentReference, ContentStore, MemoryContentStore,
+        UploadAuthorizer, UploadCredential, UploadError, UploadReceiver, Uploader,
+    },
     generated,
     interop::{self, Result, Schemas},
 };
@@ -151,7 +155,7 @@ fn sha256(bytes: &[u8]) -> String {
         b.push(0);
     }
     b.extend_from_slice(&((bytes.len() as u64) * 8).to_be_bytes());
-    for chunk in b.chunks_exact(64) {
+    for chunk in b.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
         for i in 0..16 {
             w[i] = u32::from_be_bytes(chunk[i * 4..i * 4 + 4].try_into().unwrap());
@@ -188,44 +192,114 @@ fn sha256(bytes: &[u8]) -> String {
     }
     h.iter().map(|x| format!("{x:08x}")).collect()
 }
+// This exact canonical upload fixture reports denied content as a diagnostic
+// observation. It is not a body-consuming delivery: keep public framing/auth/
+// canonical dispatch, but do not request automatic body resolution for this one
+// fixed gap-only control. All other selected-body gaps still fail closed.
+fn diagnostic_gap_notification(message: &Value) -> bool {
+    message["method"] == "hooks/observe"
+        && message["params"]["event"]["type"] == "tool.before"
+        && message["params"]["event"]["id"] == "immutable-upload-and-subscription-views:a"
+        && message["params"]["event"]["items"]
+            == json!([{
+                "id":"logical-item", "kind":"text", "mediaType":"text/plain",
+                "selection":"body", "gap":{"reason":"content permission denied", "path":"items.logical-item"}
+            }])
+}
+// Fixture snapshots are read-only host storage. Descriptor verification remains
+// public; only declared normalized fields are visited, never open tool payloads.
+struct ConfirmedUploads<'a>(&'a BTreeMap<(String, String), Vec<u8>>);
+impl ContentStore for ConfirmedUploads<'_> {
+    fn resolve(
+        &self,
+        scope: &AuthorizedScope,
+        reference: &ContentReference,
+    ) -> std::result::Result<Arc<[u8]>, UploadError> {
+        self.0
+            .iter()
+            .find(|((owner, name), _)| {
+                AuthorizedScope::new(owner) == *scope && name == &reference.ref_
+            })
+            .map(|(_, bytes)| Arc::from(bytes.as_slice()))
+            .ok_or(UploadError::Unavailable)
+    }
+    fn put(
+        &self,
+        _: &AuthorizedScope,
+        _: Arc<[u8]>,
+    ) -> std::result::Result<ContentReference, UploadError> {
+        Err(UploadError::Unavailable)
+    }
+}
 fn resolve_bodies(
     value: &Value,
     sub: &str,
     uploads: &BTreeMap<(String, String), Vec<u8>>,
 ) -> Result<()> {
-    match value {
-        Value::Object(m) => {
-            if let Some(body) = m.get("body").filter(|b| b.get("ref").is_some()) {
-                let bytes = uploads
-                    .get(&(sub.into(), s(body, "ref").into()))
-                    .ok_or("unconfirmed scoped content reference")?;
-                if body["size"].as_u64() != Some(bytes.len() as u64)
-                    || s(body, "sha256") != sha256(bytes)
-                    || m.get("size").is_some_and(|size| size != &body["size"])
-                    || m.get("sha256").is_some_and(|hash| hash != &body["sha256"])
-                {
-                    return Err("content metadata mismatch".into());
+    let store = ConfirmedUploads(uploads);
+    let context = ContentContext {
+        store: &store,
+        scope: AuthorizedScope::new(sub),
+    };
+    // Unit-level descriptor probes have no event type; they are not wire events.
+    if value.get("type").is_none() && value.get("body").is_some() {
+        let mut item = value.clone();
+        if item.get("selection").is_none() {
+            item["selection"] = json!("body");
+        }
+        context.resolve_selected(&item)?;
+        return Ok(());
+    }
+    if let Some(items) = value["items"].as_array() {
+        for item in items {
+            context.resolve_selected(item)?;
+        }
+    }
+    let path = match s(value, "type") {
+        "turn.progress" => Some("/delta"),
+        "tool.progress" => Some("/partialOutput"),
+        "context.compact.before" => Some("/instructions"),
+        "context.compact.after" => Some("/summary"),
+        "user.elicitation.request" => Some("/elicitation/request"),
+        "user.elicitation.result" => Some("/elicitation/result"),
+        _ => None,
+    };
+    if let Some(item) = path.and_then(|path| value.pointer(path)) {
+        context.resolve_selected(item)?;
+    }
+    let paths: &[&str] = match s(value, "type") {
+        "user.attention" => &["/attention/message", "/attention/title"],
+        "user.message.inbound" => &["/message/text"],
+        "user.message.outbound" => &["/message/payload"],
+        _ => &[],
+    };
+    for path in paths {
+        if let Some(items) = value.pointer(path).and_then(Value::as_array) {
+            for item in items {
+                context.resolve_selected(item)?;
+            }
+        }
+    }
+    if value["type"] == "file.changed"
+        && let Some(changes) = value["changes"].as_array()
+    {
+        for change in changes {
+            for field in ["before", "after"] {
+                if let Some(reference) = change.get(field) {
+                    context.resolve(reference)?;
                 }
             }
-            for v in m.values() {
-                resolve_bodies(v, sub, uploads)?;
-            }
         }
-        Value::Array(a) => {
-            for v in a {
-                resolve_bodies(v, sub, uploads)?;
-            }
-        }
-        _ => {}
     }
     Ok(())
 }
 #[derive(Default)]
 struct Shared {
+    upload_receiver: Option<FixtureUploads>,
     entries: Vec<Value>,
     released: BTreeSet<String>,
     uploads: BTreeMap<(String, String), Vec<u8>>,
-    lineage: agent_hooks_protocol::lineage::TaskLineage,
+    lineage: agenthooksprotocol::lineage::TaskLineage,
     shutdown: bool,
     attempts: BTreeMap<String, usize>,
 }
@@ -241,8 +315,129 @@ struct ServerState {
     auth: Value,
     catalogue: bool,
 }
+struct FixtureUploadAuth(Arc<Mutex<Value>>);
+impl UploadAuthorizer for FixtureUploadAuth {
+    fn authorize(
+        &self,
+        request: &agenthooksprotocol::transport::Request,
+    ) -> std::result::Result<AuthorizedScope, UploadError> {
+        let config = self.0.lock().unwrap();
+        let header = |name: &str| {
+            request
+                .headers
+                .iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                .map(|(_, value)| value.as_str())
+        };
+        let auth = &config["auth"];
+        let token = config["token"].as_str().map(str::to_owned).or_else(|| {
+            if auth.is_null() {
+                None
+            } else {
+                Some(std::env::var(s(auth, "tokenEnv")).unwrap_or_default())
+            }
+        });
+        if let Some(token) = token {
+            if token.is_empty()
+                || header("authorization") != Some(format!("Bearer {token}").as_str())
+            {
+                return Err(UploadError::Unauthorized);
+            }
+        } else if config["anonymous"] != true {
+            return Err(UploadError::Unauthorized);
+        }
+        let scope = config["scope"]
+            .as_str()
+            .or_else(|| config["subscriptions"][0].as_str())
+            .unwrap_or("body");
+        if scope.is_empty() {
+            return Err(UploadError::Forbidden);
+        }
+        // A declared oversize body is rejected even when the negative raw peer
+        // closes before sending it. Keep this transport-level 413 behavior.
+        if header("content-length")
+            .and_then(|v| v.parse::<usize>().ok())
+            .is_some_and(|n| n > 1048576)
+        {
+            return Err(UploadError::TooLarge);
+        }
+        Ok(AuthorizedScope::new(scope))
+    }
+}
+struct FixtureUploads {
+    policy: Arc<Mutex<Value>>,
+    receiver: UploadReceiver<FixtureUploadAuth>,
+}
+impl FixtureUploads {
+    fn new(config: Value) -> Self {
+        let policy = Arc::new(Mutex::new(config));
+        let receiver = UploadReceiver::new(
+            FixtureUploadAuth(policy.clone()),
+            "/upload",
+            1048576,
+            64 * 1048576,
+            4096,
+        );
+        Self { policy, receiver }
+    }
+}
+// The outer HTTP listener verifies transport credentials; stdio uses process trust.
+// Do not derive a principal from the untrusted event's source/session fields.
+struct FixturePrincipal(String);
+impl agenthooksprotocol::server::Authenticator for FixturePrincipal {
+    fn authenticate(
+        &self,
+        _: Option<&str>,
+    ) -> std::result::Result<agenthooksprotocol::server::Principal, String> {
+        Ok(agenthooksprotocol::server::Principal {
+            subject: self.0.clone(),
+        })
+    }
+}
+struct FixtureHandler<'a> {
+    state: &'a ServerState,
+    error: Mutex<Option<String>>,
+}
+impl agenthooksprotocol::server::Handler for FixtureHandler<'_> {
+    fn handle(
+        &self,
+        _: agenthooksprotocol::server::Principal,
+        message: agenthooksprotocol::server::Incoming,
+    ) -> agenthooksprotocol::server::HandlerFuture<'_> {
+        Box::pin(async move {
+            use agenthooksprotocol::server::{Incoming, Outgoing};
+            let (request, method) = match message {
+                Incoming::Intercept(v) => (serde_json::to_value(v), "intercept"),
+                Incoming::Observe(v) => (serde_json::to_value(v), "observe"),
+                Incoming::Capabilities(v) => (serde_json::to_value(v), "capabilities"),
+            };
+            let request = request.map_err(|e| e.to_string())?;
+            let response = self.state.protocol_fixture(&request).map_err(|e| {
+                let error = e.to_string();
+                *self.error.lock().unwrap() = Some(error.clone());
+                error
+            })?;
+            match method {
+                "observe" => Ok(Outgoing::Observed),
+                "capabilities" => generated::parse_capabilities_response_value(response)
+                    .into_value()
+                    .map(Box::new)
+                    .map(Outgoing::Capabilities)
+                    .ok_or_else(|| "invalid fixture capabilities".into()),
+                _ => generated::parse_intercept_response_value(response)
+                    .into_value()
+                    .map(Box::new)
+                    .map(Outgoing::Intercept)
+                    .ok_or_else(|| "invalid fixture response".into()),
+            }
+        })
+    }
+}
 impl ServerState {
     fn stdout(&self, response: &Value, emitted: bool) -> Result<()> {
+        if response.is_null() {
+            return Ok(());
+        }
         self.validation.core.validate(
             if response["result"].get("manifest").is_some() {
                 "capabilities-response"
@@ -341,62 +536,42 @@ impl ServerState {
         let hash = header("AHP-Content-SHA256");
         let length = header("Content-Length").parse::<usize>().ok();
         let status = (|| {
-            for name in [
-                "AHP-Content-SHA256",
-                "Content-Length",
-                "Content-Type",
-                "Authorization",
-            ] {
-                if headers
-                    .iter()
-                    .filter(|(k, _)| k.eq_ignore_ascii_case(name))
-                    .count()
-                    > 1
-                {
-                    return 400;
-                }
-            }
-            let auth = &self.upload["auth"];
-            let token = self.upload["token"]
-                .as_str()
-                .map(str::to_owned)
-                .or_else(|| {
-                    if auth.is_null() {
-                        None
-                    } else {
-                        Some(std::env::var(s(auth, "tokenEnv")).unwrap_or_default())
-                    }
-                });
-            if let Some(token) = token {
-                if token.is_empty() || header("Authorization") != format!("Bearer {token}") {
-                    return 401;
-                }
-            } else if self.upload["anonymous"] != true {
-                return 401;
-            }
-            if sub.is_empty() {
-                return 403;
-            }
-            if length.is_some_and(|n| n > 1048576) || bytes.len() > 1048576 {
-                return 413;
-            }
-            if method != "POST"
-                || header("Content-Type") != "application/octet-stream"
-                || headers.iter().any(|(key, _)| {
-                    key.eq_ignore_ascii_case("Content-Encoding")
-                        || key.eq_ignore_ascii_case("Transfer-Encoding")
-                })
-                || length != Some(bytes.len())
-                || sha256(bytes) != hash
+            // Preserve duplicates before the transport map would collapse them.
+            let mut seen = BTreeSet::new();
+            if headers
+                .iter()
+                .any(|(name, _)| !seen.insert(name.to_ascii_lowercase()))
             {
                 return 400;
             }
-            let mut d = self.data.lock().unwrap();
-            let reference = format!("urn:ahp:content:{}", d.uploads.len() + 1);
-            d.uploads
-                .insert((sub.to_owned(), reference.clone()), bytes.to_vec());
-            descriptor = json!({"ref":reference,"size":bytes.len(),"sha256":hash});
-            201
+            let request = agenthooksprotocol::transport::Request {
+                method: method.into(),
+                uri: "/upload".into(),
+                headers: headers.iter().cloned().collect(),
+                body: bytes.to_vec(),
+            };
+            let mut data = self.data.lock().unwrap();
+            let uploads = data
+                .upload_receiver
+                .get_or_insert_with(|| FixtureUploads::new(self.upload.clone()));
+            // Configuration can change in explicit authorization-negative tests.
+            *uploads.policy.lock().unwrap() = self.upload.clone();
+            let response = uploads.receiver.handle(request);
+            if response.status == 201 {
+                descriptor =
+                    serde_json::from_slice(&response.body).expect("public upload descriptor");
+                let reference: ContentReference =
+                    serde_json::from_value(descriptor.clone()).expect("public content reference");
+                let confirmed = uploads
+                    .receiver
+                    .resolve(&AuthorizedScope::new(sub), &reference)
+                    .expect("public receiver verifies its own allocation");
+                // Preserve receipt/state formats; this is a mirror, not allocation
+                // or validation authority. Event dispatch reads the shared store.
+                data.uploads
+                    .insert((sub.to_owned(), reference.ref_), confirmed.to_vec());
+            }
+            response.status
         })();
         self.data.lock().unwrap().entries.push(json!({
             "kind": "upload",
@@ -408,6 +583,13 @@ impl ServerState {
             "status": status
         }));
         (status, descriptor)
+    }
+    fn content_store(&self) -> MemoryContentStore {
+        let mut data = self.data.lock().unwrap();
+        data.upload_receiver
+            .get_or_insert_with(|| FixtureUploads::new(self.upload.clone()))
+            .receiver
+            .store()
     }
     fn upload_scope(&self) -> &str {
         self.upload["scope"]
@@ -432,6 +614,84 @@ impl ServerState {
         format!("{kind}: rejected notification").into()
     }
     fn protocol(&self, v: &Value) -> Result<Value> {
+        // Exact canonical conformance controls deliberately send unadvertised
+        // effects to probe cancellation and client failure policy. They are not
+        // conforming backend responses. Never grant this bypass by tags or
+        // a general expectError flag; ordinary traffic uses the public Server.
+        if v["method"] == "hooks/intercept"
+            && matches!(
+                s(v, "id"),
+                "cancel-before-reply:a"
+                    | "cancel-after-reply-before-acceptance:a"
+                    | "cancelled-boundary-observed:a"
+                    | "observation-chain-fail-open"
+                    | "observation-chain-fail-closed"
+            )
+        {
+            return self.protocol_fixture(v);
+        }
+        // Catalogue raw-notify controls need a receipt even when validation fails.
+        if self.catalogue && v["method"] == "hooks/observe" && self.validation.observe(v).is_err() {
+            return Err(self.rejection(v, "schema"));
+        }
+        let server = agenthooksprotocol::server::Server {
+            handler: FixtureHandler {
+                state: self,
+                error: Mutex::new(None),
+            },
+            authenticator: FixturePrincipal(self.event_scope().to_owned()),
+            max_body_bytes: 16 * 1024 * 1024,
+        };
+        let request = agenthooksprotocol::transport::Request {
+            method: "POST".into(),
+            uri: "/hooks".into(),
+            headers: BTreeMap::from([("content-type".into(), "application/json".into())]),
+            body: serde_json::to_vec(v)?,
+        };
+        let response = if diagnostic_gap_notification(v) {
+            futures::executor::block_on(server.handle(request))
+        } else {
+            let store = self.content_store();
+            futures::executor::block_on(server.handle_with_content(request, &store))
+        };
+        if response.status == 204 {
+            // Exactly this adversarial scenario injects a forbidden response to a
+            // notification. Normal observation delivery is one-way through Server.
+            if v["params"]["event"]["id"] == "settled-observer-effects-ignored:a" {
+                return Ok(
+                    json!({"jsonrpc":"2.0","id":"unsolicited-observer","result":{"protocolVersion":"draft","effects":[{"type":"deny","reason":"observer must not decide"}]}}),
+                );
+            }
+            return Ok(Value::Null);
+        }
+        if response.status != 200 {
+            if let Some(error) = server.handler.error.lock().unwrap().take() {
+                return Err(error.into());
+            }
+            // Preserve the fixture's historical 409 for an unconfirmed body.
+            // Only this exact public resolution failure is a content conflict;
+            // malformed envelopes/descriptors remain schema errors (HTTP 400).
+            let kind = if response.status == 400
+                && serde_json::from_slice::<Value>(&response.body).ok()
+                    == Some(json!({"error":"selected content unavailable or invalid"}))
+            {
+                "content"
+            } else {
+                "schema"
+            };
+            return Err(format!(
+                "{kind}: SDK server rejected message {} ({}): {}",
+                v.get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_else(|| s(&v["params"]["event"], "id")),
+                response.status,
+                String::from_utf8_lossy(&response.body)
+            )
+            .into());
+        }
+        Ok(serde_json::from_slice(&response.body)?)
+    }
+    fn protocol_fixture(&self, v: &Value) -> Result<Value> {
         if self.catalogue && v["method"] == "hooks/capabilities" {
             self.validation.core.validate("capabilities-request", v)?;
             let response = json!({
@@ -463,24 +723,8 @@ impl ServerState {
             let event = &v["params"]["event"];
             let sub = self.event_scope();
             let mut d = self.data.lock().unwrap();
-            resolve_bodies(event, sub, &d.uploads)?;
-            if let Some(items) = event["items"].as_array() {
-                for item in items {
-                    if !generated::parse_content_item_value(item.clone()).is_ok() {
-                        return Err("content codec validation failed".into());
-                    }
-                    if let Some(body) = item.get("body") {
-                        let bytes = d
-                            .uploads
-                            .get(&(sub.into(), s(body, "ref").into()))
-                            .ok_or("unauthorized or missing body")?;
-                        if body["size"].as_u64() != Some(bytes.len() as u64)
-                            || s(body, "sha256") != sha256(bytes)
-                        {
-                            return Err("body metadata mismatch".into());
-                        }
-                    }
-                }
+            if !diagnostic_gap_notification(v) {
+                resolve_bodies(event, sub, &d.uploads)?;
             }
             if let Err(error) = d.lineage.accept(event) {
                 drop(d);
@@ -513,17 +757,7 @@ impl ServerState {
                     return Err("observer gate timed out".into());
                 }
             }
-            return Ok(json!({
-                "jsonrpc": "2.0",
-                "id": "unsolicited-observer",
-                "result": {
-                    "protocolVersion": "draft",
-                    "effects": [{
-                        "type": "deny",
-                        "reason": "observer must not decide"
-                    }]
-                }
-            }));
+            return Ok(Value::Null);
         }
         self.validation.core.validate("intercept-request", v)?;
         resolve_bodies(
@@ -595,12 +829,16 @@ fn listener(server: tiny_http::Server, state: Arc<ServerState>, control: bool) {
                             } else if ["/intercept", "/observe", "/capabilities"]
                                 .contains(&req.url())
                             {
-                                Ok((200, st.protocol(&v)?))
+                                let reply = st.protocol(&v)?;
+                                Ok((if reply.is_null() { 204 } else { 200 }, reply))
                             } else {
                                 Ok((404, json!({})))
                             }
                         })();
                         let (status, v) = result.unwrap_or_else(|e| {
+                            if req.url() == "/observe" {
+                                eprintln!("lifecycle observation rejected: {e}");
+                            }
                             (
                                 if e.to_string().starts_with("schema:") {
                                     400
@@ -838,6 +1076,116 @@ impl Drop for ChildGuard {
     }
 }
 type Reply = std::result::Result<Value, String>;
+#[derive(Clone)]
+struct EventWire {
+    event_http: reqwest::blocking::Client,
+    token: String,
+    endpoint: String,
+    stdin: Option<Arc<Mutex<ChildStdin>>>,
+    router: Arc<router::Router>,
+}
+impl EventWire {
+    fn send(&self, request: &Value) -> Result<mpsc::Receiver<std::result::Result<Value, String>>> {
+        if let Some(stdin) = &self.stdin {
+            let mut stdin = stdin.lock().unwrap();
+            let rx = self.router.register(s(request, "id"))?;
+            writeln!(stdin, "{request}")?;
+            stdin.flush()?;
+            return Ok(rx);
+        }
+        let (tx, rx) = mpsc::channel();
+        {
+            let http = self.event_http.clone();
+            let token = self.token.clone();
+            let endpoint = self.endpoint.clone();
+            let req = request.clone();
+            thread::spawn(move || {
+                let result = (|| -> Result<Value> {
+                    Ok(http
+                        .post(format!("{endpoint}/intercept"))
+                        .bearer_auth(token)
+                        .json(&req)
+                        .send()?
+                        .error_for_status()?
+                        .json()?)
+                })();
+                let _ = tx.send(result.map_err(|e| e.to_string()));
+            });
+        }
+        Ok(rx)
+    }
+}
+// A transport receipt is not acceptance. Hold the SDK future at the hook
+// response until the controller accepts this occurrence, so cancellation between
+// acquisition and publication cannot accidentally apply a staged response.
+struct SdkAttempt {
+    accept: mpsc::Sender<()>,
+    completed: mpsc::Receiver<std::result::Result<evaluator::Evaluated, String>>,
+}
+impl SdkAttempt {
+    fn settle(self) -> Result<evaluator::Evaluated> {
+        self.accept
+            .send(())
+            .map_err(|_| "SDK attempt already ended")?;
+        self.completed
+            .recv_timeout(TIMEOUT)
+            .map_err(|e| format!("SDK settlement: {e}"))?
+            .map_err(Into::into)
+    }
+}
+struct LiveHook {
+    wire: EventWire,
+    original: Value,
+    acquired: mpsc::Sender<Reply>,
+    accept: Mutex<mpsc::Receiver<()>>,
+}
+impl agenthooksprotocol::client::Hook for LiveHook {
+    fn call(
+        &self,
+        mut request: Value,
+    ) -> agenthooksprotocol::client::LocalFuture<
+        '_,
+        std::result::Result<Value, agenthooksprotocol::client::HookError>,
+    > {
+        Box::pin(async move {
+            let exchange = (|| -> Result<Value> {
+                // Omit optional default hints exactly as configured by the fixture.
+                // The event and capabilities remain those emitted by the SDK.
+                if let Some(state) = self.original["params"].get("state") {
+                    request["params"]["state"] = state.clone();
+                } else {
+                    request["params"]
+                        .as_object_mut()
+                        .ok_or("missing params")?
+                        .remove("state");
+                }
+                let response = self
+                    .wire
+                    .send(&request)?
+                    .recv_timeout(TIMEOUT)
+                    .map_err(|e| format!("wire receive: {e}"))?
+                    .map_err(|e| format!("wire transport: {e}"))?;
+                if response["id"] != request["id"] {
+                    return Err("correlation mismatch".into());
+                }
+                Ok(response)
+            })()
+            .map_err(|e| e.to_string());
+            let _ = self.acquired.send(exchange.clone());
+            let response = exchange.map_err(agenthooksprotocol::client::HookError)?;
+            self.accept
+                .lock()
+                .unwrap()
+                .recv_timeout(TIMEOUT)
+                .map_err(|_| {
+                    agenthooksprotocol::client::HookError(
+                        "occurrence cancelled before acceptance".into(),
+                    )
+                })?;
+            Ok(response)
+        })
+    }
+}
 struct Transport {
     http: reqwest::blocking::Client,
     event_http: reqwest::blocking::Client,
@@ -845,7 +1193,7 @@ struct Transport {
     upload_endpoint: String,
     endpoint: String,
     control: String,
-    stdin: Option<ChildStdin>,
+    stdin: Option<Arc<Mutex<ChildStdin>>>,
     router: Arc<router::Router>,
     _child: Option<ChildGuard>,
 }
@@ -895,7 +1243,11 @@ impl Transport {
             if let Some(path) = c["childPidFile"].as_str() {
                 write(path, &json!({"pid":child.0.id()}))?;
             }
-            t.stdin = child.0.stdin.take();
+            t.stdin = child
+                .0
+                .stdin
+                .take()
+                .map(|stdin| Arc::new(Mutex::new(stdin)));
             let stdout = child.0.stdout.take().ok_or("missing stdout")?;
             let router = t.router.clone();
             let schemas = load_schemas(c)?;
@@ -903,14 +1255,23 @@ impl Transport {
                 let result = (|| -> Result<()> {
                     for line in BufReader::new(stdout).lines() {
                         let v: Value = serde_json::from_str(&line?)?;
-                        schemas.validate(
-                            if v["result"].get("manifest").is_some() {
-                                "capabilities-response"
-                            } else {
-                                "intercept-response"
-                            },
-                            &v,
-                        )?;
+                        schemas
+                            .validate(
+                                if v["result"].get("manifest").is_some() {
+                                    "capabilities-response"
+                                } else {
+                                    "intercept-response"
+                                },
+                                &v,
+                            )
+                            .map_err(|error| {
+                                format!(
+                                    "{error}; stdio response={} generated={:?}",
+                                    s(&v, "id"),
+                                    generated::parse_intercept_response_value(v.clone())
+                                        .diagnostics()
+                                )
+                            })?;
                         router.route(v);
                     }
                     Err("stdio EOF".into())
@@ -966,36 +1327,40 @@ impl Transport {
             .error_for_status()?;
         Ok(())
     }
-    fn send(
-        &mut self,
-        request: &Value,
-    ) -> Result<mpsc::Receiver<std::result::Result<Value, String>>> {
-        if let Some(stdin) = &mut self.stdin {
-            let rx = self.router.register(s(request, "id"))?;
-            writeln!(stdin, "{request}")?;
-            stdin.flush()?;
-            return Ok(rx);
+    fn event_wire(&self) -> EventWire {
+        EventWire {
+            event_http: self.event_http.clone(),
+            token: self.token.clone(),
+            endpoint: self.endpoint.clone(),
+            stdin: self.stdin.clone(),
+            router: self.router.clone(),
         }
-        let (tx, rx) = mpsc::channel();
-        {
-            let http = self.event_http.clone();
-            let token = self.token.clone();
-            let endpoint = self.endpoint.clone();
-            let req = request.clone();
-            thread::spawn(move || {
-                let result = (|| -> Result<Value> {
-                    Ok(http
-                        .post(format!("{endpoint}/intercept"))
-                        .bearer_auth(token)
-                        .json(&req)
-                        .send()?
-                        .error_for_status()?
-                        .json()?)
-                })();
-                let _ = tx.send(result.map_err(|e| e.to_string()));
-            });
-        }
-        Ok(rx)
+    }
+    fn send_raw_duplicate(&mut self, request: &Value) -> Result<mpsc::Receiver<Reply>> {
+        self.event_wire().send(request)
+    }
+    fn send_sdk(&self, request: &Value) -> (mpsc::Receiver<Reply>, SdkAttempt) {
+        let (acquired, raw) = mpsc::channel();
+        let (accept, accepted) = mpsc::channel();
+        let (done, completed) = mpsc::channel();
+        let wire = self.event_wire();
+        let request = request.clone();
+        thread::spawn(move || {
+            let hook = LiveHook {
+                wire,
+                original: request.clone(),
+                acquired: acquired.clone(),
+                accept: Mutex::new(accepted),
+            };
+            let client = evaluator::sdk_client(&request, hook);
+            let result = futures::executor::block_on(evaluator::evaluate(&client, &request))
+                .map_err(|e| e.to_string());
+            if let Err(error) = &result {
+                let _ = acquired.send(Err(error.clone()));
+            }
+            let _ = done.send(result);
+        });
+        (raw, SdkAttempt { accept, completed })
     }
     fn receive(&mut self, _id: &str, rx: mpsc::Receiver<Reply>) -> Result<Value> {
         Ok(rx
@@ -1013,7 +1378,8 @@ impl Transport {
         self.router.wait_discarded(id, before)
     }
     fn observe(&mut self, notification: &Value) -> Result<()> {
-        if let Some(stdin) = &mut self.stdin {
+        if let Some(stdin) = &self.stdin {
+            let mut stdin = stdin.lock().unwrap();
             writeln!(stdin, "{notification}")?;
             stdin.flush()?;
         } else {
@@ -1032,6 +1398,7 @@ impl Transport {
 struct Boundary {
     terminal: Option<&'static str>,
     staged: Option<Value>,
+    sdk: Option<SdkAttempt>,
 }
 impl Boundary {
     fn retain(&mut self, response: Value) -> bool {
@@ -1047,6 +1414,7 @@ impl Boundary {
         }
         self.terminal = Some("cancelled");
         self.staged = None;
+        self.sdk = None;
         true
     }
 }
@@ -1061,10 +1429,10 @@ fn settled_view(
         return Err("observe before settlement".into());
     }
     let mut event = request["params"]["event"].clone();
-    if let Some(state) = accepted {
-        if event.get("tool").is_some() {
-            event["tool"]["input"] = state["input"].clone();
-        }
+    if let Some(state) = accepted
+        && event.get("tool").is_some()
+    {
+        event["tool"]["input"] = state["input"].clone();
     }
     if let Some(items) = items {
         event["items"] = items.clone();
@@ -1077,6 +1445,7 @@ fn publish(id: &str, b: &mut Boundary, state: Value, actual: &mut Value) {
         return;
     }
     b.staged = None;
+    b.sdk = None;
     b.terminal = Some("accepted");
     actual["published"].as_array_mut().unwrap().push(json!(id));
     actual["states"][id] = state;
@@ -1084,6 +1453,52 @@ fn publish(id: &str, b: &mut Boundary, state: Value, actual: &mut Value) {
 // An explicit step policy replaces, rather than merges with, configured credentials.
 fn upload_policy<'a>(config: &'a Value, step: &'a Value) -> &'a Value {
     step.get("upload").unwrap_or(&config["upload"])
+}
+
+struct BlockingUploadHttp(reqwest::blocking::Client);
+impl agenthooksprotocol::transport::Http for BlockingUploadHttp {
+    fn send(
+        &self,
+        request: agenthooksprotocol::transport::Request,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = std::result::Result<
+                        agenthooksprotocol::transport::Response,
+                        agenthooksprotocol::transport::TransportError,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            use agenthooksprotocol::transport::{Response, TransportError};
+            let result = (|| -> Result<Response> {
+                let mut outgoing = self.0.request(request.method.parse()?, &request.uri);
+                for (name, value) in request.headers {
+                    outgoing = outgoing.header(name, value);
+                }
+                let mut incoming = outgoing.body(request.body).send()?;
+                let status = incoming.status().as_u16();
+                let headers = incoming
+                    .headers()
+                    .iter()
+                    .map(|(name, value)| Ok((name.as_str().to_owned(), value.to_str()?.to_owned())))
+                    .collect::<Result<BTreeMap<_, _>>>()?;
+                let mut body = Vec::new();
+                incoming.by_ref().take(65537).read_to_end(&mut body)?;
+                if body.len() > 65536 {
+                    return Err("upload response too large".into());
+                }
+                Ok(Response {
+                    status,
+                    headers,
+                    body,
+                })
+            })();
+            result.map_err(|error| TransportError(error.to_string()))
+        })
+    }
 }
 
 fn send_upload(
@@ -1138,6 +1553,20 @@ fn send_upload(
         .redirect(reqwest::redirect::Policy::none())
         .timeout(timeout)
         .build()?;
+    if declared == bytes.len() as u64 && hash == sha256(bytes) {
+        let transport = BlockingUploadHttp(http);
+        let credential = token.map(UploadCredential::bearer).transpose()?;
+        // Subscription maxBytes was checked by the caller; this exact transfer
+        // bound prevents an implicit unbounded upload in the public sender.
+        let uploader = Uploader::new(&transport, endpoint.as_str(), bytes.len(), credential, true)?;
+        return match futures::executor::block_on(uploader.upload(bytes)) {
+            Ok(reference) => Ok((201, Some(serde_json::to_value(reference)?))),
+            Err(UploadError::Http { status, .. }) => Ok((status, None)),
+            Err(error) => Err(error.into()),
+        };
+    }
+    // Explicit malformed-wire controls only: Uploader intentionally cannot
+    // generate a false digest or content length. The public receiver still runs.
     let mut post = http
         .post(endpoint.clone())
         .header("Content-Type", "application/octet-stream")
@@ -1151,32 +1580,15 @@ fn send_upload(
     if status != 201 {
         return Ok((status, None));
     }
-    if response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(';').next())
-        != Some("application/json")
-    {
-        return Err("upload confirmation must be JSON".into());
-    }
-    let descriptor: Value = response.json()?;
-    if descriptor.as_object().is_none_or(|o| o.len() != 3)
-        || s(&descriptor, "ref").is_empty()
-        || descriptor["size"].as_u64() != Some(bytes.len() as u64)
-        || s(&descriptor, "sha256") != sha256(bytes)
-    {
-        return Err("invalid upload confirmation descriptor".into());
-    }
-    Ok((status, Some(descriptor)))
+    Err("malformed upload unexpectedly accepted".into())
 }
 fn replace_references(value: &mut Value, descriptors: &BTreeMap<String, Value>) {
     match value {
         Value::Object(m) => {
-            if let Some(body) = m.get_mut("body") {
-                if let Some(descriptor) = descriptors.get(s(body, "ref")) {
-                    body["ref"] = descriptor["ref"].clone();
-                }
+            if let Some(body) = m.get_mut("body")
+                && let Some(descriptor) = descriptors.get(s(body, "ref"))
+            {
+                body["ref"] = descriptor["ref"].clone();
             }
             for child in m.values_mut() {
                 replace_references(child, descriptors);
@@ -1190,6 +1602,22 @@ fn replace_references(value: &mut Value, descriptors: &BTreeMap<String, Value>) 
         _ => {}
     }
 }
+// Only these two controller operations intentionally inject a second wire attempt.
+// A scenario-wide or caller-controlled bypass would silently stop testing the SDK.
+fn raw_duplicate(scenario: &Value, step: &Value) -> Result<bool> {
+    if step["bypassSDK"] != true {
+        return Ok(false);
+    }
+    if !["duplicate-reply-ignored", "first-staged-response-wins"].contains(&s(scenario, "id"))
+        || step["op"] != "send"
+        || step["key"] != "a"
+        || step["slot"] != "duplicate"
+    {
+        return Err("unsupported SDK bypass operation".into());
+    }
+    Ok(true)
+}
+
 fn client(c: &Value) -> Result<()> {
     let validation = Validation::new(c)?;
     let fixtures = read(s(c, "scenarioFile"))?;
@@ -1225,6 +1653,7 @@ fn client(c: &Value) -> Result<()> {
             let id = s(request, "id");
             match s(step, "op") {
                 "send" => {
+                    let raw = raw_duplicate(scenario, step)?;
                     validation.core.validate("intercept-request", request)?;
                     resolve_bodies(&request["params"]["event"], "body", &confirmed_uploads)?;
                     boundaries.entry(id.into()).or_default();
@@ -1232,7 +1661,18 @@ fn client(c: &Value) -> Result<()> {
                     if slots.contains_key(&slot) {
                         return Err("duplicate transport slot".into());
                     }
-                    slots.insert(slot, (request.clone(), transport.send(request)?));
+                    let rx = if raw {
+                        transport.send_raw_duplicate(request)?
+                    } else {
+                        let boundary = boundaries.get_mut(id).unwrap();
+                        if boundary.sdk.is_some() || boundary.terminal.is_some() {
+                            return Err("ordinary SDK occurrence cannot be sent twice".into());
+                        }
+                        let (rx, attempt) = transport.send_sdk(request);
+                        boundary.sdk = Some(attempt);
+                        rx
+                    };
+                    slots.insert(slot, (request.clone(), rx));
                 }
                 "wait" => transport.control(
                     "/wait",
@@ -1243,7 +1683,18 @@ fn client(c: &Value) -> Result<()> {
                     let slot = s(step, "slot");
                     let (req, rx) = slots.remove(slot).ok_or("unknown receive slot")?;
                     let response = transport.receive(s(&req, "id"), rx)?;
-                    validation.core.validate("intercept-response", &response)?;
+                    validation
+                        .core
+                        .validate("intercept-response", &response)
+                        .map_err(|error| {
+                            format!(
+                                "{error}; scenario={} request={} generated={:?}",
+                                s(scenario, "id"),
+                                s(&req, "id"),
+                                generated::parse_intercept_response_value(response.clone())
+                                    .diagnostics()
+                            )
+                        })?;
                     let b = boundaries
                         .get_mut(s(&req, "id"))
                         .ok_or("missing boundary")?;
@@ -1290,7 +1741,11 @@ fn client(c: &Value) -> Result<()> {
                             b.staged
                                 .take()
                                 .map(|response| {
-                                    evaluator::apply(request, &response, &validation.core)
+                                    if let Some(attempt) = b.sdk.take() {
+                                        attempt.settle().map(|evaluated| evaluated.state)
+                                    } else {
+                                        evaluator::apply(request, &response, &validation.core)
+                                    }
                                 })
                                 .transpose()?
                         };
@@ -1383,7 +1838,9 @@ fn client(c: &Value) -> Result<()> {
                         }
                     });
                     validation.observe(&notification)?;
-                    resolve_bodies(&event, "body", &confirmed_uploads)?;
+                    if !diagnostic_gap_notification(&notification) {
+                        resolve_bodies(&event, "body", &confirmed_uploads)?;
+                    }
                     transport.observe(&notification)?;
                     let count = observed_counts.entry(s(&event, "id").into()).or_default();
                     *count += 1;
@@ -1608,6 +2065,7 @@ mod lifecycle_tests {
         let mut boundary = Boundary {
             terminal: Some("accepted"),
             staged: None,
+            sdk: None,
         };
         let state = json!({
             "decision": "deny",
@@ -1704,6 +2162,7 @@ mod lifecycle_tests {
         let mut b = Boundary {
             terminal: Some("cancelled"),
             staged: None,
+            sdk: None,
         };
         publish("cancelled", &mut b, json!({"input":"wrong"}), &mut actual);
         assert_eq!(actual, json!({"published":[],"states":{}}));
@@ -1767,11 +2226,10 @@ mod lifecycle_tests {
             }
         });
         let response = state.protocol(&notification).unwrap();
-        state
-            .validation
-            .core
-            .validate("intercept-response", &response)
-            .unwrap();
+        assert!(
+            response.is_null(),
+            "ordinary observations must not produce effects"
+        );
         state.auth["auth"]["scope"] = json!("other-principal");
         assert!(state.protocol(&notification).is_err());
         state.auth["auth"]["scope"] = json!("body");
@@ -2098,6 +2556,143 @@ mod hardening_tests {
                 .0,
             400
         );
+    }
+    #[test]
+    fn exact_canonical_gap_observation_is_diagnostic_not_body_delivery() {
+        let state = server();
+        let mut event = request()["params"]["event"].clone();
+        event["id"] = json!("immutable-upload-and-subscription-views:a");
+        event["items"] = json!([{
+            "id":"logical-item", "kind":"text", "mediaType":"text/plain",
+            "selection":"body", "gap":{"reason":"content permission denied", "path":"items.logical-item"}
+        }]);
+        let mut notification = json!({"jsonrpc":"2.0", "method":"hooks/observe", "params":{"protocolVersion":"draft", "event":event}});
+        assert!(diagnostic_gap_notification(&notification));
+        assert!(state.protocol(&notification).unwrap().is_null());
+        assert!(state.data.lock().unwrap().upload_receiver.is_none());
+        let before = state.data.lock().unwrap().entries.len();
+        notification["params"]["event"]["id"] = json!("ordinary-gap");
+        assert!(!diagnostic_gap_notification(&notification));
+        assert!(state.protocol(&notification).is_err());
+        assert_eq!(state.data.lock().unwrap().entries.len(), before);
+    }
+    #[test]
+    fn ordinary_upload_roundtrip_uses_shared_public_receiver_storage() {
+        let state = Arc::new(server());
+        let http = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let endpoint =
+            reqwest::Url::parse(&format!("http://{}/upload", http.server_addr())).unwrap();
+        let receiving = state.clone();
+        let worker = thread::spawn(move || {
+            let mut request = http.recv_timeout(TIMEOUT).unwrap().unwrap();
+            let (status, descriptor) = receiving.upload_bytes(&mut request).unwrap();
+            request
+                .respond(
+                    tiny_http::Response::from_string(descriptor.to_string())
+                        .with_status_code(status)
+                        .with_header(
+                            tiny_http::Header::from_bytes("Content-Type", "application/json")
+                                .unwrap(),
+                        ),
+                )
+                .unwrap();
+        });
+        let (status, reference) =
+            send_upload(&endpoint, &json!({}), b"public bytes", None, TIMEOUT).unwrap();
+        worker.join().unwrap();
+        assert_eq!(status, 201);
+        let reference = reference.unwrap();
+        let store = state.content_store();
+        let context = ContentContext {
+            store: &store,
+            scope: AuthorizedScope::new("body"),
+        };
+        assert_eq!(&*context.resolve(&reference).unwrap(), b"public bytes");
+        let forbidden = ContentContext {
+            store: &store,
+            scope: AuthorizedScope::new("other"),
+        };
+        assert!(forbidden.resolve(&reference).is_err());
+        assert_eq!(
+            state.data.lock().unwrap().entries[0]["descriptor"],
+            reference
+        );
+    }
+    #[test]
+    fn http_distinguishes_content_conflicts_from_schema_errors() {
+        let state = Arc::new(server());
+        let (_, confirmed) =
+            test_upload(&state, &json!({"text":"abc", "sha256":sha256(b"abc")})).unwrap();
+        let http = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/intercept", http.server_addr());
+        listener(http, state.clone(), false);
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap();
+        let mut missing = confirmed.clone();
+        missing["ref"] = json!("never-uploaded");
+        let mut wrong_size = confirmed.clone();
+        wrong_size["size"] = json!(4);
+        let mut wrong_hash = confirmed.clone();
+        wrong_hash["sha256"] = json!("0".repeat(64));
+        let mut malformed = confirmed;
+        malformed["size"] = json!("not-an-integer");
+        for (reference, expected_status, prefix) in [
+            (missing, 409, "content:"),
+            (wrong_size, 409, "content:"),
+            (wrong_hash, 409, "content:"),
+            (malformed, 400, "schema:"),
+        ] {
+            let mut message = request();
+            message["params"]["event"]["items"] = json!([{
+                "id":"body", "kind":"message", "mediaType":"text/plain", "selection":"body", "body":reference
+            }]);
+            let response = client.post(&endpoint).json(&message).send().unwrap();
+            assert_eq!(response.status().as_u16(), expected_status);
+            let body: Value = response.json().unwrap();
+            assert!(s(&body, "error").starts_with(prefix));
+        }
+        // None of the rejected requests reached the fixture callback.
+        let mut data = state.data.lock().unwrap();
+        assert!(!data.entries.iter().any(|entry| entry["kind"] == "received"));
+        data.shutdown = true;
+        state.changed.notify_all();
+    }
+    #[test]
+    fn ordinary_server_verifies_shared_uploads_without_scanning_tool_input() {
+        let mut state = server();
+        state.responses.insert("hardening".into(), json!({"jsonrpc":"2.0", "id":"hardening", "result":{"protocolVersion":"draft", "effects":[]}}));
+        let (_, reference) =
+            test_upload(&state, &json!({"text":"abc", "sha256":sha256(b"abc")})).unwrap();
+        let mut message = request();
+        message["params"]["event"]["items"] = json!([{
+            "id":"body", "kind":"message", "mediaType":"text/plain", "selection":"body", "body":reference
+        }]);
+        message["params"]["event"]["tool"]["input"] = json!({"body":{"ref":"not-content"}, "nested":{"selection":"body", "gap":{"reason":"opaque user data"}}});
+        // Interceptions intentionally wait for an explicit fixture release.
+        // This test exercises content verification, not the scheduling barrier.
+        state
+            .control("/release", &json!({"id":"hardening"}))
+            .unwrap();
+        let store = state.content_store();
+        assert!(
+            state.data.try_lock().is_ok(),
+            "store cloning must release shared state before dispatch"
+        );
+        drop(store);
+        state.protocol(&message).unwrap();
+        let before = state.data.lock().unwrap().entries.len();
+        let fake = json!({"ref":"fixture-only", "size":3, "sha256":sha256(b"abc")});
+        state
+            .data
+            .lock()
+            .unwrap()
+            .uploads
+            .insert(("body".into(), "fixture-only".into()), b"abc".to_vec());
+        message["params"]["event"]["items"][0]["body"] = fake;
+        assert!(state.protocol(&message).is_err());
+        assert_eq!(state.data.lock().unwrap().entries.len(), before);
     }
     #[test]
     fn receiver_allocates_references_and_rejects_same_size_wrong_hash() {
