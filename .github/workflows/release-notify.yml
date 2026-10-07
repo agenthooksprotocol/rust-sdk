@@ -1,0 +1,81 @@
+name: Notify contract of SDK release
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  notify:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm a completed SDK release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Ordinary Release Please PR updates skip publish and must not notify.
+          jobs=$(gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100")
+          if ! jq -e 'any(.[].jobs[]; .name == "publish" and .conclusion == "success")' <<< "$jobs" > /dev/null; then
+            exit 0
+          fi
+
+          # A release must be stable, published, and tagged at this exact run head.
+          tags=$(gh api --paginate --slurp "repos/$REPOSITORY/releases?per_page=100" |
+            jq -r '.[][] | select(.draft == false and .prerelease == false) |
+              .tag_name | select(test("^v[0-9]+[.][0-9]+[.][0-9]+$"))')
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            object=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" --jq '.object')
+            # Dereference annotated tags as well as lightweight release tags.
+            for _ in {1..10}; do
+              [[ $(jq -r '.type' <<< "$object") == tag ]] || break
+              sha=$(jq -r '.sha' <<< "$object")
+              object=$(gh api "repos/$REPOSITORY/git/tags/$sha" --jq '.object')
+            done
+            if [[ $(jq -r '.type' <<< "$object") == commit &&
+                  $(jq -r '.sha' <<< "$object") == "$REVISION" ]]; then
+              echo 'created=true' >> "$GITHUB_OUTPUT"
+              break
+            fi
+          done <<< "$tags"
+
+      - name: Create contract notification token
+        if: steps.release.outputs.created == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: agenthooksprotocol
+          repositories: agent-hooks-protocol
+          permission-contents: write
+
+      - name: Notify contract repository
+        if: steps.release.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n --arg repository "$REPOSITORY" --arg revision "$REVISION" --arg runid "$RUN_ID" \
+            '{event_type: "sdk-released", client_payload: {repository: $repository, revision: $revision, runid: $runid}}' |
+            gh api --method POST repos/agenthooksprotocol/agent-hooks-protocol/dispatches --input -
