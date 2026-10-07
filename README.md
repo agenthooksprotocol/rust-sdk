@@ -11,16 +11,16 @@ The crate follows the current AHP `draft` schema snapshot and requires Rust 1.88
 
 ## Installation
 
-The crate is not yet published to crates.io. Until the first release, pin it from GitHub:
+Install from [crates.io](https://crates.io/crates/agenthooksprotocol):
 
 ```toml
 [dependencies]
-agenthooksprotocol = { git = "https://github.com/agenthooksprotocol/rust-sdk", rev = "<commit-sha>" }
+agenthooksprotocol = "0.1"
 ```
 
 ## Registration-driven hooks
 
-`Hooks` accepts an ordinary `generated::Registration` and `HooksOptions` with
+`Hooks` accepts an ordinary `Registration` and `HooksOptions` with
 explicit per-event `EventGrant` authority. Registration selects routes; it does
 not grant effects or observation permission. `tool_before(ToolBeforeInput<T>)`
 accepts flattened typed host facts and preserves the application argument type.
@@ -117,7 +117,7 @@ Named boundaries such as `hooks.session_start(facts).await` supply their event
 `type`, identity, time, and configured source. Session start also supplies the
 configured manifest; do not duplicate those fields in `facts`. Conflicting
 caller values are rejected. Use `HooksOptions::from_manifest(source, manifest)`
-for a complete `generated::StaticCapabilityManifest`, including tool paths,
+for a complete `StaticCapabilityManifest`, including tool paths,
 limits, and extension fields; the simple event-grant constructor only advertises
 its supported event/mode/capability subset.
 
@@ -144,7 +144,7 @@ prefer operation-scoped bindings when a source belongs to one call.
 Every public AHP schema has a Rust type plus `parse_*` and `encode_*` functions.
 
 ```rust
-use agenthooksprotocol::generated::{
+use agenthooksprotocol::{
     ParseResult,
     encode_capabilities,
     parse_capabilities,
@@ -235,7 +235,7 @@ authenticated identity nor evidence of execution.
 
 `Client::event(event)` accepts a complete canonical event, including its identity
 and context. Schema-derived named methods such as `tool_before_event(event)`
-add an event-name check; `generated::boundary::ALL_BOUNDARIES` exposes the generated
+add an event-name check; `boundary::ALL_BOUNDARIES` exposes the generated
 inventory. These APIs are distinct from `tool_before(input)`, which accepts only
 application input and uses the client's `ToolContext`.
 

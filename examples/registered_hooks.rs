@@ -13,12 +13,10 @@
 //! application, not the hook SDK, owns execution and approval policy.
 
 use agenthooksprotocol::{
-    EventType,
+    EventType, Registration, ToolBeforeInputOrigin,
     capability::{self, ModifyOperation},
     client::Decision,
     ergonomic_inputs::ToolBeforeInput,
-    generated::Registration,
-    generated::ToolBeforeInputOrigin,
     hooks::{Hooks, HooksOptions},
     state,
 };

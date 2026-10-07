@@ -3,7 +3,7 @@ use agenthooksprotocol::{
     client::{InterceptResponse, InterceptResponseResult},
     common::{JsonRpcId, JsonRpcResponseId},
     effect::{DenyEffect, Effect},
-    generated::{encode_intercept_response, parse_intercept_response_value},
+    encode_intercept_response, parse_intercept_response_value,
 };
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let effect: Effect = DenyEffect::new("Application policy denied this operation")
