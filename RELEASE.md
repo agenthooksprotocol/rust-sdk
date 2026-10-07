@@ -2,8 +2,9 @@
 
 This repository releases independently of the other SDKs. Release Please updates
 `Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`, and its version manifest in a release PR.
-The manifest starts at the current source version, `0.0.0`; `release-as` forces the
-first automated release to `0.1.0`.
+The manifest starts at `0.0.0`, the sentinel for no previous automated release.
+`initial-version` sets the first release to `0.1.0` and only affects that first
+release; subsequent versions follow Conventional Commits.
 
 ## One-time setup
 
@@ -45,9 +46,8 @@ There are no automated registry probes or bootstrap publications.
   commit using `rust-lang/crates-io-auth-action` and `cargo publish --locked`.
   Only the publish job can request an OIDC token. Environment approval, if
   configured, happens before that job starts.
-- After `0.1.0` is released, remove `release-as` from
-  `release-please-config.json` in a follow-up PR so later versions follow
-  Conventional Commits. Keep the manifest at the last released version.
+- Keep the manifest at the last released version. The `initial-version` setting
+  can remain in place; no follow-up configuration change is needed.
 - Publishing failure does not roll back the GitHub release. Resolve the cause
   and re-run the failed **publish** job in its original run, preserving its
   release outputs. Do not re-run the successful Release Please job or move tags;
