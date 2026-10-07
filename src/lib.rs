@@ -29,11 +29,9 @@ pub mod transport;
 /// Lazy typed protocol boundaries; application execution policy remains userland.
 pub mod client;
 
-// Semantic model modules are generated from the canonical schema, not curated aliases.
-pub use generated::{
-    DeliveryDiagnosticCode, EventType, Permission, capability, ergonomic_inputs, state,
-};
-pub use generated::{capabilities, common, event, mcp_elicitation, subscription};
+// Models, codecs, and semantic aliases come from the canonical generated API.
+// Explicit handwritten modules take precedence over glob-imported aliases.
+pub use generated::*;
 /// Canonical effect models and shared-metadata ergonomic constructors.
 pub mod effect {
     pub use crate::generated::effect::*;
