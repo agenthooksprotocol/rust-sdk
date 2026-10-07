@@ -11,23 +11,12 @@ The crate follows the current AHP `draft` schema snapshot and requires Rust 1.88
 
 ## Installation
 
-Version `0.1.0` is published on [crates.io](https://crates.io/crates/agenthooksprotocol):
+Install from [crates.io](https://crates.io/crates/agenthooksprotocol):
 
 ```toml
 [dependencies]
 agenthooksprotocol = "0.1"
 ```
-
-### Upcoming 0.1.1 API
-
-The examples below describe the upcoming `0.1.1` API, which exports generated
-models and codecs directly from the crate root. These new root paths are not
-available in `0.1.0`. Until `0.1.1` is released, pin a Git revision containing
-this change to use these examples; after release, use `agenthooksprotocol = "^0.1.1"`.
-Existing `agenthooksprotocol::generated::*` paths remain supported, including
-for users of `0.1.0`. Handwritten modules such as `client`, `content`,
-`registration`, and `transport`, and the combined `effect` API, retain their
-existing behavior.
 
 ## Registration-driven hooks
 
