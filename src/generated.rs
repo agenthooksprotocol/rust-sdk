@@ -2787,12 +2787,140 @@ impl ExecutionEventContextCompactAfter {
 
 /// Source: schema/draft/execution-event.schema.json#/$defs/context.compact.before
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ExecutionEventContextCompactBefore(pub JsonValue);
+pub struct ExecutionEventContextCompactBefore {
+    #[serde(rename = "extensions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub extensions: Presence<Box<Extensions>>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventContextCompactBeforeGapsItem>>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "instructions")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub instructions: Presence<Box<ContentItem>>,
+    #[serde(rename = "items")]
+    pub items: Vec<Box<ModelVisibleItem>>,
+    #[serde(rename = "native")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub native: Presence<Box<NativeEvent>>,
+    #[serde(rename = "parentEventId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_event_id: Presence<String>,
+    #[serde(rename = "session")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub session: Presence<Box<Session>>,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "time")]
+    pub time: String,
+    #[serde(rename = "tokenCounts")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub token_counts: Presence<Box<ExecutionEventTokencounts>>,
+    #[serde(rename = "trigger")]
+    pub trigger: ExecutionEventContextCompactBeforeTrigger,
+    #[serde(rename = "turn")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub turn: Presence<ExecutionEventContextCompactBeforeTurn>,
+    #[serde(rename = "type")]
+    pub type_: ExecutionEventContextCompactBeforeType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ExecutionEventContextCompactBefore {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        id: impl Into<String>,
+        items: impl Into<Vec<Box<ModelVisibleItem>>>,
+        source: impl Into<String>,
+        time: impl Into<String>,
+        trigger: impl Into<ExecutionEventContextCompactBeforeTrigger>,
+    ) -> Self {
+        Self {
+            extensions: Presence::Missing,
+            gaps: Presence::Missing,
+            id: id.into(),
+            instructions: Presence::Missing,
+            items: items.into(),
+            native: Presence::Missing,
+            parent_event_id: Presence::Missing,
+            session: Presence::Missing,
+            source: source.into(),
+            synthesized: Presence::Missing,
+            time: time.into(),
+            token_counts: Presence::Missing,
+            trigger: trigger.into(),
+            turn: Presence::Missing,
+            type_: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_extensions(mut self, value: impl Into<Box<Extensions>>) -> Self {
+        self.extensions = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gaps(
+        mut self,
+        value: impl Into<Vec<ExecutionEventContextCompactBeforeGapsItem>>,
+    ) -> Self {
+        self.gaps = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_instructions(mut self, value: impl Into<Box<ContentItem>>) -> Self {
+        self.instructions = Presence::Present(value.into());
+        self
+    }
+    pub fn with_items(mut self, value: impl Into<Vec<Box<ModelVisibleItem>>>) -> Self {
+        self.items = value.into();
+        self
+    }
+    pub fn with_native(mut self, value: impl Into<Box<NativeEvent>>) -> Self {
+        self.native = Presence::Present(value.into());
+        self
+    }
+    pub fn with_parent_event_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_event_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_session(mut self, value: impl Into<Box<Session>>) -> Self {
+        self.session = Presence::Present(value.into());
+        self
+    }
+    pub fn with_source(mut self, value: impl Into<String>) -> Self {
+        self.source = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+    pub fn with_time(mut self, value: impl Into<String>) -> Self {
+        self.time = value.into();
+        self
+    }
+    pub fn with_token_counts(mut self, value: impl Into<Box<ExecutionEventTokencounts>>) -> Self {
+        self.token_counts = Presence::Present(value.into());
+        self
+    }
+    pub fn with_trigger(
+        mut self,
+        value: impl Into<ExecutionEventContextCompactBeforeTrigger>,
+    ) -> Self {
+        self.trigger = value.into();
+        self
+    }
+    pub fn with_turn(mut self, value: impl Into<ExecutionEventContextCompactBeforeTurn>) -> Self {
+        self.turn = Presence::Present(value.into());
+        self
     }
 }
 
@@ -7483,12 +7611,35 @@ impl From<ExecutionEventModelSwitchBefore> for ModelSwitchBeforeEvent {
 
 /// Source: schema/draft/content-item.schema.json#/$defs/modelVisibleItem
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelVisibleItem(pub JsonValue);
+#[serde(untagged)]
+pub enum ModelVisibleItem {
+    Body(ModelVisibleItemBody),
+    BodyGap(ModelVisibleItemBodyGap),
+    Metadata(ModelVisibleItemMetadata),
+    Omit(ModelVisibleItemOmit),
+}
 
-impl ModelVisibleItem {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl From<ModelVisibleItemBody> for ModelVisibleItem {
+    fn from(value: ModelVisibleItemBody) -> Self {
+        Self::Body(value)
+    }
+}
+
+impl From<ModelVisibleItemBodyGap> for ModelVisibleItem {
+    fn from(value: ModelVisibleItemBodyGap) -> Self {
+        Self::BodyGap(value)
+    }
+}
+
+impl From<ModelVisibleItemMetadata> for ModelVisibleItem {
+    fn from(value: ModelVisibleItemMetadata) -> Self {
+        Self::Metadata(value)
+    }
+}
+
+impl From<ModelVisibleItemOmit> for ModelVisibleItem {
+    fn from(value: ModelVisibleItemOmit) -> Self {
+        Self::Omit(value)
     }
 }
 
@@ -17486,13 +17637,77 @@ pub mod capability {
     }
 }
 /// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AuthenticationBearerType;
+
+impl AuthenticationBearerType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AuthenticationBearerType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"bearer\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AuthenticationBearerType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"bearer\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct AuthenticationBearer(pub JsonValue);
+pub struct AuthenticationBearer {
+    #[serde(rename = "tokenEnv")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub token_env: Presence<String>,
+    #[serde(rename = "tokenRef")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub token_ref: Presence<String>,
+    #[serde(rename = "type")]
+    pub type_: AuthenticationBearerType,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl AuthenticationBearer {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            token_env: Presence::Missing,
+            token_ref: Presence::Missing,
+            type_: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_token_env(mut self, value: impl Into<String>) -> Self {
+        self.token_env = Presence::Present(value.into());
+        self
+    }
+    pub fn with_token_ref(mut self, value: impl Into<String>) -> Self {
+        self.token_ref = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for AuthenticationBearer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -18231,100 +18446,280 @@ impl CapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifyContent(pub JsonValue);
+pub struct CapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifyInput(pub JsonValue);
+pub struct CapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifyInstructions(pub JsonValue);
+pub struct CapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifyOutput(pub JsonValue);
+pub struct CapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifyPrompt(pub JsonValue);
+pub struct CapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifyRequest(pub JsonValue);
+pub struct CapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifyResponse(pub JsonValue);
+pub struct CapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifySummary(pub JsonValue);
+pub struct CapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilitiesModifyWorkspace(pub JsonValue);
+pub struct CapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl CapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -19699,13 +20094,73 @@ impl ConfigChangeAfterEventChange {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigChangeBeforeCapabilitiesEffectsItem {
+    Deny,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ConfigChangeBeforeCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigChangeBeforeCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ConfigChangeBeforeCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesEffects(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesEffects(
+    pub Vec<ConfigChangeBeforeCapabilitiesEffectsItem>,
+);
 
 impl ConfigChangeBeforeCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ConfigChangeBeforeCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ConfigChangeBeforeCapabilitiesEffectsItem>>
+    for ConfigChangeBeforeCapabilitiesEffects
+{
+    fn from(value: Vec<ConfigChangeBeforeCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -20047,100 +20502,280 @@ impl ConfigChangeBeforeCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifyContent(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifyInput(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifyOutput(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifyRequest(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifyResponse(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifySummary(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ConfigChangeBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ConfigChangeBeforeCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ConfigChangeBeforeCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -21407,13 +22042,85 @@ impl<'de> Deserialize<'de> for ContentSelectionVideo {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextCompactAfterCapabilitiesEffectsItem {
+    Inject,
+    Modify,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ContextCompactAfterCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactAfterCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContextCompactAfterCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesEffects(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesEffects(
+    pub Vec<ContextCompactAfterCapabilitiesEffectsItem>,
+);
 
 impl ContextCompactAfterCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ContextCompactAfterCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ContextCompactAfterCapabilitiesEffectsItem>>
+    for ContextCompactAfterCapabilitiesEffects
+{
+    fn from(value: Vec<ContextCompactAfterCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -21755,100 +22462,280 @@ impl ContextCompactAfterCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifyContent(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifyInput(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifyOutput(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifyRequest(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifyResponse(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifySummary(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactAfterCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ContextCompactAfterCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactAfterCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -21975,13 +22862,109 @@ impl Default for ContextCompactAfterCapabilitiesModify {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextCompactBeforeCapabilitiesEffectsItem {
+    Deny,
+    Modify,
+    Return,
+    Inject,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ContextCompactBeforeCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Return => {
+                let value: JsonValue =
+                    serde_json::from_str("\"return\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContextCompactBeforeCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"return\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Return);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ContextCompactBeforeCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesEffects(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesEffects(
+    pub Vec<ContextCompactBeforeCapabilitiesEffectsItem>,
+);
 
 impl ContextCompactBeforeCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ContextCompactBeforeCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ContextCompactBeforeCapabilitiesEffectsItem>>
+    for ContextCompactBeforeCapabilitiesEffects
+{
+    fn from(value: Vec<ContextCompactBeforeCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -22323,100 +23306,280 @@ impl ContextCompactBeforeCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifyContent(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifyInput(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifyOutput(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifyRequest(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifyResponse(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifySummary(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ContextCompactBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ContextCompactBeforeCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ContextCompactBeforeCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -23666,13 +24829,64 @@ impl<'de> Deserialize<'de> for ExecutionEventAttemptusageKind {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ExecutionEventAttemptusageProvenance(pub JsonValue);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventAttemptusageProvenance {
+    Provider,
+    Estimate,
+    Mixed,
+    Unknown(String),
+}
 
-impl ExecutionEventAttemptusageProvenance {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl Serialize for ExecutionEventAttemptusageProvenance {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Provider => {
+                let value: JsonValue = serde_json::from_str("\"provider\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Estimate => {
+                let value: JsonValue = serde_json::from_str("\"estimate\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Mixed => {
+                let value: JsonValue =
+                    serde_json::from_str("\"mixed\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventAttemptusageProvenance {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"provider\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Provider);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"estimate\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Estimate);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"mixed\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Mixed);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventAttemptusageProvenance: {value}"
+        )))
     }
 }
 
@@ -23818,6 +25032,164 @@ impl<'de> Deserialize<'de> for ExecutionEventContextCompactAfterType {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         let expected: JsonValue = serde_json::from_str("\"context.compact.after\"")
+            .expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventContextCompactBeforeGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventContextCompactBeforeGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionEventContextCompactBeforeTrigger {
+    Auto,
+    Manual,
+    Hook,
+    Unknown(String),
+}
+
+impl Serialize for ExecutionEventContextCompactBeforeTrigger {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Auto => {
+                let value: JsonValue =
+                    serde_json::from_str("\"auto\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Manual => {
+                let value: JsonValue =
+                    serde_json::from_str("\"manual\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Hook => {
+                let value: JsonValue =
+                    serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventContextCompactBeforeTrigger {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"auto\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Auto);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"manual\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Manual);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"hook\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Hook);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ExecutionEventContextCompactBeforeTrigger: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventContextCompactBeforeTurn {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventContextCompactBeforeTurn {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventContextCompactBeforeType;
+
+impl ExecutionEventContextCompactBeforeType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventContextCompactBeforeType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue = serde_json::from_str("\"context.compact.before\"")
+            .expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventContextCompactBeforeType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue = serde_json::from_str("\"context.compact.before\"")
             .expect("generated literal is valid JSON");
         if same_json(&value, &expected) {
             Ok(Self)
@@ -24491,45 +25863,426 @@ impl<'de> Deserialize<'de> for ExecutionEventFilechangeChange {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ExecutionEventMcpConnectionHttp(pub JsonValue);
+pub struct ExecutionEventMcpConnectionHttpGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventMcpConnectionHttpGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventMcpConnectionHttpTransport;
+
+impl ExecutionEventMcpConnectionHttpTransport {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventMcpConnectionHttpTransport {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"http\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventMcpConnectionHttpTransport {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"http\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventMcpConnectionHttp {
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventMcpConnectionHttpGapsItem>>,
+    #[serde(rename = "transport")]
+    pub transport: ExecutionEventMcpConnectionHttpTransport,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ExecutionEventMcpConnectionHttp {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            gaps: Presence::Missing,
+            transport: Default::default(),
+            url: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_gaps(
+        mut self,
+        value: impl Into<Vec<ExecutionEventMcpConnectionHttpGapsItem>>,
+    ) -> Self {
+        self.gaps = Presence::Present(value.into());
+        self
+    }
+    pub fn with_url(mut self, value: impl Into<String>) -> Self {
+        self.url = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ExecutionEventMcpConnectionHttp {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ExecutionEventMcpConnectionSse(pub JsonValue);
+pub struct ExecutionEventMcpConnectionSseGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventMcpConnectionSseGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventMcpConnectionSseTransport;
+
+impl ExecutionEventMcpConnectionSseTransport {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventMcpConnectionSseTransport {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"sse\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventMcpConnectionSseTransport {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"sse\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventMcpConnectionSse {
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventMcpConnectionSseGapsItem>>,
+    #[serde(rename = "transport")]
+    pub transport: ExecutionEventMcpConnectionSseTransport,
+    #[serde(rename = "url")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub url: Presence<String>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ExecutionEventMcpConnectionSse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            gaps: Presence::Missing,
+            transport: Default::default(),
+            url: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_gaps(
+        mut self,
+        value: impl Into<Vec<ExecutionEventMcpConnectionSseGapsItem>>,
+    ) -> Self {
+        self.gaps = Presence::Present(value.into());
+        self
+    }
+    pub fn with_url(mut self, value: impl Into<String>) -> Self {
+        self.url = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ExecutionEventMcpConnectionSse {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ExecutionEventMcpConnectionStdio(pub JsonValue);
+pub struct ExecutionEventMcpConnectionStdioGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventMcpConnectionStdioGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventMcpConnectionStdioTransport;
+
+impl ExecutionEventMcpConnectionStdioTransport {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventMcpConnectionStdioTransport {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"stdio\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventMcpConnectionStdioTransport {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"stdio\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventMcpConnectionStdio {
+    #[serde(rename = "args")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub args: Presence<Vec<String>>,
+    #[serde(rename = "command")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub command: Presence<String>,
+    #[serde(rename = "cwd")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub cwd: Presence<String>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventMcpConnectionStdioGapsItem>>,
+    #[serde(rename = "transport")]
+    pub transport: ExecutionEventMcpConnectionStdioTransport,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ExecutionEventMcpConnectionStdio {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            args: Presence::Missing,
+            command: Presence::Missing,
+            cwd: Presence::Missing,
+            gaps: Presence::Missing,
+            transport: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_args(mut self, value: impl Into<Vec<String>>) -> Self {
+        self.args = Presence::Present(value.into());
+        self
+    }
+    pub fn with_command(mut self, value: impl Into<String>) -> Self {
+        self.command = Presence::Present(value.into());
+        self
+    }
+    pub fn with_cwd(mut self, value: impl Into<String>) -> Self {
+        self.cwd = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gaps(
+        mut self,
+        value: impl Into<Vec<ExecutionEventMcpConnectionStdioGapsItem>>,
+    ) -> Self {
+        self.gaps = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ExecutionEventMcpConnectionStdio {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ExecutionEventMcpConnectionCustomTransport(pub JsonValue);
+pub struct ExecutionEventMcpConnectionCustomTransportGapsItem {
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventMcpConnectionCustomTransportGapsItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = value.into();
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventMcpConnectionCustomTransport {
+    #[serde(rename = "address")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub address: Presence<String>,
+    #[serde(rename = "addressForm")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub address_form: Presence<String>,
+    #[serde(rename = "gaps")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub gaps: Presence<Vec<ExecutionEventMcpConnectionCustomTransportGapsItem>>,
+    #[serde(rename = "transport")]
+    pub transport: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ExecutionEventMcpConnectionCustomTransport {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(transport: impl Into<String>) -> Self {
+        Self {
+            address: Presence::Missing,
+            address_form: Presence::Missing,
+            gaps: Presence::Missing,
+            transport: transport.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_address(mut self, value: impl Into<String>) -> Self {
+        self.address = Presence::Present(value.into());
+        self
+    }
+    pub fn with_address_form(mut self, value: impl Into<String>) -> Self {
+        self.address_form = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gaps(
+        mut self,
+        value: impl Into<Vec<ExecutionEventMcpConnectionCustomTransportGapsItem>>,
+    ) -> Self {
+        self.gaps = Presence::Present(value.into());
+        self
+    }
+    pub fn with_transport(mut self, value: impl Into<String>) -> Self {
+        self.transport = value.into();
+        self
     }
 }
 
@@ -24678,13 +26431,618 @@ impl ExecutionEventMcpServer {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ExecutionEventModelErrorExecution(pub JsonValue);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionExecutedStatus;
 
-impl ExecutionEventModelErrorExecution {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl ExecutionEventModelErrorExecutionExecutedStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionExecutedStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionExecutedStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelErrorExecutionExecuted {
+    #[serde(rename = "status")]
+    pub status: ExecutionEventModelErrorExecutionExecutedStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventModelErrorExecutionExecuted {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for ExecutionEventModelErrorExecutionExecuted {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedSuppliedResultReason;
+
+impl ExecutionEventModelErrorExecutionSkippedSuppliedResultReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedSuppliedResultReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"supplied_result\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedSuppliedResultReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"supplied_result\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedSuppliedResultStatus;
+
+impl ExecutionEventModelErrorExecutionSkippedSuppliedResultStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedSuppliedResultStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedSuppliedResultStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelErrorExecutionSkippedSuppliedResult {
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventModelErrorExecutionSkippedSuppliedResultReason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventModelErrorExecutionSkippedSuppliedResultStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventModelErrorExecutionSkippedSuppliedResult {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for ExecutionEventModelErrorExecutionSkippedSuppliedResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedPolicyReason;
+
+impl ExecutionEventModelErrorExecutionSkippedPolicyReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedPolicyReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"policy\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedPolicyReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"policy\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedPolicyStatus;
+
+impl ExecutionEventModelErrorExecutionSkippedPolicyStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedPolicyStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedPolicyStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelErrorExecutionSkippedPolicy {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventModelErrorExecutionSkippedPolicyReason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventModelErrorExecutionSkippedPolicyStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventModelErrorExecutionSkippedPolicy {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            detail: Presence::Missing,
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_detail(mut self, value: impl Into<String>) -> Self {
+        self.detail = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ExecutionEventModelErrorExecutionSkippedPolicy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedCancelledReason;
+
+impl ExecutionEventModelErrorExecutionSkippedCancelledReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedCancelledReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"cancelled\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedCancelledReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"cancelled\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedCancelledStatus;
+
+impl ExecutionEventModelErrorExecutionSkippedCancelledStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedCancelledStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedCancelledStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelErrorExecutionSkippedCancelled {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventModelErrorExecutionSkippedCancelledReason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventModelErrorExecutionSkippedCancelledStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventModelErrorExecutionSkippedCancelled {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            detail: Presence::Missing,
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_detail(mut self, value: impl Into<String>) -> Self {
+        self.detail = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ExecutionEventModelErrorExecutionSkippedCancelled {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedTimeoutReason;
+
+impl ExecutionEventModelErrorExecutionSkippedTimeoutReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedTimeoutReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"timeout\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedTimeoutReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"timeout\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedTimeoutStatus;
+
+impl ExecutionEventModelErrorExecutionSkippedTimeoutStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedTimeoutStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedTimeoutStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelErrorExecutionSkippedTimeout {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventModelErrorExecutionSkippedTimeoutReason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventModelErrorExecutionSkippedTimeoutStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventModelErrorExecutionSkippedTimeout {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            detail: Presence::Missing,
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_detail(mut self, value: impl Into<String>) -> Self {
+        self.detail = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ExecutionEventModelErrorExecutionSkippedTimeout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedOtherReason;
+
+impl ExecutionEventModelErrorExecutionSkippedOtherReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedOtherReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"other\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedOtherReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"other\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExecutionEventModelErrorExecutionSkippedOtherStatus;
+
+impl ExecutionEventModelErrorExecutionSkippedOtherStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ExecutionEventModelErrorExecutionSkippedOtherStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionEventModelErrorExecutionSkippedOtherStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionEventModelErrorExecutionSkippedOther {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ExecutionEventModelErrorExecutionSkippedOtherReason,
+    #[serde(rename = "status")]
+    pub status: ExecutionEventModelErrorExecutionSkippedOtherStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ExecutionEventModelErrorExecutionSkippedOther {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            detail: Presence::Missing,
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_detail(mut self, value: impl Into<String>) -> Self {
+        self.detail = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ExecutionEventModelErrorExecutionSkippedOther {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ExecutionEventModelErrorExecution {
+    Executed(ExecutionEventModelErrorExecutionExecuted),
+    SkippedSuppliedResult(ExecutionEventModelErrorExecutionSkippedSuppliedResult),
+    SkippedPolicy(ExecutionEventModelErrorExecutionSkippedPolicy),
+    SkippedCancelled(ExecutionEventModelErrorExecutionSkippedCancelled),
+    SkippedTimeout(ExecutionEventModelErrorExecutionSkippedTimeout),
+    SkippedOther(ExecutionEventModelErrorExecutionSkippedOther),
+}
+
+impl From<ExecutionEventModelErrorExecutionExecuted> for ExecutionEventModelErrorExecution {
+    fn from(value: ExecutionEventModelErrorExecutionExecuted) -> Self {
+        Self::Executed(value)
+    }
+}
+
+impl From<ExecutionEventModelErrorExecutionSkippedSuppliedResult>
+    for ExecutionEventModelErrorExecution
+{
+    fn from(value: ExecutionEventModelErrorExecutionSkippedSuppliedResult) -> Self {
+        Self::SkippedSuppliedResult(value)
+    }
+}
+
+impl From<ExecutionEventModelErrorExecutionSkippedPolicy> for ExecutionEventModelErrorExecution {
+    fn from(value: ExecutionEventModelErrorExecutionSkippedPolicy) -> Self {
+        Self::SkippedPolicy(value)
+    }
+}
+
+impl From<ExecutionEventModelErrorExecutionSkippedCancelled> for ExecutionEventModelErrorExecution {
+    fn from(value: ExecutionEventModelErrorExecutionSkippedCancelled) -> Self {
+        Self::SkippedCancelled(value)
+    }
+}
+
+impl From<ExecutionEventModelErrorExecutionSkippedTimeout> for ExecutionEventModelErrorExecution {
+    fn from(value: ExecutionEventModelErrorExecutionSkippedTimeout) -> Self {
+        Self::SkippedTimeout(value)
+    }
+}
+
+impl From<ExecutionEventModelErrorExecutionSkippedOther> for ExecutionEventModelErrorExecution {
+    fn from(value: ExecutionEventModelErrorExecutionSkippedOther) -> Self {
+        Self::SkippedOther(value)
     }
 }
 
@@ -28182,13 +30540,721 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitation
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InteractionEventUserElicitationRequestElicitationRequest(pub JsonValue);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestBodyMediaType;
 
-impl InteractionEventUserElicitationRequestElicitationRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl InteractionEventUserElicitationRequestElicitationRequestBodyMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationRequestBodyMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationRequestElicitationRequestBodyMediaType
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestBodySelection;
+
+impl InteractionEventUserElicitationRequestElicitationRequestBodySelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationRequestBodySelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationRequestElicitationRequestBodySelection
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestBody {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: InteractionEventUserElicitationRequestElicitationRequestBodyMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: InteractionEventUserElicitationRequestElicitationRequestBodySelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationRequestElicitationRequestBody {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        body: impl Into<Box<ContentReference>>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            body: body.into(),
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.body = value.into();
+        self
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestBodyGapGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationRequestElicitationRequestBodyGapGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType;
+
+impl InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection;
+
+impl InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestBodyGap {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: InteractionEventUserElicitationRequestElicitationRequestBodyGapGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationRequestElicitationRequestBodyGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        gap: impl Into<InteractionEventUserElicitationRequestElicitationRequestBodyGapGap>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(
+        mut self,
+        value: impl Into<InteractionEventUserElicitationRequestElicitationRequestBodyGapGap>,
+    ) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType;
+
+impl InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestMetadataSelection;
+
+impl InteractionEventUserElicitationRequestElicitationRequestMetadataSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationRequestMetadataSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationRequestElicitationRequestMetadataSelection
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestMetadata {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: InteractionEventUserElicitationRequestElicitationRequestMetadataSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationRequestElicitationRequestMetadata {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestOmitMediaType;
+
+impl InteractionEventUserElicitationRequestElicitationRequestOmitMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationRequestOmitMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationRequestElicitationRequestOmitMediaType
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestOmitSelection;
+
+impl InteractionEventUserElicitationRequestElicitationRequestOmitSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationRequestElicitationRequestOmitSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationRequestElicitationRequestOmitSelection
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationRequestElicitationRequestOmit {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: InteractionEventUserElicitationRequestElicitationRequestOmitMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: InteractionEventUserElicitationRequestElicitationRequestOmitSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationRequestElicitationRequestOmit {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum InteractionEventUserElicitationRequestElicitationRequest {
+    Body(InteractionEventUserElicitationRequestElicitationRequestBody),
+    BodyGap(InteractionEventUserElicitationRequestElicitationRequestBodyGap),
+    Metadata(InteractionEventUserElicitationRequestElicitationRequestMetadata),
+    Omit(InteractionEventUserElicitationRequestElicitationRequestOmit),
+}
+
+impl From<InteractionEventUserElicitationRequestElicitationRequestBody>
+    for InteractionEventUserElicitationRequestElicitationRequest
+{
+    fn from(value: InteractionEventUserElicitationRequestElicitationRequestBody) -> Self {
+        Self::Body(value)
+    }
+}
+
+impl From<InteractionEventUserElicitationRequestElicitationRequestBodyGap>
+    for InteractionEventUserElicitationRequestElicitationRequest
+{
+    fn from(value: InteractionEventUserElicitationRequestElicitationRequestBodyGap) -> Self {
+        Self::BodyGap(value)
+    }
+}
+
+impl From<InteractionEventUserElicitationRequestElicitationRequestMetadata>
+    for InteractionEventUserElicitationRequestElicitationRequest
+{
+    fn from(value: InteractionEventUserElicitationRequestElicitationRequestMetadata) -> Self {
+        Self::Metadata(value)
+    }
+}
+
+impl From<InteractionEventUserElicitationRequestElicitationRequestOmit>
+    for InteractionEventUserElicitationRequestElicitationRequest
+{
+    fn from(value: InteractionEventUserElicitationRequestElicitationRequestOmit) -> Self {
+        Self::Omit(value)
     }
 }
 
@@ -28386,13 +31452,713 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationM
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InteractionEventUserElicitationResultElicitationResult(pub JsonValue);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationResultElicitationResultBodyMediaType;
 
-impl InteractionEventUserElicitationResultElicitationResult {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl InteractionEventUserElicitationResultElicitationResultBodyMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationResultBodyMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultBodyMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationResultElicitationResultBodySelection;
+
+impl InteractionEventUserElicitationResultElicitationResultBodySelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationResultBodySelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultBodySelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationResultElicitationResultBody {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: InteractionEventUserElicitationResultElicitationResultBodyMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: InteractionEventUserElicitationResultElicitationResultBodySelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationResultElicitationResultBody {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        body: impl Into<Box<ContentReference>>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            body: body.into(),
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.body = value.into();
+        self
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationResultElicitationResultBodyGapGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationResultElicitationResultBodyGapGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationResultElicitationResultBodyGapMediaType;
+
+impl InteractionEventUserElicitationResultElicitationResultBodyGapMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationResultBodyGapMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationResultElicitationResultBodyGapMediaType
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationResultElicitationResultBodyGapSelection;
+
+impl InteractionEventUserElicitationResultElicitationResultBodyGapSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationResultBodyGapSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationResultElicitationResultBodyGapSelection
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationResultElicitationResultBodyGap {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: InteractionEventUserElicitationResultElicitationResultBodyGapGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: InteractionEventUserElicitationResultElicitationResultBodyGapMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: InteractionEventUserElicitationResultElicitationResultBodyGapSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationResultElicitationResultBodyGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        gap: impl Into<InteractionEventUserElicitationResultElicitationResultBodyGapGap>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(
+        mut self,
+        value: impl Into<InteractionEventUserElicitationResultElicitationResultBodyGapGap>,
+    ) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationResultElicitationResultMetadataMediaType;
+
+impl InteractionEventUserElicitationResultElicitationResultMetadataMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationResultMetadataMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationResultElicitationResultMetadataMediaType
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationResultElicitationResultMetadataSelection;
+
+impl InteractionEventUserElicitationResultElicitationResultMetadataSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationResultMetadataSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de>
+    for InteractionEventUserElicitationResultElicitationResultMetadataSelection
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationResultElicitationResultMetadata {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: InteractionEventUserElicitationResultElicitationResultMetadataMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: InteractionEventUserElicitationResultElicitationResultMetadataSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationResultElicitationResultMetadata {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationResultElicitationResultOmitMediaType;
+
+impl InteractionEventUserElicitationResultElicitationResultOmitMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationResultOmitMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultOmitMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserElicitationResultElicitationResultOmitSelection;
+
+impl InteractionEventUserElicitationResultElicitationResultOmitSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserElicitationResultElicitationResultOmitSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultOmitSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InteractionEventUserElicitationResultElicitationResultOmit {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: InteractionEventUserElicitationResultElicitationResultOmitMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: InteractionEventUserElicitationResultElicitationResultOmitSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserElicitationResultElicitationResultOmit {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum InteractionEventUserElicitationResultElicitationResult {
+    Body(InteractionEventUserElicitationResultElicitationResultBody),
+    BodyGap(InteractionEventUserElicitationResultElicitationResultBodyGap),
+    Metadata(InteractionEventUserElicitationResultElicitationResultMetadata),
+    Omit(InteractionEventUserElicitationResultElicitationResultOmit),
+}
+
+impl From<InteractionEventUserElicitationResultElicitationResultBody>
+    for InteractionEventUserElicitationResultElicitationResult
+{
+    fn from(value: InteractionEventUserElicitationResultElicitationResultBody) -> Self {
+        Self::Body(value)
+    }
+}
+
+impl From<InteractionEventUserElicitationResultElicitationResultBodyGap>
+    for InteractionEventUserElicitationResultElicitationResult
+{
+    fn from(value: InteractionEventUserElicitationResultElicitationResultBodyGap) -> Self {
+        Self::BodyGap(value)
+    }
+}
+
+impl From<InteractionEventUserElicitationResultElicitationResultMetadata>
+    for InteractionEventUserElicitationResultElicitationResult
+{
+    fn from(value: InteractionEventUserElicitationResultElicitationResultMetadata) -> Self {
+        Self::Metadata(value)
+    }
+}
+
+impl From<InteractionEventUserElicitationResultElicitationResultOmit>
+    for InteractionEventUserElicitationResultElicitationResult
+{
+    fn from(value: InteractionEventUserElicitationResultElicitationResultOmit) -> Self {
+        Self::Omit(value)
     }
 }
 
@@ -29311,100 +33077,280 @@ impl InterceptRequestParamsCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifyContent(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifyInput(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifyInstructions(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifyOutput(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifyPrompt(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifyRequest(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifyResponse(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifySummary(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct InterceptRequestParamsCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct InterceptRequestParamsCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl InterceptRequestParamsCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -31821,13 +35767,121 @@ impl<'de> Deserialize<'de> for McpElicitationUntitledSingleSelectEnumSchemaType 
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelRequestBeforeCapabilitiesEffectsItem {
+    Deny,
+    Modify,
+    Inject,
+    Return,
+    Flow,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ModelRequestBeforeCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Return => {
+                let value: JsonValue =
+                    serde_json::from_str("\"return\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelRequestBeforeCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"return\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Return);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelRequestBeforeCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesEffects(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesEffects(
+    pub Vec<ModelRequestBeforeCapabilitiesEffectsItem>,
+);
 
 impl ModelRequestBeforeCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ModelRequestBeforeCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ModelRequestBeforeCapabilitiesEffectsItem>>
+    for ModelRequestBeforeCapabilitiesEffects
+{
+    fn from(value: Vec<ModelRequestBeforeCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -31923,13 +35977,73 @@ impl Default for ModelRequestBeforeCapabilitiesElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelRequestBeforeCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ModelRequestBeforeCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelRequestBeforeCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelRequestBeforeCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesFlowOperations(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesFlowOperations(
+    pub Vec<ModelRequestBeforeCapabilitiesFlowOperationsItem>,
+);
 
 impl ModelRequestBeforeCapabilitiesFlowOperations {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ModelRequestBeforeCapabilitiesFlowOperationsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ModelRequestBeforeCapabilitiesFlowOperationsItem>>
+    for ModelRequestBeforeCapabilitiesFlowOperations
+{
+    fn from(value: Vec<ModelRequestBeforeCapabilitiesFlowOperationsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -32128,100 +36242,280 @@ impl ModelRequestBeforeCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifyContent(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifyInput(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifyOutput(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifyRequest(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifyResponse(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifySummary(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelRequestBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ModelRequestBeforeCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelRequestBeforeCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -32348,13 +36642,85 @@ impl Default for ModelRequestBeforeCapabilitiesModify {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelResponseAfterCapabilitiesEffectsItem {
+    Modify,
+    Flow,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ModelResponseAfterCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelResponseAfterCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelResponseAfterCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesEffects(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesEffects(
+    pub Vec<ModelResponseAfterCapabilitiesEffectsItem>,
+);
 
 impl ModelResponseAfterCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ModelResponseAfterCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ModelResponseAfterCapabilitiesEffectsItem>>
+    for ModelResponseAfterCapabilitiesEffects
+{
+    fn from(value: Vec<ModelResponseAfterCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -32450,13 +36816,73 @@ impl Default for ModelResponseAfterCapabilitiesElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelResponseAfterCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ModelResponseAfterCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelResponseAfterCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelResponseAfterCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesFlowOperations(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesFlowOperations(
+    pub Vec<ModelResponseAfterCapabilitiesFlowOperationsItem>,
+);
 
 impl ModelResponseAfterCapabilitiesFlowOperations {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ModelResponseAfterCapabilitiesFlowOperationsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ModelResponseAfterCapabilitiesFlowOperationsItem>>
+    for ModelResponseAfterCapabilitiesFlowOperations
+{
+    fn from(value: Vec<ModelResponseAfterCapabilitiesFlowOperationsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -32655,100 +37081,280 @@ impl ModelResponseAfterCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifyContent(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifyInput(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifyOutput(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifyRequest(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifyResponse(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifySummary(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelResponseAfterCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ModelResponseAfterCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelResponseAfterCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -32875,13 +37481,81 @@ impl Default for ModelResponseAfterCapabilitiesModify {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelSwitchBeforeCapabilitiesEffectsItem {
+    Deny,
+    Flow,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ModelSwitchBeforeCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelSwitchBeforeCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelSwitchBeforeCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesEffects(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesEffects(pub Vec<ModelSwitchBeforeCapabilitiesEffectsItem>);
 
 impl ModelSwitchBeforeCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ModelSwitchBeforeCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ModelSwitchBeforeCapabilitiesEffectsItem>> for ModelSwitchBeforeCapabilitiesEffects {
+    fn from(value: Vec<ModelSwitchBeforeCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -32977,13 +37651,73 @@ impl Default for ModelSwitchBeforeCapabilitiesElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelSwitchBeforeCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ModelSwitchBeforeCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelSwitchBeforeCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ModelSwitchBeforeCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesFlowOperations(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesFlowOperations(
+    pub Vec<ModelSwitchBeforeCapabilitiesFlowOperationsItem>,
+);
 
 impl ModelSwitchBeforeCapabilitiesFlowOperations {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ModelSwitchBeforeCapabilitiesFlowOperationsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ModelSwitchBeforeCapabilitiesFlowOperationsItem>>
+    for ModelSwitchBeforeCapabilitiesFlowOperations
+{
+    fn from(value: Vec<ModelSwitchBeforeCapabilitiesFlowOperationsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -33182,100 +37916,280 @@ impl ModelSwitchBeforeCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifyContent(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifyInput(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifyOutput(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifyRequest(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifyResponse(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifySummary(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelSwitchBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ModelSwitchBeforeCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ModelSwitchBeforeCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -33398,6 +38312,558 @@ impl ModelSwitchBeforeCapabilitiesModify {
 impl Default for ModelSwitchBeforeCapabilitiesModify {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelVisibleItemBodySelection;
+
+impl ModelVisibleItemBodySelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelVisibleItemBodySelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelVisibleItemBodySelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelVisibleItemBody {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    pub role: String,
+    #[serde(rename = "selection")]
+    pub selection: ModelVisibleItemBodySelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelVisibleItemBody {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        body: impl Into<Box<ContentReference>>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+        media_type: impl Into<String>,
+        role: impl Into<String>,
+    ) -> Self {
+        Self {
+            body: body.into(),
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: media_type.into(),
+            parent_item_id: Presence::Missing,
+            role: role.into(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.body = value.into();
+        self
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
+        self.media_type = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelVisibleItemBodyGapGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelVisibleItemBodyGapGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelVisibleItemBodyGapSelection;
+
+impl ModelVisibleItemBodyGapSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelVisibleItemBodyGapSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelVisibleItemBodyGapSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelVisibleItemBodyGap {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: ModelVisibleItemBodyGapGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    pub role: String,
+    #[serde(rename = "selection")]
+    pub selection: ModelVisibleItemBodyGapSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelVisibleItemBodyGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        gap: impl Into<ModelVisibleItemBodyGapGap>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+        media_type: impl Into<String>,
+        role: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: kind.into(),
+            media_type: media_type.into(),
+            parent_item_id: Presence::Missing,
+            role: role.into(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(mut self, value: impl Into<ModelVisibleItemBodyGapGap>) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
+        self.media_type = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelVisibleItemMetadataSelection;
+
+impl ModelVisibleItemMetadataSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelVisibleItemMetadataSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelVisibleItemMetadataSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelVisibleItemMetadata {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    pub role: String,
+    #[serde(rename = "selection")]
+    pub selection: ModelVisibleItemMetadataSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelVisibleItemMetadata {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        id: impl Into<String>,
+        kind: impl Into<String>,
+        media_type: impl Into<String>,
+        role: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: media_type.into(),
+            parent_item_id: Presence::Missing,
+            role: role.into(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
+        self.media_type = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelVisibleItemOmitSelection;
+
+impl ModelVisibleItemOmitSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelVisibleItemOmitSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelVisibleItemOmitSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelVisibleItemOmit {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    pub role: String,
+    #[serde(rename = "selection")]
+    pub selection: ModelVisibleItemOmitSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelVisibleItemOmit {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        id: impl Into<String>,
+        kind: impl Into<String>,
+        media_type: impl Into<String>,
+        role: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: media_type.into(),
+            parent_item_id: Presence::Missing,
+            role: role.into(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
+        self.media_type = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
     }
 }
 
@@ -34727,13 +40193,69 @@ impl<'de> Deserialize<'de> for SessionEndEventType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionStartCapabilitiesEffectsItem {
+    Inject,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for SessionStartCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionStartCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for SessionStartCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SessionStartCapabilitiesEffects(pub JsonValue);
+pub struct SessionStartCapabilitiesEffects(pub Vec<SessionStartCapabilitiesEffectsItem>);
 
 impl SessionStartCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<SessionStartCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<SessionStartCapabilitiesEffectsItem>> for SessionStartCapabilitiesEffects {
+    fn from(value: Vec<SessionStartCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -35064,100 +40586,280 @@ impl SessionStartCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifyContent(pub JsonValue);
+pub struct SessionStartCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifyInput(pub JsonValue);
+pub struct SessionStartCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifyInstructions(pub JsonValue);
+pub struct SessionStartCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifyOutput(pub JsonValue);
+pub struct SessionStartCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifyPrompt(pub JsonValue);
+pub struct SessionStartCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifyRequest(pub JsonValue);
+pub struct SessionStartCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifyResponse(pub JsonValue);
+pub struct SessionStartCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifySummary(pub JsonValue);
+pub struct SessionStartCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionStartCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct SessionStartCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl SessionStartCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -36417,13 +42119,69 @@ impl<'de> Deserialize<'de> for StdioTransportType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskChangeBeforeCapabilitiesEffectsItem {
+    Deny,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for TaskChangeBeforeCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskChangeBeforeCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TaskChangeBeforeCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesEffects(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesEffects(pub Vec<TaskChangeBeforeCapabilitiesEffectsItem>);
 
 impl TaskChangeBeforeCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<TaskChangeBeforeCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<TaskChangeBeforeCapabilitiesEffectsItem>> for TaskChangeBeforeCapabilitiesEffects {
+    fn from(value: Vec<TaskChangeBeforeCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -36763,100 +42521,280 @@ impl TaskChangeBeforeCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifyContent(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifyInput(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifyInstructions(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifyOutput(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifyPrompt(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifyRequest(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifyResponse(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifySummary(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TaskChangeBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct TaskChangeBeforeCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TaskChangeBeforeCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -38347,13 +44285,93 @@ impl TaskWorkspaceEventWorkspaceChangeBeforeWorkspace {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolAfterCapabilitiesEffectsItem {
+    Modify,
+    Inject,
+    Flow,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ToolAfterCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolAfterCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolAfterCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ToolAfterCapabilitiesEffects(pub JsonValue);
+pub struct ToolAfterCapabilitiesEffects(pub Vec<ToolAfterCapabilitiesEffectsItem>);
 
 impl ToolAfterCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ToolAfterCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ToolAfterCapabilitiesEffectsItem>> for ToolAfterCapabilitiesEffects {
+    fn from(value: Vec<ToolAfterCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -38684,100 +44702,280 @@ impl ToolAfterCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifyContent(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifyInput(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifyOutput(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifyRequest(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifyResponse(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifySummary(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolAfterCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ToolAfterCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolAfterCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -39097,13 +45295,81 @@ impl<'de> Deserialize<'de> for ToolAfterEventType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolBatchAfterCapabilitiesEffectsItem {
+    Flow,
+    Inject,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ToolBatchAfterCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBatchAfterCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolBatchAfterCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesEffects(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesEffects(pub Vec<ToolBatchAfterCapabilitiesEffectsItem>);
 
 impl ToolBatchAfterCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ToolBatchAfterCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ToolBatchAfterCapabilitiesEffectsItem>> for ToolBatchAfterCapabilitiesEffects {
+    fn from(value: Vec<ToolBatchAfterCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -39196,13 +45462,73 @@ impl Default for ToolBatchAfterCapabilitiesElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolBatchAfterCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ToolBatchAfterCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBatchAfterCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolBatchAfterCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesFlowOperations(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesFlowOperations(
+    pub Vec<ToolBatchAfterCapabilitiesFlowOperationsItem>,
+);
 
 impl ToolBatchAfterCapabilitiesFlowOperations {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ToolBatchAfterCapabilitiesFlowOperationsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ToolBatchAfterCapabilitiesFlowOperationsItem>>
+    for ToolBatchAfterCapabilitiesFlowOperations
+{
+    fn from(value: Vec<ToolBatchAfterCapabilitiesFlowOperationsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -39401,100 +45727,280 @@ impl ToolBatchAfterCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifyContent(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifyInput(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifyOutput(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifyRequest(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifyResponse(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifySummary(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBatchAfterCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ToolBatchAfterCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBatchAfterCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -39612,13 +46118,141 @@ impl Default for ToolBatchAfterCapabilitiesModify {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolBeforeCapabilitiesEffectsItem {
+    Deny,
+    Allow,
+    Ask,
+    Modify,
+    Inject,
+    Flow,
+    Return,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ToolBeforeCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Allow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Ask => {
+                let value: JsonValue =
+                    serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Return => {
+                let value: JsonValue =
+                    serde_json::from_str("\"return\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBeforeCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Allow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"ask\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Ask);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"return\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Return);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolBeforeCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ToolBeforeCapabilitiesEffects(pub JsonValue);
+pub struct ToolBeforeCapabilitiesEffects(pub Vec<ToolBeforeCapabilitiesEffectsItem>);
 
 impl ToolBeforeCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ToolBeforeCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ToolBeforeCapabilitiesEffectsItem>> for ToolBeforeCapabilitiesEffects {
+    fn from(value: Vec<ToolBeforeCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -39708,13 +46342,69 @@ impl Default for ToolBeforeCapabilitiesElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolBeforeCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ToolBeforeCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolBeforeCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolBeforeCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ToolBeforeCapabilitiesFlowOperations(pub JsonValue);
+pub struct ToolBeforeCapabilitiesFlowOperations(pub Vec<ToolBeforeCapabilitiesFlowOperationsItem>);
 
 impl ToolBeforeCapabilitiesFlowOperations {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ToolBeforeCapabilitiesFlowOperationsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ToolBeforeCapabilitiesFlowOperationsItem>> for ToolBeforeCapabilitiesFlowOperations {
+    fn from(value: Vec<ToolBeforeCapabilitiesFlowOperationsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -39910,100 +46600,280 @@ impl ToolBeforeCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifyContent(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifyInput(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifyOutput(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifyRequest(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifyResponse(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifySummary(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ToolBeforeCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolBeforeCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -40237,13 +47107,109 @@ impl<'de> Deserialize<'de> for ToolBeforeEventType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolPermissionRequestCapabilitiesEffectsItem {
+    Allow,
+    Deny,
+    Modify,
+    Flow,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for ToolPermissionRequestCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Allow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolPermissionRequestCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"allow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Allow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolPermissionRequestCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesEffects(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesEffects(
+    pub Vec<ToolPermissionRequestCapabilitiesEffectsItem>,
+);
 
 impl ToolPermissionRequestCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ToolPermissionRequestCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ToolPermissionRequestCapabilitiesEffectsItem>>
+    for ToolPermissionRequestCapabilitiesEffects
+{
+    fn from(value: Vec<ToolPermissionRequestCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -40339,13 +47305,73 @@ impl Default for ToolPermissionRequestCapabilitiesElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolPermissionRequestCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for ToolPermissionRequestCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolPermissionRequestCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for ToolPermissionRequestCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesFlowOperations(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesFlowOperations(
+    pub Vec<ToolPermissionRequestCapabilitiesFlowOperationsItem>,
+);
 
 impl ToolPermissionRequestCapabilitiesFlowOperations {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<ToolPermissionRequestCapabilitiesFlowOperationsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<ToolPermissionRequestCapabilitiesFlowOperationsItem>>
+    for ToolPermissionRequestCapabilitiesFlowOperations
+{
+    fn from(value: Vec<ToolPermissionRequestCapabilitiesFlowOperationsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -40544,100 +47570,280 @@ impl ToolPermissionRequestCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifyContent(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifyInput(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifyInstructions(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifyOutput(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifyPrompt(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifyRequest(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifyResponse(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifySummary(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolPermissionRequestCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct ToolPermissionRequestCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl ToolPermissionRequestCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -40764,13 +47970,81 @@ impl Default for ToolPermissionRequestCapabilitiesModify {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnFinishBeforeCapabilitiesEffectsItem {
+    Modify,
+    Flow,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for TurnFinishBeforeCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnFinishBeforeCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnFinishBeforeCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesEffects(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesEffects(pub Vec<TurnFinishBeforeCapabilitiesEffectsItem>);
 
 impl TurnFinishBeforeCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<TurnFinishBeforeCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<TurnFinishBeforeCapabilitiesEffectsItem>> for TurnFinishBeforeCapabilitiesEffects {
+    fn from(value: Vec<TurnFinishBeforeCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -41110,100 +48384,280 @@ impl TurnFinishBeforeCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifyContent(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifyInput(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifyInstructions(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifyOutput(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifyPrompt(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifyRequest(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifyResponse(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifySummary(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnFinishBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct TurnFinishBeforeCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnFinishBeforeCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -41327,13 +48781,105 @@ impl Default for TurnFinishBeforeCapabilitiesModify {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnStartCapabilitiesEffectsItem {
+    Deny,
+    Modify,
+    Inject,
+    Flow,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for TurnStartCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Inject => {
+                let value: JsonValue =
+                    serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Flow => {
+                let value: JsonValue =
+                    serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnStartCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"inject\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Inject);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"flow\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Flow);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnStartCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct TurnStartCapabilitiesEffects(pub JsonValue);
+pub struct TurnStartCapabilitiesEffects(pub Vec<TurnStartCapabilitiesEffectsItem>);
 
 impl TurnStartCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<TurnStartCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<TurnStartCapabilitiesEffectsItem>> for TurnStartCapabilitiesEffects {
+    fn from(value: Vec<TurnStartCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -41423,13 +48969,69 @@ impl Default for TurnStartCapabilitiesElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnStartCapabilitiesFlowOperationsItem {
+    Stop,
+    Continue,
+    Unknown(String),
+}
+
+impl Serialize for TurnStartCapabilitiesFlowOperationsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Stop => {
+                let value: JsonValue =
+                    serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Continue => {
+                let value: JsonValue = serde_json::from_str("\"continue\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TurnStartCapabilitiesFlowOperationsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"stop\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Stop);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"continue\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Continue);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for TurnStartCapabilitiesFlowOperationsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct TurnStartCapabilitiesFlowOperations(pub JsonValue);
+pub struct TurnStartCapabilitiesFlowOperations(pub Vec<TurnStartCapabilitiesFlowOperationsItem>);
 
 impl TurnStartCapabilitiesFlowOperations {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<TurnStartCapabilitiesFlowOperationsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<TurnStartCapabilitiesFlowOperationsItem>> for TurnStartCapabilitiesFlowOperations {
+    fn from(value: Vec<TurnStartCapabilitiesFlowOperationsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -41625,100 +49227,280 @@ impl TurnStartCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifyContent(pub JsonValue);
+pub struct TurnStartCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifyInput(pub JsonValue);
+pub struct TurnStartCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifyInstructions(pub JsonValue);
+pub struct TurnStartCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifyOutput(pub JsonValue);
+pub struct TurnStartCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifyPrompt(pub JsonValue);
+pub struct TurnStartCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifyRequest(pub JsonValue);
+pub struct TurnStartCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifyResponse(pub JsonValue);
+pub struct TurnStartCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifySummary(pub JsonValue);
+pub struct TurnStartCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TurnStartCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct TurnStartCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl TurnStartCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -41962,13 +49744,85 @@ impl UserAttentionEventAttention {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationRequestCapabilitiesEffectsItem {
+    Deny,
+    Return,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationRequestCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Return => {
+                let value: JsonValue =
+                    serde_json::from_str("\"return\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"return\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Return);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationRequestCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesEffects(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesEffects(
+    pub Vec<UserElicitationRequestCapabilitiesEffectsItem>,
+);
 
 impl UserElicitationRequestCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<UserElicitationRequestCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<UserElicitationRequestCapabilitiesEffectsItem>>
+    for UserElicitationRequestCapabilitiesEffects
+{
+    fn from(value: Vec<UserElicitationRequestCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -42310,100 +50164,280 @@ impl UserElicitationRequestCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifyContent(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifyInput(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifyInstructions(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifyOutput(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifyPrompt(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifyRequest(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifyResponse(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifySummary(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct UserElicitationRequestCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationRequestCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -42676,13 +50710,705 @@ impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationMode {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestEventElicitationRequest(pub JsonValue);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestEventElicitationRequestBodyMediaType;
 
-impl UserElicitationRequestEventElicitationRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl UserElicitationRequestEventElicitationRequestBodyMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestEventElicitationRequestBodyMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodyMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestEventElicitationRequestBodySelection;
+
+impl UserElicitationRequestEventElicitationRequestBodySelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestEventElicitationRequestBodySelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodySelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEventElicitationRequestBody {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationRequestEventElicitationRequestBodyMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationRequestEventElicitationRequestBodySelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestEventElicitationRequestBody {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        body: impl Into<Box<ContentReference>>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            body: body.into(),
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.body = value.into();
+        self
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEventElicitationRequestBodyGapGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestEventElicitationRequestBodyGapGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestEventElicitationRequestBodyGapMediaType;
+
+impl UserElicitationRequestEventElicitationRequestBodyGapMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestEventElicitationRequestBodyGapMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodyGapMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestEventElicitationRequestBodyGapSelection;
+
+impl UserElicitationRequestEventElicitationRequestBodyGapSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestEventElicitationRequestBodyGapSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodyGapSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEventElicitationRequestBodyGap {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: UserElicitationRequestEventElicitationRequestBodyGapGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationRequestEventElicitationRequestBodyGapMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationRequestEventElicitationRequestBodyGapSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestEventElicitationRequestBodyGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        gap: impl Into<UserElicitationRequestEventElicitationRequestBodyGapGap>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(
+        mut self,
+        value: impl Into<UserElicitationRequestEventElicitationRequestBodyGapGap>,
+    ) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestEventElicitationRequestMetadataMediaType;
+
+impl UserElicitationRequestEventElicitationRequestMetadataMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestEventElicitationRequestMetadataMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestMetadataMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestEventElicitationRequestMetadataSelection;
+
+impl UserElicitationRequestEventElicitationRequestMetadataSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestEventElicitationRequestMetadataSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestMetadataSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEventElicitationRequestMetadata {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationRequestEventElicitationRequestMetadataMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationRequestEventElicitationRequestMetadataSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestEventElicitationRequestMetadata {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestEventElicitationRequestOmitMediaType;
+
+impl UserElicitationRequestEventElicitationRequestOmitMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestEventElicitationRequestOmitMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestOmitMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestEventElicitationRequestOmitSelection;
+
+impl UserElicitationRequestEventElicitationRequestOmitSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestEventElicitationRequestOmitSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestOmitSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestEventElicitationRequestOmit {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationRequestEventElicitationRequestOmitMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationRequestEventElicitationRequestOmitSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestEventElicitationRequestOmit {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum UserElicitationRequestEventElicitationRequest {
+    Body(UserElicitationRequestEventElicitationRequestBody),
+    BodyGap(UserElicitationRequestEventElicitationRequestBodyGap),
+    Metadata(UserElicitationRequestEventElicitationRequestMetadata),
+    Omit(UserElicitationRequestEventElicitationRequestOmit),
+}
+
+impl From<UserElicitationRequestEventElicitationRequestBody>
+    for UserElicitationRequestEventElicitationRequest
+{
+    fn from(value: UserElicitationRequestEventElicitationRequestBody) -> Self {
+        Self::Body(value)
+    }
+}
+
+impl From<UserElicitationRequestEventElicitationRequestBodyGap>
+    for UserElicitationRequestEventElicitationRequest
+{
+    fn from(value: UserElicitationRequestEventElicitationRequestBodyGap) -> Self {
+        Self::BodyGap(value)
+    }
+}
+
+impl From<UserElicitationRequestEventElicitationRequestMetadata>
+    for UserElicitationRequestEventElicitationRequest
+{
+    fn from(value: UserElicitationRequestEventElicitationRequestMetadata) -> Self {
+        Self::Metadata(value)
+    }
+}
+
+impl From<UserElicitationRequestEventElicitationRequestOmit>
+    for UserElicitationRequestEventElicitationRequest
+{
+    fn from(value: UserElicitationRequestEventElicitationRequestOmit) -> Self {
+        Self::Omit(value)
     }
 }
 
@@ -42735,13 +51461,73 @@ impl UserElicitationRequestEventElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserElicitationResultCapabilitiesEffectsItem {
+    Modify,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for UserElicitationResultCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserElicitationResultCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesEffects(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesEffects(
+    pub Vec<UserElicitationResultCapabilitiesEffectsItem>,
+);
 
 impl UserElicitationResultCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<UserElicitationResultCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<UserElicitationResultCapabilitiesEffectsItem>>
+    for UserElicitationResultCapabilitiesEffects
+{
+    fn from(value: Vec<UserElicitationResultCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -43083,100 +51869,280 @@ impl UserElicitationResultCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifyContent(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifyInput(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifyInstructions(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifyOutput(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifyPrompt(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifyRequest(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifyResponse(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifySummary(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct UserElicitationResultCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserElicitationResultCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -43511,13 +52477,705 @@ impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationMode {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultEventElicitationResult(pub JsonValue);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultEventElicitationResultBodyMediaType;
 
-impl UserElicitationResultEventElicitationResult {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl UserElicitationResultEventElicitationResultBodyMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultEventElicitationResultBodyMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodyMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultEventElicitationResultBodySelection;
+
+impl UserElicitationResultEventElicitationResultBodySelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultEventElicitationResultBodySelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodySelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEventElicitationResultBody {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationResultEventElicitationResultBodyMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationResultEventElicitationResultBodySelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultEventElicitationResultBody {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        body: impl Into<Box<ContentReference>>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            body: body.into(),
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.body = value.into();
+        self
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEventElicitationResultBodyGapGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultEventElicitationResultBodyGapGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultEventElicitationResultBodyGapMediaType;
+
+impl UserElicitationResultEventElicitationResultBodyGapMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultEventElicitationResultBodyGapMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodyGapMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultEventElicitationResultBodyGapSelection;
+
+impl UserElicitationResultEventElicitationResultBodyGapSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultEventElicitationResultBodyGapSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodyGapSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEventElicitationResultBodyGap {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: UserElicitationResultEventElicitationResultBodyGapGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationResultEventElicitationResultBodyGapMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationResultEventElicitationResultBodyGapSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultEventElicitationResultBodyGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        gap: impl Into<UserElicitationResultEventElicitationResultBodyGapGap>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(
+        mut self,
+        value: impl Into<UserElicitationResultEventElicitationResultBodyGapGap>,
+    ) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultEventElicitationResultMetadataMediaType;
+
+impl UserElicitationResultEventElicitationResultMetadataMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultEventElicitationResultMetadataMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultMetadataMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultEventElicitationResultMetadataSelection;
+
+impl UserElicitationResultEventElicitationResultMetadataSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultEventElicitationResultMetadataSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultMetadataSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEventElicitationResultMetadata {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationResultEventElicitationResultMetadataMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationResultEventElicitationResultMetadataSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultEventElicitationResultMetadata {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultEventElicitationResultOmitMediaType;
+
+impl UserElicitationResultEventElicitationResultOmitMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultEventElicitationResultOmitMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultOmitMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultEventElicitationResultOmitSelection;
+
+impl UserElicitationResultEventElicitationResultOmitSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultEventElicitationResultOmitSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultOmitSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultEventElicitationResultOmit {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationResultEventElicitationResultOmitMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationResultEventElicitationResultOmitSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultEventElicitationResultOmit {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum UserElicitationResultEventElicitationResult {
+    Body(UserElicitationResultEventElicitationResultBody),
+    BodyGap(UserElicitationResultEventElicitationResultBodyGap),
+    Metadata(UserElicitationResultEventElicitationResultMetadata),
+    Omit(UserElicitationResultEventElicitationResultOmit),
+}
+
+impl From<UserElicitationResultEventElicitationResultBody>
+    for UserElicitationResultEventElicitationResult
+{
+    fn from(value: UserElicitationResultEventElicitationResultBody) -> Self {
+        Self::Body(value)
+    }
+}
+
+impl From<UserElicitationResultEventElicitationResultBodyGap>
+    for UserElicitationResultEventElicitationResult
+{
+    fn from(value: UserElicitationResultEventElicitationResultBodyGap) -> Self {
+        Self::BodyGap(value)
+    }
+}
+
+impl From<UserElicitationResultEventElicitationResultMetadata>
+    for UserElicitationResultEventElicitationResult
+{
+    fn from(value: UserElicitationResultEventElicitationResultMetadata) -> Self {
+        Self::Metadata(value)
+    }
+}
+
+impl From<UserElicitationResultEventElicitationResultOmit>
+    for UserElicitationResultEventElicitationResult
+{
+    fn from(value: UserElicitationResultEventElicitationResultOmit) -> Self {
+        Self::Omit(value)
     }
 }
 
@@ -43581,13 +53239,85 @@ impl UserElicitationResultEventElicitation {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserMessageInboundCapabilitiesEffectsItem {
+    Deny,
+    Modify,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for UserMessageInboundCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserMessageInboundCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesEffects(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesEffects(
+    pub Vec<UserMessageInboundCapabilitiesEffectsItem>,
+);
 
 impl UserMessageInboundCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<UserMessageInboundCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<UserMessageInboundCapabilitiesEffectsItem>>
+    for UserMessageInboundCapabilitiesEffects
+{
+    fn from(value: Vec<UserMessageInboundCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -43929,100 +53659,280 @@ impl UserMessageInboundCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifyContent(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifyInput(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifyInstructions(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifyOutput(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifyPrompt(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifyRequest(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifyResponse(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifySummary(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageInboundCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct UserMessageInboundCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageInboundCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -44287,13 +54197,85 @@ impl UserMessageInboundEventMessage {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserMessageOutboundCapabilitiesEffectsItem {
+    Deny,
+    Modify,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for UserMessageOutboundCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for UserMessageOutboundCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesEffects(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesEffects(
+    pub Vec<UserMessageOutboundCapabilitiesEffectsItem>,
+);
 
 impl UserMessageOutboundCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<UserMessageOutboundCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<UserMessageOutboundCapabilitiesEffectsItem>>
+    for UserMessageOutboundCapabilitiesEffects
+{
+    fn from(value: Vec<UserMessageOutboundCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -44635,100 +54617,280 @@ impl UserMessageOutboundCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifyContent(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifyInput(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifyInstructions(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifyOutput(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifyPrompt(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifyRequest(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifyResponse(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifySummary(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserMessageOutboundCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct UserMessageOutboundCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl UserMessageOutboundCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -44982,13 +55144,85 @@ impl UserMessageOutboundEventMessage {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceChangeBeforeCapabilitiesEffectsItem {
+    Deny,
+    Modify,
+    Message,
+    Unknown(String),
+}
+
+impl Serialize for WorkspaceChangeBeforeCapabilitiesEffectsItem {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Deny => {
+                let value: JsonValue =
+                    serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Modify => {
+                let value: JsonValue =
+                    serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Message => {
+                let value: JsonValue = serde_json::from_str("\"message\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkspaceChangeBeforeCapabilitiesEffectsItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"deny\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Deny);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"modify\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Modify);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"message\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Message);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for WorkspaceChangeBeforeCapabilitiesEffectsItem: {value}"
+        )))
+    }
+}
+
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesEffects(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesEffects(
+    pub Vec<WorkspaceChangeBeforeCapabilitiesEffectsItem>,
+);
 
 impl WorkspaceChangeBeforeCapabilitiesEffects {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
+    pub fn new(value: impl Into<Vec<WorkspaceChangeBeforeCapabilitiesEffectsItem>>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<Vec<WorkspaceChangeBeforeCapabilitiesEffectsItem>>
+    for WorkspaceChangeBeforeCapabilitiesEffects
+{
+    fn from(value: Vec<WorkspaceChangeBeforeCapabilitiesEffectsItem>) -> Self {
+        Self::new(value)
     }
 }
 
@@ -45330,100 +55564,280 @@ impl WorkspaceChangeBeforeCapabilitiesInject {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifyContent(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifyContent {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifyContent {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifyInput(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifyInput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifyInput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifyInstructions(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifyInstructions {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifyInstructions {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifyOutput(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifyOutput {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifyOutput {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifyPrompt(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifyPrompt {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifyPrompt {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifyRequest(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifyRequest {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifyRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifyResponse(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifyResponse {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifyResponse {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifySummary(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifySummary {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifySummary {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct WorkspaceChangeBeforeCapabilitiesModifyWorkspace(pub JsonValue);
+pub struct WorkspaceChangeBeforeCapabilitiesModifyWorkspace {
+    #[serde(rename = "merge")]
+    pub merge: bool,
+    #[serde(rename = "replace")]
+    pub replace: bool,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
 
 impl WorkspaceChangeBeforeCapabilitiesModifyWorkspace {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(merge: impl Into<bool>, replace: impl Into<bool>) -> Self {
+        Self {
+            merge: merge.into(),
+            replace: replace.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_merge(mut self, value: impl Into<bool>) -> Self {
+        self.merge = value.into();
+        self
+    }
+    pub fn with_replace(mut self, value: impl Into<bool>) -> Self {
+        self.replace = value.into();
+        self
     }
 }
 
@@ -46379,13 +56793,616 @@ impl HookFailureInputTurn {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModelErrorInputExecution(pub JsonValue);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionExecutedStatus;
 
-impl ModelErrorInputExecution {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl ModelErrorInputExecutionExecutedStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionExecutedStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionExecutedStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelErrorInputExecutionExecuted {
+    #[serde(rename = "status")]
+    pub status: ModelErrorInputExecutionExecutedStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelErrorInputExecutionExecuted {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for ModelErrorInputExecutionExecuted {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedSuppliedResultReason;
+
+impl ModelErrorInputExecutionSkippedSuppliedResultReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedSuppliedResultReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"supplied_result\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedSuppliedResultReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"supplied_result\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedSuppliedResultStatus;
+
+impl ModelErrorInputExecutionSkippedSuppliedResultStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedSuppliedResultStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedSuppliedResultStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelErrorInputExecutionSkippedSuppliedResult {
+    #[serde(rename = "reason")]
+    pub reason: ModelErrorInputExecutionSkippedSuppliedResultReason,
+    #[serde(rename = "status")]
+    pub status: ModelErrorInputExecutionSkippedSuppliedResultStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelErrorInputExecutionSkippedSuppliedResult {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for ModelErrorInputExecutionSkippedSuppliedResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedPolicyReason;
+
+impl ModelErrorInputExecutionSkippedPolicyReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedPolicyReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"policy\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedPolicyReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"policy\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedPolicyStatus;
+
+impl ModelErrorInputExecutionSkippedPolicyStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedPolicyStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedPolicyStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelErrorInputExecutionSkippedPolicy {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ModelErrorInputExecutionSkippedPolicyReason,
+    #[serde(rename = "status")]
+    pub status: ModelErrorInputExecutionSkippedPolicyStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelErrorInputExecutionSkippedPolicy {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            detail: Presence::Missing,
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_detail(mut self, value: impl Into<String>) -> Self {
+        self.detail = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ModelErrorInputExecutionSkippedPolicy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedCancelledReason;
+
+impl ModelErrorInputExecutionSkippedCancelledReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedCancelledReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"cancelled\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedCancelledReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"cancelled\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedCancelledStatus;
+
+impl ModelErrorInputExecutionSkippedCancelledStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedCancelledStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedCancelledStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelErrorInputExecutionSkippedCancelled {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ModelErrorInputExecutionSkippedCancelledReason,
+    #[serde(rename = "status")]
+    pub status: ModelErrorInputExecutionSkippedCancelledStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelErrorInputExecutionSkippedCancelled {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            detail: Presence::Missing,
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_detail(mut self, value: impl Into<String>) -> Self {
+        self.detail = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ModelErrorInputExecutionSkippedCancelled {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedTimeoutReason;
+
+impl ModelErrorInputExecutionSkippedTimeoutReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedTimeoutReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"timeout\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedTimeoutReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"timeout\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedTimeoutStatus;
+
+impl ModelErrorInputExecutionSkippedTimeoutStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedTimeoutStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedTimeoutStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelErrorInputExecutionSkippedTimeout {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ModelErrorInputExecutionSkippedTimeoutReason,
+    #[serde(rename = "status")]
+    pub status: ModelErrorInputExecutionSkippedTimeoutStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelErrorInputExecutionSkippedTimeout {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            detail: Presence::Missing,
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_detail(mut self, value: impl Into<String>) -> Self {
+        self.detail = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ModelErrorInputExecutionSkippedTimeout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedOtherReason;
+
+impl ModelErrorInputExecutionSkippedOtherReason {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedOtherReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"other\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedOtherReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"other\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelErrorInputExecutionSkippedOtherStatus;
+
+impl ModelErrorInputExecutionSkippedOtherStatus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for ModelErrorInputExecutionSkippedOtherStatus {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelErrorInputExecutionSkippedOtherStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"executed\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelErrorInputExecutionSkippedOther {
+    #[serde(rename = "detail")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub detail: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: ModelErrorInputExecutionSkippedOtherReason,
+    #[serde(rename = "status")]
+    pub status: ModelErrorInputExecutionSkippedOtherStatus,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl ModelErrorInputExecutionSkippedOther {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new() -> Self {
+        Self {
+            detail: Presence::Missing,
+            reason: Default::default(),
+            status: Default::default(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_detail(mut self, value: impl Into<String>) -> Self {
+        self.detail = Presence::Present(value.into());
+        self
+    }
+}
+
+impl Default for ModelErrorInputExecutionSkippedOther {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ModelErrorInputExecution {
+    Executed(ModelErrorInputExecutionExecuted),
+    SkippedSuppliedResult(ModelErrorInputExecutionSkippedSuppliedResult),
+    SkippedPolicy(ModelErrorInputExecutionSkippedPolicy),
+    SkippedCancelled(ModelErrorInputExecutionSkippedCancelled),
+    SkippedTimeout(ModelErrorInputExecutionSkippedTimeout),
+    SkippedOther(ModelErrorInputExecutionSkippedOther),
+}
+
+impl From<ModelErrorInputExecutionExecuted> for ModelErrorInputExecution {
+    fn from(value: ModelErrorInputExecutionExecuted) -> Self {
+        Self::Executed(value)
+    }
+}
+
+impl From<ModelErrorInputExecutionSkippedSuppliedResult> for ModelErrorInputExecution {
+    fn from(value: ModelErrorInputExecutionSkippedSuppliedResult) -> Self {
+        Self::SkippedSuppliedResult(value)
+    }
+}
+
+impl From<ModelErrorInputExecutionSkippedPolicy> for ModelErrorInputExecution {
+    fn from(value: ModelErrorInputExecutionSkippedPolicy) -> Self {
+        Self::SkippedPolicy(value)
+    }
+}
+
+impl From<ModelErrorInputExecutionSkippedCancelled> for ModelErrorInputExecution {
+    fn from(value: ModelErrorInputExecutionSkippedCancelled) -> Self {
+        Self::SkippedCancelled(value)
+    }
+}
+
+impl From<ModelErrorInputExecutionSkippedTimeout> for ModelErrorInputExecution {
+    fn from(value: ModelErrorInputExecutionSkippedTimeout) -> Self {
+        Self::SkippedTimeout(value)
+    }
+}
+
+impl From<ModelErrorInputExecutionSkippedOther> for ModelErrorInputExecution {
+    fn from(value: ModelErrorInputExecutionSkippedOther) -> Self {
+        Self::SkippedOther(value)
     }
 }
 
@@ -49430,13 +60447,705 @@ impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationMode {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationRequestInputElicitationRequest(pub JsonValue);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestInputElicitationRequestBodyMediaType;
 
-impl UserElicitationRequestInputElicitationRequest {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl UserElicitationRequestInputElicitationRequestBodyMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestInputElicitationRequestBodyMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodyMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestInputElicitationRequestBodySelection;
+
+impl UserElicitationRequestInputElicitationRequestBodySelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestInputElicitationRequestBodySelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodySelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestInputElicitationRequestBody {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationRequestInputElicitationRequestBodyMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationRequestInputElicitationRequestBodySelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestInputElicitationRequestBody {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        body: impl Into<Box<ContentReference>>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            body: body.into(),
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.body = value.into();
+        self
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestInputElicitationRequestBodyGapGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestInputElicitationRequestBodyGapGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestInputElicitationRequestBodyGapMediaType;
+
+impl UserElicitationRequestInputElicitationRequestBodyGapMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestInputElicitationRequestBodyGapMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodyGapMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestInputElicitationRequestBodyGapSelection;
+
+impl UserElicitationRequestInputElicitationRequestBodyGapSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestInputElicitationRequestBodyGapSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodyGapSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestInputElicitationRequestBodyGap {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: UserElicitationRequestInputElicitationRequestBodyGapGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationRequestInputElicitationRequestBodyGapMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationRequestInputElicitationRequestBodyGapSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestInputElicitationRequestBodyGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        gap: impl Into<UserElicitationRequestInputElicitationRequestBodyGapGap>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(
+        mut self,
+        value: impl Into<UserElicitationRequestInputElicitationRequestBodyGapGap>,
+    ) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestInputElicitationRequestMetadataMediaType;
+
+impl UserElicitationRequestInputElicitationRequestMetadataMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestInputElicitationRequestMetadataMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestMetadataMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestInputElicitationRequestMetadataSelection;
+
+impl UserElicitationRequestInputElicitationRequestMetadataSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestInputElicitationRequestMetadataSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestMetadataSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestInputElicitationRequestMetadata {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationRequestInputElicitationRequestMetadataMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationRequestInputElicitationRequestMetadataSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestInputElicitationRequestMetadata {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestInputElicitationRequestOmitMediaType;
+
+impl UserElicitationRequestInputElicitationRequestOmitMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestInputElicitationRequestOmitMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestOmitMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationRequestInputElicitationRequestOmitSelection;
+
+impl UserElicitationRequestInputElicitationRequestOmitSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationRequestInputElicitationRequestOmitSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestOmitSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationRequestInputElicitationRequestOmit {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationRequestInputElicitationRequestOmitMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationRequestInputElicitationRequestOmitSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationRequestInputElicitationRequestOmit {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum UserElicitationRequestInputElicitationRequest {
+    Body(UserElicitationRequestInputElicitationRequestBody),
+    BodyGap(UserElicitationRequestInputElicitationRequestBodyGap),
+    Metadata(UserElicitationRequestInputElicitationRequestMetadata),
+    Omit(UserElicitationRequestInputElicitationRequestOmit),
+}
+
+impl From<UserElicitationRequestInputElicitationRequestBody>
+    for UserElicitationRequestInputElicitationRequest
+{
+    fn from(value: UserElicitationRequestInputElicitationRequestBody) -> Self {
+        Self::Body(value)
+    }
+}
+
+impl From<UserElicitationRequestInputElicitationRequestBodyGap>
+    for UserElicitationRequestInputElicitationRequest
+{
+    fn from(value: UserElicitationRequestInputElicitationRequestBodyGap) -> Self {
+        Self::BodyGap(value)
+    }
+}
+
+impl From<UserElicitationRequestInputElicitationRequestMetadata>
+    for UserElicitationRequestInputElicitationRequest
+{
+    fn from(value: UserElicitationRequestInputElicitationRequestMetadata) -> Self {
+        Self::Metadata(value)
+    }
+}
+
+impl From<UserElicitationRequestInputElicitationRequestOmit>
+    for UserElicitationRequestInputElicitationRequest
+{
+    fn from(value: UserElicitationRequestInputElicitationRequestOmit) -> Self {
+        Self::Omit(value)
     }
 }
 
@@ -49664,13 +61373,705 @@ impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationMode {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct UserElicitationResultInputElicitationResult(pub JsonValue);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultInputElicitationResultBodyMediaType;
 
-impl UserElicitationResultInputElicitationResult {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
+impl UserElicitationResultInputElicitationResultBodyMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultInputElicitationResultBodyMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodyMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultInputElicitationResultBodySelection;
+
+impl UserElicitationResultInputElicitationResultBodySelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultInputElicitationResultBodySelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodySelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultInputElicitationResultBody {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationResultInputElicitationResultBodyMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationResultInputElicitationResultBodySelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultInputElicitationResultBody {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        body: impl Into<Box<ContentReference>>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            body: body.into(),
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.body = value.into();
+        self
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultInputElicitationResultBodyGapGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultInputElicitationResultBodyGapGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultInputElicitationResultBodyGapMediaType;
+
+impl UserElicitationResultInputElicitationResultBodyGapMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultInputElicitationResultBodyGapMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodyGapMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultInputElicitationResultBodyGapSelection;
+
+impl UserElicitationResultInputElicitationResultBodyGapSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultInputElicitationResultBodyGapSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodyGapSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultInputElicitationResultBodyGap {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: UserElicitationResultInputElicitationResultBodyGapGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationResultInputElicitationResultBodyGapMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationResultInputElicitationResultBodyGapSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultInputElicitationResultBodyGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        gap: impl Into<UserElicitationResultInputElicitationResultBodyGapGap>,
+        id: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(
+        mut self,
+        value: impl Into<UserElicitationResultInputElicitationResultBodyGapGap>,
+    ) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultInputElicitationResultMetadataMediaType;
+
+impl UserElicitationResultInputElicitationResultMetadataMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultInputElicitationResultMetadataMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultMetadataMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultInputElicitationResultMetadataSelection;
+
+impl UserElicitationResultInputElicitationResultMetadataSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultInputElicitationResultMetadataSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultMetadataSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultInputElicitationResultMetadata {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationResultInputElicitationResultMetadataMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationResultInputElicitationResultMetadataSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultInputElicitationResultMetadata {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultInputElicitationResultOmitMediaType;
+
+impl UserElicitationResultInputElicitationResultOmitMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultInputElicitationResultOmitMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultOmitMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserElicitationResultInputElicitationResultOmitSelection;
+
+impl UserElicitationResultInputElicitationResultOmitSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserElicitationResultInputElicitationResultOmitSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultOmitSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserElicitationResultInputElicitationResultOmit {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: UserElicitationResultInputElicitationResultOmitMediaType,
+    #[serde(rename = "parentItemId")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub parent_item_id: Presence<String>,
+    #[serde(rename = "role")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub role: Presence<String>,
+    #[serde(rename = "selection")]
+    pub selection: UserElicitationResultInputElicitationResultOmitSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserElicitationResultInputElicitationResultOmit {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: kind.into(),
+            media_type: Default::default(),
+            parent_item_id: Presence::Missing,
+            role: Presence::Missing,
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
+        self.kind = value.into();
+        self
+    }
+    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
+        self.parent_item_id = Presence::Present(value.into());
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<String>) -> Self {
+        self.role = Presence::Present(value.into());
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum UserElicitationResultInputElicitationResult {
+    Body(UserElicitationResultInputElicitationResultBody),
+    BodyGap(UserElicitationResultInputElicitationResultBodyGap),
+    Metadata(UserElicitationResultInputElicitationResultMetadata),
+    Omit(UserElicitationResultInputElicitationResultOmit),
+}
+
+impl From<UserElicitationResultInputElicitationResultBody>
+    for UserElicitationResultInputElicitationResult
+{
+    fn from(value: UserElicitationResultInputElicitationResultBody) -> Self {
+        Self::Body(value)
+    }
+}
+
+impl From<UserElicitationResultInputElicitationResultBodyGap>
+    for UserElicitationResultInputElicitationResult
+{
+    fn from(value: UserElicitationResultInputElicitationResultBodyGap) -> Self {
+        Self::BodyGap(value)
+    }
+}
+
+impl From<UserElicitationResultInputElicitationResultMetadata>
+    for UserElicitationResultInputElicitationResult
+{
+    fn from(value: UserElicitationResultInputElicitationResultMetadata) -> Self {
+        Self::Metadata(value)
+    }
+}
+
+impl From<UserElicitationResultInputElicitationResultOmit>
+    for UserElicitationResultInputElicitationResult
+{
+    fn from(value: UserElicitationResultInputElicitationResultOmit) -> Self {
+        Self::Omit(value)
     }
 }
 
@@ -50793,8 +63194,8 @@ pub mod capabilities {
         CapabilitiesModifyInput, CapabilitiesModifyInstructions, CapabilitiesModifyOutput,
         CapabilitiesModifyPrompt, CapabilitiesModifyRequest, CapabilitiesModifyResponse,
         CapabilitiesModifySummary, CapabilitiesModifyWorkspace, ConfigChangeBeforeCapabilities,
-        ConfigChangeBeforeCapabilitiesEffects, ConfigChangeBeforeCapabilitiesElicitation,
-        ConfigChangeBeforeCapabilitiesElicitationForm,
+        ConfigChangeBeforeCapabilitiesEffects, ConfigChangeBeforeCapabilitiesEffectsItem,
+        ConfigChangeBeforeCapabilitiesElicitation, ConfigChangeBeforeCapabilitiesElicitationForm,
         ConfigChangeBeforeCapabilitiesElicitationUrl, ConfigChangeBeforeCapabilitiesFlow,
         ConfigChangeBeforeCapabilitiesFlowOperationsItem, ConfigChangeBeforeCapabilitiesInject,
         ConfigChangeBeforeCapabilitiesInjectContext,
@@ -50807,7 +63208,8 @@ pub mod capabilities {
         ConfigChangeBeforeCapabilitiesModifyRequest, ConfigChangeBeforeCapabilitiesModifyResponse,
         ConfigChangeBeforeCapabilitiesModifySummary, ConfigChangeBeforeCapabilitiesModifyWorkspace,
         ContextCompactAfterCapabilities, ContextCompactAfterCapabilitiesEffects,
-        ContextCompactAfterCapabilitiesElicitation, ContextCompactAfterCapabilitiesElicitationForm,
+        ContextCompactAfterCapabilitiesEffectsItem, ContextCompactAfterCapabilitiesElicitation,
+        ContextCompactAfterCapabilitiesElicitationForm,
         ContextCompactAfterCapabilitiesElicitationUrl, ContextCompactAfterCapabilitiesFlow,
         ContextCompactAfterCapabilitiesFlowOperationsItem, ContextCompactAfterCapabilitiesInject,
         ContextCompactAfterCapabilitiesInjectContext,
@@ -50821,7 +63223,8 @@ pub mod capabilities {
         ContextCompactAfterCapabilitiesModifyResponse,
         ContextCompactAfterCapabilitiesModifySummary,
         ContextCompactAfterCapabilitiesModifyWorkspace, ContextCompactBeforeCapabilities,
-        ContextCompactBeforeCapabilitiesEffects, ContextCompactBeforeCapabilitiesElicitation,
+        ContextCompactBeforeCapabilitiesEffects, ContextCompactBeforeCapabilitiesEffectsItem,
+        ContextCompactBeforeCapabilitiesElicitation,
         ContextCompactBeforeCapabilitiesElicitationForm,
         ContextCompactBeforeCapabilitiesElicitationUrl, ContextCompactBeforeCapabilitiesFlow,
         ContextCompactBeforeCapabilitiesFlowOperationsItem, ContextCompactBeforeCapabilitiesInject,
@@ -50836,10 +63239,11 @@ pub mod capabilities {
         ContextCompactBeforeCapabilitiesModifyResponse,
         ContextCompactBeforeCapabilitiesModifySummary,
         ContextCompactBeforeCapabilitiesModifyWorkspace, ModelRequestBeforeCapabilities,
-        ModelRequestBeforeCapabilitiesEffects, ModelRequestBeforeCapabilitiesElicitation,
-        ModelRequestBeforeCapabilitiesElicitationForm,
+        ModelRequestBeforeCapabilitiesEffects, ModelRequestBeforeCapabilitiesEffectsItem,
+        ModelRequestBeforeCapabilitiesElicitation, ModelRequestBeforeCapabilitiesElicitationForm,
         ModelRequestBeforeCapabilitiesElicitationUrl, ModelRequestBeforeCapabilitiesFlow,
-        ModelRequestBeforeCapabilitiesFlowOperations, ModelRequestBeforeCapabilitiesInject,
+        ModelRequestBeforeCapabilitiesFlowOperations,
+        ModelRequestBeforeCapabilitiesFlowOperationsItem, ModelRequestBeforeCapabilitiesInject,
         ModelRequestBeforeCapabilitiesInjectContext,
         ModelRequestBeforeCapabilitiesInjectContextAppend,
         ModelRequestBeforeCapabilitiesInjectContextDeliverAtItem,
@@ -50850,9 +63254,11 @@ pub mod capabilities {
         ModelRequestBeforeCapabilitiesModifyRequest, ModelRequestBeforeCapabilitiesModifyResponse,
         ModelRequestBeforeCapabilitiesModifySummary, ModelRequestBeforeCapabilitiesModifyWorkspace,
         ModelResponseAfterCapabilities, ModelResponseAfterCapabilitiesEffects,
-        ModelResponseAfterCapabilitiesElicitation, ModelResponseAfterCapabilitiesElicitationForm,
+        ModelResponseAfterCapabilitiesEffectsItem, ModelResponseAfterCapabilitiesElicitation,
+        ModelResponseAfterCapabilitiesElicitationForm,
         ModelResponseAfterCapabilitiesElicitationUrl, ModelResponseAfterCapabilitiesFlow,
-        ModelResponseAfterCapabilitiesFlowOperations, ModelResponseAfterCapabilitiesInject,
+        ModelResponseAfterCapabilitiesFlowOperations,
+        ModelResponseAfterCapabilitiesFlowOperationsItem, ModelResponseAfterCapabilitiesInject,
         ModelResponseAfterCapabilitiesInjectContext,
         ModelResponseAfterCapabilitiesInjectContextAppend,
         ModelResponseAfterCapabilitiesInjectContextDeliverAtItem,
@@ -50863,9 +63269,10 @@ pub mod capabilities {
         ModelResponseAfterCapabilitiesModifyRequest, ModelResponseAfterCapabilitiesModifyResponse,
         ModelResponseAfterCapabilitiesModifySummary, ModelResponseAfterCapabilitiesModifyWorkspace,
         ModelSwitchBeforeCapabilities, ModelSwitchBeforeCapabilitiesEffects,
-        ModelSwitchBeforeCapabilitiesElicitation, ModelSwitchBeforeCapabilitiesElicitationForm,
-        ModelSwitchBeforeCapabilitiesElicitationUrl, ModelSwitchBeforeCapabilitiesFlow,
-        ModelSwitchBeforeCapabilitiesFlowOperations, ModelSwitchBeforeCapabilitiesInject,
+        ModelSwitchBeforeCapabilitiesEffectsItem, ModelSwitchBeforeCapabilitiesElicitation,
+        ModelSwitchBeforeCapabilitiesElicitationForm, ModelSwitchBeforeCapabilitiesElicitationUrl,
+        ModelSwitchBeforeCapabilitiesFlow, ModelSwitchBeforeCapabilitiesFlowOperations,
+        ModelSwitchBeforeCapabilitiesFlowOperationsItem, ModelSwitchBeforeCapabilitiesInject,
         ModelSwitchBeforeCapabilitiesInjectContext,
         ModelSwitchBeforeCapabilitiesInjectContextAppend,
         ModelSwitchBeforeCapabilitiesInjectContextDeliverAtItem,
@@ -50875,51 +63282,55 @@ pub mod capabilities {
         ModelSwitchBeforeCapabilitiesModifyRequest, ModelSwitchBeforeCapabilitiesModifyResponse,
         ModelSwitchBeforeCapabilitiesModifySummary, ModelSwitchBeforeCapabilitiesModifyWorkspace,
         SessionStartCapabilities, SessionStartCapabilitiesEffects,
-        SessionStartCapabilitiesElicitation, SessionStartCapabilitiesElicitationForm,
-        SessionStartCapabilitiesElicitationUrl, SessionStartCapabilitiesFlow,
-        SessionStartCapabilitiesFlowOperationsItem, SessionStartCapabilitiesInject,
-        SessionStartCapabilitiesInjectContext, SessionStartCapabilitiesInjectContextAppend,
+        SessionStartCapabilitiesEffectsItem, SessionStartCapabilitiesElicitation,
+        SessionStartCapabilitiesElicitationForm, SessionStartCapabilitiesElicitationUrl,
+        SessionStartCapabilitiesFlow, SessionStartCapabilitiesFlowOperationsItem,
+        SessionStartCapabilitiesInject, SessionStartCapabilitiesInjectContext,
+        SessionStartCapabilitiesInjectContextAppend,
         SessionStartCapabilitiesInjectContextDeliverAtItem, SessionStartCapabilitiesModify,
         SessionStartCapabilitiesModifyContent, SessionStartCapabilitiesModifyInput,
         SessionStartCapabilitiesModifyInstructions, SessionStartCapabilitiesModifyOutput,
         SessionStartCapabilitiesModifyPrompt, SessionStartCapabilitiesModifyRequest,
         SessionStartCapabilitiesModifyResponse, SessionStartCapabilitiesModifySummary,
         SessionStartCapabilitiesModifyWorkspace, TaskChangeBeforeCapabilities,
-        TaskChangeBeforeCapabilitiesEffects, TaskChangeBeforeCapabilitiesElicitation,
-        TaskChangeBeforeCapabilitiesElicitationForm, TaskChangeBeforeCapabilitiesElicitationUrl,
-        TaskChangeBeforeCapabilitiesFlow, TaskChangeBeforeCapabilitiesFlowOperationsItem,
-        TaskChangeBeforeCapabilitiesInject, TaskChangeBeforeCapabilitiesInjectContext,
-        TaskChangeBeforeCapabilitiesInjectContextAppend,
+        TaskChangeBeforeCapabilitiesEffects, TaskChangeBeforeCapabilitiesEffectsItem,
+        TaskChangeBeforeCapabilitiesElicitation, TaskChangeBeforeCapabilitiesElicitationForm,
+        TaskChangeBeforeCapabilitiesElicitationUrl, TaskChangeBeforeCapabilitiesFlow,
+        TaskChangeBeforeCapabilitiesFlowOperationsItem, TaskChangeBeforeCapabilitiesInject,
+        TaskChangeBeforeCapabilitiesInjectContext, TaskChangeBeforeCapabilitiesInjectContextAppend,
         TaskChangeBeforeCapabilitiesInjectContextDeliverAtItem, TaskChangeBeforeCapabilitiesModify,
         TaskChangeBeforeCapabilitiesModifyContent, TaskChangeBeforeCapabilitiesModifyInput,
         TaskChangeBeforeCapabilitiesModifyInstructions, TaskChangeBeforeCapabilitiesModifyOutput,
         TaskChangeBeforeCapabilitiesModifyPrompt, TaskChangeBeforeCapabilitiesModifyRequest,
         TaskChangeBeforeCapabilitiesModifyResponse, TaskChangeBeforeCapabilitiesModifySummary,
         TaskChangeBeforeCapabilitiesModifyWorkspace, ToolAfterCapabilities,
-        ToolAfterCapabilitiesEffects, ToolAfterCapabilitiesElicitation,
-        ToolAfterCapabilitiesElicitationForm, ToolAfterCapabilitiesElicitationUrl,
-        ToolAfterCapabilitiesFlow, ToolAfterCapabilitiesFlowOperationsItem,
-        ToolAfterCapabilitiesInject, ToolAfterCapabilitiesInjectContext,
-        ToolAfterCapabilitiesInjectContextAppend, ToolAfterCapabilitiesInjectContextDeliverAtItem,
-        ToolAfterCapabilitiesModify, ToolAfterCapabilitiesModifyContent,
-        ToolAfterCapabilitiesModifyInput, ToolAfterCapabilitiesModifyInstructions,
-        ToolAfterCapabilitiesModifyOutput, ToolAfterCapabilitiesModifyPrompt,
-        ToolAfterCapabilitiesModifyRequest, ToolAfterCapabilitiesModifyResponse,
-        ToolAfterCapabilitiesModifySummary, ToolAfterCapabilitiesModifyWorkspace,
-        ToolBatchAfterCapabilities, ToolBatchAfterCapabilitiesEffects,
+        ToolAfterCapabilitiesEffects, ToolAfterCapabilitiesEffectsItem,
+        ToolAfterCapabilitiesElicitation, ToolAfterCapabilitiesElicitationForm,
+        ToolAfterCapabilitiesElicitationUrl, ToolAfterCapabilitiesFlow,
+        ToolAfterCapabilitiesFlowOperationsItem, ToolAfterCapabilitiesInject,
+        ToolAfterCapabilitiesInjectContext, ToolAfterCapabilitiesInjectContextAppend,
+        ToolAfterCapabilitiesInjectContextDeliverAtItem, ToolAfterCapabilitiesModify,
+        ToolAfterCapabilitiesModifyContent, ToolAfterCapabilitiesModifyInput,
+        ToolAfterCapabilitiesModifyInstructions, ToolAfterCapabilitiesModifyOutput,
+        ToolAfterCapabilitiesModifyPrompt, ToolAfterCapabilitiesModifyRequest,
+        ToolAfterCapabilitiesModifyResponse, ToolAfterCapabilitiesModifySummary,
+        ToolAfterCapabilitiesModifyWorkspace, ToolBatchAfterCapabilities,
+        ToolBatchAfterCapabilitiesEffects, ToolBatchAfterCapabilitiesEffectsItem,
         ToolBatchAfterCapabilitiesElicitation, ToolBatchAfterCapabilitiesElicitationForm,
         ToolBatchAfterCapabilitiesElicitationUrl, ToolBatchAfterCapabilitiesFlow,
-        ToolBatchAfterCapabilitiesFlowOperations, ToolBatchAfterCapabilitiesInject,
-        ToolBatchAfterCapabilitiesInjectContext, ToolBatchAfterCapabilitiesInjectContextAppend,
+        ToolBatchAfterCapabilitiesFlowOperations, ToolBatchAfterCapabilitiesFlowOperationsItem,
+        ToolBatchAfterCapabilitiesInject, ToolBatchAfterCapabilitiesInjectContext,
+        ToolBatchAfterCapabilitiesInjectContextAppend,
         ToolBatchAfterCapabilitiesInjectContextDeliverAtItem, ToolBatchAfterCapabilitiesModify,
         ToolBatchAfterCapabilitiesModifyContent, ToolBatchAfterCapabilitiesModifyInput,
         ToolBatchAfterCapabilitiesModifyInstructions, ToolBatchAfterCapabilitiesModifyOutput,
         ToolBatchAfterCapabilitiesModifyPrompt, ToolBatchAfterCapabilitiesModifyRequest,
         ToolBatchAfterCapabilitiesModifyResponse, ToolBatchAfterCapabilitiesModifySummary,
         ToolBatchAfterCapabilitiesModifyWorkspace, ToolBeforeCapabilities,
-        ToolBeforeCapabilitiesEffects, ToolBeforeCapabilitiesElicitation,
-        ToolBeforeCapabilitiesElicitationForm, ToolBeforeCapabilitiesElicitationUrl,
-        ToolBeforeCapabilitiesFlow, ToolBeforeCapabilitiesFlowOperations,
+        ToolBeforeCapabilitiesEffects, ToolBeforeCapabilitiesEffectsItem,
+        ToolBeforeCapabilitiesElicitation, ToolBeforeCapabilitiesElicitationForm,
+        ToolBeforeCapabilitiesElicitationUrl, ToolBeforeCapabilitiesFlow,
+        ToolBeforeCapabilitiesFlowOperations, ToolBeforeCapabilitiesFlowOperationsItem,
         ToolBeforeCapabilitiesInject, ToolBeforeCapabilitiesInjectContext,
         ToolBeforeCapabilitiesInjectContextAppend,
         ToolBeforeCapabilitiesInjectContextDeliverAtItem, ToolBeforeCapabilitiesModify,
@@ -50928,11 +63339,13 @@ pub mod capabilities {
         ToolBeforeCapabilitiesModifyPrompt, ToolBeforeCapabilitiesModifyRequest,
         ToolBeforeCapabilitiesModifyResponse, ToolBeforeCapabilitiesModifySummary,
         ToolBeforeCapabilitiesModifyWorkspace, ToolPermissionRequestCapabilities,
-        ToolPermissionRequestCapabilitiesEffects, ToolPermissionRequestCapabilitiesElicitation,
+        ToolPermissionRequestCapabilitiesEffects, ToolPermissionRequestCapabilitiesEffectsItem,
+        ToolPermissionRequestCapabilitiesElicitation,
         ToolPermissionRequestCapabilitiesElicitationForm,
         ToolPermissionRequestCapabilitiesElicitationUrl, ToolPermissionRequestCapabilitiesFlow,
-        ToolPermissionRequestCapabilitiesFlowOperations, ToolPermissionRequestCapabilitiesInject,
-        ToolPermissionRequestCapabilitiesInjectContext,
+        ToolPermissionRequestCapabilitiesFlowOperations,
+        ToolPermissionRequestCapabilitiesFlowOperationsItem,
+        ToolPermissionRequestCapabilitiesInject, ToolPermissionRequestCapabilitiesInjectContext,
         ToolPermissionRequestCapabilitiesInjectContextAppend,
         ToolPermissionRequestCapabilitiesInjectContextDeliverAtItem,
         ToolPermissionRequestCapabilitiesModify, ToolPermissionRequestCapabilitiesModifyContent,
@@ -50944,20 +63357,21 @@ pub mod capabilities {
         ToolPermissionRequestCapabilitiesModifyResponse,
         ToolPermissionRequestCapabilitiesModifySummary,
         ToolPermissionRequestCapabilitiesModifyWorkspace, TurnFinishBeforeCapabilities,
-        TurnFinishBeforeCapabilitiesEffects, TurnFinishBeforeCapabilitiesElicitation,
-        TurnFinishBeforeCapabilitiesElicitationForm, TurnFinishBeforeCapabilitiesElicitationUrl,
-        TurnFinishBeforeCapabilitiesFlow, TurnFinishBeforeCapabilitiesFlowOperationsItem,
-        TurnFinishBeforeCapabilitiesInject, TurnFinishBeforeCapabilitiesInjectContext,
-        TurnFinishBeforeCapabilitiesInjectContextAppend,
+        TurnFinishBeforeCapabilitiesEffects, TurnFinishBeforeCapabilitiesEffectsItem,
+        TurnFinishBeforeCapabilitiesElicitation, TurnFinishBeforeCapabilitiesElicitationForm,
+        TurnFinishBeforeCapabilitiesElicitationUrl, TurnFinishBeforeCapabilitiesFlow,
+        TurnFinishBeforeCapabilitiesFlowOperationsItem, TurnFinishBeforeCapabilitiesInject,
+        TurnFinishBeforeCapabilitiesInjectContext, TurnFinishBeforeCapabilitiesInjectContextAppend,
         TurnFinishBeforeCapabilitiesInjectContextDeliverAtItem, TurnFinishBeforeCapabilitiesModify,
         TurnFinishBeforeCapabilitiesModifyContent, TurnFinishBeforeCapabilitiesModifyInput,
         TurnFinishBeforeCapabilitiesModifyInstructions, TurnFinishBeforeCapabilitiesModifyOutput,
         TurnFinishBeforeCapabilitiesModifyPrompt, TurnFinishBeforeCapabilitiesModifyRequest,
         TurnFinishBeforeCapabilitiesModifyResponse, TurnFinishBeforeCapabilitiesModifySummary,
         TurnFinishBeforeCapabilitiesModifyWorkspace, TurnStartCapabilities,
-        TurnStartCapabilitiesEffects, TurnStartCapabilitiesElicitation,
-        TurnStartCapabilitiesElicitationForm, TurnStartCapabilitiesElicitationUrl,
-        TurnStartCapabilitiesFlow, TurnStartCapabilitiesFlowOperations,
+        TurnStartCapabilitiesEffects, TurnStartCapabilitiesEffectsItem,
+        TurnStartCapabilitiesElicitation, TurnStartCapabilitiesElicitationForm,
+        TurnStartCapabilitiesElicitationUrl, TurnStartCapabilitiesFlow,
+        TurnStartCapabilitiesFlowOperations, TurnStartCapabilitiesFlowOperationsItem,
         TurnStartCapabilitiesInject, TurnStartCapabilitiesInjectContext,
         TurnStartCapabilitiesInjectContextAppend, TurnStartCapabilitiesInjectContextDeliverAtItem,
         TurnStartCapabilitiesModify, TurnStartCapabilitiesModifyContent,
@@ -50966,6 +63380,7 @@ pub mod capabilities {
         TurnStartCapabilitiesModifyRequest, TurnStartCapabilitiesModifyResponse,
         TurnStartCapabilitiesModifySummary, TurnStartCapabilitiesModifyWorkspace,
         UserElicitationRequestCapabilities, UserElicitationRequestCapabilitiesEffects,
+        UserElicitationRequestCapabilitiesEffectsItem,
         UserElicitationRequestCapabilitiesElicitation,
         UserElicitationRequestCapabilitiesElicitationForm,
         UserElicitationRequestCapabilitiesElicitationUrl, UserElicitationRequestCapabilitiesFlow,
@@ -50982,7 +63397,8 @@ pub mod capabilities {
         UserElicitationRequestCapabilitiesModifyResponse,
         UserElicitationRequestCapabilitiesModifySummary,
         UserElicitationRequestCapabilitiesModifyWorkspace, UserElicitationResultCapabilities,
-        UserElicitationResultCapabilitiesEffects, UserElicitationResultCapabilitiesElicitation,
+        UserElicitationResultCapabilitiesEffects, UserElicitationResultCapabilitiesEffectsItem,
+        UserElicitationResultCapabilitiesElicitation,
         UserElicitationResultCapabilitiesElicitationForm,
         UserElicitationResultCapabilitiesElicitationUrl, UserElicitationResultCapabilitiesFlow,
         UserElicitationResultCapabilitiesFlowOperationsItem,
@@ -50998,8 +63414,8 @@ pub mod capabilities {
         UserElicitationResultCapabilitiesModifyResponse,
         UserElicitationResultCapabilitiesModifySummary,
         UserElicitationResultCapabilitiesModifyWorkspace, UserMessageInboundCapabilities,
-        UserMessageInboundCapabilitiesEffects, UserMessageInboundCapabilitiesElicitation,
-        UserMessageInboundCapabilitiesElicitationForm,
+        UserMessageInboundCapabilitiesEffects, UserMessageInboundCapabilitiesEffectsItem,
+        UserMessageInboundCapabilitiesElicitation, UserMessageInboundCapabilitiesElicitationForm,
         UserMessageInboundCapabilitiesElicitationUrl, UserMessageInboundCapabilitiesFlow,
         UserMessageInboundCapabilitiesFlowOperationsItem, UserMessageInboundCapabilitiesInject,
         UserMessageInboundCapabilitiesInjectContext,
@@ -51012,7 +63428,8 @@ pub mod capabilities {
         UserMessageInboundCapabilitiesModifyRequest, UserMessageInboundCapabilitiesModifyResponse,
         UserMessageInboundCapabilitiesModifySummary, UserMessageInboundCapabilitiesModifyWorkspace,
         UserMessageOutboundCapabilities, UserMessageOutboundCapabilitiesEffects,
-        UserMessageOutboundCapabilitiesElicitation, UserMessageOutboundCapabilitiesElicitationForm,
+        UserMessageOutboundCapabilitiesEffectsItem, UserMessageOutboundCapabilitiesElicitation,
+        UserMessageOutboundCapabilitiesElicitationForm,
         UserMessageOutboundCapabilitiesElicitationUrl, UserMessageOutboundCapabilitiesFlow,
         UserMessageOutboundCapabilitiesFlowOperationsItem, UserMessageOutboundCapabilitiesInject,
         UserMessageOutboundCapabilitiesInjectContext,
@@ -51026,7 +63443,8 @@ pub mod capabilities {
         UserMessageOutboundCapabilitiesModifyResponse,
         UserMessageOutboundCapabilitiesModifySummary,
         UserMessageOutboundCapabilitiesModifyWorkspace, WorkspaceChangeBeforeCapabilities,
-        WorkspaceChangeBeforeCapabilitiesEffects, WorkspaceChangeBeforeCapabilitiesElicitation,
+        WorkspaceChangeBeforeCapabilitiesEffects, WorkspaceChangeBeforeCapabilitiesEffectsItem,
+        WorkspaceChangeBeforeCapabilitiesElicitation,
         WorkspaceChangeBeforeCapabilitiesElicitationForm,
         WorkspaceChangeBeforeCapabilitiesElicitationUrl, WorkspaceChangeBeforeCapabilitiesFlow,
         WorkspaceChangeBeforeCapabilitiesFlowOperationsItem,
@@ -51100,6 +63518,19 @@ pub mod client {
         InteractionEventUserElicitationRequest, InteractionEventUserElicitationRequestElicitation,
         InteractionEventUserElicitationRequestElicitationMode,
         InteractionEventUserElicitationRequestElicitationRequest,
+        InteractionEventUserElicitationRequestElicitationRequestBody,
+        InteractionEventUserElicitationRequestElicitationRequestBodyGap,
+        InteractionEventUserElicitationRequestElicitationRequestBodyGapGap,
+        InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType,
+        InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection,
+        InteractionEventUserElicitationRequestElicitationRequestBodyMediaType,
+        InteractionEventUserElicitationRequestElicitationRequestBodySelection,
+        InteractionEventUserElicitationRequestElicitationRequestMetadata,
+        InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType,
+        InteractionEventUserElicitationRequestElicitationRequestMetadataSelection,
+        InteractionEventUserElicitationRequestElicitationRequestOmit,
+        InteractionEventUserElicitationRequestElicitationRequestOmitMediaType,
+        InteractionEventUserElicitationRequestElicitationRequestOmitSelection,
         InteractionEventUserElicitationRequestType, InterceptDenyResponse,
         InterceptDenyResponseJsonrpc, InterceptDenyResponseResult, InterceptNoEffectResponse,
         InterceptNoEffectResponseJsonrpc, InterceptNoEffectResponseResult, InterceptRequest,
@@ -51154,7 +63585,10 @@ pub mod content {
         ContentItemMetadataSelection, ContentItemOmit, ContentItemOmitSelection, ContentReference,
         ContentSelection, ContentSelectionAudio, ContentSelectionDefault, ContentSelectionFiles,
         ContentSelectionImages, ContentSelectionReasoning, ContentSelectionText,
-        ContentSelectionVideo, ContentUpload, ModelVisibleItem,
+        ContentSelectionVideo, ContentUpload, ModelVisibleItem, ModelVisibleItemBody,
+        ModelVisibleItemBodyGap, ModelVisibleItemBodyGapGap, ModelVisibleItemBodyGapSelection,
+        ModelVisibleItemBodySelection, ModelVisibleItemMetadata, ModelVisibleItemMetadataSelection,
+        ModelVisibleItemOmit, ModelVisibleItemOmitSelection,
     };
 }
 
@@ -51186,7 +63620,9 @@ pub mod event {
         ExecutionEventAttemptusageScope, ExecutionEventBatch, ExecutionEventContextCompactAfter,
         ExecutionEventContextCompactAfterGapsItem, ExecutionEventContextCompactAfterRemovedItem,
         ExecutionEventContextCompactAfterTurn, ExecutionEventContextCompactAfterType,
-        ExecutionEventContextCompactBefore, ExecutionEventError, ExecutionEventErrorStatus,
+        ExecutionEventContextCompactBefore, ExecutionEventContextCompactBeforeGapsItem,
+        ExecutionEventContextCompactBeforeTrigger, ExecutionEventContextCompactBeforeTurn,
+        ExecutionEventContextCompactBeforeType, ExecutionEventError, ExecutionEventErrorStatus,
         ExecutionEventExecution, ExecutionEventExecutionExecuted,
         ExecutionEventExecutionExecutedStatus, ExecutionEventExecutionSkippedCancelled,
         ExecutionEventExecutionSkippedCancelledReason,
@@ -51199,26 +63635,46 @@ pub mod event {
         ExecutionEventExecutionSkippedTimeoutReason, ExecutionEventExecutionSkippedTimeoutStatus,
         ExecutionEventFilechange, ExecutionEventFilechangeChange, ExecutionEventMcp,
         ExecutionEventMcpConnection, ExecutionEventMcpConnectionCustomTransport,
-        ExecutionEventMcpConnectionHttp, ExecutionEventMcpConnectionSse,
-        ExecutionEventMcpConnectionStdio, ExecutionEventMcpProvenance, ExecutionEventMcpServer,
-        ExecutionEventModel, ExecutionEventModelError, ExecutionEventModelErrorExecution,
-        ExecutionEventModelErrorGapsItem, ExecutionEventModelErrorTurn,
-        ExecutionEventModelErrorType, ExecutionEventModelRequestBefore,
-        ExecutionEventModelRequestBeforeGapsItem, ExecutionEventModelRequestBeforeParams,
-        ExecutionEventModelRequestBeforeTurn, ExecutionEventModelRequestBeforeType,
-        ExecutionEventModelResponseAfter, ExecutionEventModelResponseAfterGapsItem,
-        ExecutionEventModelResponseAfterTurn, ExecutionEventModelResponseAfterType,
-        ExecutionEventModelSwitchAfter, ExecutionEventModelSwitchAfterGapsItem,
-        ExecutionEventModelSwitchAfterTurn, ExecutionEventModelSwitchAfterType,
-        ExecutionEventModelSwitchBefore, ExecutionEventModelSwitchBeforeGapsItem,
-        ExecutionEventModelSwitchBeforePricing, ExecutionEventModelSwitchBeforeTurn,
-        ExecutionEventModelSwitchBeforeType, ExecutionEventTokencounts, ExecutionEventTool,
-        ExecutionEventToolBatchAfter, ExecutionEventToolBatchAfterBatch,
-        ExecutionEventToolBatchAfterCallsItem, ExecutionEventToolBatchAfterCallsItemCall,
-        ExecutionEventToolBatchAfterCallsItemOutcome, ExecutionEventToolBatchAfterGapsItem,
-        ExecutionEventToolBatchAfterTurn, ExecutionEventToolBatchAfterType,
-        ExecutionEventToolInput, ExecutionEventToolOrigin, ExecutionEventToolPermissionRequest,
-        ExecutionEventToolPermissionRequestCall, ExecutionEventToolPermissionRequestGapsItem,
+        ExecutionEventMcpConnectionCustomTransportGapsItem, ExecutionEventMcpConnectionHttp,
+        ExecutionEventMcpConnectionHttpGapsItem, ExecutionEventMcpConnectionHttpTransport,
+        ExecutionEventMcpConnectionSse, ExecutionEventMcpConnectionSseGapsItem,
+        ExecutionEventMcpConnectionSseTransport, ExecutionEventMcpConnectionStdio,
+        ExecutionEventMcpConnectionStdioGapsItem, ExecutionEventMcpConnectionStdioTransport,
+        ExecutionEventMcpProvenance, ExecutionEventMcpServer, ExecutionEventModel,
+        ExecutionEventModelError, ExecutionEventModelErrorExecution,
+        ExecutionEventModelErrorExecutionExecuted, ExecutionEventModelErrorExecutionExecutedStatus,
+        ExecutionEventModelErrorExecutionSkippedCancelled,
+        ExecutionEventModelErrorExecutionSkippedCancelledReason,
+        ExecutionEventModelErrorExecutionSkippedCancelledStatus,
+        ExecutionEventModelErrorExecutionSkippedOther,
+        ExecutionEventModelErrorExecutionSkippedOtherReason,
+        ExecutionEventModelErrorExecutionSkippedOtherStatus,
+        ExecutionEventModelErrorExecutionSkippedPolicy,
+        ExecutionEventModelErrorExecutionSkippedPolicyReason,
+        ExecutionEventModelErrorExecutionSkippedPolicyStatus,
+        ExecutionEventModelErrorExecutionSkippedSuppliedResult,
+        ExecutionEventModelErrorExecutionSkippedSuppliedResultReason,
+        ExecutionEventModelErrorExecutionSkippedSuppliedResultStatus,
+        ExecutionEventModelErrorExecutionSkippedTimeout,
+        ExecutionEventModelErrorExecutionSkippedTimeoutReason,
+        ExecutionEventModelErrorExecutionSkippedTimeoutStatus, ExecutionEventModelErrorGapsItem,
+        ExecutionEventModelErrorTurn, ExecutionEventModelErrorType,
+        ExecutionEventModelRequestBefore, ExecutionEventModelRequestBeforeGapsItem,
+        ExecutionEventModelRequestBeforeParams, ExecutionEventModelRequestBeforeTurn,
+        ExecutionEventModelRequestBeforeType, ExecutionEventModelResponseAfter,
+        ExecutionEventModelResponseAfterGapsItem, ExecutionEventModelResponseAfterTurn,
+        ExecutionEventModelResponseAfterType, ExecutionEventModelSwitchAfter,
+        ExecutionEventModelSwitchAfterGapsItem, ExecutionEventModelSwitchAfterTurn,
+        ExecutionEventModelSwitchAfterType, ExecutionEventModelSwitchBefore,
+        ExecutionEventModelSwitchBeforeGapsItem, ExecutionEventModelSwitchBeforePricing,
+        ExecutionEventModelSwitchBeforeTurn, ExecutionEventModelSwitchBeforeType,
+        ExecutionEventTokencounts, ExecutionEventTool, ExecutionEventToolBatchAfter,
+        ExecutionEventToolBatchAfterBatch, ExecutionEventToolBatchAfterCallsItem,
+        ExecutionEventToolBatchAfterCallsItemCall, ExecutionEventToolBatchAfterCallsItemOutcome,
+        ExecutionEventToolBatchAfterGapsItem, ExecutionEventToolBatchAfterTurn,
+        ExecutionEventToolBatchAfterType, ExecutionEventToolInput, ExecutionEventToolOrigin,
+        ExecutionEventToolPermissionRequest, ExecutionEventToolPermissionRequestCall,
+        ExecutionEventToolPermissionRequestGapsItem,
         ExecutionEventToolPermissionRequestSuggestionsItem,
         ExecutionEventToolPermissionRequestTurn, ExecutionEventToolPermissionRequestType,
         ExecutionEventToolPermissionResolved, ExecutionEventToolPermissionResolvedCall,
@@ -51255,11 +63711,37 @@ pub mod event {
         InteractionEventUserElicitationRequestElicitation,
         InteractionEventUserElicitationRequestElicitationMode,
         InteractionEventUserElicitationRequestElicitationRequest,
+        InteractionEventUserElicitationRequestElicitationRequestBody,
+        InteractionEventUserElicitationRequestElicitationRequestBodyGap,
+        InteractionEventUserElicitationRequestElicitationRequestBodyGapGap,
+        InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType,
+        InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection,
+        InteractionEventUserElicitationRequestElicitationRequestBodyMediaType,
+        InteractionEventUserElicitationRequestElicitationRequestBodySelection,
+        InteractionEventUserElicitationRequestElicitationRequestMetadata,
+        InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType,
+        InteractionEventUserElicitationRequestElicitationRequestMetadataSelection,
+        InteractionEventUserElicitationRequestElicitationRequestOmit,
+        InteractionEventUserElicitationRequestElicitationRequestOmitMediaType,
+        InteractionEventUserElicitationRequestElicitationRequestOmitSelection,
         InteractionEventUserElicitationRequestType, InteractionEventUserElicitationResult,
         InteractionEventUserElicitationResultElicitation,
         InteractionEventUserElicitationResultElicitationAction,
         InteractionEventUserElicitationResultElicitationMode,
         InteractionEventUserElicitationResultElicitationResult,
+        InteractionEventUserElicitationResultElicitationResultBody,
+        InteractionEventUserElicitationResultElicitationResultBodyGap,
+        InteractionEventUserElicitationResultElicitationResultBodyGapGap,
+        InteractionEventUserElicitationResultElicitationResultBodyGapMediaType,
+        InteractionEventUserElicitationResultElicitationResultBodyGapSelection,
+        InteractionEventUserElicitationResultElicitationResultBodyMediaType,
+        InteractionEventUserElicitationResultElicitationResultBodySelection,
+        InteractionEventUserElicitationResultElicitationResultMetadata,
+        InteractionEventUserElicitationResultElicitationResultMetadataMediaType,
+        InteractionEventUserElicitationResultElicitationResultMetadataSelection,
+        InteractionEventUserElicitationResultElicitationResultOmit,
+        InteractionEventUserElicitationResultElicitationResultOmitMediaType,
+        InteractionEventUserElicitationResultElicitationResultOmitSelection,
         InteractionEventUserElicitationResultType, InteractionEventUserMessageInbound,
         InteractionEventUserMessageInboundMessage, InteractionEventUserMessageInboundType,
         InteractionEventUserMessageOutbound, InteractionEventUserMessageOutboundMessage,
@@ -51295,17 +63777,43 @@ pub mod event {
         UserAttentionEventAttention, UserAttentionEventGapsItem, UserAttentionEventTurn,
         UserAttentionEventType, UserElicitationRequestEvent,
         UserElicitationRequestEventElicitation, UserElicitationRequestEventElicitationMode,
-        UserElicitationRequestEventElicitationRequest, UserElicitationRequestEventGapsItem,
-        UserElicitationRequestEventTurn, UserElicitationRequestEventType,
-        UserElicitationResultEvent, UserElicitationResultEventElicitation,
-        UserElicitationResultEventElicitationAction, UserElicitationResultEventElicitationMode,
-        UserElicitationResultEventElicitationResult, UserElicitationResultEventGapsItem,
-        UserElicitationResultEventTurn, UserElicitationResultEventType, UserMessageInboundEvent,
-        UserMessageInboundEventGapsItem, UserMessageInboundEventMessage,
-        UserMessageInboundEventTurn, UserMessageInboundEventType, UserMessageOutboundEvent,
-        UserMessageOutboundEventGapsItem, UserMessageOutboundEventMessage,
-        UserMessageOutboundEventTurn, UserMessageOutboundEventType, WorkspaceChangeAfterEvent,
-        WorkspaceChangeBeforeEvent,
+        UserElicitationRequestEventElicitationRequest,
+        UserElicitationRequestEventElicitationRequestBody,
+        UserElicitationRequestEventElicitationRequestBodyGap,
+        UserElicitationRequestEventElicitationRequestBodyGapGap,
+        UserElicitationRequestEventElicitationRequestBodyGapMediaType,
+        UserElicitationRequestEventElicitationRequestBodyGapSelection,
+        UserElicitationRequestEventElicitationRequestBodyMediaType,
+        UserElicitationRequestEventElicitationRequestBodySelection,
+        UserElicitationRequestEventElicitationRequestMetadata,
+        UserElicitationRequestEventElicitationRequestMetadataMediaType,
+        UserElicitationRequestEventElicitationRequestMetadataSelection,
+        UserElicitationRequestEventElicitationRequestOmit,
+        UserElicitationRequestEventElicitationRequestOmitMediaType,
+        UserElicitationRequestEventElicitationRequestOmitSelection,
+        UserElicitationRequestEventGapsItem, UserElicitationRequestEventTurn,
+        UserElicitationRequestEventType, UserElicitationResultEvent,
+        UserElicitationResultEventElicitation, UserElicitationResultEventElicitationAction,
+        UserElicitationResultEventElicitationMode, UserElicitationResultEventElicitationResult,
+        UserElicitationResultEventElicitationResultBody,
+        UserElicitationResultEventElicitationResultBodyGap,
+        UserElicitationResultEventElicitationResultBodyGapGap,
+        UserElicitationResultEventElicitationResultBodyGapMediaType,
+        UserElicitationResultEventElicitationResultBodyGapSelection,
+        UserElicitationResultEventElicitationResultBodyMediaType,
+        UserElicitationResultEventElicitationResultBodySelection,
+        UserElicitationResultEventElicitationResultMetadata,
+        UserElicitationResultEventElicitationResultMetadataMediaType,
+        UserElicitationResultEventElicitationResultMetadataSelection,
+        UserElicitationResultEventElicitationResultOmit,
+        UserElicitationResultEventElicitationResultOmitMediaType,
+        UserElicitationResultEventElicitationResultOmitSelection,
+        UserElicitationResultEventGapsItem, UserElicitationResultEventTurn,
+        UserElicitationResultEventType, UserMessageInboundEvent, UserMessageInboundEventGapsItem,
+        UserMessageInboundEventMessage, UserMessageInboundEventTurn, UserMessageInboundEventType,
+        UserMessageOutboundEvent, UserMessageOutboundEventGapsItem,
+        UserMessageOutboundEventMessage, UserMessageOutboundEventTurn,
+        UserMessageOutboundEventType, WorkspaceChangeAfterEvent, WorkspaceChangeBeforeEvent,
     };
 }
 
@@ -51407,12 +63915,13 @@ pub mod observe_notification {
 /// Models grouped by protocol domain.
 pub mod registration {
     pub use super::{
-        Authentication, AuthenticationBearer, AuthenticationOauth, AuthenticationOauthFlow,
-        AuthenticationOauthType, Backend, BackendSubscriptionsItem, BackendTransport,
-        HttpTransport, HttpTransportType, InterceptSubscription, InterceptSubscriptionEventsItem,
-        InterceptSubscriptionEventsItemKnown, InterceptSubscriptionFailurePolicy,
-        InterceptSubscriptionFilters, InterceptSubscriptionMode, InterceptSubscriptionScope,
-        ObserveSubscription, ObserveSubscriptionEventsItem, ObserveSubscriptionEventsItemKnown,
+        Authentication, AuthenticationBearer, AuthenticationBearerType, AuthenticationOauth,
+        AuthenticationOauthFlow, AuthenticationOauthType, Backend, BackendSubscriptionsItem,
+        BackendTransport, HttpTransport, HttpTransportType, InterceptSubscription,
+        InterceptSubscriptionEventsItem, InterceptSubscriptionEventsItemKnown,
+        InterceptSubscriptionFailurePolicy, InterceptSubscriptionFilters,
+        InterceptSubscriptionMode, InterceptSubscriptionScope, ObserveSubscription,
+        ObserveSubscriptionEventsItem, ObserveSubscriptionEventsItemKnown,
         ObserveSubscriptionFilters, ObserveSubscriptionMode, ObserveSubscriptionScope,
         Registration, RegistrationContentreceiver, ReverseDnsName, StdioTransport,
         StdioTransportLifecycle, StdioTransportType,

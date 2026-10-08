@@ -391,3 +391,19 @@ The root `ahp-codegen.lock.json` mirrors `src/ahp-codegen.lock.json`; both are g
 ## License
 
 Apache-2.0
+
+### Typed composed payloads
+
+MCP connection payloads expose typed structs rather than `JsonValue` wrappers.
+For example, `ExecutionEventMcpConnectionHttp::new().with_url("https://mcp.example")`
+constructs an HTTP payload; `with_gaps` accepts typed gap records. SSE, stdio, and
+custom transport structs expose their location fields directly. Composed
+capability arrays and scalar fields retain typed values, and `ModelVisibleItem`
+exposes semantic content variants with a required `role`.
+
+Migration: replace former JSON-wrapper constructors with the generated struct,
+array, scalar, or enum constructors. Constructors model fields; existing parsing
+and validation APIs remain responsible for predicates such as “location or
+gaps.” Unknown variants and extension fields stay lossless. The nonliteral
+custom transport tag retains the existing unknown-variant union fallback;
+explicit custom payload models are still available for typed construction.
