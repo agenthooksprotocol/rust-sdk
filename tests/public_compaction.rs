@@ -13,7 +13,7 @@ fn request(content: &ContentContext<'_>, after: bool) -> Value {
     let target = if after { "summary" } else { "instructions" };
     let descriptor = content.put("original\r\nλ".as_bytes()).unwrap();
     let mut event = json!({"id":boundary,"source":"urn:test:compaction","time":"2026-09-15T12:00:00Z","type":format!("context.compact.{boundary}"),"session":{"id":"session"},"parentEventId":"original-exchange","native":{"host":"test"}});
-    event[target] = json!({"id":"logical-item","kind":target,"role":"assistant","category":"test","parentItemId":"parent-item","mediaType":"text/plain","selection":"body","body":descriptor,"size":descriptor["size"],"sha256":descriptor["sha256"]});
+    event[target] = json!({"id":"logical-item","kind":target,"role":"assistant","category":"test","parentItemId":"parent-item","mediaType":"text/plain","selection":"body","body":descriptor});
     if after {
         event["removed"] = json!([{"id":"context-item"}]);
         event["execution"] = json!({"status":"executed"});
@@ -65,13 +65,11 @@ fn immutable_rewrites_preserve_identity_correlations_and_exact_utf8() {
         for key in ["parentEventId", "session", "native", "removed", "execution"] {
             assert_eq!(result["event"].get(key), original.get(key));
         }
+        assert!(result["event"][target].get("size").is_none());
+        assert!(result["event"][target].get("sha256").is_none());
         assert_eq!(
-            result["event"][target]["size"],
-            result["event"][target]["body"]["size"]
-        );
-        assert_eq!(
-            result["event"][target]["sha256"],
-            result["event"][target]["body"]["sha256"]
+            result["event"][target]["body"].as_object().unwrap().len(),
+            1
         );
     }
 }
@@ -180,7 +178,7 @@ impl ContentStore for LyingStore {
     }
 }
 #[test]
-fn host_store_bytes_are_verified_and_metadata_never_resolves() {
+fn scoped_store_bytes_are_authoritative_and_metadata_never_resolves() {
     let store = store();
     let content = ContentContext {
         store: &store,
@@ -191,7 +189,11 @@ fn host_store_bytes_are_verified_and_metadata_never_resolves() {
         store: &LyingStore,
         scope: AuthorizedScope::new("scope"),
     };
-    assert!(stage_boundary(&request, &[], &lying).is_err());
+    let staged = stage_boundary(&request, &[], &lying).unwrap();
+    assert_eq!(
+        selected_text(&staged["event"]["instructions"], &lying).unwrap(),
+        "wrong"
+    );
     let item = &mut request["params"]["event"]["instructions"];
     item.as_object_mut().unwrap().remove("body");
     item["selection"] = json!("metadata");

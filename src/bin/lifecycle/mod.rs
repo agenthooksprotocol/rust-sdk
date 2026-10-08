@@ -560,8 +560,11 @@ impl ServerState {
             if response.status == 201 {
                 descriptor =
                     serde_json::from_slice(&response.body).expect("public upload descriptor");
-                let reference: ContentReference =
-                    serde_json::from_value(descriptor.clone()).expect("public content reference");
+                let reference = serde_json::from_value::<agenthooksprotocol::ContentUploadReceipt>(
+                    descriptor.clone(),
+                )
+                .expect("public upload receipt")
+                .reference();
                 let confirmed = uploads
                     .receiver
                     .resolve(&AuthorizedScope::new(sub), &reference)
@@ -1928,7 +1931,14 @@ fn test_upload(state: &ServerState, value: &Value) -> Result<(u16, Value)> {
     let mut req = server.recv()?;
     let (status, descriptor) = state.upload_bytes(&mut req).unwrap_or((400, json!({})));
     req.respond(tiny_http::Response::empty(status))?;
-    Ok((child.join().unwrap(), descriptor))
+    Ok((
+        child.join().unwrap(),
+        if status == 201 {
+            json!({"ref": descriptor["ref"]})
+        } else {
+            descriptor
+        },
+    ))
 }
 #[cfg(test)]
 mod tests {
@@ -2601,7 +2611,8 @@ mod hardening_tests {
             send_upload(&endpoint, &json!({}), b"public bytes", None, TIMEOUT).unwrap();
         worker.join().unwrap();
         assert_eq!(status, 201);
-        let reference = reference.unwrap();
+        let receipt = reference.unwrap();
+        let reference = json!({"ref": receipt["ref"]});
         let store = state.content_store();
         let context = ContentContext {
             store: &store,
@@ -2613,10 +2624,7 @@ mod hardening_tests {
             scope: AuthorizedScope::new("other"),
         };
         assert!(forbidden.resolve(&reference).is_err());
-        assert_eq!(
-            state.data.lock().unwrap().entries[0]["descriptor"],
-            reference
-        );
+        assert_eq!(state.data.lock().unwrap().entries[0]["descriptor"], receipt);
     }
     #[test]
     fn http_distinguishes_content_conflicts_from_schema_errors() {
@@ -2640,8 +2648,8 @@ mod hardening_tests {
         malformed["size"] = json!("not-an-integer");
         for (reference, expected_status, prefix) in [
             (missing, 409, "content:"),
-            (wrong_size, 409, "content:"),
-            (wrong_hash, 409, "content:"),
+            (wrong_size, 400, "schema:"),
+            (wrong_hash, 400, "schema:"),
             (malformed, 400, "schema:"),
         ] {
             let mut message = request();
@@ -2683,7 +2691,7 @@ mod hardening_tests {
         drop(store);
         state.protocol(&message).unwrap();
         let before = state.data.lock().unwrap().entries.len();
-        let fake = json!({"ref":"fixture-only", "size":3, "sha256":sha256(b"abc")});
+        let fake = json!({"ref":"fixture-only"});
         state
             .data
             .lock()
@@ -2798,14 +2806,12 @@ mod hardening_tests {
     }
     #[test]
     fn descriptor_alias_replacement_preserves_negative_metadata() {
-        let descriptor = json!({"ref":"receiver-ref", "size":3, "sha256":sha256(b"abc")});
+        let descriptor = json!({"ref":"receiver-ref"});
         let aliases = BTreeMap::from([("fixture-alias".into(), descriptor.clone())]);
         let uploads = BTreeMap::from([(("body".into(), "receiver-ref".into()), b"abc".to_vec())]);
         let mut event = json!({
             "body": {
-                "ref": "fixture-alias",
-                "size": 3,
-                "sha256": sha256(b"abc")
+                "ref": "fixture-alias"
             }
         });
         replace_references(&mut event, &aliases);
@@ -2851,7 +2857,7 @@ mod hardening_tests {
         let event = json!({
             "id": "caller-selected",
             "source": "urn:caller",
-            "body": descriptor
+            "body": {"ref": descriptor["ref"]}
         });
         let data = receiver.data.lock().unwrap();
         assert!(resolve_bodies(&event, "tenant-a", &data.uploads).is_ok());

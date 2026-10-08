@@ -1,11 +1,11 @@
 {
   "sourceRepository": "agenthooksprotocol/agent-hooks-protocol",
-  "sourceCommit": "7a3353d92c14514215cc092a930685b0947f0bc1",
+  "sourceCommit": "527db9271a6f6612e769d89fda07cd5a054bcfc4",
   "schemaRevision": "draft",
   "protocolVersion": "draft",
   "generatorVersion": "0.1.0",
   "language": "rust",
-  "schemaManifestSha256": "050852ec662d5a29c80d8951252b54a5fa48bb5e6c7ce08d88c45e614964a60a",
+  "schemaManifestSha256": "b397a3c4d613a67396f1727190052ce2f3bb208cdfa03e066f0c045525f25451",
   "documents": [
     {
       "path": "schema/draft/capabilities-request.schema.json",
@@ -29,15 +29,19 @@
     },
     {
       "path": "schema/draft/content-item.schema.json",
-      "sha256": "ef15f47f3f57f3004e89046a79429944b5361e302719f4f45bbf819667a13a38"
+      "sha256": "21ce30d451d6fe20eb56cf09108fe33500e40839669d2922911dd9b0b8cfe762"
     },
     {
       "path": "schema/draft/content-reference.schema.json",
-      "sha256": "24221c52d428c6104ce6f526f278d000169777f866adbc2c2de90a635469d692"
+      "sha256": "32b345818648f2d28dd0175705a85b22569ea535867349262e055bb3e3999e87"
     },
     {
       "path": "schema/draft/content-selection.schema.json",
       "sha256": "fe57bce4a7a6c7a8d51728634349621ba327b5ef118bc60b1c330260392e2a62"
+    },
+    {
+      "path": "schema/draft/content-upload-receipt.schema.json",
+      "sha256": "02e04375b2e4764eea0e70299a9ae29f0d49b407dca797f49299a3cb2d7613dc"
     },
     {
       "path": "schema/draft/content-upload.schema.json",
@@ -50,6 +54,10 @@
     {
       "path": "schema/draft/effect.schema.json",
       "sha256": "1448151926563244194ed56b15e3074ddfc8ec8c10889f2e42ab49d66be2d031"
+    },
+    {
+      "path": "schema/draft/event.schema.json",
+      "sha256": "7b19aa60dc775b23b74d78aad2cdc634e07c454c68f1a60b125c3e4ff391f1f9"
     },
     {
       "path": "schema/draft/execution-event.schema.json",
@@ -73,7 +81,7 @@
     },
     {
       "path": "schema/draft/intercept-request.schema.json",
-      "sha256": "fbd5ed20681d918c8647382de6a2bc07de14a7ac57f756e68d2f3293043d534e"
+      "sha256": "179c6afd7092bcb1fa91522e6fbe6f63aa28d5dfbef35c9aa661304028ba48c9"
     },
     {
       "path": "schema/draft/intercept-response.schema.json",
@@ -89,7 +97,7 @@
     },
     {
       "path": "schema/draft/observe-notification.schema.json",
-      "sha256": "27255ccd1a6d0fa788161825f4df74f7e0b3c074a8dc7c8cdeb7e07df11d55cf"
+      "sha256": "770dd91480b4a0a0e8a3565e3724ab5d77bbede19faff223e10a8e442f926a62"
     },
     {
       "path": "schema/draft/registration.schema.json",

@@ -196,6 +196,29 @@ struct DeferredEntries {
     states: std::collections::BTreeMap<usize, DeferredState>,
 }
 
+/// An owned, single-invocation lazy body handle. Dropping an unused handle
+/// releases the source without reading it. Keep this owner alive until the boundary
+/// completes or is cancelled, then drop it. Prefer a boundary's `body_source` / an explicit `ContentScope`.
+pub struct StagedBody {
+    pub(crate) guard: DeferredBodyGuard,
+}
+impl StagedBody {
+    pub fn reference(&self) -> serde_json::Value {
+        self.guard.reference.clone()
+    }
+}
+impl std::ops::Deref for StagedBody {
+    type Target = serde_json::Value;
+    fn deref(&self) -> &Self::Target {
+        &self.guard.reference
+    }
+}
+impl serde::Serialize for StagedBody {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.guard.reference.serialize(serializer)
+    }
+}
+
 /// Retires an operation-owned body on success, failure, or future cancellation.
 pub(crate) struct DeferredBodyGuard {
     bodies: DeferredBodies,
@@ -211,7 +234,7 @@ enum DeferredState {
     Pending(Body),
     // Installed before awaiting: both read errors and cancellation are terminal.
     Consumed,
-    Snapshot(serde_json::Value),
+    Snapshot(serde_json::Value, usize),
 }
 
 impl DeferredBodies {
@@ -229,9 +252,7 @@ impl DeferredBodies {
 
     fn handle(&self, index: usize) -> serde_json::Value {
         serde_json::json!({
-            "ref": format!("{DEFERRED_PREFIX}{}:{index}", self.inner.namespace),
-            "size": 0,
-            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "ref": format!("{DEFERRED_PREFIX}{}:{index}", self.inner.namespace)
         })
     }
 
@@ -300,6 +321,23 @@ impl DeferredBodies {
         drop(removed);
     }
 
+    pub(crate) fn snapshot(&self, reference: &serde_json::Value) -> Option<serde_json::Value> {
+        let prefix = format!("{DEFERRED_PREFIX}{}:", self.inner.namespace);
+        let index = reference["ref"]
+            .as_str()?
+            .strip_prefix(&prefix)?
+            .parse::<usize>()
+            .ok()?;
+        if *reference != self.handle(index) {
+            return None;
+        }
+        let entries = self.inner.entries.lock().unwrap_or_else(|e| e.into_inner());
+        match entries.states.get(&index)? {
+            DeferredState::Snapshot(value, _) => Some(value.clone()),
+            _ => None,
+        }
+    }
+
     pub(crate) async fn materialize(
         &self,
         reference: &serde_json::Value,
@@ -331,11 +369,8 @@ impl DeferredBodies {
                 .get_mut(&index)
                 .ok_or_else(|| BodyError::Read("unknown deferred body".into()))?;
             match entry {
-                DeferredState::Snapshot(reference) => {
-                    if reference["size"]
-                        .as_u64()
-                        .is_some_and(|size| size > route_max_bytes as u64)
-                    {
+                DeferredState::Snapshot(reference, size) => {
+                    if *size > route_max_bytes {
                         return Err(BodyError::TooLarge {
                             limit: route_max_bytes,
                         });
@@ -377,9 +412,10 @@ impl DeferredBodies {
         if !entries.states.contains_key(&index) {
             return Err(BodyError::Read("deferred body was retired".into()));
         }
-        entries
-            .states
-            .insert(index, DeferredState::Snapshot(reference.clone()));
+        entries.states.insert(
+            index,
+            DeferredState::Snapshot(reference.clone(), bytes.len()),
+        );
         Ok(Some(reference))
     }
 }

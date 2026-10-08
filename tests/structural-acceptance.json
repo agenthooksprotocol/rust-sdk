@@ -1,0 +1,709 @@
+{
+  "contract": "Generated structural acceptance, not complete canonical or contextual validity. Raw numeric token spelling is tested separately per language.",
+  "cases": [
+    {
+      "id": "ordinary-request",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          }
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "candidate-null",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "permission": "allow",
+            "candidate": null
+          }
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "candidate-payload-null",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "permission": "allow",
+            "candidate": {
+              "value": null
+            }
+          }
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "candidate-payload-zero",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "permission": "allow",
+            "candidate": {
+              "value": 0
+            }
+          }
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "candidate-payload-false",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "permission": "allow",
+            "candidate": {
+              "value": false
+            }
+          }
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "candidate-payload-empty-string",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "permission": "allow",
+            "candidate": {
+              "value": ""
+            }
+          }
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "candidate-payload-empty-object",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "permission": "allow",
+            "candidate": {
+              "value": {}
+            }
+          }
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "candidate-missing-value",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "permission": "allow",
+            "candidate": {}
+          }
+        }
+      },
+      "accepted": false,
+      "warning": false
+    },
+    {
+      "id": "missing-candidate",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "permission": "allow"
+          }
+        }
+      },
+      "accepted": false,
+      "warning": false
+    },
+    {
+      "id": "missing-permission",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          },
+          "state": {
+            "candidate": null
+          }
+        }
+      },
+      "accepted": false,
+      "warning": false
+    },
+    {
+      "id": "invalid-envelope-literal",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "1.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          }
+        }
+      },
+      "accepted": false,
+      "warning": false
+    },
+    {
+      "id": "invalid-known-event",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          }
+        }
+      },
+      "accepted": false,
+      "warning": false
+    },
+    {
+      "id": "unknown-event",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "type": "vendor.future",
+            "opaque": {
+              "keep": [
+                null,
+                0,
+                false
+              ]
+            }
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          }
+        }
+      },
+      "accepted": true,
+      "warning": true
+    },
+    {
+      "id": "nested-extension",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "native"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example",
+            "future": {
+              "keep": [
+                null,
+                0,
+                false
+              ]
+            }
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          }
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "open-enum",
+      "root": "intercept_request",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "evt_http_001",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "evt_http_001",
+            "source": "https://harness.example/runtime/42",
+            "type": "tool.before",
+            "time": "2026-08-24T08:51:14Z",
+            "session": {
+              "id": "sess_http_123"
+            },
+            "tool": {
+              "name": "write_file",
+              "kind": "file_write",
+              "input": {
+                "path": "README.md",
+                "content": "example"
+              },
+              "origin": "vendor.future"
+            },
+            "call": {
+              "id": "call_http_456"
+            },
+            "path": "example"
+          },
+          "capabilities": {
+            "effects": [
+              "deny"
+            ]
+          }
+        }
+      },
+      "accepted": true,
+      "warning": true
+    },
+    {
+      "id": "reference",
+      "root": "content_reference",
+      "value": {
+        "ref": "opaque"
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "reference-extension",
+      "root": "content_reference",
+      "value": {
+        "ref": "opaque",
+        "future": {
+          "keep": true
+        }
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "reference-missing-ref",
+      "root": "content_reference",
+      "value": {},
+      "accepted": false,
+      "warning": false
+    },
+    {
+      "id": "reference-null-size-forbidden",
+      "root": "content_reference",
+      "value": {
+        "ref": "opaque",
+        "size": null
+      },
+      "accepted": false,
+      "warning": false
+    },
+    {
+      "id": "receipt",
+      "root": "content_upload_receipt",
+      "value": {
+        "ref": "opaque",
+        "size": 0,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "accepted": true,
+      "warning": false
+    },
+    {
+      "id": "receipt-missing-size",
+      "root": "content_upload_receipt",
+      "value": {
+        "ref": "opaque",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "accepted": false,
+      "warning": false
+    }
+  ]
+}

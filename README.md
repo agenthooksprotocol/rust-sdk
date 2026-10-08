@@ -130,14 +130,17 @@ across fan-out, but each destination has independent upload authority.
 
 The advanced `hooks.stage_body(Body::stream(source)).await` transfers ownership without
 reading the stream. `Body::bytes`, `Body::text`, and `Body::json` are available for
-already-owned inputs. Place the returned body descriptor in an event content
-item. Matching subscriptions select body delivery; metadata, omit, and unmatched
+already-owned inputs. Place `staged.reference()` in an event content item,
+and keep the returned `StagedBody` owner alive until the boundary completes or
+is cancelled. Matching subscriptions select body delivery; metadata, omit, and unmatched
 routes do not read it. Selected bodies use bounded capture, immutable storage,
 and size/SHA-256 verification. Configure `max_body_bytes`, `max_stored_bytes`, and
 `max_stored_entries` in `HooksOptions`; upload credentials are resolved separately
 from event credentials. This is bounded in-memory spooling, not unbounded or
-disk-backed streaming. Advanced staged sources live until consumed or Hooks shutdown;
-prefer operation-scoped bindings when a source belongs to one call.
+disk-backed streaming. Drop the staged owner after the boundary finishes; dropping
+an unused owner releases its source without reading it. Retaining an owner after
+an unselected invocation can retain its unread source until owner drop or Hooks
+shutdown. Prefer operation-scoped bindings when a source belongs to one call.
 
 ## Quick start
 
@@ -249,10 +252,74 @@ Content-backed boundaries use `.content(ContentContext { store, scope })`. The
 scope must come from authenticated credentials or an explicit anonymous host
 policy, never an event ID or content reference. `ContentStore` is the host-storage
 interface; `MemoryContentStore` provides bounded immutable storage without durable
-persistence. Resolution verifies descriptor size and SHA-256 even for a custom
-store. Metadata and omitted selections do not read bodies; required unavailable
-or corrupt bodies fail closed. Hosts must retain referenced bytes for the required
+persistence. Resolution validates the canonical reference and uses the explicitly
+authorized store. Metadata and omitted selections do not read bodies; required
+unavailable bodies fail closed. Hosts must retain referenced bytes for the required
 exchange lifetime.
+
+### Hooks content lifetimes
+
+`Hooks` does not keep an archive of staged bodies. Each awaited boundary owns an
+invocation scope, including the original bytes and replacement bytes created by
+locally applying inline hook edits. Completion, errors, dropped futures, deadline
+expiration, and cancellation release that scope. Concurrent scopes share the
+configured byte and entry limits; limits are not reset or increased per call.
+
+Use `.body_source(...)` for generated input slots: a source remains unread unless
+a selected route needs its body, and an unused source is dropped with the boundary.
+For explicit references, stage bytes in an owned scope and move it into the boundary:
+
+```rust,ignore
+let scope = hooks.content_scope();
+let reference = scope.context().put(b"original text")?;
+let event = serde_json::json!({
+    "type": "user.message.outbound",
+    "message": {"role": "assistant", "payload": [{
+        "id": "text", "kind": "text", "mediaType": "text/plain",
+        "selection": "body", "body": reference
+    }]}
+});
+let result = hooks.event(event).content_scope(scope).await?;
+let bytes = result.content.resolve(
+    &result.effective_event["message"]["payload"][0]["body"]
+)?;
+// `bytes` is an independently owned Arc<[u8]>; it survives result/Hooks drop.
+```
+
+`EventOutcome::content` and `ToolOutcome::content` are read-only, result-owned
+payloads, not a reference to the invocation store. Keep that owner when retaining
+canonical references, or resolve the bytes before discarding the result. Only
+payloads in schema-owned content slots or explicitly declared content targets are
+retained; overwritten intermediate bodies are released. Reference-shaped objects
+in opaque native metadata, tool arguments, return candidates, and injection
+values do not retain backing bytes. Their JSON values are preserved unchanged. Result-owned bytes are application data, not active staging
+allocations. Applications that retain many results must bound their own history.
+
+Observation preparation resolves selected bodies and confirms uploads before
+transport delivery. After preparation, invocation storage is released; pending
+notifications own only their projected wire payload and backend. They cannot pin
+an invocation archive or delete another invocation's content. The boundary still
+awaits its selected observations, and shutdown cancels pending owned work.
+
+**Migration from host-global staging:** `Hooks::content_context()` is deprecated
+and now returns an owned `ContentScope`, not a borrowed global `ContentContext`.
+Use `hooks.content_scope()`, borrow `scope.context()` for staging/resolution, then
+move the scope into `.content_scope(scope)`. A scope belongs to exactly one Hooks
+instance and one invocation. Reusing its references in a later invocation requires
+staging the retained bytes in a new scope. Never copy a descriptor alone and assume
+that it keeps its backing bytes alive.
+
+For lazy explicit staging, `scope.stage_body(body).await?` returns a local reference
+owned by that scope. `Hooks::stage_body` now returns an owned `StagedBody` rather
+than a bare JSON value: use `staged.reference()` in the event and keep `staged`
+alive until the boundary completes or is cancelled, then drop it. Dropping an unused staged owner releases the
+source without reading it. These handles are single-invocation; prefer
+`.body_source(...)` or `ContentScope` to make transfer and cleanup automatic.
+Generic `.content_target(...)` edit negotiation currently needs an already
+materialized original, so use `scope.put(...)` for that path. Lazy sources work
+with selected body delivery but do not change this pre-existing negotiation rule.
+The lower-level `Client` / `ContentStore` APIs remain caller-managed; a standalone
+`MemoryContentStore` still retains its allocations until its owners are dropped.
 
 Generic prompt, response, output, and content modifications additionally require
 `.content_target(target, pointer)`, an explicit host mapping to a canonical content
@@ -337,14 +404,17 @@ supply deadlines.
 `content::Uploader` sends exact raw bytes to an explicitly configured endpoint.
 Upload credentials are supplied independently through `UploadCredential`, never
 inherited from event credentials. HTTPS is required except explicitly enabled
-loopback tests. Only a canonical HTTP 201 JSON descriptor whose size and SHA-256
-match the exact bytes can be published. Redirects are not followed by the supplied
+loopback tests. A canonical HTTP 201 `ContentUploadReceipt` confirms the exact
+size and SHA-256 of the sent bytes. Call `receipt.reference()` to publish only
+`{ "ref": "receiver-allocated-id" }` in a body or effect; upload confirmation
+metadata must not appear in event references or body-selected outer items. Redirects are not followed by the supplied
 Reqwest adapter; custom transports must preserve that policy.
 
 `content::UploadReceiver` authorizes a credential-derived scope before allocating
 an opaque immutable reference. It bounds transfer size, total retained bytes, and
-entry count, and resolves descriptors only within that scope after exact size/hash
-verification. The application owns storage lifetime and must retain confirmed bytes
+entry count, and resolves references only within that scope from trusted stored
+bytes, without event-supplied size/hash metadata. `ContentContext::put` returns a
+ref-only JSON value after an exact-byte readback check. The application owns storage lifetime and must retain confirmed bytes
 through dependent event processing. It must resolve all referenced content before
 publishing effects. The in-memory receiver is not durable storage or a retrieval
 protocol. Upload deadlines must be enforced by the explicitly selected runtime or
@@ -391,3 +461,76 @@ The root `ahp-codegen.lock.json` mirrors `src/ahp-codegen.lock.json`; both are g
 ## License
 
 Apache-2.0
+
+### Typed composed payloads
+
+MCP connection payloads expose typed structs rather than `JsonValue` wrappers.
+For example, `ExecutionEventMcpConnectionHttp::new().with_url("https://mcp.example")`
+constructs an HTTP payload; `with_gaps` accepts typed gap records. SSE, stdio, and
+custom transport structs expose their location fields directly. Composed
+capability arrays and scalar fields retain typed values, and `ModelVisibleItem`
+exposes semantic content variants with a required `role`.
+
+Migration: replace former JSON-wrapper constructors with the generated struct,
+array, scalar, or enum constructors. Constructors model fields; existing parsing
+and validation APIs remain responsible for predicates such as “location or
+gaps.” Unknown variants and extension fields stay lossless. The nonliteral
+custom transport tag retains the existing unknown-variant union fallback;
+explicit custom payload models are still available for typed construction.
+
+### Structural decoding and effect-family queries
+
+Generated models implement checked `serde::Deserialize`. For example,
+`serde_json::from_str::<InterceptRequest>(input)` and
+`serde_json::from_value::<InterceptRequest>(value)` use the same original
+structural descriptors as `parse_intercept_request`. This includes required
+members, literals, known discriminator variants, and composed `oneOf`/`anyOf`
+constraints, even where the Rust representation is a simpler projection.
+Decoding a `serde_json::Value` or another application-owned type is **not** an SDK
+validation boundary. Constructing a struct or calling a convenience constructor
+also does not establish protocol validity; public mutable fields remain useful
+for application construction.
+
+Use `parse_*` when you need structured diagnostics, warning paths, or the original
+JSON value on failure. Direct Serde decoding reports structural failures through
+its normal error channel; it does not return the parser's warnings. Both routes
+preserve extension data supported by the structural compatibility policy.
+Canonical and contextual validation, effect admission, and host authority remain
+separate checks. Descriptor caches and private synchronous, thread-local hydration scopes avoid
+rechecking every nested subtree after a successful root check. The scope is
+limited to generated model hydration on the current thread: it does not span
+async suspension points or invoke application callbacks, and its drop guard
+restores the previous scope even when unwinding. It is not process-global.
+
+`state::InitialState` requires a `candidate` member. These values stay distinct:
+`"candidate": null` means no candidate; `"candidate": {"value": null}` means a
+present candidate whose application value is null; `"candidate": {"value": 0}`
+retains zero. Missing `candidate`, or a candidate object missing `value`, is an
+error rather than an implicit null default.
+
+Query advertised effect-family membership on incoming generic or event-specific
+capabilities with `capabilities.supports(EffectId::Deny)`. `EffectId` aliases the
+schema's extensible effect vocabulary (also exported as
+`capability::EffectType`), so
+`capabilities.supports(EffectId::Unknown("vendor.effect".into()))` works for custom
+families too. This query does not grant authorization and does not inspect
+modify targets, operations, or other admission constraints. A populated `modify`
+member does not imply membership of `"modify"` in `effects`.
+
+**Migration:** `capability::EffectType` now aliases the schema identifier and
+retains `as_str()`; because custom identifiers own strings it is no longer
+`Copy`, and its string accessor borrows from `&self`. The canonical identifier
+does not provide the former closed enum’s `Ord`/`Hash` derives; use its wire
+string for ordered or hashed keys. Clone when reusing an owned identifier. `supports` compares typed identifiers without JSON serialization.
+Direct Serde model decoding now rejects structurally invalid
+inputs that older derived decoders admitted. Supply required members explicitly;
+use an explicit null application value when that is intended. Primitive
+intersection projections and forbidden-value schemas use transparent newtypes
+instead of aliases where owning `Deserialize` is necessary to retain their
+constraints. `state::Candidate` now aliases the canonical candidate descriptor: use its
+constructor/builders rather than struct literals, and use `Presence` for direct
+access to its optional provenance. This also preserves extension members when
+decoding a candidate directly. The wire representation is unchanged. Numbers retain the existing
+arbitrary-precision JSON policy; integer slots reject fractions and values outside
+the interoperable safe-integer range. Fixed numeric literals may normalize their
+spelling during encoding, while `parse_*` retains the original raw JSON value.

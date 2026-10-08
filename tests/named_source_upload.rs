@@ -199,7 +199,10 @@ async fn named_source_snapshots_once_and_uploads_to_each_independently_authorize
         assert_eq!(messages.len(), 2);
         assert_eq!(references.len(), 2);
         for (message, reference) in messages.iter().zip(references.iter()) {
-            assert_eq!(message["params"]["event"]["items"][0]["body"], *reference);
+            assert_eq!(
+                message["params"]["event"]["items"][0]["body"],
+                json!({"ref": reference["ref"]})
+            );
             assert_eq!(reference["size"], expected.len());
             assert!(!reference["ref"].as_str().unwrap().contains("ahp-deferred:"));
         }

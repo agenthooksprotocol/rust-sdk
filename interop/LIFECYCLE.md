@@ -55,8 +55,9 @@ and `ref`. Negative fixtures can override declared size/hash to exercise real
 receiver rejection; they are not local-validation successes. The client decodes once and sends raw arbitrary octets, exact length,
 SHA-256 headers. Subscription routing remains harness-local and is not sent on
 the wire. The receiver verifies framing/hash/size, allocates an immutable reference,
-and returns HTTP 201 with `{ref,size,sha256}`. The sender validates the returned
-size and hash before recording the reference or publishing a dependent event.
+and returns HTTP 201 with the upload receipt `{ref,size,sha256}`. The sender
+validates the returned size and hash against the sent bytes, then publishes only
+`{ref}` in dependent event bodies. Receipt metadata is not event metadata.
 Both observe and intercept recursively resolve content bodies against confirmed
 bytes before delivery and on receipt. Failed upload never falls back to inline
 content or a local path. The old JSON `/upload` control route returns 404.

@@ -7,7 +7,7 @@ use crate::{
         Client, Decision, DeliveryDiagnostic, DeliveryStage, FailurePolicy, Hook, HookError,
         InputDecodeError, LocalFuture, Mode, ProtocolOutcome, Subscription, ToolContext,
     },
-    content::{AuthorizedScope, ContentContext, MemoryContentStore},
+    content::{AuthorizedScope, ContentContext, ContentScope, MemoryContentStore, OwnedContent},
     elicitation::Exchange,
     generated,
 };
@@ -295,6 +295,7 @@ struct RouteHook {
     bodies: DeferredBodies,
     life: Weak<Lifecycle>,
     deadline: Option<Instant>,
+    prepare_only: bool,
 }
 impl Hook for RouteHook {
     fn call(&self, mut request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
@@ -344,6 +345,9 @@ impl Hook for RouteHook {
                     err("subscription deadline exceeded during content preparation")
                         .classified(generated::DeliveryDiagnosticCode::DeadlineExceeded)
                 })?;
+            if owned.prepare_only {
+                return Ok(request);
+            }
             let response = owned.route.backend.call(request.clone(), remaining).await?;
             if request["method"] == "hooks/intercept" {
                 crate::client::check_rpc_error(&response, &request["id"])?;
@@ -515,6 +519,13 @@ impl Drop for Cleanup<'_> {
         self.0.wake();
     }
 }
+struct PreparedObservation<'a> {
+    route: Route,
+    request: Value,
+    deadline: Option<Instant>,
+    remaining: Duration,
+    delivery: Delivery<'a>,
+}
 struct Delivery<'a> {
     life: &'a Lifecycle,
     id: String,
@@ -541,6 +552,14 @@ pub struct Hooks {
     bodies: DeferredBodies,
     life: Arc<Lifecycle>,
     next_id: AtomicU64,
+}
+impl Drop for Hooks {
+    fn drop(&mut self) {
+        self.life.closing.store(true, Ordering::SeqCst);
+        self.life.cancel_work();
+        self.store.close();
+        self.bodies.clear();
+    }
 }
 impl Hooks {
     pub fn new(registration: impl Serialize, options: HooksOptions) -> Result<Self, HookError> {
@@ -722,20 +741,41 @@ impl Hooks {
             settings: Settings::default(),
         }
     }
-    pub fn content_context(&self) -> ContentContext<'_> {
-        ContentContext {
-            store: &self.store,
+    /// Stage explicit bytes for one invocation. Move this owner into the boundary
+    /// with `.content_scope(scope)`. Unused scopes release their bytes on drop.
+    pub fn content_scope(&self) -> ContentScope {
+        ContentScope {
+            store: self.store.scoped(),
             scope: local_scope(),
+            bodies: Some(self.bodies.clone()),
+            guards: Vec::new(),
         }
     }
+    /// Compatibility spelling for owned staging. Unlike the old borrowed global
+    /// context, this owner must be moved into the invocation after staging.
+    #[deprecated(note = "use content_scope(), scope.context(), and boundary.content_scope(scope)")]
+    pub fn content_context(&self) -> ContentScope {
+        self.content_scope()
+    }
+    fn invocation_content(&self, scope: Option<ContentScope>) -> Result<ContentScope, HookError> {
+        let scope = scope.unwrap_or_else(|| self.content_scope());
+        if !self.store.shares_budget(&scope.store) {
+            return Err(err("content scope belongs to another Hooks instance"));
+        }
+        Ok(scope)
+    }
     /// Own a lazy body without polling it. Only a selected body route reads it.
-    /// The returned local handle must remain in a content-item body field.
-    pub async fn stage_body(&self, body: Body) -> Result<Value, BodyError> {
+    /// Keep the returned owner until the boundary completes or is cancelled,
+    /// then drop it. Use `.reference()` in a content-item body field. Handles are single-invocation, not a host archive.
+    pub async fn stage_body(&self, body: Body) -> Result<crate::body::StagedBody, BodyError> {
         let _active = self
             .life
             .begin()
             .map_err(|e| BodyError::Read(e.to_string()))?;
-        self.bodies.register(body)
+        let reference = self.bodies.register(body)?;
+        Ok(crate::body::StagedBody {
+            guard: self.bodies.guard(&reference),
+        })
     }
     fn bind_sources(
         &self,
@@ -863,7 +903,13 @@ impl Hooks {
                 "correlationIdentityFields":[]})
         })
     }
-    fn client(&self, event: &Value, name: &str, deadline: Option<Instant>) -> Client {
+    fn client(
+        &self,
+        event: &Value,
+        name: &str,
+        deadline: Option<Instant>,
+        store: &MemoryContentStore,
+    ) -> Client {
         self.routes
             .iter()
             .filter(|route| {
@@ -877,30 +923,38 @@ impl Hooks {
                         events: vec![name.into()],
                         mode: route.mode,
                         timeout: route.timeout,
-                        hook: Box::new(self.route_hook(route, deadline)),
+                        hook: Box::new(self.route_hook(route, deadline, store)),
                     })
                 },
             )
     }
-    fn route_hook(&self, route: &Route, deadline: Option<Instant>) -> RouteHook {
+    fn route_hook(
+        &self,
+        route: &Route,
+        deadline: Option<Instant>,
+        store: &MemoryContentStore,
+    ) -> RouteHook {
         RouteHook {
             route: route.clone(),
-            store: self.store.clone(),
+            store: store.clone(),
             options: self.options.backend.clone(),
             bodies: self.bodies.clone(),
             life: Arc::downgrade(&self.life),
             deadline,
+            prepare_only: false,
         }
     }
-    async fn observations(
-        &self,
+    async fn prepare_observations<'a>(
+        &'a self,
         name: &str,
         observations: Vec<crate::client::Observation<'_>>,
         deadline: Option<Instant>,
-    ) -> Vec<DeliveryDiagnostic> {
+        store: &MemoryContentStore,
+    ) -> (Vec<PreparedObservation<'a>>, Vec<DeliveryDiagnostic>) {
+        let mut prepared = Vec::new();
         let mut diagnostics = vec![];
         if !self.options.capabilities[name].observe {
-            return diagnostics;
+            return (prepared, diagnostics);
         }
         for (index, observation) in observations.into_iter().enumerate() {
             let route = self
@@ -909,7 +963,7 @@ impl Hooks {
                 .find(|r| r.id == observation.subscription_id)
                 .expect("owned route");
             if self.life.closing.load(Ordering::SeqCst) {
-                return diagnostics;
+                break;
             }
             if index >= self.options.max_observations {
                 diagnostics.push(
@@ -926,20 +980,74 @@ impl Hooks {
                 id: route.id.clone(),
                 finished: false,
             };
+            let started = Instant::now();
+            let route_deadline = started
+                .checked_add(route.timeout)
+                .map(|end| deadline.map_or(end, |deadline| deadline.min(end)));
+            let mut hook = self.route_hook(route, route_deadline, store);
+            hook.prepare_only = true;
             let result =
                 match crate::canonical::validate("observe-notification", &observation.notification)
                 {
-                    Ok(()) => self
-                        .route_hook(route, deadline)
-                        .call(observation.notification)
-                        .await
-                        .map(|_| ()),
+                    Ok(()) => hook.call(observation.notification).await,
                     Err(e) => Err(HookError(e)
                         .classified(generated::DeliveryDiagnosticCode::ProtocolRejection)),
                 };
-            delivery.finished = true;
             match result {
-                Ok(()) => self.life.report.lock().unwrap().delivered += 1,
+                Ok(request) => prepared.push(PreparedObservation {
+                    route: route.clone(),
+                    request,
+                    deadline,
+                    remaining: route.timeout.saturating_sub(started.elapsed()),
+                    delivery,
+                }),
+                Err(e) => {
+                    delivery.finished = true;
+                    diagnostics.push(route.observation_diagnostic(e.code()));
+                    self.life.failure(ObservationFailure {
+                        subscription_id: route.id.clone(),
+                        error: format!("observation preparation failed ({:?})", e.code()),
+                    });
+                }
+            }
+        }
+        (prepared, diagnostics)
+    }
+    async fn deliver_observations(
+        &self,
+        observations: Vec<PreparedObservation<'_>>,
+    ) -> Vec<DeliveryDiagnostic> {
+        let mut diagnostics = Vec::new();
+        for mut observation in observations {
+            if self.life.closing.load(Ordering::SeqCst) {
+                break;
+            }
+            let route = observation.route;
+            let backend = route.backend.clone();
+            let request = observation.request;
+            let remaining = observation
+                .deadline
+                .map(|deadline| {
+                    deadline
+                        .saturating_duration_since(Instant::now())
+                        .min(observation.remaining)
+                })
+                .unwrap_or(observation.remaining);
+            // The delivery future owns only its projected wire payload and backend.
+            // No invocation store or deferred-source registry survives settlement.
+            let result = self
+                .life
+                .run(Box::pin(async move {
+                    if remaining.is_zero() {
+                        return Err(err("observation deadline exceeded")
+                            .classified(generated::DeliveryDiagnosticCode::DeadlineExceeded));
+                    }
+                    backend.call(request, remaining).await
+                }))
+                .await;
+            observation.delivery.finished = true;
+            match result {
+                Ok(_) => self.life.report.lock().unwrap().delivered += 1,
                 Err(e) => {
                     diagnostics.push(route.observation_diagnostic(e.code()));
                     self.life.failure(ObservationFailure {
@@ -963,6 +1071,7 @@ impl Hooks {
     pub async fn shutdown(&self) -> Result<ObservationReport, HookError> {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
+        self.store.close();
         self.bodies.clear();
         poll_fn(|cx| {
             let mut waiters = self.life.waiters.lock().unwrap();
@@ -995,6 +1104,7 @@ impl Hooks {
 
 #[derive(Default)]
 struct Settings<'a> {
+    content: Option<ContentScope>,
     snapshot: Option<Value>,
     deadline: Option<Instant>,
     budget: Option<LocalFuture<'a, ()>>,
@@ -1011,6 +1121,12 @@ struct Settings<'a> {
 }
 macro_rules! settings_methods {
     () => {
+        /// Transfer staged bytes into this invocation. Its allocations are released
+        /// on completion, error, or cancellation; returned payloads own their bytes.
+        pub fn content_scope(mut self, scope: ContentScope) -> Self {
+            self.settings.content = Some(scope);
+            self
+        }
         /// Transfer a lazy source into a generated named content slot. No reads occur here.
         pub fn body_source(
             mut self,
@@ -1088,6 +1204,8 @@ impl<'a, T> InputBoundary<'a, T> {
         self.settings.exchange = Some(exchange);
         self
     }
+    /// Map an edit target to a materialized body. For lazy originals, stage bytes
+    /// with `ContentScope::put` before dispatch; negotiation runs before body delivery.
     pub fn content_target(mut self, target: impl Into<String>, pointer: impl Into<String>) -> Self {
         self.settings.targets.insert(target.into(), pointer.into());
         self
@@ -1139,12 +1257,16 @@ impl<'a, T> EventBoundary<'a, T> {
         self.settings.exchange = Some(exchange);
         self
     }
+    /// Map an edit target to a materialized body. For lazy originals, stage bytes
+    /// with `ContentScope::put` before dispatch; negotiation runs before body delivery.
     pub fn content_target(mut self, target: impl Into<String>, pointer: impl Into<String>) -> Self {
         self.settings.targets.insert(target.into(), pointer.into());
         self
     }
 }
 pub struct EventOutcome<T> {
+    /// Payloads in schema-owned event slots and explicitly declared content targets.
+    pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
     pub outcome: ProtocolOutcome,
     pub effective_event: Value,
@@ -1180,11 +1302,14 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 }
                 let (event, name, granted) = self.hooks.prepare(event)?;
                 let caps = narrow(self.settings.capabilities, granted)?;
-                let client = self.hooks.client(&event, &name, self.settings.deadline);
+                let content = self.hooks.invocation_content(self.settings.content)?;
+                let client =
+                    self.hooks
+                        .client(&event, &name, self.settings.deadline, &content.store);
                 let mut boundary = client
                     .event(event)
                     .capabilities(caps.0)
-                    .content(self.hooks.content_context());
+                    .content(content.context());
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;
                 }
@@ -1206,15 +1331,21 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 if let Some(exchange) = self.settings.exchange {
                     boundary = boundary.elicitation_exchange(exchange);
                 }
-                for (target, pointer) in self.settings.targets {
-                    boundary = boundary.content_target(target, pointer);
+                for (target, pointer) in &self.settings.targets {
+                    boundary = boundary.content_target(target.clone(), pointer.clone());
                 }
                 let result = boundary.await.map_err(err)?;
                 if self.hooks.life.closing.load(Ordering::SeqCst) {
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let mut diagnostics = result.diagnostics;
+                let crate::runtime::EventResult {
+                    outcome,
+                    effective_event,
+                    event: _,
+                    observations,
+                    mut diagnostics,
+                } = result;
                 for diagnostic in &mut diagnostics {
                     diagnostic.backend_id = self
                         .hooks
@@ -1223,21 +1354,33 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                         .find(|route| route.id == diagnostic.subscription_id)
                         .map(|route| route.backend_id.clone());
                 }
-                diagnostics.extend(
-                    self.hooks
-                        .observations(&name, result.observations, self.settings.deadline)
-                        .await,
-                );
+                let (observations, preparation_diagnostics) = self
+                    .hooks
+                    .prepare_observations(
+                        &name,
+                        observations,
+                        self.settings.deadline,
+                        &content.store,
+                    )
+                    .await;
+                diagnostics.extend(preparation_diagnostics);
+                let retained =
+                    retain_event_content(&content, &effective_event, &self.settings.targets);
+                drop(client);
+                drop(content);
+                drop(_sources);
+                diagnostics.extend(self.hooks.deliver_observations(observations).await);
                 if self.hooks.life.closing.load(Ordering::SeqCst) {
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let event = serde_json::from_value(result.effective_event.clone())
-                    .map_err(InputDecodeError);
+                let event =
+                    serde_json::from_value(effective_event.clone()).map_err(InputDecodeError);
                 Ok(EventOutcome {
-                    outcome: result.outcome,
+                    content: retained,
+                    outcome,
                     diagnostics,
-                    effective_event: result.effective_event,
+                    effective_event,
                     event,
                 })
             }),
@@ -1263,6 +1406,9 @@ impl<'a, T> ToolBoundary<'a, T> {
     }
 }
 pub struct ToolOutcome<T> {
+    /// Schema-owned returned payloads. Opaque application input, candidates, and
+    /// effect values do not confer ownership of reference-shaped data.
+    pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
     pub outcome: ProtocolOutcome,
     pub effective_input: Value,
@@ -1314,7 +1460,10 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                     .bind_sources(&mut context, self.settings.sources)?;
                 let (context, name, granted) = self.hooks.prepare(context)?;
                 let caps = narrow(self.settings.capabilities, granted)?;
-                let client = self.hooks.client(&context, &name, self.settings.deadline);
+                let content = self.hooks.invocation_content(self.settings.content)?;
+                let client =
+                    self.hooks
+                        .client(&context, &name, self.settings.deadline, &content.store);
                 let mut boundary = client.tool_before(input).capabilities(caps.0);
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;
@@ -1336,7 +1485,13 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let mut diagnostics = result.diagnostics;
+                let crate::client::BoundaryResult {
+                    outcome,
+                    effective_input,
+                    input,
+                    observations,
+                    mut diagnostics,
+                } = result;
                 for diagnostic in &mut diagnostics {
                     diagnostic.backend_id = self
                         .hooks
@@ -1345,20 +1500,33 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                         .find(|route| route.id == diagnostic.subscription_id)
                         .map(|route| route.backend_id.clone());
                 }
-                diagnostics.extend(
-                    self.hooks
-                        .observations(&name, result.observations, self.settings.deadline)
-                        .await,
-                );
+                let (observations, preparation_diagnostics) = self
+                    .hooks
+                    .prepare_observations(
+                        &name,
+                        observations,
+                        self.settings.deadline,
+                        &content.store,
+                    )
+                    .await;
+                diagnostics.extend(preparation_diagnostics);
+                // Application input and return/injection values are opaque JSON, not
+                // event envelopes or schema-owned content-reference locations.
+                let retained = content.retain(&[]);
+                drop(client);
+                drop(content);
+                drop(_sources);
+                diagnostics.extend(self.hooks.deliver_observations(observations).await);
                 if self.hooks.life.closing.load(Ordering::SeqCst) {
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
                 Ok(ToolOutcome {
-                    outcome: result.outcome,
+                    content: retained,
+                    outcome,
                     diagnostics,
-                    effective_input: result.effective_input,
-                    input: result.input,
+                    effective_input,
+                    input,
                 })
             }),
         )
@@ -1425,4 +1593,22 @@ fn bounded<'a, T: Send + 'a>(
         }
         result
     }))
+}
+
+fn retain_event_content(
+    content: &ContentScope,
+    effective: &Value,
+    targets: &BTreeMap<String, String>,
+) -> OwnedContent {
+    let mut paths = crate::hooks_content::locations(effective);
+    paths.extend(targets.values().cloned());
+    let references: Vec<_> = paths
+        .iter()
+        .filter_map(|path| effective.pointer(path))
+        .filter(|item| item["selection"] == "body" && item.get("gap").is_none())
+        .filter_map(|item| item.get("body"))
+        .collect();
+    // Message effects contain text; injection and candidate values are opaque.
+    // Accepted responses do not declare additional content-reference slots.
+    content.retain(&references)
 }

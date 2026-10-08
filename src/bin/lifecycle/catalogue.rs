@@ -367,7 +367,7 @@ mod tests {
     fn catalogue_content_context_does_not_grant_body_access() {
         let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
-        let event = json!({"id":"compact-body","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":{"id":"summary","kind":"message","mediaType":"text/plain","selection":"body","role":"system","body":{"ref":"not-authorized","size":0,"sha256":sha256(b"")}},"removed":[],"execution":{"status":"executed"}});
+        let event = json!({"id":"compact-body","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":{"id":"summary","kind":"message","mediaType":"text/plain","selection":"body","role":"system","body":{"ref":"not-authorized"}},"removed":[],"execution":{"status":"executed"}});
         assert!(futures::executor::block_on(deliver_event(&client, event)).is_err());
         assert!(messages.lock().unwrap().is_empty());
     }
@@ -585,10 +585,14 @@ mod tests {
         assert!(validation.observe(&notification).is_err());
         notification["params"]["event"]["delta"]["role"] = json!("assistant");
         notification["params"]["event"]["delta"]["selection"] = json!("body");
-        notification["params"]["event"]["delta"]["body"] =
-            json!({"ref":"ref","size":0,"sha256":sha256(b"")});
+        notification["params"]["event"]["delta"]["body"] = json!({"ref":"ref"});
         validation.observe(&notification).unwrap();
-        for hash in ["0".repeat(63), "A".repeat(64), "0".repeat(65)] {
+        for hash in [
+            "0".repeat(63),
+            "0".repeat(64),
+            "A".repeat(64),
+            "0".repeat(65),
+        ] {
             notification["params"]["event"]["delta"]["body"]["sha256"] = json!(hash);
             assert!(validation.observe(&notification).is_err());
         }
