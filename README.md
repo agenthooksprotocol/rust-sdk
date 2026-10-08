@@ -410,3 +410,60 @@ and validation APIs remain responsible for predicates such as “location or
 gaps.” Unknown variants and extension fields stay lossless. The nonliteral
 custom transport tag retains the existing unknown-variant union fallback;
 explicit custom payload models are still available for typed construction.
+
+### Structural decoding and effect-family queries
+
+Generated models implement checked `serde::Deserialize`. For example,
+`serde_json::from_str::<InterceptRequest>(input)` and
+`serde_json::from_value::<InterceptRequest>(value)` use the same original
+structural descriptors as `parse_intercept_request`. This includes required
+members, literals, known discriminator variants, and composed `oneOf`/`anyOf`
+constraints, even where the Rust representation is a simpler projection.
+Decoding a `serde_json::Value` or another application-owned type is **not** an SDK
+validation boundary. Constructing a struct or calling a convenience constructor
+also does not establish protocol validity; public mutable fields remain useful
+for application construction.
+
+Use `parse_*` when you need structured diagnostics, warning paths, or the original
+JSON value on failure. Direct Serde decoding reports structural failures through
+its normal error channel; it does not return the parser's warnings. Both routes
+preserve extension data supported by the structural compatibility policy.
+Canonical and contextual validation, effect admission, and host authority remain
+separate checks. Descriptor caches and private synchronous, thread-local hydration scopes avoid
+rechecking every nested subtree after a successful root check. The scope is
+limited to generated model hydration on the current thread: it does not span
+async suspension points or invoke application callbacks, and its drop guard
+restores the previous scope even when unwinding. It is not process-global.
+
+`state::InitialState` requires a `candidate` member. These values stay distinct:
+`"candidate": null` means no candidate; `"candidate": {"value": null}` means a
+present candidate whose application value is null; `"candidate": {"value": 0}`
+retains zero. Missing `candidate`, or a candidate object missing `value`, is an
+error rather than an implicit null default.
+
+Query advertised effect-family membership on incoming generic or event-specific
+capabilities with `capabilities.supports(EffectId::Deny)`. `EffectId` aliases the
+schema's extensible effect vocabulary (also exported as
+`capability::EffectType`), so
+`capabilities.supports(EffectId::Unknown("vendor.effect".into()))` works for custom
+families too. This query does not grant authorization and does not inspect
+modify targets, operations, or other admission constraints. A populated `modify`
+member does not imply membership of `"modify"` in `effects`.
+
+**Migration:** `capability::EffectType` now aliases the schema identifier and
+retains `as_str()`; because custom identifiers own strings it is no longer
+`Copy`, and its string accessor borrows from `&self`. The canonical identifier
+does not provide the former closed enum’s `Ord`/`Hash` derives; use its wire
+string for ordered or hashed keys. Clone when reusing an owned identifier. `supports` compares typed identifiers without JSON serialization.
+Direct Serde model decoding now rejects structurally invalid
+inputs that older derived decoders admitted. Supply required members explicitly;
+use an explicit null application value when that is intended. Primitive
+intersection projections and forbidden-value schemas use transparent newtypes
+instead of aliases where owning `Deserialize` is necessary to retain their
+constraints. `state::Candidate` now aliases the canonical candidate descriptor: use its
+constructor/builders rather than struct literals, and use `Presence` for direct
+access to its optional provenance. This also preserves extension members when
+decoding a candidate directly. The wire representation is unchanged. Numbers retain the existing
+arbitrary-precision JSON policy; integer slots reject fractions and values outside
+the interoperable safe-integer range. Fixed numeric literals may normalize their
+spelling during encoding, while `parse_*` retains the original raw JSON value.
