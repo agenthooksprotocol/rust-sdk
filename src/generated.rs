@@ -853,13 +853,13 @@ macro_rules! ahp_hooks_boundary_methods {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Authentication {
-    Intersection(AuthenticationIntersection),
+    Bearer(AuthenticationBearer),
     Oauth(AuthenticationOauth),
 }
 
-impl From<AuthenticationIntersection> for Authentication {
-    fn from(value: AuthenticationIntersection) -> Self {
-        Self::Intersection(value)
+impl From<AuthenticationBearer> for Authentication {
+    fn from(value: AuthenticationBearer) -> Self {
+        Self::Bearer(value)
     }
 }
 
@@ -1071,7 +1071,7 @@ pub enum CatalogueEvent {
     ToolPermissionResolved(Box<ToolPermissionResolvedEvent>),
     ToolProgress(Box<ToolProgressEvent>),
     ToolBatchAfter(Box<ToolBatchAfterEvent>),
-    ContextCompactBeforeEvent(Box<ContextCompactBeforeEvent>),
+    ContextCompactBefore(Box<ContextCompactBeforeEvent>),
     ContextCompactAfter(Box<ContextCompactAfterEvent>),
     TaskChangeBefore(Box<TaskChangeBeforeEvent>),
     TaskChangeAfter(Box<TaskChangeAfterEvent>),
@@ -1268,13 +1268,13 @@ impl From<ToolBatchAfterEvent> for CatalogueEvent {
 
 impl From<Box<ContextCompactBeforeEvent>> for CatalogueEvent {
     fn from(value: Box<ContextCompactBeforeEvent>) -> Self {
-        Self::ContextCompactBeforeEvent(value)
+        Self::ContextCompactBefore(value)
     }
 }
 
 impl From<ContextCompactBeforeEvent> for CatalogueEvent {
     fn from(value: ContextCompactBeforeEvent) -> Self {
-        Self::ContextCompactBeforeEvent(Box::new(value))
+        Self::ContextCompactBefore(Box::new(value))
     }
 }
 
@@ -6697,25 +6697,25 @@ impl McpElicitationNumberSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum McpElicitationPrimitiveSchemaDefinition {
-    String(Box<McpElicitationStringSchema>),
+    StringShape60b5059135f8b4b5(Box<McpElicitationStringSchema>),
     McpElicitationNumberSchema(Box<McpElicitationNumberSchema>),
     Boolean(Box<McpElicitationBooleanSchema>),
-    String2(Box<McpElicitationUntitledSingleSelectEnumSchema>),
-    String3(Box<McpElicitationTitledSingleSelectEnumSchema>),
-    Array(Box<McpElicitationUntitledMultiSelectEnumSchema>),
-    Array2(Box<McpElicitationTitledMultiSelectEnumSchema>),
-    String4(Box<McpElicitationLegacyTitledEnumSchema>),
+    StringShapeb9bfae37df688ce6(Box<McpElicitationUntitledSingleSelectEnumSchema>),
+    StringShape8065a9ada8f664c2(Box<McpElicitationTitledSingleSelectEnumSchema>),
+    ArrayShape8ea6f18c2f357ea5(Box<McpElicitationUntitledMultiSelectEnumSchema>),
+    ArrayShape00e291029a48325a(Box<McpElicitationTitledMultiSelectEnumSchema>),
+    StringShape3824725b461eba01(Box<McpElicitationLegacyTitledEnumSchema>),
 }
 
 impl From<Box<McpElicitationStringSchema>> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: Box<McpElicitationStringSchema>) -> Self {
-        Self::String(value)
+        Self::StringShape60b5059135f8b4b5(value)
     }
 }
 
 impl From<McpElicitationStringSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationStringSchema) -> Self {
-        Self::String(Box::new(value))
+        Self::StringShape60b5059135f8b4b5(Box::new(value))
     }
 }
 
@@ -6747,7 +6747,7 @@ impl From<Box<McpElicitationUntitledSingleSelectEnumSchema>>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: Box<McpElicitationUntitledSingleSelectEnumSchema>) -> Self {
-        Self::String2(value)
+        Self::StringShapeb9bfae37df688ce6(value)
     }
 }
 
@@ -6755,7 +6755,7 @@ impl From<McpElicitationUntitledSingleSelectEnumSchema>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: McpElicitationUntitledSingleSelectEnumSchema) -> Self {
-        Self::String2(Box::new(value))
+        Self::StringShapeb9bfae37df688ce6(Box::new(value))
     }
 }
 
@@ -6763,13 +6763,13 @@ impl From<Box<McpElicitationTitledSingleSelectEnumSchema>>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: Box<McpElicitationTitledSingleSelectEnumSchema>) -> Self {
-        Self::String3(value)
+        Self::StringShape8065a9ada8f664c2(value)
     }
 }
 
 impl From<McpElicitationTitledSingleSelectEnumSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationTitledSingleSelectEnumSchema) -> Self {
-        Self::String3(Box::new(value))
+        Self::StringShape8065a9ada8f664c2(Box::new(value))
     }
 }
 
@@ -6777,13 +6777,13 @@ impl From<Box<McpElicitationUntitledMultiSelectEnumSchema>>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: Box<McpElicitationUntitledMultiSelectEnumSchema>) -> Self {
-        Self::Array(value)
+        Self::ArrayShape8ea6f18c2f357ea5(value)
     }
 }
 
 impl From<McpElicitationUntitledMultiSelectEnumSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationUntitledMultiSelectEnumSchema) -> Self {
-        Self::Array(Box::new(value))
+        Self::ArrayShape8ea6f18c2f357ea5(Box::new(value))
     }
 }
 
@@ -6791,25 +6791,25 @@ impl From<Box<McpElicitationTitledMultiSelectEnumSchema>>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: Box<McpElicitationTitledMultiSelectEnumSchema>) -> Self {
-        Self::Array2(value)
+        Self::ArrayShape00e291029a48325a(value)
     }
 }
 
 impl From<McpElicitationTitledMultiSelectEnumSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationTitledMultiSelectEnumSchema) -> Self {
-        Self::Array2(Box::new(value))
+        Self::ArrayShape00e291029a48325a(Box::new(value))
     }
 }
 
 impl From<Box<McpElicitationLegacyTitledEnumSchema>> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: Box<McpElicitationLegacyTitledEnumSchema>) -> Self {
-        Self::String4(value)
+        Self::StringShape3824725b461eba01(value)
     }
 }
 
 impl From<McpElicitationLegacyTitledEnumSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationLegacyTitledEnumSchema) -> Self {
-        Self::String4(Box::new(value))
+        Self::StringShape3824725b461eba01(Box::new(value))
     }
 }
 
@@ -10769,7 +10769,7 @@ pub enum WireMessage {
     HooksIntercept(Box<InterceptRequest>),
     InterceptResponse(Box<InterceptResponse>),
     JsonRpcErrorResponse(Box<JsonRpcErrorResponse>),
-    HooksObserve(Box<ObserveNotification>),
+    ObserveNotification(Box<ObserveNotification>),
     HooksCapabilities(Box<CapabilitiesRequest>),
     CapabilitiesResponse(Box<CapabilitiesResponse>),
 }
@@ -10812,13 +10812,13 @@ impl From<JsonRpcErrorResponse> for WireMessage {
 
 impl From<Box<ObserveNotification>> for WireMessage {
     fn from(value: Box<ObserveNotification>) -> Self {
-        Self::HooksObserve(value)
+        Self::ObserveNotification(value)
     }
 }
 
 impl From<ObserveNotification> for WireMessage {
     fn from(value: ObserveNotification) -> Self {
-        Self::HooksObserve(Box::new(value))
+        Self::ObserveNotification(Box::new(value))
     }
 }
 
@@ -16735,11 +16735,12 @@ pub mod state {
 }
 impl ErgonomicInitialState {
     pub fn candidate(mut self, candidate: state::Candidate) -> Self {
-        let mut value = ErgonomicInitialStateCandidateObject::new(candidate.value);
+        let mut value = ErgonomicInitialStateCandidateValueObject::new(candidate.value);
         if let Some(provenance) = candidate.provenance {
-            value.provenance = Presence::Present(ErgonomicInitialStateCandidateObjectProvenance {
-                additional_properties: provenance,
-            });
+            value.provenance =
+                Presence::Present(ErgonomicInitialStateCandidateValueObjectProvenance {
+                    additional_properties: provenance,
+                });
         }
         self.candidate = value.into();
         self
@@ -17487,9 +17488,9 @@ pub mod capability {
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct AuthenticationIntersection(pub JsonValue);
+pub struct AuthenticationBearer(pub JsonValue);
 
-impl AuthenticationIntersection {
+impl AuthenticationBearer {
     pub fn new(value: impl Into<JsonValue>) -> Self {
         Self(value.into())
     }
@@ -17765,7 +17766,7 @@ impl From<HttpTransport> for BackendTransport {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CapabilitiesEffectsItemEnum {
+pub enum CapabilitiesEffectsItemKnown {
     Deny,
     Allow,
     Ask,
@@ -17777,7 +17778,7 @@ pub enum CapabilitiesEffectsItemEnum {
     Unknown(String),
 }
 
-impl Serialize for CapabilitiesEffectsItemEnum {
+impl Serialize for CapabilitiesEffectsItemKnown {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::Deny => {
@@ -17825,7 +17826,7 @@ impl Serialize for CapabilitiesEffectsItemEnum {
     }
 }
 
-impl<'de> Deserialize<'de> for CapabilitiesEffectsItemEnum {
+impl<'de> Deserialize<'de> for CapabilitiesEffectsItemKnown {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         if same_json(
@@ -17880,7 +17881,7 @@ impl<'de> Deserialize<'de> for CapabilitiesEffectsItemEnum {
             return Ok(Self::Unknown(value.to_owned()));
         }
         Err(<D::Error as serde::de::Error>::custom(format!(
-            "unknown value for CapabilitiesEffectsItemEnum: {value}"
+            "unknown value for CapabilitiesEffectsItemKnown: {value}"
         )))
     }
 }
@@ -17889,19 +17890,19 @@ impl<'de> Deserialize<'de> for CapabilitiesEffectsItemEnum {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CapabilitiesEffectsItem {
-    Enum(CapabilitiesEffectsItemEnum),
-    String(String),
+    Known(CapabilitiesEffectsItemKnown),
+    Custom(String),
 }
 
-impl From<CapabilitiesEffectsItemEnum> for CapabilitiesEffectsItem {
-    fn from(value: CapabilitiesEffectsItemEnum) -> Self {
-        Self::Enum(value)
+impl From<CapabilitiesEffectsItemKnown> for CapabilitiesEffectsItem {
+    fn from(value: CapabilitiesEffectsItemKnown) -> Self {
+        Self::Known(value)
     }
 }
 
 impl From<String> for CapabilitiesEffectsItem {
     fn from(value: String) -> Self {
-        Self::String(value)
+        Self::Custom(value)
     }
 }
 
@@ -23470,7 +23471,7 @@ impl EffectInjectAppendContext {
 pub enum ExecutionEventAttemptusageCompleteness {
     Complete,
     Partial,
-    Unknown2,
+    UnknownShape92db31827db71e5a,
     Unknown(String),
 }
 
@@ -23487,7 +23488,7 @@ impl Serialize for ExecutionEventAttemptusageCompleteness {
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::Unknown2 => {
+            Self::UnknownShape92db31827db71e5a => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -23516,7 +23517,7 @@ impl<'de> Deserialize<'de> for ExecutionEventAttemptusageCompleteness {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::Unknown2);
+            return Ok(Self::UnknownShape92db31827db71e5a);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -24491,9 +24492,11 @@ impl<'de> Deserialize<'de> for ExecutionEventFilechangeChange {
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ExecutionEventMcpConnectionHttp(pub JsonValue);
+pub struct ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8(
+    pub JsonValue,
+);
 
-impl ExecutionEventMcpConnectionHttp {
+impl ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8 {
     pub fn new(value: impl Into<JsonValue>) -> Self {
         Self(value.into())
     }
@@ -24502,9 +24505,11 @@ impl ExecutionEventMcpConnectionHttp {
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ExecutionEventMcpConnectionSse(pub JsonValue);
+pub struct ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03(
+    pub JsonValue,
+);
 
-impl ExecutionEventMcpConnectionSse {
+impl ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03 {
     pub fn new(value: impl Into<JsonValue>) -> Self {
         Self(value.into())
     }
@@ -24513,33 +24518,29 @@ impl ExecutionEventMcpConnectionSse {
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ExecutionEventMcpConnectionStdio(pub JsonValue);
+pub struct ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject(
+    pub JsonValue,
+);
 
-impl ExecutionEventMcpConnectionStdio {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
-    }
-}
+impl ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject { pub fn new(value: impl Into<JsonValue>) -> Self { Self(value.into()) } }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ExecutionEventMcpConnectionIntersection(pub JsonValue);
+pub struct ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject(
+    pub JsonValue,
+);
 
-impl ExecutionEventMcpConnectionIntersection {
-    pub fn new(value: impl Into<JsonValue>) -> Self {
-        Self(value.into())
-    }
-}
+impl ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject { pub fn new(value: impl Into<JsonValue>) -> Self { Self(value.into()) } }
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ExecutionEventMcpConnection {
-    Http(ExecutionEventMcpConnectionHttp),
-    Sse(ExecutionEventMcpConnectionSse),
-    Stdio(ExecutionEventMcpConnectionStdio),
-    Intersection(ExecutionEventMcpConnectionIntersection),
+    GapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8(ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8),
+    GapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03(ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03),
+    ArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject(ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject),
+    AddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject(ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject),
     /// Raw value for a forward-compatible discriminator variant.
     Unknown(JsonValue),
 }
@@ -24556,42 +24557,46 @@ impl<'de> Deserialize<'de> for ExecutionEventMcpConnection {
                 <D::Error as serde::de::Error>::custom("expected string discriminator transport")
             })?;
         match actual.as_str() {
-            "http" => serde_json::from_value::<ExecutionEventMcpConnectionHttp>(value)
-                .map(Self::Http)
+            "http" => serde_json::from_value::<ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8>(value)
+                .map(Self::GapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8)
                 .map_err(<D::Error as serde::de::Error>::custom),
-            "sse" => serde_json::from_value::<ExecutionEventMcpConnectionSse>(value)
-                .map(Self::Sse)
+            "sse" => serde_json::from_value::<ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03>(value)
+                .map(Self::GapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03)
                 .map_err(<D::Error as serde::de::Error>::custom),
-            "stdio" => serde_json::from_value::<ExecutionEventMcpConnectionStdio>(value)
-                .map(Self::Stdio)
+            "stdio" => serde_json::from_value::<ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject>(value)
+                .map(Self::ArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject)
                 .map_err(<D::Error as serde::de::Error>::custom),
             _ => Ok(Self::Unknown(value)),
         }
     }
 }
 
-impl From<ExecutionEventMcpConnectionHttp> for ExecutionEventMcpConnection {
-    fn from(value: ExecutionEventMcpConnectionHttp) -> Self {
-        Self::Http(value)
+impl From<ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8>
+    for ExecutionEventMcpConnection
+{
+    fn from(
+        value: ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8,
+    ) -> Self {
+        Self::GapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8(value)
     }
 }
 
-impl From<ExecutionEventMcpConnectionSse> for ExecutionEventMcpConnection {
-    fn from(value: ExecutionEventMcpConnectionSse) -> Self {
-        Self::Sse(value)
+impl From<ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03>
+    for ExecutionEventMcpConnection
+{
+    fn from(
+        value: ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03,
+    ) -> Self {
+        Self::GapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03(value)
     }
 }
 
-impl From<ExecutionEventMcpConnectionStdio> for ExecutionEventMcpConnection {
-    fn from(value: ExecutionEventMcpConnectionStdio) -> Self {
-        Self::Stdio(value)
-    }
+impl From<ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject> for ExecutionEventMcpConnection {
+    fn from(value: ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject) -> Self { Self::ArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject(value) }
 }
 
-impl From<ExecutionEventMcpConnectionIntersection> for ExecutionEventMcpConnection {
-    fn from(value: ExecutionEventMcpConnectionIntersection) -> Self {
-        Self::Intersection(value)
-    }
+impl From<ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject> for ExecutionEventMcpConnection {
+    fn from(value: ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject) -> Self { Self::AddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject(value) }
 }
 
 /// Inline schema model.
@@ -26873,7 +26878,7 @@ impl<'de> Deserialize<'de> for ExecutionEventTurnStartType {
 pub enum ExecutionEventTurnusageCompleteness {
     Complete,
     Partial,
-    Unknown2,
+    UnknownShape92db31827db71e5a,
     Unknown(String),
 }
 
@@ -26890,7 +26895,7 @@ impl Serialize for ExecutionEventTurnusageCompleteness {
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::Unknown2 => {
+            Self::UnknownShape92db31827db71e5a => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -26919,7 +26924,7 @@ impl<'de> Deserialize<'de> for ExecutionEventTurnusageCompleteness {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::Unknown2);
+            return Ok(Self::UnknownShape92db31827db71e5a);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -27167,7 +27172,7 @@ impl<'de> Deserialize<'de> for ExecutionEventTurnusageScope {
 pub enum ExecutionEventUsageCompleteness {
     Complete,
     Partial,
-    Unknown2,
+    UnknownShape92db31827db71e5a,
     Unknown(String),
 }
 
@@ -27184,7 +27189,7 @@ impl Serialize for ExecutionEventUsageCompleteness {
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::Unknown2 => {
+            Self::UnknownShape92db31827db71e5a => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -27213,7 +27218,7 @@ impl<'de> Deserialize<'de> for ExecutionEventUsageCompleteness {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::Unknown2);
+            return Ok(Self::UnknownShape92db31827db71e5a);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -28830,7 +28835,7 @@ impl<'de> Deserialize<'de> for InterceptRequestMethod {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InterceptRequestParamsCapabilitiesEffectsItemEnum {
+pub enum InterceptRequestParamsCapabilitiesEffectsItemKnown {
     Deny,
     Allow,
     Ask,
@@ -28842,7 +28847,7 @@ pub enum InterceptRequestParamsCapabilitiesEffectsItemEnum {
     Unknown(String),
 }
 
-impl Serialize for InterceptRequestParamsCapabilitiesEffectsItemEnum {
+impl Serialize for InterceptRequestParamsCapabilitiesEffectsItemKnown {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::Deny => {
@@ -28890,7 +28895,7 @@ impl Serialize for InterceptRequestParamsCapabilitiesEffectsItemEnum {
     }
 }
 
-impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesEffectsItemEnum {
+impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesEffectsItemKnown {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         if same_json(
@@ -28945,7 +28950,7 @@ impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesEffectsItemEnum
             return Ok(Self::Unknown(value.to_owned()));
         }
         Err(<D::Error as serde::de::Error>::custom(format!(
-            "unknown value for InterceptRequestParamsCapabilitiesEffectsItemEnum: {value}"
+            "unknown value for InterceptRequestParamsCapabilitiesEffectsItemKnown: {value}"
         )))
     }
 }
@@ -28954,21 +28959,21 @@ impl<'de> Deserialize<'de> for InterceptRequestParamsCapabilitiesEffectsItemEnum
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum InterceptRequestParamsCapabilitiesEffectsItem {
-    Enum(InterceptRequestParamsCapabilitiesEffectsItemEnum),
-    String(String),
+    Known(InterceptRequestParamsCapabilitiesEffectsItemKnown),
+    Custom(String),
 }
 
-impl From<InterceptRequestParamsCapabilitiesEffectsItemEnum>
+impl From<InterceptRequestParamsCapabilitiesEffectsItemKnown>
     for InterceptRequestParamsCapabilitiesEffectsItem
 {
-    fn from(value: InterceptRequestParamsCapabilitiesEffectsItemEnum) -> Self {
-        Self::Enum(value)
+    fn from(value: InterceptRequestParamsCapabilitiesEffectsItemKnown) -> Self {
+        Self::Known(value)
     }
 }
 
 impl From<String> for InterceptRequestParamsCapabilitiesEffectsItem {
     fn from(value: String) -> Self {
-        Self::String(value)
+        Self::Custom(value)
     }
 }
 
@@ -29611,7 +29616,7 @@ pub enum InterceptRequestParamsEvent {
     ModelSwitchBefore(Box<ModelSwitchBeforeEvent>),
     ToolPermissionRequest(Box<ToolPermissionRequestEvent>),
     ToolBatchAfter(Box<ToolBatchAfterEvent>),
-    ContextCompactBeforeEvent(Box<ContextCompactBeforeEvent>),
+    ContextCompactBefore(Box<ContextCompactBeforeEvent>),
     ContextCompactAfter(Box<ContextCompactAfterEvent>),
     TaskChangeBefore(Box<TaskChangeBeforeEvent>),
     UserElicitationRequest(Box<UserElicitationRequestEvent>),
@@ -29744,13 +29749,13 @@ impl From<ToolBatchAfterEvent> for InterceptRequestParamsEvent {
 
 impl From<Box<ContextCompactBeforeEvent>> for InterceptRequestParamsEvent {
     fn from(value: Box<ContextCompactBeforeEvent>) -> Self {
-        Self::ContextCompactBeforeEvent(value)
+        Self::ContextCompactBefore(value)
     }
 }
 
 impl From<ContextCompactBeforeEvent> for InterceptRequestParamsEvent {
     fn from(value: ContextCompactBeforeEvent) -> Self {
-        Self::ContextCompactBeforeEvent(Box::new(value))
+        Self::ContextCompactBefore(Box::new(value))
     }
 }
 
@@ -29852,13 +29857,13 @@ impl From<ModelResponseAfterEvent> for InterceptRequestParamsEvent {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct InterceptRequestParamsStateCandidateObjectProvenance {
+pub struct InterceptRequestParamsStateCandidateValueObjectProvenance {
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
-impl InterceptRequestParamsStateCandidateObjectProvenance {
+impl InterceptRequestParamsStateCandidateValueObjectProvenance {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new() -> Self {
         Self {
@@ -29867,7 +29872,7 @@ impl InterceptRequestParamsStateCandidateObjectProvenance {
     }
 }
 
-impl Default for InterceptRequestParamsStateCandidateObjectProvenance {
+impl Default for InterceptRequestParamsStateCandidateValueObjectProvenance {
     fn default() -> Self {
         Self::new()
     }
@@ -29875,10 +29880,10 @@ impl Default for InterceptRequestParamsStateCandidateObjectProvenance {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct InterceptRequestParamsStateCandidateObject {
+pub struct InterceptRequestParamsStateCandidateValueObject {
     #[serde(rename = "provenance")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub provenance: Presence<InterceptRequestParamsStateCandidateObjectProvenance>,
+    pub provenance: Presence<InterceptRequestParamsStateCandidateValueObjectProvenance>,
     #[serde(rename = "value")]
     pub value: JsonValue,
     /// Members not known to this schema revision.
@@ -29886,7 +29891,7 @@ pub struct InterceptRequestParamsStateCandidateObject {
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
-impl InterceptRequestParamsStateCandidateObject {
+impl InterceptRequestParamsStateCandidateValueObject {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(value: impl Into<JsonValue>) -> Self {
         Self {
@@ -29897,7 +29902,7 @@ impl InterceptRequestParamsStateCandidateObject {
     }
     pub fn with_provenance(
         mut self,
-        value: impl Into<InterceptRequestParamsStateCandidateObjectProvenance>,
+        value: impl Into<InterceptRequestParamsStateCandidateValueObjectProvenance>,
     ) -> Self {
         self.provenance = Presence::Present(value.into());
         self
@@ -29913,7 +29918,7 @@ impl InterceptRequestParamsStateCandidateObject {
 #[serde(untagged)]
 pub enum InterceptRequestParamsStateCandidate {
     Null(()),
-    Object(InterceptRequestParamsStateCandidateObject),
+    ValueObject(InterceptRequestParamsStateCandidateValueObject),
 }
 
 impl From<()> for InterceptRequestParamsStateCandidate {
@@ -29922,9 +29927,11 @@ impl From<()> for InterceptRequestParamsStateCandidate {
     }
 }
 
-impl From<InterceptRequestParamsStateCandidateObject> for InterceptRequestParamsStateCandidate {
-    fn from(value: InterceptRequestParamsStateCandidateObject) -> Self {
-        Self::Object(value)
+impl From<InterceptRequestParamsStateCandidateValueObject>
+    for InterceptRequestParamsStateCandidate
+{
+    fn from(value: InterceptRequestParamsStateCandidateValueObject) -> Self {
+        Self::ValueObject(value)
     }
 }
 
@@ -30254,7 +30261,7 @@ impl InterceptResponseResult {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InterceptSubscriptionEventsItemEnum {
+pub enum InterceptSubscriptionEventsItemKnown {
     ToolBefore,
     ToolAfter,
     SessionStart,
@@ -30277,7 +30284,7 @@ pub enum InterceptSubscriptionEventsItemEnum {
     Unknown(String),
 }
 
-impl Serialize for InterceptSubscriptionEventsItemEnum {
+impl Serialize for InterceptSubscriptionEventsItemKnown {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::ToolBefore => {
@@ -30380,7 +30387,7 @@ impl Serialize for InterceptSubscriptionEventsItemEnum {
     }
 }
 
-impl<'de> Deserialize<'de> for InterceptSubscriptionEventsItemEnum {
+impl<'de> Deserialize<'de> for InterceptSubscriptionEventsItemKnown {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         if same_json(
@@ -30516,7 +30523,7 @@ impl<'de> Deserialize<'de> for InterceptSubscriptionEventsItemEnum {
             return Ok(Self::Unknown(value.to_owned()));
         }
         Err(<D::Error as serde::de::Error>::custom(format!(
-            "unknown value for InterceptSubscriptionEventsItemEnum: {value}"
+            "unknown value for InterceptSubscriptionEventsItemKnown: {value}"
         )))
     }
 }
@@ -30525,19 +30532,19 @@ impl<'de> Deserialize<'de> for InterceptSubscriptionEventsItemEnum {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum InterceptSubscriptionEventsItem {
-    Enum(InterceptSubscriptionEventsItemEnum),
-    String(String),
+    Known(InterceptSubscriptionEventsItemKnown),
+    Custom(String),
 }
 
-impl From<InterceptSubscriptionEventsItemEnum> for InterceptSubscriptionEventsItem {
-    fn from(value: InterceptSubscriptionEventsItemEnum) -> Self {
-        Self::Enum(value)
+impl From<InterceptSubscriptionEventsItemKnown> for InterceptSubscriptionEventsItem {
+    fn from(value: InterceptSubscriptionEventsItemKnown) -> Self {
+        Self::Known(value)
     }
 }
 
 impl From<String> for InterceptSubscriptionEventsItem {
     fn from(value: String) -> Self {
-        Self::String(value)
+        Self::Custom(value)
     }
 }
 
@@ -33487,7 +33494,7 @@ pub enum ObserveNotificationParamsEvent {
     ToolPermissionResolved(Box<ToolPermissionResolvedEvent>),
     ToolProgress(Box<ToolProgressEvent>),
     ToolBatchAfter(Box<ToolBatchAfterEvent>),
-    ContextCompactBeforeEvent(Box<ContextCompactBeforeEvent>),
+    ContextCompactBefore(Box<ContextCompactBeforeEvent>),
     ContextCompactAfter(Box<ContextCompactAfterEvent>),
     TaskChangeBefore(Box<TaskChangeBeforeEvent>),
     TaskChangeAfter(Box<TaskChangeAfterEvent>),
@@ -33732,13 +33739,13 @@ impl From<ToolBatchAfterEvent> for ObserveNotificationParamsEvent {
 
 impl From<Box<ContextCompactBeforeEvent>> for ObserveNotificationParamsEvent {
     fn from(value: Box<ContextCompactBeforeEvent>) -> Self {
-        Self::ContextCompactBeforeEvent(value)
+        Self::ContextCompactBefore(value)
     }
 }
 
 impl From<ContextCompactBeforeEvent> for ObserveNotificationParamsEvent {
     fn from(value: ContextCompactBeforeEvent) -> Self {
-        Self::ContextCompactBeforeEvent(Box::new(value))
+        Self::ContextCompactBefore(Box::new(value))
     }
 }
 
@@ -33915,7 +33922,7 @@ impl ObserveNotificationParams {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ObserveSubscriptionEventsItemEnum {
+pub enum ObserveSubscriptionEventsItemKnown {
     ToolBefore,
     ToolAfter,
     SessionStart,
@@ -33951,7 +33958,7 @@ pub enum ObserveSubscriptionEventsItemEnum {
     Unknown(String),
 }
 
-impl Serialize for ObserveSubscriptionEventsItemEnum {
+impl Serialize for ObserveSubscriptionEventsItemKnown {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::ToolBefore => {
@@ -34119,7 +34126,7 @@ impl Serialize for ObserveSubscriptionEventsItemEnum {
     }
 }
 
-impl<'de> Deserialize<'de> for ObserveSubscriptionEventsItemEnum {
+impl<'de> Deserialize<'de> for ObserveSubscriptionEventsItemKnown {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonValue::deserialize(deserializer)?;
         if same_json(
@@ -34339,7 +34346,7 @@ impl<'de> Deserialize<'de> for ObserveSubscriptionEventsItemEnum {
             return Ok(Self::Unknown(value.to_owned()));
         }
         Err(<D::Error as serde::de::Error>::custom(format!(
-            "unknown value for ObserveSubscriptionEventsItemEnum: {value}"
+            "unknown value for ObserveSubscriptionEventsItemKnown: {value}"
         )))
     }
 }
@@ -34348,19 +34355,19 @@ impl<'de> Deserialize<'de> for ObserveSubscriptionEventsItemEnum {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ObserveSubscriptionEventsItem {
-    Enum(ObserveSubscriptionEventsItemEnum),
-    String(String),
+    Known(ObserveSubscriptionEventsItemKnown),
+    Custom(String),
 }
 
-impl From<ObserveSubscriptionEventsItemEnum> for ObserveSubscriptionEventsItem {
-    fn from(value: ObserveSubscriptionEventsItemEnum) -> Self {
-        Self::Enum(value)
+impl From<ObserveSubscriptionEventsItemKnown> for ObserveSubscriptionEventsItem {
+    fn from(value: ObserveSubscriptionEventsItemKnown) -> Self {
+        Self::Known(value)
     }
 }
 
 impl From<String> for ObserveSubscriptionEventsItem {
     fn from(value: String) -> Self {
-        Self::String(value)
+        Self::Custom(value)
     }
 }
 
@@ -34590,7 +34597,7 @@ pub enum SessionEndEventOutcome {
     Completed,
     Cancelled,
     Error,
-    Unknown2,
+    UnknownShape92db31827db71e5a,
     Unknown(String),
 }
 
@@ -34612,7 +34619,7 @@ impl Serialize for SessionEndEventOutcome {
                     serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::Unknown2 => {
+            Self::UnknownShape92db31827db71e5a => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -34647,7 +34654,7 @@ impl<'de> Deserialize<'de> for SessionEndEventOutcome {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::Unknown2);
+            return Ok(Self::UnknownShape92db31827db71e5a);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -46824,7 +46831,7 @@ pub enum SessionEndInputOutcome {
     Completed,
     Cancelled,
     Error,
-    Unknown2,
+    UnknownShape92db31827db71e5a,
     Unknown(String),
 }
 
@@ -46846,7 +46853,7 @@ impl Serialize for SessionEndInputOutcome {
                     serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::Unknown2 => {
+            Self::UnknownShape92db31827db71e5a => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -46881,7 +46888,7 @@ impl<'de> Deserialize<'de> for SessionEndInputOutcome {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::Unknown2);
+            return Ok(Self::UnknownShape92db31827db71e5a);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -50509,13 +50516,13 @@ impl WorkspaceChangeBeforeInputWorkspace {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ErgonomicInitialStateCandidateObjectProvenance {
+pub struct ErgonomicInitialStateCandidateValueObjectProvenance {
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
-impl ErgonomicInitialStateCandidateObjectProvenance {
+impl ErgonomicInitialStateCandidateValueObjectProvenance {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new() -> Self {
         Self {
@@ -50524,7 +50531,7 @@ impl ErgonomicInitialStateCandidateObjectProvenance {
     }
 }
 
-impl Default for ErgonomicInitialStateCandidateObjectProvenance {
+impl Default for ErgonomicInitialStateCandidateValueObjectProvenance {
     fn default() -> Self {
         Self::new()
     }
@@ -50532,10 +50539,10 @@ impl Default for ErgonomicInitialStateCandidateObjectProvenance {
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ErgonomicInitialStateCandidateObject {
+pub struct ErgonomicInitialStateCandidateValueObject {
     #[serde(rename = "provenance")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub provenance: Presence<ErgonomicInitialStateCandidateObjectProvenance>,
+    pub provenance: Presence<ErgonomicInitialStateCandidateValueObjectProvenance>,
     #[serde(rename = "value")]
     pub value: JsonValue,
     /// Members not known to this schema revision.
@@ -50543,7 +50550,7 @@ pub struct ErgonomicInitialStateCandidateObject {
     pub additional_properties: BTreeMap<String, JsonValue>,
 }
 
-impl ErgonomicInitialStateCandidateObject {
+impl ErgonomicInitialStateCandidateValueObject {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(value: impl Into<JsonValue>) -> Self {
         Self {
@@ -50554,7 +50561,7 @@ impl ErgonomicInitialStateCandidateObject {
     }
     pub fn with_provenance(
         mut self,
-        value: impl Into<ErgonomicInitialStateCandidateObjectProvenance>,
+        value: impl Into<ErgonomicInitialStateCandidateValueObjectProvenance>,
     ) -> Self {
         self.provenance = Presence::Present(value.into());
         self
@@ -50570,7 +50577,7 @@ impl ErgonomicInitialStateCandidateObject {
 #[serde(untagged)]
 pub enum ErgonomicInitialStateCandidate {
     Null(()),
-    Object(ErgonomicInitialStateCandidateObject),
+    ValueObject(ErgonomicInitialStateCandidateValueObject),
 }
 
 impl From<()> for ErgonomicInitialStateCandidate {
@@ -50579,9 +50586,9 @@ impl From<()> for ErgonomicInitialStateCandidate {
     }
 }
 
-impl From<ErgonomicInitialStateCandidateObject> for ErgonomicInitialStateCandidate {
-    fn from(value: ErgonomicInitialStateCandidateObject) -> Self {
-        Self::Object(value)
+impl From<ErgonomicInitialStateCandidateValueObject> for ErgonomicInitialStateCandidate {
+    fn from(value: ErgonomicInitialStateCandidateValueObject) -> Self {
+        Self::ValueObject(value)
     }
 }
 
@@ -50782,7 +50789,7 @@ impl ErgonomicInitialState {
 /// Models grouped by protocol domain.
 pub mod capabilities {
     pub use super::{
-        Capabilities, CapabilitiesEffectsItem, CapabilitiesEffectsItemEnum,
+        Capabilities, CapabilitiesEffectsItem, CapabilitiesEffectsItemKnown,
         CapabilitiesElicitation, CapabilitiesElicitationForm, CapabilitiesElicitationUrl,
         CapabilitiesFlow, CapabilitiesFlowOperationsItem, CapabilitiesInject,
         CapabilitiesInjectContext, CapabilitiesInjectContextAppend,
@@ -51073,7 +51080,7 @@ pub mod capabilities_response {
 /// Models grouped by protocol domain.
 pub mod client {
     pub use super::{
-        Capabilities, CapabilitiesEffectsItem, CapabilitiesEffectsItemEnum,
+        Capabilities, CapabilitiesEffectsItem, CapabilitiesEffectsItemKnown,
         CapabilitiesElicitation, CapabilitiesElicitationForm, CapabilitiesElicitationUrl,
         CapabilitiesFlow, CapabilitiesFlowOperationsItem, CapabilitiesInject,
         CapabilitiesInjectContext, CapabilitiesInjectContextAppend,
@@ -51102,7 +51109,7 @@ pub mod client {
         InterceptNoEffectResponseJsonrpc, InterceptNoEffectResponseResult, InterceptRequest,
         InterceptRequestJsonrpc, InterceptRequestMethod, InterceptRequestParams,
         InterceptRequestParamsCapabilities, InterceptRequestParamsCapabilitiesEffectsItem,
-        InterceptRequestParamsCapabilitiesEffectsItemEnum,
+        InterceptRequestParamsCapabilitiesEffectsItemKnown,
         InterceptRequestParamsCapabilitiesElicitation,
         InterceptRequestParamsCapabilitiesElicitationForm,
         InterceptRequestParamsCapabilitiesElicitationUrl, InterceptRequestParamsCapabilitiesFlow,
@@ -51120,8 +51127,8 @@ pub mod client {
         InterceptRequestParamsCapabilitiesModifySummary,
         InterceptRequestParamsCapabilitiesModifyWorkspace, InterceptRequestParamsEvent,
         InterceptRequestParamsState, InterceptRequestParamsStateCandidate,
-        InterceptRequestParamsStateCandidateObject,
-        InterceptRequestParamsStateCandidateObjectProvenance, InterceptRequestParamsStateFlow,
+        InterceptRequestParamsStateCandidateValueObject,
+        InterceptRequestParamsStateCandidateValueObjectProvenance, InterceptRequestParamsStateFlow,
         InterceptRequestParamsStatePermission, InterceptResponse, InterceptResponseJsonrpc,
         InterceptResponseResult, JsonRpcErrorResponse, JsonRpcErrorResponseError,
         JsonRpcErrorResponseJsonrpc, JsonRpcNotification, JsonRpcNotificationJsonrpc,
@@ -51195,10 +51202,13 @@ pub mod event {
         ExecutionEventExecutionSkippedSuppliedResultStatus, ExecutionEventExecutionSkippedTimeout,
         ExecutionEventExecutionSkippedTimeoutReason, ExecutionEventExecutionSkippedTimeoutStatus,
         ExecutionEventFilechange, ExecutionEventFilechangeChange, ExecutionEventMcp,
-        ExecutionEventMcpConnection, ExecutionEventMcpConnectionHttp,
-        ExecutionEventMcpConnectionIntersection, ExecutionEventMcpConnectionSse,
-        ExecutionEventMcpConnectionStdio, ExecutionEventMcpProvenance, ExecutionEventMcpServer,
-        ExecutionEventModel, ExecutionEventModelError, ExecutionEventModelErrorExecution,
+        ExecutionEventMcpConnection,
+        ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject,
+        ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject,
+        ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03,
+        ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8,
+        ExecutionEventMcpProvenance, ExecutionEventMcpServer, ExecutionEventModel,
+        ExecutionEventModelError, ExecutionEventModelErrorExecution,
         ExecutionEventModelErrorGapsItem, ExecutionEventModelErrorTurn,
         ExecutionEventModelErrorType, ExecutionEventModelRequestBefore,
         ExecutionEventModelRequestBeforeGapsItem, ExecutionEventModelRequestBeforeParams,
@@ -51331,7 +51341,7 @@ pub mod intercept_request {
     pub use super::{
         InterceptRequest, InterceptRequestJsonrpc, InterceptRequestMethod, InterceptRequestParams,
         InterceptRequestParamsCapabilities, InterceptRequestParamsCapabilitiesEffectsItem,
-        InterceptRequestParamsCapabilitiesEffectsItemEnum,
+        InterceptRequestParamsCapabilitiesEffectsItemKnown,
         InterceptRequestParamsCapabilitiesElicitation,
         InterceptRequestParamsCapabilitiesElicitationForm,
         InterceptRequestParamsCapabilitiesElicitationUrl, InterceptRequestParamsCapabilitiesFlow,
@@ -51349,8 +51359,8 @@ pub mod intercept_request {
         InterceptRequestParamsCapabilitiesModifySummary,
         InterceptRequestParamsCapabilitiesModifyWorkspace, InterceptRequestParamsEvent,
         InterceptRequestParamsState, InterceptRequestParamsStateCandidate,
-        InterceptRequestParamsStateCandidateObject,
-        InterceptRequestParamsStateCandidateObjectProvenance, InterceptRequestParamsStateFlow,
+        InterceptRequestParamsStateCandidateValueObject,
+        InterceptRequestParamsStateCandidateValueObjectProvenance, InterceptRequestParamsStateFlow,
         InterceptRequestParamsStatePermission,
     };
 }
@@ -51404,12 +51414,12 @@ pub mod observe_notification {
 /// Models grouped by protocol domain.
 pub mod registration {
     pub use super::{
-        Authentication, AuthenticationIntersection, AuthenticationOauth, AuthenticationOauthFlow,
+        Authentication, AuthenticationBearer, AuthenticationOauth, AuthenticationOauthFlow,
         AuthenticationOauthType, Backend, BackendSubscriptionsItem, BackendTransport,
         HttpTransport, HttpTransportType, InterceptSubscription, InterceptSubscriptionEventsItem,
-        InterceptSubscriptionEventsItemEnum, InterceptSubscriptionFailurePolicy,
+        InterceptSubscriptionEventsItemKnown, InterceptSubscriptionFailurePolicy,
         InterceptSubscriptionFilters, InterceptSubscriptionMode, InterceptSubscriptionScope,
-        ObserveSubscription, ObserveSubscriptionEventsItem, ObserveSubscriptionEventsItemEnum,
+        ObserveSubscription, ObserveSubscriptionEventsItem, ObserveSubscriptionEventsItemKnown,
         ObserveSubscriptionFilters, ObserveSubscriptionMode, ObserveSubscriptionScope,
         Registration, RegistrationContentreceiver, ReverseDnsName, StdioTransport,
         StdioTransportLifecycle, StdioTransportType,
@@ -51442,9 +51452,9 @@ pub mod session_start {
 pub mod subscription {
     pub use super::{
         InterceptSubscription, InterceptSubscriptionEventsItem,
-        InterceptSubscriptionEventsItemEnum, InterceptSubscriptionFailurePolicy,
+        InterceptSubscriptionEventsItemKnown, InterceptSubscriptionFailurePolicy,
         InterceptSubscriptionFilters, InterceptSubscriptionMode, InterceptSubscriptionScope,
-        ObserveSubscription, ObserveSubscriptionEventsItem, ObserveSubscriptionEventsItemEnum,
+        ObserveSubscription, ObserveSubscriptionEventsItem, ObserveSubscriptionEventsItemKnown,
         ObserveSubscriptionFilters, ObserveSubscriptionMode, ObserveSubscriptionScope,
     };
 }
