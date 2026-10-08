@@ -6697,25 +6697,25 @@ impl McpElicitationNumberSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum McpElicitationPrimitiveSchemaDefinition {
-    StringShape60b5059135f8b4b5(Box<McpElicitationStringSchema>),
+    McpElicitationStringSchema(Box<McpElicitationStringSchema>),
     McpElicitationNumberSchema(Box<McpElicitationNumberSchema>),
     Boolean(Box<McpElicitationBooleanSchema>),
-    StringShapeb9bfae37df688ce6(Box<McpElicitationUntitledSingleSelectEnumSchema>),
-    StringShape8065a9ada8f664c2(Box<McpElicitationTitledSingleSelectEnumSchema>),
-    ArrayShape8ea6f18c2f357ea5(Box<McpElicitationUntitledMultiSelectEnumSchema>),
-    ArrayShape00e291029a48325a(Box<McpElicitationTitledMultiSelectEnumSchema>),
-    StringShape3824725b461eba01(Box<McpElicitationLegacyTitledEnumSchema>),
+    McpElicitationUntitledSingleSelectEnumSchema(Box<McpElicitationUntitledSingleSelectEnumSchema>),
+    McpElicitationTitledSingleSelectEnumSchema(Box<McpElicitationTitledSingleSelectEnumSchema>),
+    McpElicitationUntitledMultiSelectEnumSchema(Box<McpElicitationUntitledMultiSelectEnumSchema>),
+    McpElicitationTitledMultiSelectEnumSchema(Box<McpElicitationTitledMultiSelectEnumSchema>),
+    McpElicitationLegacyTitledEnumSchema(Box<McpElicitationLegacyTitledEnumSchema>),
 }
 
 impl From<Box<McpElicitationStringSchema>> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: Box<McpElicitationStringSchema>) -> Self {
-        Self::StringShape60b5059135f8b4b5(value)
+        Self::McpElicitationStringSchema(value)
     }
 }
 
 impl From<McpElicitationStringSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationStringSchema) -> Self {
-        Self::StringShape60b5059135f8b4b5(Box::new(value))
+        Self::McpElicitationStringSchema(Box::new(value))
     }
 }
 
@@ -6747,7 +6747,7 @@ impl From<Box<McpElicitationUntitledSingleSelectEnumSchema>>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: Box<McpElicitationUntitledSingleSelectEnumSchema>) -> Self {
-        Self::StringShapeb9bfae37df688ce6(value)
+        Self::McpElicitationUntitledSingleSelectEnumSchema(value)
     }
 }
 
@@ -6755,7 +6755,7 @@ impl From<McpElicitationUntitledSingleSelectEnumSchema>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: McpElicitationUntitledSingleSelectEnumSchema) -> Self {
-        Self::StringShapeb9bfae37df688ce6(Box::new(value))
+        Self::McpElicitationUntitledSingleSelectEnumSchema(Box::new(value))
     }
 }
 
@@ -6763,13 +6763,13 @@ impl From<Box<McpElicitationTitledSingleSelectEnumSchema>>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: Box<McpElicitationTitledSingleSelectEnumSchema>) -> Self {
-        Self::StringShape8065a9ada8f664c2(value)
+        Self::McpElicitationTitledSingleSelectEnumSchema(value)
     }
 }
 
 impl From<McpElicitationTitledSingleSelectEnumSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationTitledSingleSelectEnumSchema) -> Self {
-        Self::StringShape8065a9ada8f664c2(Box::new(value))
+        Self::McpElicitationTitledSingleSelectEnumSchema(Box::new(value))
     }
 }
 
@@ -6777,13 +6777,13 @@ impl From<Box<McpElicitationUntitledMultiSelectEnumSchema>>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: Box<McpElicitationUntitledMultiSelectEnumSchema>) -> Self {
-        Self::ArrayShape8ea6f18c2f357ea5(value)
+        Self::McpElicitationUntitledMultiSelectEnumSchema(value)
     }
 }
 
 impl From<McpElicitationUntitledMultiSelectEnumSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationUntitledMultiSelectEnumSchema) -> Self {
-        Self::ArrayShape8ea6f18c2f357ea5(Box::new(value))
+        Self::McpElicitationUntitledMultiSelectEnumSchema(Box::new(value))
     }
 }
 
@@ -6791,25 +6791,25 @@ impl From<Box<McpElicitationTitledMultiSelectEnumSchema>>
     for McpElicitationPrimitiveSchemaDefinition
 {
     fn from(value: Box<McpElicitationTitledMultiSelectEnumSchema>) -> Self {
-        Self::ArrayShape00e291029a48325a(value)
+        Self::McpElicitationTitledMultiSelectEnumSchema(value)
     }
 }
 
 impl From<McpElicitationTitledMultiSelectEnumSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationTitledMultiSelectEnumSchema) -> Self {
-        Self::ArrayShape00e291029a48325a(Box::new(value))
+        Self::McpElicitationTitledMultiSelectEnumSchema(Box::new(value))
     }
 }
 
 impl From<Box<McpElicitationLegacyTitledEnumSchema>> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: Box<McpElicitationLegacyTitledEnumSchema>) -> Self {
-        Self::StringShape3824725b461eba01(value)
+        Self::McpElicitationLegacyTitledEnumSchema(value)
     }
 }
 
 impl From<McpElicitationLegacyTitledEnumSchema> for McpElicitationPrimitiveSchemaDefinition {
     fn from(value: McpElicitationLegacyTitledEnumSchema) -> Self {
-        Self::StringShape3824725b461eba01(Box::new(value))
+        Self::McpElicitationLegacyTitledEnumSchema(Box::new(value))
     }
 }
 
@@ -23471,7 +23471,7 @@ impl EffectInjectAppendContext {
 pub enum ExecutionEventAttemptusageCompleteness {
     Complete,
     Partial,
-    UnknownShape92db31827db71e5a,
+    UnknownValue,
     Unknown(String),
 }
 
@@ -23488,7 +23488,7 @@ impl Serialize for ExecutionEventAttemptusageCompleteness {
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::UnknownShape92db31827db71e5a => {
+            Self::UnknownValue => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -23517,7 +23517,7 @@ impl<'de> Deserialize<'de> for ExecutionEventAttemptusageCompleteness {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::UnknownShape92db31827db71e5a);
+            return Ok(Self::UnknownValue);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -24492,11 +24492,9 @@ impl<'de> Deserialize<'de> for ExecutionEventFilechangeChange {
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8(
-    pub JsonValue,
-);
+pub struct ExecutionEventMcpConnectionHttp(pub JsonValue);
 
-impl ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8 {
+impl ExecutionEventMcpConnectionHttp {
     pub fn new(value: impl Into<JsonValue>) -> Self {
         Self(value.into())
     }
@@ -24505,11 +24503,9 @@ impl ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03(
-    pub JsonValue,
-);
+pub struct ExecutionEventMcpConnectionSse(pub JsonValue);
 
-impl ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03 {
+impl ExecutionEventMcpConnectionSse {
     pub fn new(value: impl Into<JsonValue>) -> Self {
         Self(value.into())
     }
@@ -24518,29 +24514,33 @@ impl ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject(
-    pub JsonValue,
-);
+pub struct ExecutionEventMcpConnectionStdio(pub JsonValue);
 
-impl ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject { pub fn new(value: impl Into<JsonValue>) -> Self { Self(value.into()) } }
+impl ExecutionEventMcpConnectionStdio {
+    pub fn new(value: impl Into<JsonValue>) -> Self {
+        Self(value.into())
+    }
+}
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject(
-    pub JsonValue,
-);
+pub struct ExecutionEventMcpConnectionCustomTransport(pub JsonValue);
 
-impl ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject { pub fn new(value: impl Into<JsonValue>) -> Self { Self(value.into()) } }
+impl ExecutionEventMcpConnectionCustomTransport {
+    pub fn new(value: impl Into<JsonValue>) -> Self {
+        Self(value.into())
+    }
+}
 
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ExecutionEventMcpConnection {
-    GapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8(ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8),
-    GapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03(ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03),
-    ArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject(ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject),
-    AddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject(ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject),
+    Http(ExecutionEventMcpConnectionHttp),
+    Sse(ExecutionEventMcpConnectionSse),
+    Stdio(ExecutionEventMcpConnectionStdio),
+    CustomTransport(ExecutionEventMcpConnectionCustomTransport),
     /// Raw value for a forward-compatible discriminator variant.
     Unknown(JsonValue),
 }
@@ -24557,46 +24557,42 @@ impl<'de> Deserialize<'de> for ExecutionEventMcpConnection {
                 <D::Error as serde::de::Error>::custom("expected string discriminator transport")
             })?;
         match actual.as_str() {
-            "http" => serde_json::from_value::<ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8>(value)
-                .map(Self::GapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8)
+            "http" => serde_json::from_value::<ExecutionEventMcpConnectionHttp>(value)
+                .map(Self::Http)
                 .map_err(<D::Error as serde::de::Error>::custom),
-            "sse" => serde_json::from_value::<ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03>(value)
-                .map(Self::GapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03)
+            "sse" => serde_json::from_value::<ExecutionEventMcpConnectionSse>(value)
+                .map(Self::Sse)
                 .map_err(<D::Error as serde::de::Error>::custom),
-            "stdio" => serde_json::from_value::<ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject>(value)
-                .map(Self::ArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject)
+            "stdio" => serde_json::from_value::<ExecutionEventMcpConnectionStdio>(value)
+                .map(Self::Stdio)
                 .map_err(<D::Error as serde::de::Error>::custom),
             _ => Ok(Self::Unknown(value)),
         }
     }
 }
 
-impl From<ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8>
-    for ExecutionEventMcpConnection
-{
-    fn from(
-        value: ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8,
-    ) -> Self {
-        Self::GapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8(value)
+impl From<ExecutionEventMcpConnectionHttp> for ExecutionEventMcpConnection {
+    fn from(value: ExecutionEventMcpConnectionHttp) -> Self {
+        Self::Http(value)
     }
 }
 
-impl From<ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03>
-    for ExecutionEventMcpConnection
-{
-    fn from(
-        value: ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03,
-    ) -> Self {
-        Self::GapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03(value)
+impl From<ExecutionEventMcpConnectionSse> for ExecutionEventMcpConnection {
+    fn from(value: ExecutionEventMcpConnectionSse) -> Self {
+        Self::Sse(value)
     }
 }
 
-impl From<ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject> for ExecutionEventMcpConnection {
-    fn from(value: ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject) -> Self { Self::ArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject(value) }
+impl From<ExecutionEventMcpConnectionStdio> for ExecutionEventMcpConnection {
+    fn from(value: ExecutionEventMcpConnectionStdio) -> Self {
+        Self::Stdio(value)
+    }
 }
 
-impl From<ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject> for ExecutionEventMcpConnection {
-    fn from(value: ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject) -> Self { Self::AddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject(value) }
+impl From<ExecutionEventMcpConnectionCustomTransport> for ExecutionEventMcpConnection {
+    fn from(value: ExecutionEventMcpConnectionCustomTransport) -> Self {
+        Self::CustomTransport(value)
+    }
 }
 
 /// Inline schema model.
@@ -26878,7 +26874,7 @@ impl<'de> Deserialize<'de> for ExecutionEventTurnStartType {
 pub enum ExecutionEventTurnusageCompleteness {
     Complete,
     Partial,
-    UnknownShape92db31827db71e5a,
+    UnknownValue,
     Unknown(String),
 }
 
@@ -26895,7 +26891,7 @@ impl Serialize for ExecutionEventTurnusageCompleteness {
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::UnknownShape92db31827db71e5a => {
+            Self::UnknownValue => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -26924,7 +26920,7 @@ impl<'de> Deserialize<'de> for ExecutionEventTurnusageCompleteness {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::UnknownShape92db31827db71e5a);
+            return Ok(Self::UnknownValue);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -27172,7 +27168,7 @@ impl<'de> Deserialize<'de> for ExecutionEventTurnusageScope {
 pub enum ExecutionEventUsageCompleteness {
     Complete,
     Partial,
-    UnknownShape92db31827db71e5a,
+    UnknownValue,
     Unknown(String),
 }
 
@@ -27189,7 +27185,7 @@ impl Serialize for ExecutionEventUsageCompleteness {
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::UnknownShape92db31827db71e5a => {
+            Self::UnknownValue => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -27218,7 +27214,7 @@ impl<'de> Deserialize<'de> for ExecutionEventUsageCompleteness {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::UnknownShape92db31827db71e5a);
+            return Ok(Self::UnknownValue);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -34597,7 +34593,7 @@ pub enum SessionEndEventOutcome {
     Completed,
     Cancelled,
     Error,
-    UnknownShape92db31827db71e5a,
+    UnknownValue,
     Unknown(String),
 }
 
@@ -34619,7 +34615,7 @@ impl Serialize for SessionEndEventOutcome {
                     serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::UnknownShape92db31827db71e5a => {
+            Self::UnknownValue => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -34654,7 +34650,7 @@ impl<'de> Deserialize<'de> for SessionEndEventOutcome {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::UnknownShape92db31827db71e5a);
+            return Ok(Self::UnknownValue);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -46831,7 +46827,7 @@ pub enum SessionEndInputOutcome {
     Completed,
     Cancelled,
     Error,
-    UnknownShape92db31827db71e5a,
+    UnknownValue,
     Unknown(String),
 }
 
@@ -46853,7 +46849,7 @@ impl Serialize for SessionEndInputOutcome {
                     serde_json::from_str("\"error\"").expect("generated enum value is valid JSON");
                 value.serialize(serializer)
             }
-            Self::UnknownShape92db31827db71e5a => {
+            Self::UnknownValue => {
                 let value: JsonValue = serde_json::from_str("\"unknown\"")
                     .expect("generated enum value is valid JSON");
                 value.serialize(serializer)
@@ -46888,7 +46884,7 @@ impl<'de> Deserialize<'de> for SessionEndInputOutcome {
             &value,
             &serde_json::from_str("\"unknown\"").expect("generated enum value is valid JSON"),
         ) {
-            return Ok(Self::UnknownShape92db31827db71e5a);
+            return Ok(Self::UnknownValue);
         }
         if let Some(value) = value.as_str() {
             return Ok(Self::Unknown(value.to_owned()));
@@ -51202,13 +51198,10 @@ pub mod event {
         ExecutionEventExecutionSkippedSuppliedResultStatus, ExecutionEventExecutionSkippedTimeout,
         ExecutionEventExecutionSkippedTimeoutReason, ExecutionEventExecutionSkippedTimeoutStatus,
         ExecutionEventFilechange, ExecutionEventFilechangeChange, ExecutionEventMcp,
-        ExecutionEventMcpConnection,
-        ExecutionEventMcpConnectionAddressFormObjectOrGapsObjectAndAddressObjectOrGapsObjectAndTransportObject,
-        ExecutionEventMcpConnectionArgsObjectOrGapsObjectAndCommandObjectOrGapsObjectAndCwdObjectOrGapsObjectAndTransportObject,
-        ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape03cf6907d766aa03,
-        ExecutionEventMcpConnectionGapsObjectOrUrlObjectAndTransportObjectShape947e67f4c644f1e8,
-        ExecutionEventMcpProvenance, ExecutionEventMcpServer, ExecutionEventModel,
-        ExecutionEventModelError, ExecutionEventModelErrorExecution,
+        ExecutionEventMcpConnection, ExecutionEventMcpConnectionCustomTransport,
+        ExecutionEventMcpConnectionHttp, ExecutionEventMcpConnectionSse,
+        ExecutionEventMcpConnectionStdio, ExecutionEventMcpProvenance, ExecutionEventMcpServer,
+        ExecutionEventModel, ExecutionEventModelError, ExecutionEventModelErrorExecution,
         ExecutionEventModelErrorGapsItem, ExecutionEventModelErrorTurn,
         ExecutionEventModelErrorType, ExecutionEventModelRequestBefore,
         ExecutionEventModelRequestBeforeGapsItem, ExecutionEventModelRequestBeforeParams,
