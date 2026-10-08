@@ -211,7 +211,7 @@ enum DeferredState {
     Pending(Body),
     // Installed before awaiting: both read errors and cancellation are terminal.
     Consumed,
-    Snapshot(serde_json::Value),
+    Snapshot(serde_json::Value, usize),
 }
 
 impl DeferredBodies {
@@ -229,9 +229,7 @@ impl DeferredBodies {
 
     fn handle(&self, index: usize) -> serde_json::Value {
         serde_json::json!({
-            "ref": format!("{DEFERRED_PREFIX}{}:{index}", self.inner.namespace),
-            "size": 0,
-            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "ref": format!("{DEFERRED_PREFIX}{}:{index}", self.inner.namespace)
         })
     }
 
@@ -331,11 +329,8 @@ impl DeferredBodies {
                 .get_mut(&index)
                 .ok_or_else(|| BodyError::Read("unknown deferred body".into()))?;
             match entry {
-                DeferredState::Snapshot(reference) => {
-                    if reference["size"]
-                        .as_u64()
-                        .is_some_and(|size| size > route_max_bytes as u64)
-                    {
+                DeferredState::Snapshot(reference, size) => {
+                    if *size > route_max_bytes {
                         return Err(BodyError::TooLarge {
                             limit: route_max_bytes,
                         });
@@ -377,9 +372,10 @@ impl DeferredBodies {
         if !entries.states.contains_key(&index) {
             return Err(BodyError::Read("deferred body was retired".into()));
         }
-        entries
-            .states
-            .insert(index, DeferredState::Snapshot(reference.clone()));
+        entries.states.insert(
+            index,
+            DeferredState::Snapshot(reference.clone(), bytes.len()),
+        );
         Ok(Some(reference))
     }
 }

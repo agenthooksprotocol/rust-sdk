@@ -2,8 +2,11 @@
 //!
 //! Callers supply a transport and (when needed) an explicit runtime deadline. This
 //! module does not start a runtime, infer event credentials, or follow redirects.
+pub use crate::generated::ContentUploadReceipt;
 pub use crate::generated::content::*;
-use crate::generated::{ParseResult, parse_content_reference_value};
+use crate::generated::{
+    ParseResult, parse_content_reference_value, parse_content_upload_receipt_value,
+};
 use crate::transport::{Http, Request, Response};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -25,6 +28,20 @@ fn descriptor(value: serde_json::Value) -> Result<ContentReference, UploadError>
         _ => Err(UploadError::Descriptor),
     }
 }
+fn receipt(value: serde_json::Value) -> Result<ContentUploadReceipt, UploadError> {
+    crate::canonical::validate("content-upload-receipt", &value)
+        .map_err(|_| UploadError::Descriptor)?;
+    match parse_content_upload_receipt_value(value) {
+        ParseResult::Success { value, .. } => Ok(value),
+        _ => Err(UploadError::Descriptor),
+    }
+}
+impl ContentUploadReceipt {
+    /// Drop upload confirmation metadata when publishing a protocol reference.
+    pub fn reference(&self) -> ContentReference {
+        ContentReference::new(self.ref_.clone())
+    }
+}
 // Generated Integer validates exact integrality and the interoperable safe
 // range before conversion. Thus 3, 3.0 and 3e0 compare equally without changing
 // the descriptor's retained JSON representation or rounding unsafe numbers.
@@ -33,7 +50,7 @@ fn byte_size(number: &serde_json::Number) -> Option<u64> {
     let value = integer.as_number().as_f64()?;
     (value >= 0.0).then_some(value as u64)
 }
-fn matches(reference: &ContentReference, bytes: &[u8]) -> bool {
+fn matches(reference: &ContentUploadReceipt, bytes: &[u8]) -> bool {
     byte_size(reference.size.as_number()) == u64::try_from(bytes.len()).ok()
         && reference.sha256 == digest(bytes)
 }
@@ -137,8 +154,8 @@ impl<'a, H: Http + ?Sized> Uploader<'a, H> {
     }
 
     /// No request is sent until this future is polled. Bytes are neither encoded
-    /// nor truncated. Only a verified receiver-allocated 201 reference is returned.
-    pub async fn upload(&self, bytes: &[u8]) -> Result<ContentReference, UploadError> {
+    /// nor truncated. Only a verified receiver-allocated 201 receipt is returned.
+    pub async fn upload(&self, bytes: &[u8]) -> Result<ContentUploadReceipt, UploadError> {
         if bytes.len() > self.max_bytes {
             return Err(UploadError::TooLarge);
         }
@@ -173,9 +190,8 @@ impl<'a, H: Http + ?Sized> Uploader<'a, H> {
         {
             return Err(UploadError::Descriptor);
         }
-        let reference = descriptor(
-            serde_json::from_slice(&response.body).map_err(|_| UploadError::Descriptor)?,
-        )?;
+        let reference =
+            receipt(serde_json::from_slice(&response.body).map_err(|_| UploadError::Descriptor)?)?;
         if !matches(&reference, bytes) {
             return Err(UploadError::Descriptor);
         }
@@ -260,7 +276,7 @@ impl<A: UploadAuthorizer> UploadReceiver<A> {
             body: serde_json::to_vec(&json!({"error": message})).expect("error serialization"),
         }
     }
-    fn accept(&mut self, request: &Request) -> Result<ContentReference, UploadError> {
+    fn accept(&mut self, request: &Request) -> Result<ContentUploadReceipt, UploadError> {
         let scope = self.authorizer.authorize(request)?;
         // Reject duplicate case-insensitive headers and ambiguous HTTP framing.
         let mut seen = std::collections::BTreeSet::new();
@@ -279,10 +295,13 @@ impl<A: UploadAuthorizer> UploadReceiver<A> {
         {
             return Err(UploadError::Framing);
         }
-        self.store.put(&scope, Arc::from(request.body.as_slice()))
+        let reference = self.store.put(&scope, Arc::from(request.body.as_slice()))?;
+        receipt(
+            json!({"ref": reference.ref_, "size": request.body.len(), "sha256": digest(&request.body)}),
+        )
     }
-    /// Verify availability, scope, exact size and hash before publishing any
-    /// effect or event that refers to this descriptor. Returns immutable bytes.
+    /// Verify availability and scope before publishing any
+    /// effect or event that refers to this reference. Returns immutable bytes.
     pub fn resolve(
         &self,
         scope: &AuthorizedScope,
@@ -298,6 +317,7 @@ impl<A: UploadAuthorizer> UploadReceiver<A> {
 
 /// Runtime-neutral immutable storage. References do not confer authorization.
 /// Implementations must retain published bytes for the lifetime of their users.
+/// Resolution trusts receiver-owned storage, not size/hash claims from events.
 pub trait ContentStore: Send + Sync {
     fn resolve(
         &self,
@@ -354,9 +374,6 @@ impl ContentStore for MemoryContentStore {
             .entries
             .get(&(scope.clone(), reference.ref_.clone()))
             .ok_or(UploadError::Unavailable)?;
-        if !matches(reference, bytes) {
-            return Err(UploadError::Descriptor);
-        }
         Ok(Arc::clone(bytes))
     }
     fn put(
@@ -374,9 +391,7 @@ impl ContentStore for MemoryContentStore {
             return Err(UploadError::Capacity);
         }
         let next = state.next.checked_add(1).ok_or(UploadError::Capacity)?;
-        let reference = descriptor(
-            json!({"ref": format!("content-{next}"), "size": bytes.len(), "sha256": digest(&bytes)}),
-        )?;
+        let reference = descriptor(json!({"ref": format!("content-{next}")}))?;
         state.total += bytes.len();
         state.next = next;
         state
@@ -386,24 +401,19 @@ impl ContentStore for MemoryContentStore {
     }
 }
 impl ContentContext<'_> {
-    /// Validate canonical shape and verify exact bytes even for a host-supplied store.
+    /// Validate canonical shape and resolve bytes from the trusted scoped store.
     pub fn resolve(&self, reference: &serde_json::Value) -> Result<Arc<[u8]>, UploadError> {
         let reference = descriptor(reference.clone())?;
-        let bytes = self.store.resolve(&self.scope, &reference)?;
-        if !matches(&reference, &bytes) {
-            return Err(UploadError::Descriptor);
-        }
-        Ok(bytes)
+        self.store.resolve(&self.scope, &reference)
     }
     /// A descriptor is publishable only after both the write and read verify.
     pub fn put(&self, bytes: &[u8]) -> Result<serde_json::Value, UploadError> {
         let reference = self.store.put(&self.scope, Arc::from(bytes))?;
         let value = serde_json::to_value(&reference).map_err(|_| UploadError::Descriptor)?;
-        let reference = descriptor(value.clone())?;
-        if !matches(&reference, bytes) {
+        descriptor(value.clone())?;
+        if self.resolve(&value)?.as_ref() != bytes {
             return Err(UploadError::Descriptor);
         }
-        self.resolve(&value)?;
         Ok(value)
     }
     /// Metadata and omitted views never trigger reads. Body gaps fail closed.
@@ -417,32 +427,22 @@ impl ContentContext<'_> {
                 if item.get("gap").is_some() {
                     return Err(UploadError::Unavailable);
                 }
-                let reference = item.get("body").ok_or(UploadError::Unavailable)?;
-                let bytes = self.resolve(reference)?;
-                if item.get("size").is_some_and(|size| {
-                    size.as_number().and_then(byte_size) != u64::try_from(bytes.len()).ok()
-                }) || item
-                    .get("sha256")
-                    .is_some_and(|hash| hash.as_str() != Some(digest(&bytes).as_str()))
-                {
+                if item.get("size").is_some() || item.get("sha256").is_some() {
                     return Err(UploadError::Descriptor);
                 }
+                let reference = item.get("body").ok_or(UploadError::Unavailable)?;
+                let bytes = self.resolve(reference)?;
                 Ok(Some(bytes))
             }
             _ => Err(UploadError::Descriptor),
         }
     }
-    /// Apply a caller-selected bound before fetching and after verification.
+    /// Apply a caller-selected bound to the resolved stored bytes.
     pub fn resolve_limited(
         &self,
         reference: &serde_json::Value,
         max_bytes: usize,
     ) -> Result<Arc<[u8]>, UploadError> {
-        let parsed = descriptor(reference.clone())?;
-        let size = byte_size(parsed.size.as_number()).ok_or(UploadError::Descriptor)?;
-        if size > max_bytes as u64 {
-            return Err(UploadError::TooLarge);
-        }
         let bytes = self.resolve(reference)?;
         if bytes.len() > max_bytes {
             return Err(UploadError::TooLarge);
@@ -468,7 +468,7 @@ impl ContentContext<'_> {
             .map_err(|_| UploadError::Descriptor)
     }
     /// Stage a new immutable body without changing the caller's item. Logical
-    /// identity, role, and view metadata are retained; size/hash describe the new bytes.
+    /// identity, role, and view metadata are retained; bodies contain only a reference.
     pub fn rewrite_body(
         &self,
         item: &serde_json::Value,
@@ -482,8 +482,8 @@ impl ContentContext<'_> {
         let mut staged = item.clone();
         let object = staged.as_object_mut().ok_or(UploadError::Descriptor)?;
         object.remove("gap");
-        object.insert("size".into(), reference["size"].clone());
-        object.insert("sha256".into(), reference["sha256"].clone());
+        object.remove("size");
+        object.remove("sha256");
         object.insert("body".into(), reference);
         Ok(staged)
     }

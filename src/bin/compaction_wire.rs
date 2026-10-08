@@ -2,8 +2,9 @@
 use agenthooksprotocol::{
     client::{Hook, HookError, LocalFuture},
     content::{
-        AuthorizedScope, ContentContext, ContentReference, ContentStore, MemoryContentStore,
-        UploadAuthorizer, UploadCredential, UploadError, UploadReceiver, Uploader,
+        AuthorizedScope, ContentContext, ContentReference, ContentStore, ContentUploadReceipt,
+        MemoryContentStore, UploadAuthorizer, UploadCredential, UploadError, UploadReceiver,
+        Uploader,
     },
     interop::Schemas,
     transport::{Http, Request as HttpRequest, Response as HttpResponse, TransportError},
@@ -223,7 +224,7 @@ fn mirror_successful_upload<A: UploadAuthorizer>(
         return Ok(());
     }
     // Cross-process stdio readers need confirmed bytes, never another allocator.
-    let reference: ContentReference = serde_json::from_slice(&response.body)?;
+    let reference = serde_json::from_slice::<ContentUploadReceipt>(&response.body)?.reference();
     let bytes = uploads.resolve(scope, &reference)?;
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -253,7 +254,7 @@ async fn item(
     )?;
     let http = BlockingUploadHttp(client);
     let uploader = Uploader::new(&http, endpoint, MAX_UPLOAD, Some(credential), true)?;
-    let descriptor = uploader.upload(text.as_bytes()).await?;
+    let descriptor = uploader.upload(text.as_bytes()).await?.reference();
     Ok(json!({
         "id": id,
         "kind": kind,
@@ -747,8 +748,8 @@ mod upload_tests {
             [first, second]
         });
         let references = receiver.join().unwrap();
-        assert_eq!(items[0]["body"], references[0]);
-        assert_eq!(items[1]["body"], references[1]);
+        assert_eq!(items[0]["body"], json!({"ref": references[0]["ref"]}));
+        assert_eq!(items[1]["body"], json!({"ref": references[1]["ref"]}));
         assert_ne!(items[0]["body"]["ref"], items[1]["body"]["ref"]);
         assert_eq!(items[0]["id"], items[1]["id"]);
     }
@@ -813,7 +814,9 @@ mod upload_tests {
         assert_eq!(fs::read_dir(root).unwrap().count(), 0);
         let accepted = receiver.handle(make_request("upload-token"));
         assert_eq!(accepted.status, 201);
-        let reference: ContentReference = serde_json::from_slice(&accepted.body).unwrap();
+        let reference = serde_json::from_slice::<ContentUploadReceipt>(&accepted.body)
+            .unwrap()
+            .reference();
         mirror_successful_upload(&receiver, &scope, &accepted, root, "scope").unwrap();
         assert_eq!(
             fs::read(location(root, "scope", &reference.ref_)).unwrap(),

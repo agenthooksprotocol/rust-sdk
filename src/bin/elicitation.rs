@@ -52,7 +52,7 @@ impl agenthooksprotocol::content::ContentStore for HostStore {
             return Err(agenthooksprotocol::content::UploadError::Capacity);
         }
         entries.insert(name.clone(), bytes.to_vec());
-        serde_json::from_value(json!({"ref":name,"size":bytes.len(),"sha256":digest}))
+        serde_json::from_value(json!({"ref":name}))
             .map_err(|_| agenthooksprotocol::content::UploadError::Descriptor)
     }
 }

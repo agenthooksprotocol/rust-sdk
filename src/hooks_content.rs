@@ -545,12 +545,6 @@ async fn project_inner(
         {
             item["body"] = reference;
         }
-        if item["body"]["size"]
-            .as_u64()
-            .is_some_and(|n| n > max_bytes as u64)
-        {
-            return Err(error("upload exceeds maxBytes"));
-        }
         let bytes = content
             .resolve_selected(item)
             .map_err(error)?
@@ -599,14 +593,14 @@ async fn project_inner(
             let result = uploader.upload(&bytes).await;
             remaining_upload_budget(deadline)?;
             let reference = result.map_err(error)?;
-            let reference = serde_json::to_value(reference).map_err(error)?;
+            let reference = serde_json::to_value(reference.reference()).map_err(error)?;
             let item = event
                 .pointer_mut(&path)
                 .ok_or_else(|| error("missing content item"))?;
             for field in ["size", "sha256"] {
-                if item.get(field).is_some() {
-                    item[field] = reference[field].clone();
-                }
+                item.as_object_mut()
+                    .ok_or_else(|| error("invalid content item"))?
+                    .remove(field);
             }
             item["body"] = reference;
         }
@@ -655,8 +649,7 @@ mod tests {
     }
     fn item() -> Value {
         json!({"id":"one","kind":"text","mediaType":"text/plain","role":"assistant",
-            "selection":"body","body":{"ref":"host-only","size":3,"sha256":"0".repeat(64)},
-            "size":3,"sha256":"0".repeat(64)})
+            "selection":"body","body":{"ref":"host-only"}})
     }
     fn context() -> ContentContext<'static> {
         ContentContext {
@@ -884,7 +877,7 @@ mod tests {
                 assert_eq!(projected["selection"], mode);
                 assert!(projected.get("body").is_none());
                 assert_eq!(projected["id"], "one");
-                assert_eq!(projected["size"], 3);
+                assert!(projected.get("size").is_none());
                 crate::canonical::validate("content-item", projected).unwrap();
             }
             assert_eq!(

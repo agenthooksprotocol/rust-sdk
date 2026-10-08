@@ -539,8 +539,8 @@ pub fn stage_boundary(
             if result_stage {
                 let item = &mut event["elicitation"]["result"];
                 for hint in ["size", "sha256"] {
-                    if item.get(hint).is_some() {
-                        item[hint] = reference[hint].clone();
+                    if let Some(item) = item.as_object_mut() {
+                        item.remove(hint);
                     }
                 }
                 item["body"] = reference;

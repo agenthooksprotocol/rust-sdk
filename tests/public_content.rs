@@ -45,7 +45,12 @@ fn exact_binary_bytes_scoped_immutable_and_receiver_allocated() {
     )
     .unwrap();
     let bytes = [0, 255, 13, 10, 128];
-    let reference = block_on(uploader.upload(&bytes)).unwrap();
+    let receipt = block_on(uploader.upload(&bytes)).unwrap();
+    let reference = receipt.reference();
+    assert_eq!(
+        serde_json::to_value(&reference).unwrap(),
+        json!({"ref": receipt.ref_})
+    );
     let retained = local
         .0
         .lock()
@@ -62,14 +67,14 @@ fn exact_binary_bytes_scoped_immutable_and_receiver_allocated() {
         Err(UploadError::Unavailable)
     ));
     let mut tampered = reference.clone();
-    tampered.sha256 = "a".repeat(64);
+    tampered.ref_ = "unknown".into();
     assert!(matches!(
         local
             .0
             .lock()
             .unwrap()
             .resolve(&AuthorizedScope::new("tenant-a"), &tampered),
-        Err(UploadError::Descriptor)
+        Err(UploadError::Unavailable)
     ));
     let second = block_on(uploader.upload(b"changed")).unwrap();
     assert_ne!(reference.ref_, second.ref_);
@@ -143,6 +148,9 @@ fn all_statuses_and_descriptors_must_confirm_exact_bytes() {
         json!({"ref":"x","size":3,"sha256":"a".repeat(64)}),
         json!({"ref":"x","size":4,"sha256":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}),
         json!({"ref":"x","size":3}),
+        json!({"ref":"x"}),
+        json!({"ref":"x","size":null,"sha256":"a".repeat(64)}),
+        json!({"ref":"x","size":3,"sha256":null}),
     ] {
         let http = Fixed(Response {
             status: 201,

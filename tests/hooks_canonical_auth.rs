@@ -160,7 +160,7 @@ mod runtime {
         assert_eq!(backend.0.lock().unwrap().len(), 1);
         assert_eq!(
             backend.0.lock().unwrap()[0]["params"]["event"]["items"][0]["body"],
-            descriptor
+            json!({"ref": descriptor["ref"]})
         );
         hooks.shutdown().await.unwrap();
     }

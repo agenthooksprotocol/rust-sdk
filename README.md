@@ -337,14 +337,17 @@ supply deadlines.
 `content::Uploader` sends exact raw bytes to an explicitly configured endpoint.
 Upload credentials are supplied independently through `UploadCredential`, never
 inherited from event credentials. HTTPS is required except explicitly enabled
-loopback tests. Only a canonical HTTP 201 JSON descriptor whose size and SHA-256
-match the exact bytes can be published. Redirects are not followed by the supplied
+loopback tests. A canonical HTTP 201 `ContentUploadReceipt` confirms the exact
+size and SHA-256 of the sent bytes. Call `receipt.reference()` to publish only
+`{ "ref": "receiver-allocated-id" }` in a body or effect; upload confirmation
+metadata must not appear in event references or body-selected outer items. Redirects are not followed by the supplied
 Reqwest adapter; custom transports must preserve that policy.
 
 `content::UploadReceiver` authorizes a credential-derived scope before allocating
 an opaque immutable reference. It bounds transfer size, total retained bytes, and
-entry count, and resolves descriptors only within that scope after exact size/hash
-verification. The application owns storage lifetime and must retain confirmed bytes
+entry count, and resolves references only within that scope from trusted stored
+bytes, without event-supplied size/hash metadata. `ContentContext::put` returns a
+ref-only JSON value after an exact-byte readback check. The application owns storage lifetime and must retain confirmed bytes
 through dependent event processing. It must resolve all referenced content before
 publishing effects. The in-memory receiver is not durable storage or a retrieval
 protocol. Upload deadlines must be enforced by the explicitly selected runtime or

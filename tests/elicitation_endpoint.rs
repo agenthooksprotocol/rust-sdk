@@ -115,7 +115,6 @@ fn upload_authorization_never_inherits_the_event_token() {
 fn check_summaries_use_modified_effective_result_not_preflight_answer() {
     use base64::{Engine, engine::general_purpose::STANDARD};
     use serde_json::json;
-    use sha2::{Digest, Sha256};
     use std::io::Write;
 
     let payload = json!({"message":"Answer","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}});
@@ -124,8 +123,7 @@ fn check_summaries_use_modified_effective_result_not_preflight_answer() {
     let mut uploads = vec![];
     let mut make = |stage: &str, body: &Value| {
         let bytes = serde_json::to_vec(body).unwrap();
-        let reference =
-            json!({"ref":stage,"size":bytes.len(),"sha256":format!("{:x}",Sha256::digest(&bytes))});
+        let reference = json!({"ref":stage});
         uploads.push(json!({"ref":stage,"bytes":STANDARD.encode(&bytes)}));
         let mut meta = json!({"server":"server","mode":"form"});
         meta[stage] = json!({"id":format!("{stage}-item"),"kind":format!("elicitation.{stage}"),"mediaType":"application/json","selection":"body","body":reference});

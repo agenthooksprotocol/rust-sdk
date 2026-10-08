@@ -131,3 +131,93 @@ mod tests {
         assert!(schema("capabilities").unwrap().is_object());
     }
 }
+
+#[cfg(test)]
+mod content_reference_tests {
+    use super::*;
+    use crate::generated::{
+        ParseResult, parse_content_item_value, parse_content_reference_value,
+        parse_intercept_request_value, parse_observe_notification_value,
+    };
+
+    #[test]
+    fn ref_only_bodies_and_disclosure_views_have_distinct_boundaries() {
+        let reference = json!({"ref":"stored"});
+        validate("content-reference", &reference).unwrap();
+        assert!(matches!(
+            parse_content_reference_value(reference.clone()),
+            ParseResult::Success { .. }
+        ));
+        let body = json!({"id":"item", "kind":"text", "mediaType":"text/plain", "selection":"body", "body":reference});
+        validate("content-item", &body).unwrap();
+        assert!(matches!(
+            parse_content_item_value(body.clone()),
+            ParseResult::Success { .. }
+        ));
+        for (key, value) in [
+            ("size", json!(3)),
+            ("sha256", json!("0".repeat(64))),
+            ("size", Value::Null),
+            ("sha256", Value::Null),
+        ] {
+            let mut legacy_ref = reference.clone();
+            legacy_ref[key] = value.clone();
+            assert!(validate("content-reference", &legacy_ref).is_err());
+            assert!(!matches!(
+                parse_content_reference_value(legacy_ref),
+                ParseResult::Success { .. }
+            ));
+            for nested in [true, false] {
+                let mut legacy_item = body.clone();
+                if nested {
+                    legacy_item["body"][key] = value.clone();
+                } else {
+                    legacy_item[key] = value.clone();
+                }
+                assert!(validate("content-item", &legacy_item).is_err());
+                assert!(!matches!(
+                    parse_content_item_value(legacy_item.clone()),
+                    ParseResult::Success { .. }
+                ));
+                let event = json!({"id":"event", "source":"urn:test", "time":"2026-09-01T00:00:00Z", "type":"tool.before", "path":"native", "call":{"id":"call"}, "tool":{"name":"read", "origin":"native", "input":{}}, "items":[legacy_item]});
+                let intercept = json!({"jsonrpc":"2.0", "id":"rpc", "method":"hooks/intercept", "params":{"protocolVersion":"draft", "capabilities":{"effects":[]}, "event":event}});
+                let observe = json!({"jsonrpc":"2.0", "method":"hooks/observe", "params":{"protocolVersion":"draft", "event":event}});
+                assert!(validate("intercept-request", &intercept).is_err());
+                assert!(!matches!(
+                    parse_intercept_request_value(intercept),
+                    ParseResult::Success { .. }
+                ));
+                assert!(validate("observe-notification", &observe).is_err());
+                assert!(!matches!(
+                    parse_observe_notification_value(observe),
+                    ParseResult::Success { .. }
+                ));
+            }
+            if value.is_null() {
+                continue;
+            }
+            let mut metadata = body.clone();
+            metadata.as_object_mut().unwrap().remove("body");
+            metadata["selection"] = json!("metadata");
+            metadata[key] = value;
+            validate("content-item", &metadata).unwrap();
+            assert!(matches!(
+                parse_content_item_value(metadata),
+                ParseResult::Success { .. }
+            ));
+            let mut gap = body.clone();
+            gap.as_object_mut().unwrap().remove("body");
+            gap["gap"] = json!({"reason":"unavailable"});
+            gap[key] = if key == "size" {
+                json!(3)
+            } else {
+                json!("0".repeat(64))
+            };
+            validate("content-item", &gap).unwrap();
+            assert!(matches!(
+                parse_content_item_value(gap),
+                ParseResult::Success { .. }
+            ));
+        }
+    }
+}

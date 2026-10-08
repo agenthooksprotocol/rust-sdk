@@ -427,11 +427,9 @@ pub fn stage_boundary(
             let item = &mut event[target];
             item["body"] = descriptor.clone();
             // Preserve optional presence; integrity hints track final bytes.
-            if item.get("size").is_some() {
-                item["size"] = descriptor["size"].clone();
-            }
-            if item.get("sha256").is_some() {
-                item["sha256"] = descriptor["sha256"].clone();
+            if let Some(item) = item.as_object_mut() {
+                item.remove("size");
+                item.remove("sha256");
             }
         }
     }

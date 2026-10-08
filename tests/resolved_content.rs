@@ -78,7 +78,7 @@ impl ContentStore for Host {
     }
 }
 #[test]
-fn host_store_is_not_authoritative_for_digests() {
+fn writes_verify_readback_but_resolution_trusts_the_scoped_store() {
     for (lie_read, lie_write) in [(true, false), (false, true)] {
         let host = Host {
             reads: Mutex::new(0),
@@ -97,8 +97,11 @@ fn host_store_is_not_authoritative_for_digests() {
             .unwrap();
         if lie_read {
             assert_eq!(
-                context.resolve(&serde_json::to_value(reference).unwrap()),
-                Err(UploadError::Descriptor)
+                context
+                    .resolve(&serde_json::to_value(reference).unwrap())
+                    .unwrap()
+                    .as_ref(),
+                b"evil"
             );
         }
     }
@@ -177,8 +180,8 @@ fn rewrites_preserve_metadata_and_staged_failure_does_not_publish() {
     ] {
         assert_eq!(rewritten[key], original[key]);
     }
-    assert_eq!(rewritten["size"], rewritten["body"]["size"]);
-    assert_eq!(rewritten["sha256"], rewritten["body"]["sha256"]);
+    assert!(rewritten.get("size").is_none());
+    assert!(rewritten.get("sha256").is_none());
     assert_eq!(
         &*context.resolve_selected(&rewritten).unwrap().unwrap(),
         b"new"
@@ -199,39 +202,29 @@ fn rewrites_preserve_metadata_and_staged_failure_does_not_publish() {
 }
 
 #[test]
-fn integral_numeric_spellings_verify_without_rewriting_descriptors() {
+fn references_reject_deprecated_metadata_and_limits_use_stored_bytes() {
     let store = MemoryContentStore::new(128, 512, 8);
     let context = ContentContext {
         store: &store,
         scope: AuthorizedScope::new("a"),
     };
     let original = context.put(b"abc").unwrap();
-    for spelling in ["3", "3.0", "3e0", "30e-1"] {
-        let size: Value = serde_json::from_str(spelling).unwrap();
+    assert_eq!(original.as_object().unwrap().len(), 1);
+    assert_eq!(context.resolve_text(&original, 3).unwrap(), "abc");
+    assert_eq!(
+        context.resolve_limited(&original, 2),
+        Err(UploadError::TooLarge)
+    );
+    for (field, value) in [
+        ("size", json!(3)),
+        ("size", json!(3.0)),
+        ("sha256", json!("0".repeat(64))),
+    ] {
         let mut reference = original.clone();
-        reference["size"] = size.clone();
-        let retained = reference.clone();
-        assert_eq!(&*context.resolve(&reference).unwrap(), b"abc");
-        assert_eq!(context.resolve_text(&reference, 3).unwrap(), "abc");
-        assert_eq!(
-            context.resolve_limited(&reference, 2),
-            Err(UploadError::TooLarge)
-        );
-        let mut selected = item(reference.clone());
-        selected["size"] = size;
-        assert_eq!(
-            &*context.resolve_selected(&selected).unwrap().unwrap(),
-            b"abc"
-        );
-        assert_eq!(reference, retained);
-    }
-    for spelling in ["3.1", "-3", "9007199254740992", "3.0000000000000001"] {
-        let size: Value = serde_json::from_str(spelling).unwrap();
-        let mut reference = original.clone();
-        reference["size"] = size.clone();
+        reference[field] = value.clone();
         assert_eq!(context.resolve(&reference), Err(UploadError::Descriptor));
         let mut selected = item(original.clone());
-        selected["size"] = size;
+        selected[field] = value;
         assert_eq!(
             context.resolve_selected(&selected),
             Err(UploadError::Descriptor)

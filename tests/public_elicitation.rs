@@ -213,14 +213,11 @@ fn outer_integrity_hints_are_verified_and_renewed_after_modify() {
         "result",
         &json!({"action":"accept","content":{"answer":"yes"}}),
     );
-    let item = &mut result["params"]["event"]["elicitation"]["result"];
-    item["size"] = item["body"]["size"].clone();
-    item["sha256"] = item["body"]["sha256"].clone();
     let modify = json!({"type":"modify","target":"content","operation":"replace","value":{"answer":"a much longer replacement"}});
     let staged = stage_boundary(&result, &[modify], &context, Some(&exchange)).unwrap();
     let item = &staged["event"]["elicitation"]["result"];
-    assert_eq!(item["size"], item["body"]["size"]);
-    assert_eq!(item["sha256"], item["body"]["sha256"]);
+    assert!(item.get("size").is_none());
+    assert!(item.get("sha256").is_none());
     assert!(context.resolve_selected(item).unwrap().is_some());
     result["params"]["event"]["elicitation"]["result"]["sha256"] = json!("0".repeat(64));
     assert!(stage_boundary(&result, &[], &context, Some(&exchange)).is_err());
@@ -291,8 +288,6 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
     let reference = context.put(bytes).unwrap();
     let item = &mut result["params"]["event"]["elicitation"]["result"];
     item["body"] = reference.clone();
-    item["size"] = reference["size"].clone();
-    item["sha256"] = reference["sha256"].clone();
     let before = store.puts.load(Ordering::Relaxed);
     let replace =
         json!({"type":"modify","target":"content","operation":"replace","value":{"answer":"yes"}});
