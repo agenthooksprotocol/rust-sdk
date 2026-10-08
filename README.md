@@ -289,8 +289,10 @@ let bytes = result.content.resolve(
 `EventOutcome::content` and `ToolOutcome::content` are read-only, result-owned
 payloads, not a reference to the invocation store. Keep that owner when retaining
 canonical references, or resolve the bytes before discarding the result. Only
-payloads referenced by returned values are retained; overwritten intermediate
-bodies are released. Result-owned bytes are application data, not active staging
+payloads in schema-owned content slots or explicitly declared content targets are
+retained; overwritten intermediate bodies are released. Reference-shaped objects
+in opaque native metadata, tool arguments, return candidates, and injection
+values do not retain backing bytes. Their JSON values are preserved unchanged. Result-owned bytes are application data, not active staging
 allocations. Applications that retain many results must bound their own history.
 
 Observation preparation resolves selected bodies and confirms uploads before

@@ -30,7 +30,7 @@ fn category(item: &Value) -> &str {
 }
 
 // These are protocol locations, not a recursive search for objects resembling items.
-fn locations(event: &Value) -> Vec<String> {
+pub(crate) fn locations(event: &Value) -> Vec<String> {
     let mut paths = Vec::new();
     let mut array = |path: &str| {
         if let Some(items) = event.pointer(path).and_then(Value::as_array) {

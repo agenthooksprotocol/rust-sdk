@@ -1265,7 +1265,7 @@ impl<'a, T> EventBoundary<'a, T> {
     }
 }
 pub struct EventOutcome<T> {
-    /// Payloads referenced by returned values, independent of invocation storage.
+    /// Payloads in schema-owned event slots and explicitly declared content targets.
     pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
     pub outcome: ProtocolOutcome,
@@ -1331,8 +1331,8 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 if let Some(exchange) = self.settings.exchange {
                     boundary = boundary.elicitation_exchange(exchange);
                 }
-                for (target, pointer) in self.settings.targets {
-                    boundary = boundary.content_target(target, pointer);
+                for (target, pointer) in &self.settings.targets {
+                    boundary = boundary.content_target(target.clone(), pointer.clone());
                 }
                 let result = boundary.await.map_err(err)?;
                 if self.hooks.life.closing.load(Ordering::SeqCst) {
@@ -1364,7 +1364,8 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     )
                     .await;
                 diagnostics.extend(preparation_diagnostics);
-                let retained = retain_outcome_content(&content, &effective_event, &outcome);
+                let retained =
+                    retain_event_content(&content, &effective_event, &self.settings.targets);
                 drop(client);
                 drop(content);
                 drop(_sources);
@@ -1405,7 +1406,8 @@ impl<'a, T> ToolBoundary<'a, T> {
     }
 }
 pub struct ToolOutcome<T> {
-    /// Payloads referenced by returned values, independent of invocation storage.
+    /// Schema-owned returned payloads. Opaque application input, candidates, and
+    /// effect values do not confer ownership of reference-shaped data.
     pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
     pub outcome: ProtocolOutcome,
@@ -1508,7 +1510,9 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                     )
                     .await;
                 diagnostics.extend(preparation_diagnostics);
-                let retained = retain_outcome_content(&content, &effective_input, &outcome);
+                // Application input and return/injection values are opaque JSON, not
+                // event envelopes or schema-owned content-reference locations.
+                let retained = content.retain(&[]);
                 drop(client);
                 drop(content);
                 drop(_sources);
@@ -1591,15 +1595,20 @@ fn bounded<'a, T: Send + 'a>(
     }))
 }
 
-fn retain_outcome_content(
+fn retain_event_content(
     content: &ContentScope,
     effective: &Value,
-    outcome: &ProtocolOutcome,
+    targets: &BTreeMap<String, String>,
 ) -> OwnedContent {
-    let mut values = vec![effective];
-    values.extend(outcome.candidate.iter());
-    values.extend(outcome.messages.iter());
-    values.extend(outcome.injections.iter());
-    values.extend(outcome.responses.iter());
-    content.retain(&values)
+    let mut paths = crate::hooks_content::locations(effective);
+    paths.extend(targets.values().cloned());
+    let references: Vec<_> = paths
+        .iter()
+        .filter_map(|path| effective.pointer(path))
+        .filter(|item| item["selection"] == "body" && item.get("gap").is_none())
+        .filter_map(|item| item.get("body"))
+        .collect();
+    // Message effects contain text; injection and candidate values are opaque.
+    // Accepted responses do not declare additional content-reference slots.
+    content.retain(&references)
 }

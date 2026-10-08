@@ -596,45 +596,33 @@ impl ContentScope {
     pub fn resolve(&self, reference: &serde_json::Value) -> Result<Arc<[u8]>, UploadError> {
         self.context().resolve(reference)
     }
-    pub(crate) fn retain(&self, values: &[&serde_json::Value]) -> OwnedContent {
+    pub(crate) fn retain(&self, references: &[&serde_json::Value]) -> OwnedContent {
         let mut result = OwnedContent {
             scope: self.scope.clone(),
             entries: BTreeMap::new(),
         };
-        for value in values {
-            result.collect(value, &self.context());
+        for reference in references {
+            result.collect_reference(reference, &self.context());
         }
         result
     }
 }
 
 /// Immutable result-owned payloads, independent of the invocation store and its
-/// active staging budget. Only references present in returned values are kept.
+/// active staging budget. Only schema-owned content slots and explicitly bound
+/// content targets retain payloads; reference-shaped opaque JSON does not.
 #[derive(Clone)]
 pub struct OwnedContent {
     scope: AuthorizedScope,
     entries: BTreeMap<String, Arc<[u8]>>,
 }
 impl OwnedContent {
-    fn collect(&mut self, value: &serde_json::Value, context: &ContentContext<'_>) {
-        match value {
-            serde_json::Value::Object(object) => {
-                if let Ok(reference) = descriptor(value.clone()) {
-                    if let Ok(bytes) = context.resolve(value) {
-                        self.entries.insert(reference.ref_, bytes);
-                    }
-                } else {
-                    for value in object.values() {
-                        self.collect(value, context);
-                    }
-                }
-            }
-            serde_json::Value::Array(values) => {
-                for value in values {
-                    self.collect(value, context);
-                }
-            }
-            _ => {}
+    // Callers supply exact schema-owned reference slots, never opaque JSON roots.
+    fn collect_reference(&mut self, value: &serde_json::Value, context: &ContentContext<'_>) {
+        if let Ok(reference) = descriptor(value.clone())
+            && let Ok(bytes) = context.resolve(value)
+        {
+            self.entries.insert(reference.ref_, bytes);
         }
     }
     pub fn context(&self) -> ContentContext<'_> {

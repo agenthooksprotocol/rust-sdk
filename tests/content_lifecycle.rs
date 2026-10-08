@@ -534,8 +534,10 @@ mod chained_replacements {
             let bytes = scope.resolve(&original).unwrap();
             let original_bytes = Arc::downgrade(&bytes);
             drop(bytes);
+            let mut input = event(original.clone());
+            input["native"] = json!({"opaque": original, "nested": event(original.clone())});
             let result = hooks
-                .event(event(original))
+                .event(input)
                 .content_scope(scope)
                 .content_target("content", "/message/payload/0")
                 .await
@@ -552,8 +554,10 @@ mod chained_replacements {
             );
             assert!(
                 original_bytes.upgrade().is_none(),
-                "result must not retain overwritten originals"
+                "opaque native references must not retain overwritten originals"
             );
+            assert!(result.content.resolve(&original).is_err());
+            assert_eq!(result.effective_event["native"]["opaque"], original);
             outcomes.push(result);
         }
         drop(hooks);
@@ -928,4 +932,111 @@ fn typed_decode_failure_preserves_result_bytes_but_releases_staging() {
         b"original"
     );
     hooks.content_scope().put(b"reusable").unwrap();
+}
+
+#[test]
+fn native_reference_collisions_do_not_pin_unused_bytes_but_message_slots_survive() {
+    let hooks = hooks_with_limits(64, 2);
+    let scope = hooks.content_scope();
+    let unused = scope.put(b"unused").unwrap();
+    let bytes = scope.resolve(&unused).unwrap();
+    let weak = Arc::downgrade(&bytes);
+    drop(bytes);
+    let current = scope.put(b"effective").unwrap();
+    let mut input = event(current.clone());
+    input["native"] = json!({
+        "opaque": unused,
+        "fake_event": event(unused.clone()),
+        "literal": unused["ref"],
+        "candidate": {"value": unused}
+    });
+    let result = futures::executor::block_on(
+        hooks
+            .event(input.clone())
+            .content_scope(scope)
+            .into_future(),
+    )
+    .unwrap();
+    assert_eq!(result.effective_event["native"], input["native"]);
+    assert!(
+        weak.upgrade().is_none(),
+        "opaque values retained unused bytes"
+    );
+    assert!(result.content.resolve(&unused).is_err());
+    drop(hooks);
+    assert_eq!(
+        result.content.resolve(&current).unwrap().as_ref(),
+        b"effective"
+    );
+}
+
+#[test]
+fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
+    struct Effects(Value);
+    impl ManagedBackend for Effects {
+        fn call(&self, request: Value, _: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
+            Box::pin(async move {
+                Ok(json!({"jsonrpc":"2.0", "id":request["id"],
+                "result":{"protocolVersion":"draft","effects":self.0}}))
+            })
+        }
+        fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    // First allocation is deliberately a literal ref collision in all opaque values.
+    let reference = json!({"ref":"content-1"});
+    let opaque = event(reference.clone());
+    let message = json!({"type":"message","text":"literal {\"ref\":\"content-1\"}"});
+    let injection = json!({"type":"inject","target":"context","operation":"append",
+        "deliverAt":"now","value":{"text":"keep this instruction", "opaque":opaque}});
+    let effects = json!([message, injection, {"type":"return","value":opaque}]);
+    let caps = Capabilities::from_value(json!({"effects":["message","inject","return"],
+        "inject":{"context":{"append":true,"deliverAt":["now"]}}}))
+    .unwrap();
+    let mut options = HooksOptions::new(
+        "urn:test:content-lifecycle",
+        BTreeMap::from([("tool.before".into(), EventGrant::intercept(caps))]),
+    );
+    options.max_stored_entries = 1;
+    let mut registration = registration();
+    registration["hooks"][0]["subscriptions"][0]["events"] = json!(["tool.before"]);
+    let hooks = Hooks::new(
+        registration,
+        options.with_backend("org.example.lifecycle", Arc::new(Effects(effects))),
+    )
+    .unwrap();
+    let scope = hooks.content_scope();
+    assert_eq!(scope.put(b"must not be pinned").unwrap(), reference);
+    let bytes = scope.resolve(&reference).unwrap();
+    let weak = Arc::downgrade(&bytes);
+    drop(bytes);
+    let context = agenthooksprotocol::client::ToolContext::new(json!({
+        "tool":{"name":"shell","kind":"shell","origin":"native"},
+        "call":{"id":"call-1"},"path":"native","native":{"copied":reference}
+    }));
+    let result = futures::executor::block_on(
+        hooks
+            .tool_input(opaque.clone())
+            .context(context)
+            .content_scope(scope)
+            .into_future(),
+    )
+    .unwrap();
+    assert!(
+        result.outcome.failures.is_empty(),
+        "{:?}",
+        result.outcome.failures
+    );
+    assert_eq!(result.effective_input, opaque);
+    assert_eq!(result.outcome.candidate, Some(opaque));
+    assert_eq!(result.outcome.messages, vec![message]);
+    assert_eq!(result.outcome.injections, vec![injection]);
+    assert!(!result.outcome.responses.is_empty());
+    assert!(
+        weak.upgrade().is_none(),
+        "opaque input/effects retained staged bytes"
+    );
+    assert!(result.content.resolve(&reference).is_err());
+    hooks.content_scope().put(b"reused").unwrap();
 }
