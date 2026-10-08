@@ -345,9 +345,30 @@ pub struct MemoryContentStore {
     max_upload: usize,
     max_total: usize,
     max_entries: usize,
+    owner: Option<Arc<StoreOwner>>,
+}
+struct StoreOwner {
+    state: Arc<std::sync::Mutex<MemoryState>>,
+    keys: std::sync::Mutex<Vec<(AuthorizedScope, String)>>,
+}
+impl Drop for StoreOwner {
+    fn drop(&mut self) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        for key in self
+            .keys
+            .get_mut()
+            .unwrap_or_else(|e| e.into_inner())
+            .drain(..)
+        {
+            if let Some(bytes) = state.entries.remove(&key) {
+                state.total -= bytes.len();
+            }
+        }
+    }
 }
 #[derive(Default)]
 struct MemoryState {
+    closed: bool,
     total: usize,
     next: u64,
     entries: BTreeMap<(AuthorizedScope, String), Arc<[u8]>>,
@@ -356,10 +377,33 @@ impl MemoryContentStore {
     pub fn new(max_upload: usize, max_total: usize, max_entries: usize) -> Self {
         Self {
             state: Arc::new(std::sync::Mutex::new(MemoryState::default())),
+            owner: None,
             max_upload,
             max_total,
             max_entries,
         }
+    }
+}
+impl MemoryContentStore {
+    /// Create an allocation owner sharing the exact same active-capacity budget.
+    pub(crate) fn scoped(&self) -> Self {
+        Self {
+            owner: Some(Arc::new(StoreOwner {
+                state: Arc::clone(&self.state),
+                keys: Default::default(),
+            })),
+            ..self.clone()
+        }
+    }
+    /// Terminal host shutdown, never eviction or an invocation cleanup strategy.
+    pub(crate) fn close(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.closed = true;
+        state.entries.clear();
+        state.total = 0;
+    }
+    pub(crate) fn shares_budget(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.state, &other.state)
     }
 }
 impl ContentStore for MemoryContentStore {
@@ -370,6 +414,12 @@ impl ContentStore for MemoryContentStore {
     ) -> Result<Arc<[u8]>, UploadError> {
         descriptor(serde_json::to_value(reference).map_err(|_| UploadError::Descriptor)?)?;
         let state = self.state.lock().map_err(|_| UploadError::Unavailable)?;
+        if let Some(owner) = &self.owner {
+            let keys = owner.keys.lock().map_err(|_| UploadError::Unavailable)?;
+            if !keys.contains(&(scope.clone(), reference.ref_.clone())) {
+                return Err(UploadError::Unavailable);
+            }
+        }
         let bytes = state
             .entries
             .get(&(scope.clone(), reference.ref_.clone()))
@@ -385,6 +435,9 @@ impl ContentStore for MemoryContentStore {
             return Err(UploadError::TooLarge);
         }
         let mut state = self.state.lock().map_err(|_| UploadError::Unavailable)?;
+        if state.closed {
+            return Err(UploadError::Unavailable);
+        }
         if state.entries.len() >= self.max_entries
             || bytes.len() > self.max_total.saturating_sub(state.total)
         {
@@ -392,6 +445,13 @@ impl ContentStore for MemoryContentStore {
         }
         let next = state.next.checked_add(1).ok_or(UploadError::Capacity)?;
         let reference = descriptor(json!({"ref": format!("content-{next}")}))?;
+        if let Some(owner) = &self.owner {
+            owner
+                .keys
+                .lock()
+                .map_err(|_| UploadError::Unavailable)?
+                .push((scope.clone(), reference.ref_.clone()));
+        }
         state.total += bytes.len();
         state.next = next;
         state
@@ -497,5 +557,135 @@ impl ContentContext<'_> {
             .iter()
             .map(|(item, bytes)| self.rewrite_body(item, bytes))
             .collect()
+    }
+}
+
+/// Explicit staging lifetime for one Hooks invocation. Dropping an unused scope
+/// releases its allocations. Move it into `.content_scope(scope)` for dispatch.
+/// This is deliberately not Clone: an invocation cannot retain another scope's archive.
+pub struct ContentScope {
+    pub(crate) store: MemoryContentStore,
+    pub(crate) scope: AuthorizedScope,
+    pub(crate) bodies: Option<crate::body::DeferredBodies>,
+    pub(crate) guards: Vec<crate::body::DeferredBodyGuard>,
+}
+impl ContentScope {
+    /// Own an unread source until this scope is dispatched or dropped. Prefer a
+    /// boundary's `.body_source(...)` when using generated input slots.
+    pub async fn stage_body(
+        &mut self,
+        body: crate::body::Body,
+    ) -> Result<serde_json::Value, crate::body::BodyError> {
+        let bodies = self
+            .bodies
+            .as_ref()
+            .ok_or_else(|| crate::body::BodyError::Read("scope has no body registry".into()))?;
+        let reference = bodies.register(body)?;
+        self.guards.push(bodies.guard(&reference));
+        Ok(reference)
+    }
+    pub fn context(&self) -> ContentContext<'_> {
+        ContentContext {
+            store: self,
+            scope: self.scope.clone(),
+        }
+    }
+    pub fn put(&self, bytes: &[u8]) -> Result<serde_json::Value, UploadError> {
+        self.context().put(bytes)
+    }
+    pub fn resolve(&self, reference: &serde_json::Value) -> Result<Arc<[u8]>, UploadError> {
+        self.context().resolve(reference)
+    }
+    pub(crate) fn retain(&self, values: &[&serde_json::Value]) -> OwnedContent {
+        let mut result = OwnedContent {
+            scope: self.scope.clone(),
+            entries: BTreeMap::new(),
+        };
+        for value in values {
+            result.collect(value, &self.context());
+        }
+        result
+    }
+}
+
+/// Immutable result-owned payloads, independent of the invocation store and its
+/// active staging budget. Only references present in returned values are kept.
+#[derive(Clone)]
+pub struct OwnedContent {
+    scope: AuthorizedScope,
+    entries: BTreeMap<String, Arc<[u8]>>,
+}
+impl OwnedContent {
+    fn collect(&mut self, value: &serde_json::Value, context: &ContentContext<'_>) {
+        match value {
+            serde_json::Value::Object(object) => {
+                if let Ok(reference) = descriptor(value.clone()) {
+                    if let Ok(bytes) = context.resolve(value) {
+                        self.entries.insert(reference.ref_, bytes);
+                    }
+                } else {
+                    for value in object.values() {
+                        self.collect(value, context);
+                    }
+                }
+            }
+            serde_json::Value::Array(values) => {
+                for value in values {
+                    self.collect(value, context);
+                }
+            }
+            _ => {}
+        }
+    }
+    pub fn context(&self) -> ContentContext<'_> {
+        ContentContext {
+            store: self,
+            scope: self.scope.clone(),
+        }
+    }
+    pub fn resolve(&self, reference: &serde_json::Value) -> Result<Arc<[u8]>, UploadError> {
+        self.context().resolve(reference)
+    }
+}
+impl ContentStore for OwnedContent {
+    fn resolve(
+        &self,
+        scope: &AuthorizedScope,
+        reference: &ContentReference,
+    ) -> Result<Arc<[u8]>, UploadError> {
+        if scope != &self.scope {
+            return Err(UploadError::Unavailable);
+        }
+        self.entries
+            .get(&reference.ref_)
+            .cloned()
+            .ok_or(UploadError::Unavailable)
+    }
+    fn put(&self, _: &AuthorizedScope, _: Arc<[u8]>) -> Result<ContentReference, UploadError> {
+        Err(UploadError::Unavailable)
+    }
+}
+
+impl ContentStore for ContentScope {
+    fn resolve(
+        &self,
+        scope: &AuthorizedScope,
+        reference: &ContentReference,
+    ) -> Result<Arc<[u8]>, UploadError> {
+        let value = serde_json::to_value(reference).map_err(|_| UploadError::Descriptor)?;
+        let snapshot = self
+            .bodies
+            .as_ref()
+            .and_then(|bodies| bodies.snapshot(&value));
+        let snapshot = snapshot.map(descriptor).transpose()?;
+        self.store
+            .resolve(scope, snapshot.as_ref().unwrap_or(reference))
+    }
+    fn put(
+        &self,
+        scope: &AuthorizedScope,
+        bytes: Arc<[u8]>,
+    ) -> Result<ContentReference, UploadError> {
+        self.store.put(scope, bytes)
     }
 }

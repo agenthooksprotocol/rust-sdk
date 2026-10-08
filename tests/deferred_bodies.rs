@@ -136,7 +136,7 @@ async fn cancelled_body_route_consumes_source_once_and_never_delivers_partial_re
     let outcome = block_on(
         hooks
             .tool_input(json!({}))
-            .context(context(body))
+            .context(context(body.reference()))
             .into_future(),
     )
     .unwrap();
@@ -179,7 +179,7 @@ async fn shutdown_cancels_body_read_without_repolling_boundary() {
     .unwrap();
     let mut boundary = hooks
         .tool_input(json!({}))
-        .context(context(body))
+        .context(context(body.reference()))
         .into_future();
     let waker = noop_waker();
     assert!(
@@ -196,7 +196,7 @@ async fn shutdown_cancels_body_read_without_repolling_boundary() {
 }
 
 #[tokio::test]
-async fn shutdown_drops_unselected_body_without_reading() {
+async fn dropping_staged_owner_drops_unselected_body_without_reading() {
     struct Untouched {
         dropped: Arc<Mutex<bool>>,
     }
@@ -219,11 +219,13 @@ async fn shutdown_drops_unselected_body_without_reading() {
     block_on(
         hooks
             .tool_input(json!({}))
-            .context(context(body))
+            .context(context(body.reference()))
             .into_future(),
     )
     .unwrap();
     assert!(!*dropped.lock().unwrap());
+    drop(body);
+    assert!(*dropped.lock().unwrap());
     block_on(hooks.shutdown()).unwrap();
     assert!(*dropped.lock().unwrap());
 }
@@ -249,7 +251,7 @@ async fn upload_phase_timeout_cancels_pending_source_without_outer_budget() {
     assert_eq!(*reads.lock().unwrap(), 1);
     let repeated = hooks
         .tool_input(json!({}))
-        .context(context(body))
+        .context(context(body.reference()))
         .await
         .unwrap();
     assert!(repeated.outcome.is_denied());

@@ -130,14 +130,17 @@ across fan-out, but each destination has independent upload authority.
 
 The advanced `hooks.stage_body(Body::stream(source)).await` transfers ownership without
 reading the stream. `Body::bytes`, `Body::text`, and `Body::json` are available for
-already-owned inputs. Place the returned body descriptor in an event content
-item. Matching subscriptions select body delivery; metadata, omit, and unmatched
+already-owned inputs. Place `staged.reference()` in an event content item,
+and keep the returned `StagedBody` owner alive until the boundary completes or
+is cancelled. Matching subscriptions select body delivery; metadata, omit, and unmatched
 routes do not read it. Selected bodies use bounded capture, immutable storage,
 and size/SHA-256 verification. Configure `max_body_bytes`, `max_stored_bytes`, and
 `max_stored_entries` in `HooksOptions`; upload credentials are resolved separately
 from event credentials. This is bounded in-memory spooling, not unbounded or
-disk-backed streaming. Advanced staged sources live until consumed or Hooks shutdown;
-prefer operation-scoped bindings when a source belongs to one call.
+disk-backed streaming. Drop the staged owner after the boundary finishes; dropping
+an unused owner releases its source without reading it. Retaining an owner after
+an unselected invocation can retain its unread source until owner drop or Hooks
+shutdown. Prefer operation-scoped bindings when a source belongs to one call.
 
 ## Quick start
 
@@ -249,10 +252,72 @@ Content-backed boundaries use `.content(ContentContext { store, scope })`. The
 scope must come from authenticated credentials or an explicit anonymous host
 policy, never an event ID or content reference. `ContentStore` is the host-storage
 interface; `MemoryContentStore` provides bounded immutable storage without durable
-persistence. Resolution verifies descriptor size and SHA-256 even for a custom
-store. Metadata and omitted selections do not read bodies; required unavailable
-or corrupt bodies fail closed. Hosts must retain referenced bytes for the required
+persistence. Resolution validates the canonical reference and uses the explicitly
+authorized store. Metadata and omitted selections do not read bodies; required
+unavailable bodies fail closed. Hosts must retain referenced bytes for the required
 exchange lifetime.
+
+### Hooks content lifetimes
+
+`Hooks` does not keep an archive of staged bodies. Each awaited boundary owns an
+invocation scope, including the original bytes and replacement bytes created by
+locally applying inline hook edits. Completion, errors, dropped futures, deadline
+expiration, and cancellation release that scope. Concurrent scopes share the
+configured byte and entry limits; limits are not reset or increased per call.
+
+Use `.body_source(...)` for generated input slots: a source remains unread unless
+a selected route needs its body, and an unused source is dropped with the boundary.
+For explicit references, stage bytes in an owned scope and move it into the boundary:
+
+```rust,ignore
+let scope = hooks.content_scope();
+let reference = scope.context().put(b"original text")?;
+let event = serde_json::json!({
+    "type": "user.message.outbound",
+    "message": {"role": "assistant", "payload": [{
+        "id": "text", "kind": "text", "mediaType": "text/plain",
+        "selection": "body", "body": reference
+    }]}
+});
+let result = hooks.event(event).content_scope(scope).await?;
+let bytes = result.content.resolve(
+    &result.effective_event["message"]["payload"][0]["body"]
+)?;
+// `bytes` is an independently owned Arc<[u8]>; it survives result/Hooks drop.
+```
+
+`EventOutcome::content` and `ToolOutcome::content` are read-only, result-owned
+payloads, not a reference to the invocation store. Keep that owner when retaining
+canonical references, or resolve the bytes before discarding the result. Only
+payloads referenced by returned values are retained; overwritten intermediate
+bodies are released. Result-owned bytes are application data, not active staging
+allocations. Applications that retain many results must bound their own history.
+
+Observation preparation resolves selected bodies and confirms uploads before
+transport delivery. After preparation, invocation storage is released; pending
+notifications own only their projected wire payload and backend. They cannot pin
+an invocation archive or delete another invocation's content. The boundary still
+awaits its selected observations, and shutdown cancels pending owned work.
+
+**Migration from host-global staging:** `Hooks::content_context()` is deprecated
+and now returns an owned `ContentScope`, not a borrowed global `ContentContext`.
+Use `hooks.content_scope()`, borrow `scope.context()` for staging/resolution, then
+move the scope into `.content_scope(scope)`. A scope belongs to exactly one Hooks
+instance and one invocation. Reusing its references in a later invocation requires
+staging the retained bytes in a new scope. Never copy a descriptor alone and assume
+that it keeps its backing bytes alive.
+
+For lazy explicit staging, `scope.stage_body(body).await?` returns a local reference
+owned by that scope. `Hooks::stage_body` now returns an owned `StagedBody` rather
+than a bare JSON value: use `staged.reference()` in the event and keep `staged`
+alive until the boundary completes or is cancelled, then drop it. Dropping an unused staged owner releases the
+source without reading it. These handles are single-invocation; prefer
+`.body_source(...)` or `ContentScope` to make transfer and cleanup automatic.
+Generic `.content_target(...)` edit negotiation currently needs an already
+materialized original, so use `scope.put(...)` for that path. Lazy sources work
+with selected body delivery but do not change this pre-existing negotiation rule.
+The lower-level `Client` / `ContentStore` APIs remain caller-managed; a standalone
+`MemoryContentStore` still retains its allocations until its owners are dropped.
 
 Generic prompt, response, output, and content modifications additionally require
 `.content_target(target, pointer)`, an explicit host mapping to a canonical content
