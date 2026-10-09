@@ -32,7 +32,7 @@ the application argument type in `result.input`. Capability vocabulary is availa
 as `capability::{Event, EffectType, ModifyTarget}` with canonical wire spellings.
 
 Enable `reqwest` for registered HTTP and `tokio-process` for registered stdio.
-Default features remain empty. Construction and unpolled boundaries perform no
+Default features are empty. Construction and unpolled boundaries perform no
 transport I/O. The host supplies an executor; the SDK creates no executor or
 background observation thread. Local HTTP requires explicit policy; upload
 credentials are independent of event credentials. Absent authentication permits
@@ -106,7 +106,7 @@ HTTP requires HTTPS; loopback HTTP is not enabled by default. Registered HTTP su
 `BackendOptions::auth_provider`. The provider receives the selected binding,
 backend identity, destination, event/upload purpose, and remaining deadline;
 authentication challenges include the opaque attempted-credential identity.
-Bearer `tokenEnv` remains available without a custom provider. The harness owns
+Bearer `tokenEnv` is available without a custom provider. The harness owns
 OAuth discovery/trust, consent, token acquisition/refresh, and provider lifecycle.
 Configured unsupported mechanisms and missing credentials fail closed. Event
 credentials are never an implicit fallback for independently bound uploads.
@@ -125,7 +125,7 @@ Use generated named attachment bindings, for example
 `.attachment(ergonomic_inputs::tool_before_sources::items(index, Attachment::lazy(source)))`,
 to transfer a source into an operation without raw JSON-pointer strings.
 `Attachment::bytes(bytes)` supplies eager bytes; `Attachment::from_body(body)` and
-`.body_source(...)` are conveniences for existing `Body` inputs, not staging APIs.
+`.body_source(...)` accept `Body` inputs.
 A lazy source is read only when selected delivery or an explicit
 result read needs its bytes. For ordinary boundaries, metadata, omit, and unmatched routes do not read it.
 Specialized compaction and elicitation selected-body validation can require
@@ -192,7 +192,7 @@ canonical validation, typed boundaries, server dispatch, and immutable upload
 verification do not depend on Reqwest, Axum, or Tokio. Generated semantic modules
 include `event`, `effect`, `content`, `registration`, and `subscription`; generated
 constructors take required values, supply schema literals/defaults, and expose
-optional-member builders. Parsing still preserves absent members unchanged.
+optional-member builders. Parsing preserves absent members unchanged.
 
 ### Owned file and binary attachments
 
@@ -211,9 +211,8 @@ hooks.shutdown().await?;
 let bytes = result.content.read("/message/payload/0").await?; // Arc<[u8]>
 ```
 
-The content item still carries its media type, identity, role, and other metadata.
-No store, scope, staging handle, or reference resolution is required. Moving an
-attachment transfers ownership into one invocation; it is not a reusable
+The content item carries its media type, identity, role, and other metadata.
+Moving an attachment transfers ownership into one invocation; it is not a reusable
 cross-invocation handle. Bytes are immutable, and `Arc::make_mut` creates a private
 copy when other owners exist. `Body` inputs can be converted with
 `Attachment::from_body` or passed through `.body_source(...)`.
@@ -234,9 +233,9 @@ and lazy bytes reserve it when captured. Returned content detaches from active
 invocation budgets. Result ownership does not create a session archive. Applications must bound the number of retained results themselves.
 Lazy implementations must yield while waiting, and bound their own chunk allocations.
 
-Attachments add no binary editing capability. Use `.content_target(...)` to map
-text/JSON attachments for negotiated edits. Use `Attachment::bytes` for these
-negotiated edits: eager bytes need no staging. Lazy inputs do not advertise edits
+Binary attachments do not support editing. Use `.content_target(...)` to map
+text/JSON attachments for negotiated edits, supplying eager bytes through
+`Attachment::bytes`. Lazy inputs do not advertise edits
 that require materialized target bytes.
 See [`examples/file_attachment.rs`](examples/file_attachment.rs) for a standalone
 file example with metadata-only auditing and a post-shutdown read.
@@ -304,11 +303,10 @@ exchange lifetime.
 
 ### Hooks content lifetimes
 
-`Hooks` does not own a global content store or staging registry. Each boundary
-owns its attachments and transfers surviving attachments to its result. The
-result retains the same shared owners used for delivery, rather than copies
-recovered from canonical references. Errors and dropped futures release their
-owners; result-owned bytes and unread sources survive `Hooks` shutdown and drop.
+Each boundary owns its attachments and transfers surviving attachments to its
+result. The result shares the immutable bytes used for delivery. Errors and
+dropped futures release their owners; result-owned bytes and unread sources
+survive `Hooks` shutdown and drop.
 Applications that retain many results must bound their own history.
 
 Attach eager bytes or a lazy source through a generated content-slot binding:
@@ -341,29 +339,21 @@ in opaque metadata, tool arguments, return candidates, and injection values do
 not retain backing bytes.
 
 Eager bytes are available immediately for mapped text/JSON edits through
-`.content_target(...)`; no external staging is needed. Use `Attachment::bytes`
+`.content_target(...)`. Use `Attachment::bytes`
 for negotiated edits. Ordinary lazy sources remain unread until selected body delivery or
 `result.content.read(...)`; specialized selected-body validation may also read them. A failed
 or cancelled read is terminal, and repeated reads do not restart the source.
 Observation preparation confirms selected uploads before transport delivery;
 each notification owns its projected wire payload independently.
 
-The following scope and staging APIs are removed:
-- `Hooks::{content_scope, content_context, stage_body}`
-- boundary `.content_scope(...)`
-- `content::ContentScope` and `body::StagedBody`
-- `OwnedContent::{context, resolve}`
+Generated bindings are checked against canonical content slots after the event
+type is supplied; a binding cannot attach bytes to an arbitrary location inside
+opaque JSON.
 
-Use `.attachment(...)` (or the `.body_source(...)` conversion convenience) and
-`result.content.read(pointer)`. Generated bindings are checked against canonical
-content slots after the event type is supplied; a binding cannot attach bytes to
-an arbitrary location inside opaque JSON.
-
-`max_stored_bytes` and `max_stored_entries` retain their historical field names,
-but now limit numeric active-owner accounting, not a content store. Returned
-results release that accounting while retaining their own attachment owners.
-Receiver-side `UploadReceiver` and standalone lower-level `ContentContext` /
-`MemoryContentStore` APIs remain separate, caller-managed interfaces.
+`max_stored_bytes` and `max_stored_entries` limit bytes and attachment owners
+across active boundaries. Returned results release that accounting while retaining
+their attachment owners. Applications manage receiver-side `UploadReceiver` storage
+and lower-level `ContentContext` / `MemoryContentStore` lifetimes separately.
 
 Generic prompt, response, output, and content modifications additionally require
 `.content_target(target, pointer)`, an explicit host mapping to a canonical content
@@ -384,10 +374,9 @@ partial effects, although a host store may retain unreachable allocations from a
 failed transaction. No replay or downstream model-consumption guarantee is implied.
 
 Observation delivery is explicit: await each returned `Observation::deliver()`
-(or schedule it on a host-owned executor). The legacy `dispatch_observations`
-helper now also returns deferred observations instead of spawning threads. Its
-synchronous callbacks run when delivery is polled and must not block an executor
-thread unless the caller intentionally chooses that execution context.
+(or schedule it on a host-owned executor). `dispatch_observations` returns
+deferred observations. Its synchronous callbacks run when delivery is polled
+and must not block an executor thread unless the caller intentionally chooses that execution context.
 
 ### Interruption and acceptance deadlines
 
@@ -415,7 +404,7 @@ intentional: the runtime-neutral core does not install a global timer or executo
 | `reqwest` | `adapters::reqwest::ReqwestHttp` | Caller-owned runtime compatible with Reqwest; redirects disabled, bounded response capture |
 | `axum` | `adapters::axum` server convenience | Caller-owned Axum runtime; delegates to the same core handler |
 | `tokio-process` | `adapters::process::Process` persistent child transport | Explicit caller-owned Tokio runtime; subprocess deadlines, retirement, kill/reap |
-| `interop` | Existing executable test hosts | Test-only blocking HTTP/process fixtures; not a default core dependency |
+| `interop` | Executable test hosts | Test-only blocking HTTP/process fixtures; not a default core dependency |
 
 `transport::{Request, Response, Http}` do not expose Reqwest or Axum types.
 Server callbacks receive generated request types and credential-derived principals;
@@ -466,10 +455,9 @@ transport; core code does not secretly start a timer runtime.
 
 ### Scope of the draft
 
-The new typed convenience boundary currently focuses on `tool.before`. Existing
-modules provide registration checks, source-scoped lineage, MCP-aligned elicitation,
-settled observation delivery, and before/after compaction. These have distinct
-entrypoints; their presence does not imply every boundary has the new generic API.
+The SDK provides typed event boundaries, registration checks, source-scoped
+lineage, MCP-aligned elicitation, settled observation delivery, and before/after
+compaction controls.
 The core callback server supports discovery, interception and observation. Full
 application authorization, content projection, and execution policy remain the host's
 responsibility. Custom `Hook` implementations must honor authentication, deadlines,
@@ -508,25 +496,23 @@ Apache-2.0
 
 ### Typed composed payloads
 
-MCP connection payloads expose typed structs rather than `JsonValue` wrappers.
+MCP connection payloads expose typed structs.
 For example, `ExecutionEventMcpConnectionHttp::new().with_url("https://mcp.example")`
 constructs an HTTP payload; `with_gaps` accepts typed gap records. SSE, stdio, and
 custom transport structs expose their location fields directly. Composed
 capability arrays and scalar fields retain typed values, and `ModelVisibleItem`
 exposes semantic content variants with a required `role`.
 
-Migration: replace former JSON-wrapper constructors with the generated struct,
-array, scalar, or enum constructors. Constructors model fields; existing parsing
-and validation APIs remain responsible for predicates such as “location or
-gaps.” Unknown variants and extension fields stay lossless. The nonliteral
-custom transport tag retains the existing unknown-variant union fallback;
-explicit custom payload models are still available for typed construction.
+Constructors model fields; parsing and validation APIs check predicates such as
+“location or gaps.” Unknown variants and extension fields stay lossless. Custom
+transports use the unknown-variant union fallback; typed custom payload models
+are available for construction.
 
 ### Structural decoding and effect-family queries
 
 Generated models implement checked `serde::Deserialize`. For example,
 `serde_json::from_str::<InterceptRequest>(input)` and
-`serde_json::from_value::<InterceptRequest>(value)` use the same original
+`serde_json::from_value::<InterceptRequest>(value)` use the same
 structural descriptors as `parse_intercept_request`. This includes required
 members, literals, known discriminator variants, and composed `oneOf`/`anyOf`
 constraints, even where the Rust representation is a simpler projection.
@@ -540,11 +526,7 @@ JSON value on failure. Direct Serde decoding reports structural failures through
 its normal error channel; it does not return the parser's warnings. Both routes
 preserve extension data supported by the structural compatibility policy.
 Canonical and contextual validation, effect admission, and host authority remain
-separate checks. Descriptor caches and private synchronous, thread-local hydration scopes avoid
-rechecking every nested subtree after a successful root check. The scope is
-limited to generated model hydration on the current thread: it does not span
-async suspension points or invoke application callbacks, and its drop guard
-restores the previous scope even when unwinding. It is not process-global.
+separate checks.
 
 `state::InitialState` requires a `candidate` member. These values stay distinct:
 `"candidate": null` means no candidate; `"candidate": {"value": null}` means a
@@ -561,20 +543,15 @@ families too. This query does not grant authorization and does not inspect
 modify targets, operations, or other admission constraints. A populated `modify`
 member does not imply membership of `"modify"` in `effects`.
 
-**Migration:** `capability::EffectType` now aliases the schema identifier and
-retains `as_str()`; because custom identifiers own strings it is no longer
-`Copy`, and its string accessor borrows from `&self`. The canonical identifier
-does not provide the former closed enum’s `Ord`/`Hash` derives; use its wire
-string for ordered or hashed keys. Clone when reusing an owned identifier. `supports` compares typed identifiers without JSON serialization.
-Direct Serde model decoding now rejects structurally invalid
-inputs that older derived decoders admitted. Supply required members explicitly;
-use an explicit null application value when that is intended. Primitive
-intersection projections and forbidden-value schemas use transparent newtypes
-instead of aliases where owning `Deserialize` is necessary to retain their
-constraints. `state::Candidate` now aliases the canonical candidate descriptor: use its
-constructor/builders rather than struct literals, and use `Presence` for direct
-access to its optional provenance. This also preserves extension members when
-decoding a candidate directly. The wire representation is unchanged. Numbers retain the existing
-arbitrary-precision JSON policy; integer slots reject fractions and values outside
-the interoperable safe-integer range. Fixed numeric literals may normalize their
-spelling during encoding, while `parse_*` retains the original raw JSON value.
+Use `capability::EffectType::as_str()` to borrow an identifier's wire spelling
+and to obtain keys for ordered or hashed collections. Clone an identifier when reusing its
+owned string. `supports` compares typed identifiers without JSON serialization.
+
+Supply required members explicitly when decoding models, and use an explicit
+null application value when that is intended. Construct `state::Candidate` with
+its constructor and builders; use `Presence` for direct access to its optional
+provenance. Candidate decoding preserves extension members.
+
+Numbers use arbitrary-precision JSON; integer slots reject fractions and values
+outside the interoperable safe-integer range. Fixed numeric literals may normalize
+their spelling during encoding, while `parse_*` retains the original raw JSON value.
