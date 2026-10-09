@@ -322,3 +322,29 @@ impl agenthooksprotocol::adapters::registered::ManagedBackend for UnreachableBac
         Box::pin(async { Ok(()) })
     }
 }
+
+#[test]
+fn attachment_binding_rejects_noncanonical_integrity_fields_without_reading() {
+    block_on(async {
+        for metadata in [json!({"size":999}), json!({"sha256":"0".repeat(64)})] {
+            let hooks = hooks(10);
+            let (attachment, reads, drops) = source();
+            let mut input = event();
+            input["message"]["payload"][0]
+                .as_object_mut()
+                .unwrap()
+                .extend(metadata.as_object().unwrap().clone());
+            // A source binding creates a body view, whose canonical schema
+            // forbids size/sha256 fields. It must fail before polling the source.
+            assert!(
+                hooks
+                    .event(input)
+                    .attachment(message_payload(0, attachment))
+                    .await
+                    .is_err()
+            );
+            assert_eq!(reads.load(Ordering::SeqCst), 0);
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+        }
+    });
+}

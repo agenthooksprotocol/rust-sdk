@@ -1543,6 +1543,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                 // event envelopes or schema-owned content-reference locations.
                 let mut retained = content.retain(&[]);
                 retained.attachments = self.settings.attachments;
+                retained.retain_attachment_results(&context);
                 drop(client);
                 drop(content);
                 drop(_sources);

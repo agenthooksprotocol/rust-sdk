@@ -602,6 +602,7 @@ impl ContentScope {
             entries: BTreeMap::new(),
             attachments: BTreeMap::new(),
             attachment_results: BTreeMap::new(),
+            attachment_metadata: BTreeMap::new(),
         };
         for reference in references {
             result.collect_reference(reference, &self.context());
@@ -617,25 +618,66 @@ impl ContentScope {
 pub struct OwnedContent {
     pub(crate) attachments: BTreeMap<String, crate::attachment::SharedAttachment>,
     attachment_results: BTreeMap<String, Arc<[u8]>>,
+    attachment_metadata: BTreeMap<String, AttachmentMetadata>,
     scope: AuthorizedScope,
     entries: BTreeMap<String, Arc<[u8]>>,
+}
+#[derive(Clone)]
+struct AttachmentMetadata {
+    size: Option<serde_json::Value>,
+    sha256: Option<serde_json::Value>,
+}
+impl AttachmentMetadata {
+    fn validate(&self, bytes: &[u8]) -> Result<(), crate::body::BodyError> {
+        let size_matches = self.size.as_ref().is_none_or(|size| {
+            size.as_number().and_then(byte_size) == u64::try_from(bytes.len()).ok()
+        });
+        let digest_matches = self.sha256.as_ref().is_none_or(|sha256| {
+            sha256
+                .as_str()
+                .is_some_and(|expected| expected == digest(bytes))
+        });
+        if size_matches && digest_matches {
+            Ok(())
+        } else {
+            Err(crate::body::BodyError::Upload(UploadError::Descriptor))
+        }
+    }
 }
 impl OwnedContent {
     /// Read by content-item JSON pointer (for example `/items/0`). Sources and
     /// immutable bytes outlive Hooks. Serialize concurrent first reads of a lazy
     /// source; read failure and cancellation are terminal and never retried.
+    /// Effective item size and SHA-256 metadata are checked on every read.
     pub async fn read(&self, path: &str) -> Result<Arc<[u8]>, crate::body::BodyError> {
-        if let Some(bytes) = self.attachment_results.get(path) {
-            return Ok(bytes.clone());
+        let bytes = if let Some(bytes) = self.attachment_results.get(path) {
+            bytes.clone()
+        } else {
+            self.attachments
+                .get(path)
+                .ok_or_else(|| crate::body::BodyError::Read("unknown attachment slot".into()))?
+                .read()
+                .await?
+        };
+        // Validate every access, including cached lazy reads and resolved bytes.
+        // Metadata belongs to the effective item, not its transport reference.
+        if let Some(metadata) = self.attachment_metadata.get(path) {
+            metadata.validate(&bytes)?;
         }
-        self.attachments
-            .get(path)
-            .ok_or_else(|| crate::body::BodyError::Read("unknown attachment slot".into()))?
-            .read()
-            .await
+        Ok(bytes)
     }
+
     pub(crate) fn retain_attachment_results(&mut self, event: &serde_json::Value) {
         for path in self.attachments.keys().cloned().collect::<Vec<_>>() {
+            if let Some(item) = event.pointer(&path) {
+                self.attachment_metadata.insert(
+                    path.clone(),
+                    AttachmentMetadata {
+                        size: item.get("size").cloned(),
+                        sha256: item.get("sha256").cloned(),
+                    },
+                );
+            }
             if let Some(body) = event.pointer(&path).and_then(|item| item.get("body"))
                 && let Ok(bytes) = self.resolve(body)
             {
@@ -703,5 +745,134 @@ impl ContentStore for ContentScope {
         bytes: Arc<[u8]>,
     ) -> Result<ContentReference, UploadError> {
         self.store.put(scope, bytes)
+    }
+}
+
+#[cfg(test)]
+mod owned_attachment_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn resolved_attachment_reads_validate_effective_metadata_on_every_access() {
+        futures::executor::block_on(async {
+            for (size, sha256, valid) in [
+                (json!(999), json!(digest(b"abc")), false),
+                (json!(3), json!("0".repeat(64)), false),
+                (json!(3.0), json!(digest(b"abc")), true),
+            ] {
+                let store = MemoryContentStore::new(10, 10, 10);
+                let context = ContentContext {
+                    store: &store,
+                    scope: AuthorizedScope::new("attachment-test"),
+                };
+                let reference = context.put(b"abc").unwrap();
+                let mut content = OwnedContent {
+                    attachments: BTreeMap::new(),
+                    attachment_results: BTreeMap::new(),
+                    attachment_metadata: BTreeMap::new(),
+                    scope: context.scope.clone(),
+                    entries: BTreeMap::new(),
+                };
+                content.collect_reference(&reference, &context);
+                // The effective resolved bytes replace the original attachment.
+                let (_, original) = crate::Attachment::bytes(b"original".to_vec()).bind(10);
+                content.attachments.insert("/items/0".into(), original);
+                content.retain_attachment_results(&json!({"items":[{
+                    "body":reference, "size":size, "sha256":sha256
+                }]}));
+                assert!(content.attachments.is_empty());
+                drop(store);
+                for _ in 0..2 {
+                    let read = content.read("/items/0").await;
+                    assert_eq!(read.is_ok(), valid);
+                    if valid {
+                        assert_eq!(&*read.unwrap(), b"abc");
+                    } else {
+                        assert!(matches!(
+                            read,
+                            Err(crate::body::BodyError::Upload(UploadError::Descriptor))
+                        ));
+                    }
+                }
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+mod deferred_attachment_metadata_tests {
+    use super::*;
+    use crate::body::{BodyChunkFuture, BodyStream};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Source {
+        reads: Arc<AtomicUsize>,
+        drops: Arc<AtomicUsize>,
+        done: bool,
+    }
+    impl Drop for Source {
+        fn drop(&mut self) {
+            self.drops.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    impl BodyStream for Source {
+        fn next_chunk(&mut self) -> BodyChunkFuture<'_> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async move {
+                if self.done {
+                    Ok(None)
+                } else {
+                    self.done = true;
+                    Ok(Some(b"abc".to_vec()))
+                }
+            })
+        }
+    }
+    #[test]
+    fn deferred_reads_check_retained_metadata_after_shutdown_and_on_repeat() {
+        futures::executor::block_on(async {
+            for (metadata, valid) in [
+                (json!({"size":999}), false),
+                (json!({"sha256":"0".repeat(64)}), false),
+                (json!({"size":3.0,"sha256":digest(b"abc")}), true),
+                (json!({}), true),
+            ] {
+                let reads = Arc::new(AtomicUsize::new(0));
+                let drops = Arc::new(AtomicUsize::new(0));
+                let (delivery, source) = crate::Attachment::lazy(Source {
+                    reads: reads.clone(),
+                    drops: drops.clone(),
+                    done: false,
+                })
+                .bind(10);
+                let mut content = OwnedContent {
+                    attachments: BTreeMap::from([("/items/0".into(), source)]),
+                    attachment_results: BTreeMap::new(),
+                    attachment_metadata: BTreeMap::new(),
+                    scope: AuthorizedScope::new("metadata-test"),
+                    entries: BTreeMap::new(),
+                };
+                let mut event = json!({"items":[metadata]});
+                content.retain_attachment_results(&event);
+                assert_eq!(reads.load(Ordering::SeqCst), 0);
+                // The result's metadata snapshot and source survive the invocation.
+                drop(delivery);
+                event["items"][0] = json!({});
+                for _ in 0..2 {
+                    let read = content.read("/items/0").await;
+                    assert_eq!(read.is_ok(), valid);
+                    if valid {
+                        assert_eq!(&*read.unwrap(), b"abc");
+                    } else {
+                        assert!(matches!(
+                            read,
+                            Err(crate::body::BodyError::Upload(UploadError::Descriptor))
+                        ));
+                    }
+                }
+                assert_eq!(reads.load(Ordering::SeqCst), 2);
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+            }
+        });
     }
 }
