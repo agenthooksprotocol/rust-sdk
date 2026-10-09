@@ -869,8 +869,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn selected_upload_and_result_share_the_same_attachment_owner() {
+    #[tokio::test]
+    async fn selected_upload_and_result_share_the_same_attachment_owner() {
         use crate::{
             Attachment,
             attachment::{Budget, InvocationAttachments},
@@ -897,60 +897,58 @@ mod tests {
                 })
             }
         }
-        futures::executor::block_on(async {
-            for lazy in [false, true] {
-                let reads = Arc::new(AtomicUsize::new(0));
-                let attachment = if lazy {
-                    Attachment::lazy(Source {
-                        reads: reads.clone(),
-                        done: false,
-                    })
-                } else {
-                    Attachment::bytes(vec![0, 255, 42])
-                };
-                let mut event = json!({"type":"tool.after", "items":[item()]});
-                let content = InvocationAttachments::bind(
-                    &mut event,
-                    vec![crate::ergonomic_inputs::ContentSourceBinding {
-                        path: vec!["items".into(), "0".into()],
-                        source: attachment,
-                    }],
-                    Budget::new(8, 1),
-                    8,
-                )
-                .unwrap();
-                let item = &event["items"][0];
-                // This is the same helper used by selected HTTP upload. It lends
-                // the owner's Arc, not a stored or re-spooled snapshot.
-                let uploaded = selected_bytes(
-                    "/items/0",
-                    item,
-                    &content,
-                    Some(&content),
-                    8,
-                    Instant::now() + Duration::from_secs(30),
-                )
-                .await
-                .unwrap();
-                let second = selected_bytes(
-                    "/items/0",
-                    item,
-                    &content,
-                    Some(&content),
-                    8,
-                    Instant::now() + Duration::from_secs(30),
-                )
-                .await
-                .unwrap();
-                assert!(Arc::ptr_eq(&uploaded, &second));
-                let result = content.finish();
-                drop(content);
-                let returned = result.read("/items/0").await.unwrap();
-                assert!(Arc::ptr_eq(&uploaded, &returned));
-                assert_eq!(&*returned, &[0, 255, 42]);
-                assert_eq!(reads.load(Ordering::SeqCst), if lazy { 2 } else { 0 });
-            }
-        });
+        for lazy in [false, true] {
+            let reads = Arc::new(AtomicUsize::new(0));
+            let attachment = if lazy {
+                Attachment::lazy(Source {
+                    reads: reads.clone(),
+                    done: false,
+                })
+            } else {
+                Attachment::bytes(vec![0, 255, 42])
+            };
+            let mut event = json!({"type":"tool.after", "items":[item()]});
+            let content = InvocationAttachments::bind(
+                &mut event,
+                vec![crate::ergonomic_inputs::ContentSourceBinding {
+                    path: vec!["items".into(), "0".into()],
+                    source: attachment,
+                }],
+                Budget::new(8, 1),
+                8,
+            )
+            .unwrap();
+            let item = &event["items"][0];
+            // This is the same helper used by selected HTTP upload. It lends
+            // the owner's Arc, not a stored or re-spooled snapshot.
+            let uploaded = selected_bytes(
+                "/items/0",
+                item,
+                &content,
+                Some(&content),
+                8,
+                Instant::now() + Duration::from_secs(30),
+            )
+            .await
+            .unwrap();
+            let second = selected_bytes(
+                "/items/0",
+                item,
+                &content,
+                Some(&content),
+                8,
+                Instant::now() + Duration::from_secs(30),
+            )
+            .await
+            .unwrap();
+            assert!(Arc::ptr_eq(&uploaded, &second));
+            let result = content.finish();
+            drop(content);
+            let returned = result.read("/items/0").await.unwrap();
+            assert!(Arc::ptr_eq(&uploaded, &returned));
+            assert_eq!(&*returned, &[0, 255, 42]);
+            assert_eq!(reads.load(Ordering::SeqCst), if lazy { 2 } else { 0 });
+        }
     }
 
     #[test]
