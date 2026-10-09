@@ -2,12 +2,13 @@
 //! applications retain execution policy. No transport starts before dispatch.
 use crate::{
     adapters::registered::{self, BackendOptions, ManagedBackend},
-    body::{Body, BodyError, DeferredBodies},
+    attachment::{Budget, InvocationAttachments},
+    body::Body,
     client::{
         Client, Decision, DeliveryDiagnostic, DeliveryStage, FailurePolicy, Hook, HookError,
         InputDecodeError, LocalFuture, Mode, ProtocolOutcome, Subscription, ToolContext,
     },
-    content::{AuthorizedScope, ContentContext, ContentScope, MemoryContentStore, OwnedContent},
+    content::OwnedContent,
     elicitation::Exchange,
     generated,
 };
@@ -171,7 +172,9 @@ pub struct HooksOptions {
     pub max_observations: usize,
     manifest: Option<Value>,
     pub max_body_bytes: usize,
+    /// Active attachment byte budget. Historical name; no harness store exists.
     pub max_stored_bytes: usize,
+    /// Active attachment owner budget; returned results release this accounting.
     pub max_stored_entries: usize,
     backends: BTreeMap<String, Arc<dyn ManagedBackend>>,
 }
@@ -290,9 +293,8 @@ impl Route {
 #[derive(Clone)]
 struct RouteHook {
     route: Route,
-    store: MemoryContentStore,
+    attachments: InvocationAttachments,
     options: BackendOptions,
-    bodies: DeferredBodies,
     life: Weak<Lifecycle>,
     deadline: Option<Instant>,
     prepare_only: bool,
@@ -316,19 +318,12 @@ impl Hook for RouteHook {
             {
                 event.remove("native");
             }
-            // This store is owned by this Hooks instance. Scope is an explicit
-            // local host policy, never derived from source/event/reference IDs.
-            let context = ContentContext {
-                store: &owned.store,
-                scope: local_scope(),
-            };
-            request = crate::hooks_content::project_with_bodies(
+            request = crate::hooks_content::project_attachments(
                 request,
                 &owned.route.configuration["content"],
                 owned.route.configuration.get("upload"),
-                &context,
+                &owned.attachments,
                 &owned.options,
-                &owned.bodies,
                 &owned.route.backend_id,
                 start
                     .checked_add(timeout)
@@ -362,9 +357,6 @@ impl Hook for RouteHook {
             None => Box::pin(async { Err(err("Hooks has been dropped")) }),
         }
     }
-}
-fn local_scope() -> AuthorizedScope {
-    AuthorizedScope::new("explicit-hooks-local-store")
 }
 fn err(value: impl std::fmt::Display) -> HookError {
     HookError(value.to_string())
@@ -548,8 +540,7 @@ pub struct Hooks {
     options: HooksOptions,
     routes: Vec<Route>,
     backends: Vec<Arc<dyn ManagedBackend>>,
-    store: MemoryContentStore,
-    bodies: DeferredBodies,
+    budget: Arc<Budget>,
     life: Arc<Lifecycle>,
     next_id: AtomicU64,
 }
@@ -557,8 +548,6 @@ impl Drop for Hooks {
     fn drop(&mut self) {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
-        self.store.close();
-        self.bodies.clear();
     }
 }
 impl Hooks {
@@ -669,18 +658,12 @@ impl Hooks {
             }
             backends.push(transport);
         }
-        let bodies = DeferredBodies::new(options.max_body_bytes, options.max_stored_entries);
-        let store = MemoryContentStore::new(
-            options.max_body_bytes,
-            options.max_stored_bytes,
-            options.max_stored_entries,
-        );
+        let budget = Budget::new(options.max_stored_bytes, options.max_stored_entries);
         Ok(Self {
             options,
             routes,
             backends,
-            store,
-            bodies,
+            budget,
             life: Arc::new(Lifecycle::default()),
             next_id: AtomicU64::new(0),
         })
@@ -740,80 +723,6 @@ impl Hooks {
             context: json!({}),
             settings: Settings::default(),
         }
-    }
-    /// Stage explicit bytes for one invocation. Move this owner into the boundary
-    /// with `.content_scope(scope)`. Unused scopes release their bytes on drop.
-    pub fn content_scope(&self) -> ContentScope {
-        ContentScope {
-            store: self.store.scoped(),
-            scope: local_scope(),
-            bodies: Some(self.bodies.clone()),
-            guards: Vec::new(),
-        }
-    }
-    /// Compatibility spelling for owned staging. Unlike the old borrowed global
-    /// context, this owner must be moved into the invocation after staging.
-    #[deprecated(note = "use content_scope(), scope.context(), and boundary.content_scope(scope)")]
-    pub fn content_context(&self) -> ContentScope {
-        self.content_scope()
-    }
-    fn invocation_content(&self, scope: Option<ContentScope>) -> Result<ContentScope, HookError> {
-        let scope = scope.unwrap_or_else(|| self.content_scope());
-        if !self.store.shares_budget(&scope.store) {
-            return Err(err("content scope belongs to another Hooks instance"));
-        }
-        Ok(scope)
-    }
-    /// Own a lazy body without polling it. Only a selected body route reads it.
-    /// Keep the returned owner until the boundary completes or is cancelled,
-    /// then drop it. Use `.reference()` in a content-item body field. Handles are single-invocation, not a host archive.
-    pub async fn stage_body(&self, body: Body) -> Result<crate::body::StagedBody, BodyError> {
-        let _active = self
-            .life
-            .begin()
-            .map_err(|e| BodyError::Read(e.to_string()))?;
-        let reference = self.bodies.register(body)?;
-        Ok(crate::body::StagedBody {
-            guard: self.bodies.guard(&reference),
-        })
-    }
-    fn bind_sources(
-        &self,
-        event: &mut Value,
-        sources: Vec<generated::ergonomic_inputs::ContentSourceBinding<Body>>,
-    ) -> Result<Vec<crate::body::DeferredBodyGuard>, HookError> {
-        let mut guards = Vec::with_capacity(sources.len());
-        let mut seen = BTreeSet::new();
-        for binding in sources {
-            let pointer = format!(
-                "/{}",
-                binding
-                    .path
-                    .iter()
-                    .map(|part| part.replace('~', "~0").replace('/', "~1"))
-                    .collect::<Vec<_>>()
-                    .join("/")
-            );
-            if !seen.insert(pointer.clone()) {
-                return Err(err("duplicate body source binding")
-                    .classified(generated::DeliveryDiagnosticCode::Preparation));
-            }
-            let item = event
-                .pointer_mut(&pointer)
-                .and_then(Value::as_object_mut)
-                .ok_or_else(|| {
-                    err("body source slot requires a content item")
-                        .classified(generated::DeliveryDiagnosticCode::Preparation)
-                })?;
-            let reference = self
-                .bodies
-                .register(binding.source)
-                .map_err(|e| err(e).classified(generated::DeliveryDiagnosticCode::Preparation))?;
-            guards.push(self.bodies.guard(&reference));
-            item.insert("selection".into(), json!("body"));
-            item.insert("body".into(), reference);
-        }
-        Ok(guards)
     }
     fn prepare(&self, mut event: Value) -> Result<(Value, String, Capabilities), HookError> {
         let event_object = event
@@ -908,7 +817,7 @@ impl Hooks {
         event: &Value,
         name: &str,
         deadline: Option<Instant>,
-        store: &MemoryContentStore,
+        attachments: &InvocationAttachments,
     ) -> Client {
         self.routes
             .iter()
@@ -923,7 +832,7 @@ impl Hooks {
                         events: vec![name.into()],
                         mode: route.mode,
                         timeout: route.timeout,
-                        hook: Box::new(self.route_hook(route, deadline, store)),
+                        hook: Box::new(self.route_hook(route, deadline, attachments)),
                     })
                 },
             )
@@ -932,13 +841,12 @@ impl Hooks {
         &self,
         route: &Route,
         deadline: Option<Instant>,
-        store: &MemoryContentStore,
+        attachments: &InvocationAttachments,
     ) -> RouteHook {
         RouteHook {
             route: route.clone(),
-            store: store.clone(),
+            attachments: attachments.clone(),
             options: self.options.backend.clone(),
-            bodies: self.bodies.clone(),
             life: Arc::downgrade(&self.life),
             deadline,
             prepare_only: false,
@@ -949,7 +857,7 @@ impl Hooks {
         name: &str,
         observations: Vec<crate::client::Observation<'_>>,
         deadline: Option<Instant>,
-        store: &MemoryContentStore,
+        attachments: &InvocationAttachments,
     ) -> (Vec<PreparedObservation<'a>>, Vec<DeliveryDiagnostic>) {
         let mut prepared = Vec::new();
         let mut diagnostics = vec![];
@@ -984,7 +892,7 @@ impl Hooks {
             let route_deadline = started
                 .checked_add(route.timeout)
                 .map(|end| deadline.map_or(end, |deadline| deadline.min(end)));
-            let mut hook = self.route_hook(route, route_deadline, store);
+            let mut hook = self.route_hook(route, route_deadline, attachments);
             hook.prepare_only = true;
             let result =
                 match crate::canonical::validate("observe-notification", &observation.notification)
@@ -1034,7 +942,7 @@ impl Hooks {
                 })
                 .unwrap_or(observation.remaining);
             // The delivery future owns only its projected wire payload and backend.
-            // No invocation store or deferred-source registry survives settlement.
+            // Projection has already borrowed attachments and owns wire payloads.
             let result = self
                 .life
                 .run(Box::pin(async move {
@@ -1071,8 +979,6 @@ impl Hooks {
     pub async fn shutdown(&self) -> Result<ObservationReport, HookError> {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
-        self.store.close();
-        self.bodies.clear();
         poll_fn(|cx| {
             let mut waiters = self.life.waiters.lock().unwrap();
             if !self.life.cleaning.swap(true, Ordering::SeqCst) {
@@ -1104,7 +1010,6 @@ impl Hooks {
 
 #[derive(Default)]
 struct Settings<'a> {
-    content: Option<ContentScope>,
     snapshot: Option<Value>,
     deadline: Option<Instant>,
     budget: Option<LocalFuture<'a, ()>>,
@@ -1117,20 +1022,27 @@ struct Settings<'a> {
     continuation: Option<(u64, u64, u64)>,
     exchange: Option<&'a Exchange>,
     targets: BTreeMap<String, String>,
-    sources: Vec<generated::ergonomic_inputs::ContentSourceBinding<Body>>,
+    sources: Vec<generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>>,
 }
 macro_rules! settings_methods {
     () => {
-        /// Transfer staged bytes into this invocation. Its allocations are released
-        /// on completion, error, or cancellation; returned payloads own their bytes.
-        pub fn content_scope(mut self, scope: ContentScope) -> Self {
-            self.settings.content = Some(scope);
-            self
-        }
-        /// Transfer a lazy source into a generated named content slot. No reads occur here.
+        /// Transfer a body source into one invocation-owned attachment slot.
         pub fn body_source(
             mut self,
             binding: generated::ergonomic_inputs::ContentSourceBinding<Body>,
+        ) -> Self {
+            self.settings
+                .sources
+                .push(generated::ergonomic_inputs::ContentSourceBinding {
+                    path: binding.path,
+                    source: crate::Attachment::from_body(binding.source),
+                });
+            self
+        }
+        /// Own a source in a generated content slot, without staging or a store.
+        pub fn attachment(
+            mut self,
+            binding: generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>,
         ) -> Self {
             self.settings.sources.push(binding);
             self
@@ -1204,8 +1116,8 @@ impl<'a, T> InputBoundary<'a, T> {
         self.settings.exchange = Some(exchange);
         self
     }
-    /// Map an edit target to a materialized body. For lazy originals, stage bytes
-    /// with `ContentScope::put` before dispatch; negotiation runs before body delivery.
+    /// Map a text/JSON edit target to its owned content slot. Negotiation reads
+    /// that attachment when needed; binary editing is not supported.
     pub fn content_target(mut self, target: impl Into<String>, pointer: impl Into<String>) -> Self {
         self.settings.targets.insert(target.into(), pointer.into());
         self
@@ -1257,8 +1169,8 @@ impl<'a, T> EventBoundary<'a, T> {
         self.settings.exchange = Some(exchange);
         self
     }
-    /// Map an edit target to a materialized body. For lazy originals, stage bytes
-    /// with `ContentScope::put` before dispatch; negotiation runs before body delivery.
+    /// Map a text/JSON edit target to its owned content slot. Negotiation reads
+    /// that attachment when needed; binary editing is not supported.
     pub fn content_target(mut self, target: impl Into<String>, pointer: impl Into<String>) -> Self {
         self.settings.targets.insert(target.into(), pointer.into());
         self
@@ -1290,7 +1202,6 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
             Box::pin(async move {
                 let _active = self.hooks.life.begin()?;
                 let mut event = serde_json::to_value(self.event).map_err(err)?;
-                let _sources = self.hooks.bind_sources(&mut event, self.settings.sources)?;
                 if let Some(expected) = self.name {
                     let object = event
                         .as_object_mut()
@@ -1300,16 +1211,24 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     }
                     object.insert("type".into(), json!(expected));
                 }
+                let content = InvocationAttachments::bind(
+                    &mut event,
+                    self.settings.sources,
+                    self.hooks.budget.clone(),
+                    self.hooks.options.max_body_bytes,
+                )
+                .map_err(|error| {
+                    err(error).classified(generated::DeliveryDiagnosticCode::Preparation)
+                })?;
                 let (event, name, granted) = self.hooks.prepare(event)?;
                 let caps = narrow(self.settings.capabilities, granted)?;
-                let content = self.hooks.invocation_content(self.settings.content)?;
-                let client =
-                    self.hooks
-                        .client(&event, &name, self.settings.deadline, &content.store);
+                let client = self
+                    .hooks
+                    .client(&event, &name, self.settings.deadline, &content);
                 let mut boundary = client
                     .event(event)
                     .capabilities(caps.0)
-                    .content(content.context());
+                    .attachments(content.clone());
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;
                 }
@@ -1356,19 +1275,12 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 }
                 let (observations, preparation_diagnostics) = self
                     .hooks
-                    .prepare_observations(
-                        &name,
-                        observations,
-                        self.settings.deadline,
-                        &content.store,
-                    )
+                    .prepare_observations(&name, observations, self.settings.deadline, &content)
                     .await;
                 diagnostics.extend(preparation_diagnostics);
-                let retained =
-                    retain_event_content(&content, &effective_event, &self.settings.targets);
+                let retained = content.finish();
                 drop(client);
                 drop(content);
-                drop(_sources);
                 diagnostics.extend(self.hooks.deliver_observations(observations).await);
                 if self.hooks.life.closing.load(Ordering::SeqCst) {
                     return Err(err("Hooks is shutting down")
@@ -1455,15 +1367,20 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                     .as_object_mut()
                     .ok_or_else(|| err("tool context must be an object"))?
                     .insert("type".into(), json!("tool.before"));
-                let _sources = self
-                    .hooks
-                    .bind_sources(&mut context, self.settings.sources)?;
+                let content = InvocationAttachments::bind(
+                    &mut context,
+                    self.settings.sources,
+                    self.hooks.budget.clone(),
+                    self.hooks.options.max_body_bytes,
+                )
+                .map_err(|error| {
+                    err(error).classified(generated::DeliveryDiagnosticCode::Preparation)
+                })?;
                 let (context, name, granted) = self.hooks.prepare(context)?;
                 let caps = narrow(self.settings.capabilities, granted)?;
-                let content = self.hooks.invocation_content(self.settings.content)?;
-                let client =
-                    self.hooks
-                        .client(&context, &name, self.settings.deadline, &content.store);
+                let client = self
+                    .hooks
+                    .client(&context, &name, self.settings.deadline, &content);
                 let mut boundary = client.tool_before(input).capabilities(caps.0);
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;
@@ -1502,20 +1419,14 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                 }
                 let (observations, preparation_diagnostics) = self
                     .hooks
-                    .prepare_observations(
-                        &name,
-                        observations,
-                        self.settings.deadline,
-                        &content.store,
-                    )
+                    .prepare_observations(&name, observations, self.settings.deadline, &content)
                     .await;
                 diagnostics.extend(preparation_diagnostics);
                 // Application input and return/injection values are opaque JSON, not
                 // event envelopes or schema-owned content-reference locations.
-                let retained = content.retain(&[]);
+                let retained = content.finish();
                 drop(client);
                 drop(content);
-                drop(_sources);
                 diagnostics.extend(self.hooks.deliver_observations(observations).await);
                 if self.hooks.life.closing.load(Ordering::SeqCst) {
                     return Err(err("Hooks is shutting down")
@@ -1593,22 +1504,4 @@ fn bounded<'a, T: Send + 'a>(
         }
         result
     }))
-}
-
-fn retain_event_content(
-    content: &ContentScope,
-    effective: &Value,
-    targets: &BTreeMap<String, String>,
-) -> OwnedContent {
-    let mut paths = crate::hooks_content::locations(effective);
-    paths.extend(targets.values().cloned());
-    let references: Vec<_> = paths
-        .iter()
-        .filter_map(|path| effective.pointer(path))
-        .filter(|item| item["selection"] == "body" && item.get("gap").is_none())
-        .filter_map(|item| item.get("body"))
-        .collect();
-    // Message effects contain text; injection and candidate values are opaque.
-    // Accepted responses do not declare additional content-reference slots.
-    content.retain(&references)
 }

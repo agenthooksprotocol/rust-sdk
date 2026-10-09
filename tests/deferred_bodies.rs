@@ -1,9 +1,10 @@
-//! Deferred staging must remain lazy through route selection and fail closed.
+//! Owned attachments remain lazy through route selection and fail closed.
 use agenthooksprotocol::{
-    Hooks,
+    Attachment, Hooks,
     adapters::registered::ManagedBackend,
-    body::{Body, BodyChunkFuture, BodyError, BodyStream},
+    body::{BodyChunkFuture, BodyError, BodyStream},
     client::{HookError, LocalFuture, ToolContext},
+    ergonomic_inputs::tool_before_sources::items,
     hooks::{Capabilities, EventGrant, HooksOptions},
 };
 use futures::{executor::block_on, task::noop_waker};
@@ -80,49 +81,50 @@ fn context(body: Value) -> ToolContext {
 }
 
 #[tokio::test]
-async fn awaiting_staging_and_metadata_omit_or_unmatched_routes_never_read() {
+async fn metadata_omit_or_unmatched_routes_never_read() {
     for (mode, filtered) in [("metadata", false), ("omit", false), ("body", true)] {
         let (hooks, backend) = hooks(mode, filtered);
         let reads = Arc::new(Mutex::new(0));
-        let body = block_on(hooks.stage_body(Body::stream(Source {
-            reads: reads.clone(),
-            pending: false,
-        })))
-        .unwrap();
-        assert_eq!(*reads.lock().unwrap(), 0);
-        for _ in 0..2 {
-            block_on(
-                hooks
-                    .tool_input(json!({}))
-                    .context(context(body.clone()))
-                    .into_future(),
-            )
+        let outcome = hooks
+            .tool_input(json!({}))
+            .context(context(Value::Null))
+            .attachment(items(
+                0,
+                Attachment::lazy(Source {
+                    reads: reads.clone(),
+                    pending: false,
+                }),
+            ))
+            .await
             .unwrap();
-        }
         assert_eq!(*reads.lock().unwrap(), 0);
         for request in backend.0.lock().unwrap().iter() {
-            assert!(!request.to_string().contains("ahp-deferred:"));
+            assert!(!request.to_string().contains("ahp-attachment:"));
             assert!(request["params"]["event"]["items"][0].get("body").is_none());
         }
         assert_eq!(
             backend.0.lock().unwrap().len(),
-            if filtered { 0 } else { 2 }
+            if filtered { 0 } else { 1 }
         );
+        drop(outcome);
+        assert_eq!(*reads.lock().unwrap(), 0);
     }
 }
 
 #[tokio::test]
-async fn cancelled_body_route_consumes_source_once_and_never_delivers_partial_request() {
+async fn cancelled_body_route_never_delivers_partial_request() {
     let (hooks, backend) = hooks("body", false);
     let reads = Arc::new(Mutex::new(0));
-    let body = block_on(hooks.stage_body(Body::stream(Source {
-        reads: reads.clone(),
-        pending: true,
-    })))
-    .unwrap();
     let mut future = hooks
         .tool_input(json!({}))
-        .context(context(body.clone()))
+        .context(context(Value::Null))
+        .attachment(items(
+            0,
+            Attachment::lazy(Source {
+                reads: reads.clone(),
+                pending: true,
+            }),
+        ))
         .into_future();
     let waker = noop_waker();
     assert!(
@@ -133,14 +135,6 @@ async fn cancelled_body_route_consumes_source_once_and_never_delivers_partial_re
     );
     assert_eq!(*reads.lock().unwrap(), 1);
     drop(future);
-    let outcome = block_on(
-        hooks
-            .tool_input(json!({}))
-            .context(context(body.reference()))
-            .into_future(),
-    )
-    .unwrap();
-    assert!(outcome.outcome.is_denied());
     assert_eq!(*reads.lock().unwrap(), 1);
     assert!(backend.0.lock().unwrap().is_empty());
 }
@@ -149,20 +143,21 @@ async fn cancelled_body_route_consumes_source_once_and_never_delivers_partial_re
 async fn failed_body_route_is_terminal_and_never_delivers() {
     let (hooks, backend) = hooks("body", false);
     let reads = Arc::new(Mutex::new(0));
-    let body = block_on(hooks.stage_body(Body::stream(Source {
-        reads: reads.clone(),
-        pending: false,
-    })))
-    .unwrap();
-    for _ in 0..2 {
-        let outcome = block_on(
-            hooks
-                .tool_input(json!({}))
-                .context(context(body.clone()))
-                .into_future(),
-        )
+    let outcome = hooks
+        .tool_input(json!({}))
+        .context(context(Value::Null))
+        .attachment(items(
+            0,
+            Attachment::lazy(Source {
+                reads: reads.clone(),
+                pending: false,
+            }),
+        ))
+        .await
         .unwrap();
-        assert!(outcome.outcome.is_denied());
+    assert!(outcome.outcome.is_denied());
+    for _ in 0..2 {
+        assert!(outcome.content.read("/items/0").await.is_err());
     }
     assert_eq!(*reads.lock().unwrap(), 1);
     assert!(backend.0.lock().unwrap().is_empty());
@@ -172,14 +167,16 @@ async fn failed_body_route_is_terminal_and_never_delivers() {
 async fn shutdown_cancels_body_read_without_repolling_boundary() {
     let (hooks, backend) = hooks("body", false);
     let reads = Arc::new(Mutex::new(0));
-    let body = block_on(hooks.stage_body(Body::stream(Source {
-        reads: reads.clone(),
-        pending: true,
-    })))
-    .unwrap();
     let mut boundary = hooks
         .tool_input(json!({}))
-        .context(context(body.reference()))
+        .context(context(Value::Null))
+        .attachment(items(
+            0,
+            Attachment::lazy(Source {
+                reads: reads.clone(),
+                pending: true,
+            }),
+        ))
         .into_future();
     let waker = noop_waker();
     assert!(
@@ -192,11 +189,18 @@ async fn shutdown_cancels_body_read_without_repolling_boundary() {
     block_on(hooks.shutdown()).unwrap();
     assert!(block_on(boundary).is_err());
     assert!(backend.0.lock().unwrap().is_empty());
-    assert!(block_on(hooks.stage_body(Body::bytes(vec![]))).is_err());
+    assert!(
+        hooks
+            .tool_input(json!({}))
+            .context(context(Value::Null))
+            .attachment(items(0, Attachment::bytes(vec![])))
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
-async fn dropping_staged_owner_drops_unselected_body_without_reading() {
+async fn dropping_result_drops_unselected_body_without_reading() {
     struct Untouched {
         dropped: Arc<Mutex<bool>>,
     }
@@ -212,21 +216,21 @@ async fn dropping_staged_owner_drops_unselected_body_without_reading() {
     }
     let (hooks, _) = hooks("metadata", false);
     let dropped = Arc::new(Mutex::new(false));
-    let body = block_on(hooks.stage_body(Body::stream(Untouched {
-        dropped: dropped.clone(),
-    })))
-    .unwrap();
-    block_on(
-        hooks
-            .tool_input(json!({}))
-            .context(context(body.reference()))
-            .into_future(),
-    )
-    .unwrap();
+    let outcome = hooks
+        .tool_input(json!({}))
+        .context(context(Value::Null))
+        .attachment(items(
+            0,
+            Attachment::lazy(Untouched {
+                dropped: dropped.clone(),
+            }),
+        ))
+        .await
+        .unwrap();
     assert!(!*dropped.lock().unwrap());
-    drop(body);
+    drop(outcome);
     assert!(*dropped.lock().unwrap());
-    block_on(hooks.shutdown()).unwrap();
+    hooks.shutdown().await.unwrap();
     assert!(*dropped.lock().unwrap());
 }
 
@@ -235,26 +239,21 @@ async fn dropping_staged_owner_drops_unselected_body_without_reading() {
 async fn upload_phase_timeout_cancels_pending_source_without_outer_budget() {
     let (hooks, backend) = hooks_with_upload_timeout("body", false, 5);
     let reads = Arc::new(Mutex::new(0));
-    let body = hooks
-        .stage_body(Body::stream(Source {
-            reads: reads.clone(),
-            pending: true,
-        }))
-        .await
-        .unwrap();
     let outcome = hooks
         .tool_input(json!({}))
-        .context(context(body.clone()))
+        .context(context(Value::Null))
+        .attachment(items(
+            0,
+            Attachment::lazy(Source {
+                reads: reads.clone(),
+                pending: true,
+            }),
+        ))
         .await
         .unwrap();
     assert!(outcome.outcome.is_denied());
     assert_eq!(*reads.lock().unwrap(), 1);
-    let repeated = hooks
-        .tool_input(json!({}))
-        .context(context(body.reference()))
-        .await
-        .unwrap();
-    assert!(repeated.outcome.is_denied());
+    assert!(outcome.content.read("/items/0").await.is_err());
     assert_eq!(*reads.lock().unwrap(), 1);
     assert!(backend.0.lock().unwrap().is_empty());
 }

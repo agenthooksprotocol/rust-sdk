@@ -47,3 +47,7 @@ pub use hooks::Hooks;
 /// Owned async body inputs with bounded spooling.
 pub mod body;
 mod hooks_content;
+
+/// Invocation-owned binary attachment sources.
+pub mod attachment;
+pub use attachment::Attachment;

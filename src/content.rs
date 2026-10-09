@@ -345,30 +345,9 @@ pub struct MemoryContentStore {
     max_upload: usize,
     max_total: usize,
     max_entries: usize,
-    owner: Option<Arc<StoreOwner>>,
-}
-struct StoreOwner {
-    state: Arc<std::sync::Mutex<MemoryState>>,
-    keys: std::sync::Mutex<Vec<(AuthorizedScope, String)>>,
-}
-impl Drop for StoreOwner {
-    fn drop(&mut self) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        for key in self
-            .keys
-            .get_mut()
-            .unwrap_or_else(|e| e.into_inner())
-            .drain(..)
-        {
-            if let Some(bytes) = state.entries.remove(&key) {
-                state.total -= bytes.len();
-            }
-        }
-    }
 }
 #[derive(Default)]
 struct MemoryState {
-    closed: bool,
     total: usize,
     next: u64,
     entries: BTreeMap<(AuthorizedScope, String), Arc<[u8]>>,
@@ -377,33 +356,10 @@ impl MemoryContentStore {
     pub fn new(max_upload: usize, max_total: usize, max_entries: usize) -> Self {
         Self {
             state: Arc::new(std::sync::Mutex::new(MemoryState::default())),
-            owner: None,
             max_upload,
             max_total,
             max_entries,
         }
-    }
-}
-impl MemoryContentStore {
-    /// Create an allocation owner sharing the exact same active-capacity budget.
-    pub(crate) fn scoped(&self) -> Self {
-        Self {
-            owner: Some(Arc::new(StoreOwner {
-                state: Arc::clone(&self.state),
-                keys: Default::default(),
-            })),
-            ..self.clone()
-        }
-    }
-    /// Terminal host shutdown, never eviction or an invocation cleanup strategy.
-    pub(crate) fn close(&self) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.closed = true;
-        state.entries.clear();
-        state.total = 0;
-    }
-    pub(crate) fn shares_budget(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.state, &other.state)
     }
 }
 impl ContentStore for MemoryContentStore {
@@ -414,12 +370,6 @@ impl ContentStore for MemoryContentStore {
     ) -> Result<Arc<[u8]>, UploadError> {
         descriptor(serde_json::to_value(reference).map_err(|_| UploadError::Descriptor)?)?;
         let state = self.state.lock().map_err(|_| UploadError::Unavailable)?;
-        if let Some(owner) = &self.owner {
-            let keys = owner.keys.lock().map_err(|_| UploadError::Unavailable)?;
-            if !keys.contains(&(scope.clone(), reference.ref_.clone())) {
-                return Err(UploadError::Unavailable);
-            }
-        }
         let bytes = state
             .entries
             .get(&(scope.clone(), reference.ref_.clone()))
@@ -435,9 +385,6 @@ impl ContentStore for MemoryContentStore {
             return Err(UploadError::TooLarge);
         }
         let mut state = self.state.lock().map_err(|_| UploadError::Unavailable)?;
-        if state.closed {
-            return Err(UploadError::Unavailable);
-        }
         if state.entries.len() >= self.max_entries
             || bytes.len() > self.max_total.saturating_sub(state.total)
         {
@@ -445,13 +392,6 @@ impl ContentStore for MemoryContentStore {
         }
         let next = state.next.checked_add(1).ok_or(UploadError::Capacity)?;
         let reference = descriptor(json!({"ref": format!("content-{next}")}))?;
-        if let Some(owner) = &self.owner {
-            owner
-                .keys
-                .lock()
-                .map_err(|_| UploadError::Unavailable)?
-                .push((scope.clone(), reference.ref_.clone()));
-        }
         state.total += bytes.len();
         state.next = next;
         state
@@ -560,120 +500,92 @@ impl ContentContext<'_> {
     }
 }
 
-/// Explicit staging lifetime for one Hooks invocation. Dropping an unused scope
-/// releases its allocations. Move it into `.content_scope(scope)` for dispatch.
-/// This is deliberately not Clone: an invocation cannot retain another scope's archive.
-pub struct ContentScope {
-    pub(crate) store: MemoryContentStore,
-    pub(crate) scope: AuthorizedScope,
-    pub(crate) bodies: Option<crate::body::DeferredBodies>,
-    pub(crate) guards: Vec<crate::body::DeferredBodyGuard>,
+/// Immutable result-owned attachments, independent of Hooks and invocation budgets.
+/// Content is addressed by its canonical item JSON pointer, not a body reference.
+#[derive(Clone)]
+pub struct OwnedContent {
+    pub(crate) attachments: BTreeMap<String, crate::attachment::SharedAttachment>,
 }
-impl ContentScope {
-    /// Own an unread source until this scope is dispatched or dropped. Prefer a
-    /// boundary's `.body_source(...)` when using generated input slots.
-    pub async fn stage_body(
-        &mut self,
-        body: crate::body::Body,
-    ) -> Result<serde_json::Value, crate::body::BodyError> {
-        let bodies = self
-            .bodies
-            .as_ref()
-            .ok_or_else(|| crate::body::BodyError::Read("scope has no body registry".into()))?;
-        let reference = bodies.register(body)?;
-        self.guards.push(bodies.guard(&reference));
-        Ok(reference)
-    }
-    pub fn context(&self) -> ContentContext<'_> {
-        ContentContext {
-            store: self,
-            scope: self.scope.clone(),
-        }
-    }
-    pub fn put(&self, bytes: &[u8]) -> Result<serde_json::Value, UploadError> {
-        self.context().put(bytes)
-    }
-    pub fn resolve(&self, reference: &serde_json::Value) -> Result<Arc<[u8]>, UploadError> {
-        self.context().resolve(reference)
-    }
-    pub(crate) fn retain(&self, references: &[&serde_json::Value]) -> OwnedContent {
-        let mut result = OwnedContent {
-            scope: self.scope.clone(),
-            entries: BTreeMap::new(),
-        };
-        for reference in references {
-            result.collect_reference(reference, &self.context());
-        }
-        result
+impl OwnedContent {
+    /// Read owned effective bytes. Concurrent first lazy reads must be serialized.
+    /// Size and SHA-256 expectations captured from the item apply on every read.
+    pub async fn read(&self, path: &str) -> Result<Arc<[u8]>, crate::body::BodyError> {
+        self.attachments
+            .get(path)
+            .ok_or_else(|| crate::body::BodyError::Read("unknown attachment slot".into()))?
+            .read()
+            .await
     }
 }
 
-/// Immutable result-owned payloads, independent of the invocation store and its
-/// active staging budget. Only schema-owned content slots and explicitly bound
-/// content targets retain payloads; reference-shaped opaque JSON does not.
-#[derive(Clone)]
-pub struct OwnedContent {
-    scope: AuthorizedScope,
-    entries: BTreeMap<String, Arc<[u8]>>,
-}
-impl OwnedContent {
-    // Callers supply exact schema-owned reference slots, never opaque JSON roots.
-    fn collect_reference(&mut self, value: &serde_json::Value, context: &ContentContext<'_>) {
-        if let Ok(reference) = descriptor(value.clone())
-            && let Ok(bytes) = context.resolve(value)
-        {
-            self.entries.insert(reference.ref_, bytes);
-        }
-    }
-    pub fn context(&self) -> ContentContext<'_> {
-        ContentContext {
-            store: self,
-            scope: self.scope.clone(),
-        }
-    }
-    pub fn resolve(&self, reference: &serde_json::Value) -> Result<Arc<[u8]>, UploadError> {
-        self.context().resolve(reference)
-    }
-}
-impl ContentStore for OwnedContent {
-    fn resolve(
+/// Slot-aware content operations used by protocol text/JSON evaluation.
+/// Standalone callers may still use an authorized ContentContext; Hooks uses
+/// attachment owners directly and does not implement a content store.
+pub trait ContentAccess: Send + Sync {
+    fn resolve_selected(
         &self,
-        scope: &AuthorizedScope,
-        reference: &ContentReference,
-    ) -> Result<Arc<[u8]>, UploadError> {
-        if scope != &self.scope {
+        path: &str,
+        item: &serde_json::Value,
+    ) -> Result<Option<Arc<[u8]>>, UploadError>;
+    fn put(&self, path: &str, bytes: &[u8]) -> Result<serde_json::Value, UploadError>;
+    /// Restore an exact-byte no-op to its prior item revision. Immutable standalone
+    /// stores already retain that revision; transactional owner indexes rebind it.
+    fn restore_original(&self, _path: &str, _item: &serde_json::Value) -> Result<(), UploadError> {
+        Ok(())
+    }
+}
+impl ContentAccess for ContentContext<'_> {
+    fn resolve_selected(
+        &self,
+        _: &str,
+        item: &serde_json::Value,
+    ) -> Result<Option<Arc<[u8]>>, UploadError> {
+        ContentContext::resolve_selected(self, item)
+    }
+    fn put(&self, _: &str, bytes: &[u8]) -> Result<serde_json::Value, UploadError> {
+        ContentContext::put(self, bytes)
+    }
+}
+// Read-only owner access lets specialized exchanges verify a returned request
+// without asking the application to stage it in a separate backing store.
+impl ContentAccess for OwnedContent {
+    fn resolve_selected(
+        &self,
+        path: &str,
+        item: &serde_json::Value,
+    ) -> Result<Option<Arc<[u8]>>, UploadError> {
+        if item["selection"] == "metadata" || item["selection"] == "omit" {
+            return Ok(None);
+        }
+        if item["selection"] != "body" || item.get("gap").is_some() {
             return Err(UploadError::Unavailable);
         }
-        self.entries
-            .get(&reference.ref_)
-            .cloned()
-            .ok_or(UploadError::Unavailable)
+        let bytes = self
+            .attachments
+            .get(path)
+            .ok_or(UploadError::Unavailable)?
+            .ready_for(item)?;
+        Ok(Some(bytes))
     }
-    fn put(&self, _: &AuthorizedScope, _: Arc<[u8]>) -> Result<ContentReference, UploadError> {
+    fn put(&self, _: &str, _: &[u8]) -> Result<serde_json::Value, UploadError> {
         Err(UploadError::Unavailable)
     }
 }
-
-impl ContentStore for ContentScope {
-    fn resolve(
-        &self,
-        scope: &AuthorizedScope,
-        reference: &ContentReference,
-    ) -> Result<Arc<[u8]>, UploadError> {
-        let value = serde_json::to_value(reference).map_err(|_| UploadError::Descriptor)?;
-        let snapshot = self
-            .bodies
-            .as_ref()
-            .and_then(|bodies| bodies.snapshot(&value));
-        let snapshot = snapshot.map(descriptor).transpose()?;
-        self.store
-            .resolve(scope, snapshot.as_ref().unwrap_or(reference))
-    }
-    fn put(
-        &self,
-        scope: &AuthorizedScope,
-        bytes: Arc<[u8]>,
-    ) -> Result<ContentReference, UploadError> {
-        self.store.put(scope, bytes)
+pub(crate) fn validate_attachment_metadata(
+    item: &serde_json::Value,
+    bytes: &[u8],
+) -> Result<(), UploadError> {
+    let size_matches = item
+        .get("size")
+        .is_none_or(|size| size.as_number().and_then(byte_size) == u64::try_from(bytes.len()).ok());
+    let digest_matches = item.get("sha256").is_none_or(|sha256| {
+        sha256
+            .as_str()
+            .is_some_and(|expected| expected == digest(bytes))
+    });
+    if size_matches && digest_matches {
+        Ok(())
+    } else {
+        Err(UploadError::Descriptor)
     }
 }

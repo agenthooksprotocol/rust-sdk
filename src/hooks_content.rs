@@ -1,6 +1,8 @@
 //! Private, registration-driven projection. Never walk arbitrary application JSON.
 use crate::adapters::registered::{AuthContext, AuthPurpose};
-use crate::{adapters::registered::BackendOptions, client::HookError, content::ContentContext};
+#[cfg(test)]
+use crate::content::ContentContext;
+use crate::{adapters::registered::BackendOptions, client::HookError, content::ContentAccess};
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
@@ -400,13 +402,12 @@ pub(crate) fn validate_response_grants(request: &Value, response: &Value) -> Res
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn project_with_bodies(
+pub(crate) async fn project_attachments(
     request: Value,
     selection: &Value,
     upload: Option<&Value>,
-    content: &ContentContext<'_>,
+    attachments: &crate::attachment::InvocationAttachments,
     options: &BackendOptions,
-    bodies: &crate::body::DeferredBodies,
     backend_id: &str,
     deadline: Instant,
 ) -> Result<Value, HookError> {
@@ -414,9 +415,9 @@ pub(crate) async fn project_with_bodies(
         request,
         selection,
         upload,
-        content,
+        attachments,
         options,
-        Some(bodies),
+        Some(attachments),
         backend_id,
         deadline,
     )
@@ -449,9 +450,9 @@ async fn project_inner(
     mut request: Value,
     selection: &Value,
     upload: Option<&Value>,
-    content: &ContentContext<'_>,
+    content: &dyn ContentAccess,
     options: &BackendOptions,
-    deferred: Option<&crate::body::DeferredBodies>,
+    attachments: Option<&crate::attachment::InvocationAttachments>,
     backend_id: &str,
     deadline: Instant,
 ) -> Result<Value, HookError> {
@@ -476,6 +477,11 @@ async fn project_inner(
                 object.remove("body");
                 object.remove("gap");
                 object.insert("selection".into(), mode.clone());
+                if let Some(metadata) = attachments.and_then(|owners| owners.metadata(&path))
+                    && let Some(metadata) = metadata.as_object()
+                {
+                    object.extend(metadata.clone());
+                }
             }
             Some("body") => {
                 // Selection is not authorization: already-reduced views cannot be escalated.
@@ -534,28 +540,10 @@ async fn project_inner(
         if item.get("gap").is_some() {
             return Err(error("selected body unavailable"));
         }
-        if let Some(deferred) = deferred
-            && let Some(reference) = await_upload_phase(deadline, async {
-                deferred
-                    .materialize(&item["body"], content, max_bytes)
-                    .await
-                    .map_err(error)
-            })
-            .await?
-        {
-            item["body"] = reference;
-        }
-        let bytes = content
-            .resolve_selected(item)
-            .map_err(error)?
-            .ok_or_else(|| error("selected body unavailable"))?;
-        if bytes.len() > max_bytes {
-            return Err(error("upload exceeds maxBytes"));
-        }
+        let bytes = selected_bytes(&path, item, content, attachments, max_bytes, deadline).await?;
         bodies.push((path, bytes));
     }
-    // Check before any upload, not merely before backend delivery.
-    reject_deferred(&request)?;
+    // Local slot markers are replaced with receiver receipts before delivery.
     #[cfg(not(feature = "reqwest"))]
     {
         let _ = (endpoint, timeout, credential, bodies, attempt_id);
@@ -609,8 +597,35 @@ async fn project_inner(
     }
 }
 
+async fn selected_bytes(
+    path: &str,
+    item: &Value,
+    content: &dyn ContentAccess,
+    attachments: Option<&crate::attachment::InvocationAttachments>,
+    max_bytes: usize,
+    deadline: Instant,
+) -> Result<std::sync::Arc<[u8]>, HookError> {
+    if let Some(attachments) = attachments {
+        await_upload_phase(deadline, async {
+            attachments
+                .materialize(path, max_bytes)
+                .await
+                .map_err(error)
+        })
+        .await?;
+    }
+    let bytes = content
+        .resolve_selected(path, item)
+        .map_err(error)?
+        .ok_or_else(|| error("selected body unavailable"))?;
+    if bytes.len() > max_bytes {
+        return Err(error("upload exceeds maxBytes"));
+    }
+    Ok(bytes)
+}
+
 fn reject_deferred(request: &Value) -> Result<(), HookError> {
-    if crate::body::contains_deferred(request) {
+    if crate::attachment::contains_local(request) {
         return Err(error(
             "deferred body handle outside a selected content location",
         ));
@@ -841,22 +856,99 @@ mod tests {
 
     #[test]
     fn misplaced_deferred_handles_cannot_escape_in_arbitrary_json() {
-        let registry = crate::body::DeferredBodies::new(8, 1);
-        let handle = registry.register(crate::body::Body::bytes([1])).unwrap();
-        let request = json!({"params":{"event":{"type":"tool.before","input":{"nested":handle}}}});
+        let request = json!({"params":{"event":{"type":"tool.before","input":{"nested":{"ref":"ahp-attachment:0"}}}}});
         assert!(
-            futures::executor::block_on(project_with_bodies(
+            futures::executor::block_on(project(
                 request,
                 &json!({"default":"metadata"}),
                 None,
                 &context(),
                 &options(),
-                &registry,
-                "test",
-                Instant::now() + Duration::from_secs(30),
             ))
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn selected_upload_and_result_share_the_same_attachment_owner() {
+        use crate::{
+            Attachment,
+            attachment::{Budget, InvocationAttachments},
+            body::{BodyChunkFuture, BodyStream},
+        };
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        struct Source {
+            reads: Arc<AtomicUsize>,
+            done: bool,
+        }
+        impl BodyStream for Source {
+            fn next_chunk(&mut self) -> BodyChunkFuture<'_> {
+                self.reads.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async move {
+                    if self.done {
+                        Ok(None)
+                    } else {
+                        self.done = true;
+                        Ok(Some(vec![0, 255, 42]))
+                    }
+                })
+            }
+        }
+        for lazy in [false, true] {
+            let reads = Arc::new(AtomicUsize::new(0));
+            let attachment = if lazy {
+                Attachment::lazy(Source {
+                    reads: reads.clone(),
+                    done: false,
+                })
+            } else {
+                Attachment::bytes(vec![0, 255, 42])
+            };
+            let mut event = json!({"type":"tool.after", "items":[item()]});
+            let content = InvocationAttachments::bind(
+                &mut event,
+                vec![crate::ergonomic_inputs::ContentSourceBinding {
+                    path: vec!["items".into(), "0".into()],
+                    source: attachment,
+                }],
+                Budget::new(8, 1),
+                8,
+            )
+            .unwrap();
+            let item = &event["items"][0];
+            // This is the same helper used by selected HTTP upload. It lends
+            // the owner's Arc, not a stored or re-spooled snapshot.
+            let uploaded = selected_bytes(
+                "/items/0",
+                item,
+                &content,
+                Some(&content),
+                8,
+                Instant::now() + Duration::from_secs(30),
+            )
+            .await
+            .unwrap();
+            let second = selected_bytes(
+                "/items/0",
+                item,
+                &content,
+                Some(&content),
+                8,
+                Instant::now() + Duration::from_secs(30),
+            )
+            .await
+            .unwrap();
+            assert!(Arc::ptr_eq(&uploaded, &second));
+            let result = content.finish();
+            drop(content);
+            let returned = result.read("/items/0").await.unwrap();
+            assert!(Arc::ptr_eq(&uploaded, &returned));
+            assert_eq!(&*returned, &[0, 255, 42]);
+            assert_eq!(reads.load(Ordering::SeqCst), if lazy { 2 } else { 0 });
+        }
     }
 
     #[test]

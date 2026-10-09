@@ -368,7 +368,7 @@ pub struct Exchange {
     request: Option<Value>,
 }
 impl Exchange {
-    pub fn new(envelope: &Value, content: &crate::content::ContentContext<'_>) -> Result<Self> {
+    pub fn new(envelope: &Value, content: &dyn crate::content::ContentAccess) -> Result<Self> {
         public_validate("intercept-request", envelope)?;
         let event = &envelope["params"]["event"];
         if event["type"] != "user.elicitation.request" || envelope["id"] != event["id"] {
@@ -394,14 +394,14 @@ impl Exchange {
 fn read_public_selected(
     meta: &Value,
     stage: &str,
-    content: &crate::content::ContentContext<'_>,
+    content: &dyn crate::content::ContentAccess,
 ) -> Result<Option<Value>> {
     read_selected(
         meta,
         stage,
         &|_| {
             Ok(content
-                .resolve_selected(&meta[stage])?
+                .resolve_selected(&format!("/elicitation/{stage}"), &meta[stage])?
                 .ok_or("Selected body unavailable")?
                 .to_vec())
         },
@@ -428,7 +428,7 @@ fn public_validate(name: &str, value: &Value) -> Result<()> {
 pub fn stage_boundary(
     request: &Value,
     effects: &[Value],
-    content: &crate::content::ContentContext<'_>,
+    content: &dyn crate::content::ContentAccess,
     original: Option<&Exchange>,
 ) -> Result<Value> {
     public_validate("intercept-request", request)?;
@@ -532,8 +532,15 @@ pub fn stage_boundary(
         }
         if original_answer.as_ref() != Some(answer) {
             let bytes = serde_json::to_vec(answer)?;
-            let reference = serde_json::to_value(content.put(&bytes)?)?;
-            if content.resolve(&reference)?.as_ref() != bytes.as_slice() {
+            let reference = serde_json::to_value(content.put("/elicitation/result", &bytes)?)?;
+            if content
+                .resolve_selected(
+                    "/elicitation/result",
+                    &json!({"selection":"body","body":reference}),
+                )?
+                .as_deref()
+                != Some(bytes.as_slice())
+            {
                 return Err("Published answer integrity".into());
             }
             if result_stage {

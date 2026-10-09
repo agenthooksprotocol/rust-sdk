@@ -96,15 +96,18 @@ pub fn capabilities(boundary: &str, observe_only: bool) -> Result<Value, String>
         json!({"effects":effects,"modify":{target:{"replace":true,"merge":false}},"inject":{"context":{"append":true,"deliverAt":["now","next_turn"]}}}),
     )
 }
-fn summary(
-    state: &mut Value,
-    item_id: &str,
-    body: &str,
-    content: &crate::content::ContentContext<'_>,
-) -> Result<Value, String> {
-    let descriptor = content.put(body.as_bytes()).map_err(|e| e.to_string())?;
-    let reference = descriptor["ref"].as_str().ok_or("reference")?;
-    state["bodies"][reference] = json!(body);
+// Legacy JSON exposes content-N identifiers. Preserve their sequence without
+// retaining a backing store: these names index only the documented `bodies`
+// result field and are never used by canonical content evaluation.
+fn legacy_reference(next: &mut u64) -> Result<String, String> {
+    *next = next
+        .checked_add(1)
+        .ok_or("legacy content identifier capacity")?;
+    Ok(format!("content-{next}"))
+}
+fn summary(state: &mut Value, item_id: &str, body: &str, next: &mut u64) -> Result<Value, String> {
+    let reference = legacy_reference(next)?;
+    state["bodies"][&reference] = json!(body);
     Ok(json!({"id":item_id,"ref":reference}))
 }
 // Compatibility projection only: all protocol effect semantics run through the
@@ -116,9 +119,9 @@ fn stage(
     supplier: &str,
     item_id: &str,
     observe_only: bool,
-    content: &crate::content::ContentContext<'_>,
+    next: &mut u64,
 ) -> Result<Value, String> {
-    let execute = || -> CompactionResult<Value> {
+    let mut execute = || -> CompactionResult<Value> {
         let before = boundary == "before";
         let target = if before { "instructions" } else { "summary" };
         let body = if before {
@@ -131,7 +134,7 @@ fn stage(
         }
         .ok_or("compaction text")?;
         let mut event = json!({"id":boundary,"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","type":format!("context.compact.{boundary}")});
-        event[target] = json!({"id":if before { "instructions" } else { item_id },"kind":target,"role":if before { "system" } else { "assistant" },"mediaType":"text/plain","selection":"body","body":content.put(body.as_bytes())?});
+        event[target] = json!({"id":if before { "instructions" } else { item_id },"kind":target,"role":if before { "system" } else { "assistant" },"mediaType":"text/plain","selection":"body"});
         if before {
             event["trigger"] = json!("manual");
             event["items"] = json!([]);
@@ -139,20 +142,35 @@ fn stage(
             event["removed"] = json!([]);
             event["execution"] = json!({"status":"executed"});
         }
+        // The original compatibility projection allocated one reference per
+        // callback. Keep that visible numbering, but bind only this stage's slot.
+        legacy_reference(next)?;
+        let content = crate::attachment::InvocationAttachments::bind(
+            &mut event,
+            vec![crate::ergonomic_inputs::ContentSourceBinding {
+                path: vec![target.to_owned()],
+                source: crate::Attachment::bytes(body.as_bytes().to_vec()),
+            }],
+            crate::attachment::Budget::new(usize::MAX, usize::MAX),
+            usize::MAX,
+        )?;
         let request = json!({"jsonrpc":"2.0","id":boundary,"method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":capabilities(boundary,observe_only)?}});
-        let result = stage_boundary(&request, effects, content)?;
+        let result = stage_boundary(&request, effects, &content)?;
         let mut staged = state.clone();
-        let changed = selected_text(&result["event"][target], content)?;
+        let changed = selected_text_at(&format!("/{target}"), &result["event"][target], &content)?;
+        let replacement_reference = if changed != body {
+            Some(legacy_reference(next)?)
+        } else {
+            None
+        };
         if before {
             if staged["instructions"] != changed {
                 staged["candidate"] = Value::Null;
             }
             staged["instructions"] = json!(changed);
         } else if changed != body {
-            let reference = result["event"][target]["body"]["ref"]
-                .as_str()
-                .ok_or("reference")?;
-            staged["bodies"][reference] = json!(changed);
+            let reference = replacement_reference.ok_or("reference")?;
+            staged["bodies"][&reference] = json!(changed);
             staged["summary"] = json!({"id":item_id,"ref":reference});
         }
         if let Some(candidate) = result.get("candidate") {
@@ -194,7 +212,7 @@ fn pipeline(
     item_id: &str,
     observe_only: bool,
     log: &mut PipelineLog,
-    content: &crate::content::ContentContext<'_>,
+    next: &mut u64,
 ) -> bool {
     let caps = capabilities(boundary, observe_only && boundary == "after").unwrap();
     for hook in hooks {
@@ -210,7 +228,7 @@ fn pipeline(
                 hook.supplier,
                 item_id,
                 observe_only,
-                content,
+                next,
             )
         }) {
             Ok(staged) => *state = staged,
@@ -229,6 +247,9 @@ fn pipeline(
     true
 }
 /// Hooks run in order; changed inputs invalidate earlier supplied candidates.
+/// The legacy JSON result retains `bodies` and `seen` (callback snapshots) for
+/// compatibility. These explicit output fields are not a content store; canonical
+/// evaluation uses temporary slot-bound attachment owners for each callback.
 /// A supplied summary skips generation, never applicable after controls.
 /// Observe-only after callbacks require the owned run_compaction_observed API;
 /// borrowed after callbacks are rejected rather than joined or leaked.
@@ -252,11 +273,7 @@ pub fn run_compaction(
             return Err("invalid hook".into());
         }
     }
-    let store = crate::content::MemoryContentStore::new(usize::MAX, usize::MAX, usize::MAX);
-    let content = crate::content::ContentContext {
-        store: &store,
-        scope: crate::content::AuthorizedScope::new("legacy-compaction"),
-    };
+    let mut next = 0;
     let mut state = json!({"instructions":instructions,"candidate":null,"summary":null,"bodies":{},"messages":[],"injections":[],"denied":false});
     let mut log = PipelineLog::default();
     let mut generated = false;
@@ -269,7 +286,7 @@ pub fn run_compaction(
         item_id,
         observe_only,
         &mut log,
-        &content,
+        &mut next,
     ) {
         let body = if !state["candidate"].is_null() {
             provenance = json!({"kind":"supplied","supplier":state["candidate"]["supplier"]});
@@ -284,10 +301,10 @@ pub fn run_compaction(
             provenance = json!({"kind":"generated"});
             body
         };
-        state["summary"] = summary(&mut state, item_id, &body, &content)?;
+        state["summary"] = summary(&mut state, item_id, &body, &mut next)?;
         applied = observe_only
             || pipeline(
-                &mut state, after, "after", item_id, false, &mut log, &content,
+                &mut state, after, "after", item_id, false, &mut log, &mut next,
             );
     }
     state["seen"] = json!(log.seen);
@@ -312,6 +329,17 @@ pub fn selected_text(
     Ok(std::str::from_utf8(&bytes)?.to_owned())
 }
 
+fn selected_text_at(
+    path: &str,
+    item: &Value,
+    content: &dyn crate::content::ContentAccess,
+) -> CompactionResult<String> {
+    let bytes = content
+        .resolve_selected(path, item)?
+        .ok_or("compaction text body not selected")?;
+    Ok(std::str::from_utf8(&bytes)?.to_owned())
+}
+
 /// Stage one canonical compaction response atomically. Publish the returned
 /// event only on success. Failed stages can leave unreachable store allocations,
 /// but cannot commit references, messages, injections, denial or a candidate.
@@ -321,7 +349,7 @@ pub fn selected_text(
 pub fn stage_boundary(
     request: &Value,
     effects: &[Value],
-    content: &crate::content::ContentContext<'_>,
+    content: &dyn crate::content::ContentAccess,
 ) -> CompactionResult<Value> {
     crate::canonical::validate("intercept-request", request)?;
     let original = &request["params"]["event"];
@@ -337,13 +365,13 @@ pub fn stage_boundary(
     // Check the original snapshot even with no effects. A replacement cannot
     // conceal unavailable or corrupt selected content in the original exchange.
     if let Some(items) = original["items"].as_array() {
-        for item in items {
-            content.resolve_selected(item)?;
+        for (index, item) in items.iter().enumerate() {
+            content.resolve_selected(&format!("/items/{index}"), item)?;
         }
     }
     for key in ["instructions", "summary"] {
         if let Some(item) = original.get(key)
-            && let Some(bytes) = content.resolve_selected(item)?
+            && let Some(bytes) = content.resolve_selected(&format!("/{key}"), item)?
         {
             std::str::from_utf8(&bytes)?;
         }
@@ -374,7 +402,8 @@ pub fn stage_boundary(
                 {
                     return Err("unsupported compaction modification".into());
                 }
-                selected_text(
+                selected_text_at(
+                    &format!("/{target}"),
                     original.get(target).ok_or("missing compaction target")?,
                     content,
                 )?;
@@ -418,10 +447,17 @@ pub fn stage_boundary(
         }
     }
     if let Some(text) = replacement {
-        let original_text = selected_text(&original[target], content)?;
+        let original_text = selected_text_at(&format!("/{target}"), &original[target], content)?;
         if text.as_bytes() != original_text.as_bytes() {
-            let descriptor = content.put(text.as_bytes())?;
-            if content.resolve(&descriptor)?.as_ref() != text.as_bytes() {
+            let descriptor = content.put(&format!("/{target}"), text.as_bytes())?;
+            if content
+                .resolve_selected(
+                    &format!("/{target}"),
+                    &json!({"selection":"body","body":descriptor}),
+                )?
+                .as_deref()
+                != Some(text.as_bytes())
+            {
                 return Err("stored compaction replacement mismatch".into());
             }
             let item = &mut event[target];
@@ -467,5 +503,53 @@ impl CompactionSnapshot {
         content: &crate::content::ContentContext<'_>,
     ) -> CompactionResult<Value> {
         stage_boundary(&self.request, effects, content)
+    }
+}
+
+#[cfg(test)]
+mod legacy_owned_tests {
+    use super::*;
+
+    #[test]
+    fn temporary_owners_preserve_legacy_identifiers_and_callback_snapshots() {
+        let before = |_: &Value| {
+            Ok(vec![
+                json!({"type":"modify","target":"instructions","operation":"replace","value":"edited"}),
+            ])
+        };
+        let after = |snapshot: &Value| {
+            assert_eq!(snapshot["summary"]["ref"], "content-3");
+            assert_eq!(snapshot["bodies"]["content-3"], "summary:edited");
+            Ok(vec![
+                json!({"type":"modify","target":"summary","operation":"replace","value":"redacted"}),
+            ])
+        };
+        let result = run_compaction(
+            "original",
+            "summary-id",
+            &[CompactionHook {
+                supplier: "before",
+                failure_policy: "fail-closed",
+                run: &before,
+            }],
+            &[CompactionHook {
+                supplier: "after",
+                failure_policy: "fail-closed",
+                run: &after,
+            }],
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            result["summary"],
+            json!({"id":"summary-id","ref":"content-5"})
+        );
+        assert_eq!(
+            result["bodies"],
+            json!({"content-3":"summary:edited","content-5":"redacted"})
+        );
+        assert_eq!(result["seen"][1]["summary"]["ref"], "content-3");
+        assert_eq!(result["seen"][0]["instructions"], "original");
     }
 }
