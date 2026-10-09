@@ -600,6 +600,8 @@ impl ContentScope {
         let mut result = OwnedContent {
             scope: self.scope.clone(),
             entries: BTreeMap::new(),
+            attachments: BTreeMap::new(),
+            attachment_results: BTreeMap::new(),
         };
         for reference in references {
             result.collect_reference(reference, &self.context());
@@ -613,10 +615,36 @@ impl ContentScope {
 /// content targets retain payloads; reference-shaped opaque JSON does not.
 #[derive(Clone)]
 pub struct OwnedContent {
+    pub(crate) attachments: BTreeMap<String, crate::attachment::SharedAttachment>,
+    attachment_results: BTreeMap<String, Arc<[u8]>>,
     scope: AuthorizedScope,
     entries: BTreeMap<String, Arc<[u8]>>,
 }
 impl OwnedContent {
+    /// Read by content-item JSON pointer (for example `/items/0`). Sources and
+    /// immutable bytes outlive Hooks. Serialize concurrent first reads of a lazy
+    /// source; read failure and cancellation are terminal and never retried.
+    pub async fn read(&self, path: &str) -> Result<Arc<[u8]>, crate::body::BodyError> {
+        if let Some(bytes) = self.attachment_results.get(path) {
+            return Ok(bytes.clone());
+        }
+        self.attachments
+            .get(path)
+            .ok_or_else(|| crate::body::BodyError::Read("unknown attachment slot".into()))?
+            .read()
+            .await
+    }
+    pub(crate) fn retain_attachment_results(&mut self, event: &serde_json::Value) {
+        for path in self.attachments.keys().cloned().collect::<Vec<_>>() {
+            if let Some(body) = event.pointer(&path).and_then(|item| item.get("body"))
+                && let Ok(bytes) = self.resolve(body)
+            {
+                self.attachments.remove(&path);
+                self.attachment_results.insert(path, bytes);
+            }
+        }
+    }
+
     // Callers supply exact schema-owned reference slots, never opaque JSON roots.
     fn collect_reference(&mut self, value: &serde_json::Value, context: &ContentContext<'_>) {
         if let Ok(reference) = descriptor(value.clone())

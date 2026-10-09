@@ -524,6 +524,86 @@ mod chained_replacements {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn owned_attachment_reused_by_selected_consumers() {
+        use agenthooksprotocol::{
+            Attachment, ergonomic_inputs::user_message_outbound_sources::message_payload,
+        };
+        let (endpoint, server) = upload_server(2);
+        let mut registrations = Vec::new();
+        let mut options = options();
+        options.backend.allow_loopback_http = true;
+        for id in ["org.example.first", "org.example.second"] {
+            registrations.push(json!({"id":id,
+                "transport":{"type":"stdio","command":"never-run","lifecycle":"persistent"},
+                "subscriptions":[{"events":["user.message.outbound"],"mode":"intercept","timeoutMs":5000,
+                "failurePolicy":"fail-closed","content":{"default":"body"},
+                "upload":{"endpoint":endpoint,"maxBytes":64,"timeoutMs":5000}}]}));
+            options = options.with_backend(id, Arc::new(Noop));
+        }
+        let hooks = Hooks::new(
+            json!({"protocolVersion":"draft","hooks":registrations}),
+            options,
+        )
+        .unwrap();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let drops = Arc::new(AtomicUsize::new(0));
+        struct Binary {
+            reads: Arc<AtomicUsize>,
+            drops: Arc<AtomicUsize>,
+            done: bool,
+        }
+        impl Drop for Binary {
+            fn drop(&mut self) {
+                self.drops.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        impl agenthooksprotocol::body::BodyStream for Binary {
+            fn next_chunk(&mut self) -> agenthooksprotocol::body::BodyChunkFuture<'_> {
+                self.reads.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async move {
+                    if self.done {
+                        Ok(None)
+                    } else {
+                        self.done = true;
+                        Ok(Some(vec![0, 255, 42]))
+                    }
+                })
+            }
+        }
+        let mut input = event(json!({"ref":"unused"}));
+        input["message"]["payload"][0]["mediaType"] = json!("application/octet-stream");
+        let result = hooks
+            .event(input)
+            .attachment(message_payload(
+                0,
+                Attachment::lazy(Binary {
+                    reads: reads.clone(),
+                    drops: drops.clone(),
+                    done: false,
+                }),
+            ))
+            .await
+            .unwrap();
+        assert!(
+            result.outcome.failures.is_empty(),
+            "{:?}",
+            result.outcome.failures
+        );
+        hooks.shutdown().await.unwrap();
+        drop(hooks);
+        assert_eq!(
+            &*result.content.read("/message/payload/0").await.unwrap(),
+            &[0, 255, 42]
+        );
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            server.join().unwrap(),
+            vec![vec![0, 255, 42], vec![0, 255, 42]]
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn inline_replacements_chain_and_only_outcome_bytes_survive() {
         let (endpoint, server) = upload_server(8);
         let hooks = chain_hooks(&endpoint, None);

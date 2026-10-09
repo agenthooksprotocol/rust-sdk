@@ -197,6 +197,50 @@ include `event`, `effect`, `content`, `registration`, and `subscription`; genera
 constructors take required values, supply schema literals/defaults, and expose
 optional-member builders. Parsing still preserves absent members unchanged.
 
+### Owned file and binary attachments
+
+Use `Attachment::bytes(Vec<u8>)` or `Attachment::lazy(impl BodyStream)` with a
+boundary's `.attachment(...)` method and a generated source binding:
+
+```rust,ignore
+use agenthooksprotocol::{Attachment, ergonomic_inputs::user_message_outbound_sources};
+
+let result = hooks.user_message_outbound(input)
+    .attachment(user_message_outbound_sources::message_payload(
+        0, Attachment::lazy(file_source),
+    ))
+    .await?;
+hooks.shutdown().await?;
+let bytes = result.content.read("/message/payload/0").await?; // Arc<[u8]>
+```
+
+The content item still carries its media type, identity, role, and other metadata.
+No store, scope, staging handle, or reference resolution is required. Moving an
+attachment transfers ownership into one invocation; it is not a reusable
+cross-invocation handle. Bytes are immutable, and `Arc::make_mut` creates a private
+copy when other owners exist. Existing `Body`, scope, and reference APIs remain
+available for advanced uses.
+
+A lazy source is read at most once, only for a selected body delivery or an explicit
+result read. Metadata-only and unmatched hooks do not read it. The result owns
+unread sources as well as effective materialized bytes independently of Hooks;
+dropping its last owner releases unopened sources. Read failure or cancellation is
+terminal. Serialize concurrent first reads of the same lazy source. Invocation
+cancellation, timeout, and errors drop invocation-owned sources; cancellation of a
+result read drops its in-flight source too.
+
+The configured `max_body_bytes` and source chunk limit apply to result reads;
+selected deliveries additionally use existing upload and active store budgets.
+Result ownership does not create a session archive or charge active staging
+capacity. Applications must bound the number of retained results themselves.
+Lazy implementations must yield while waiting, and bound their own chunk allocations.
+
+Attachments add no binary editing capability. Existing generic edit negotiation
+requires materialized target bytes before delivery; use the existing explicit
+scope/staging path for negotiated text/JSON edits, not lazy attachments.
+See [`examples/file_attachment.rs`](examples/file_attachment.rs) for a standalone
+file example with metadata-only auditing and a post-shutdown read.
+
 ### Typed, lazy interception
 
 ```rust,ignore

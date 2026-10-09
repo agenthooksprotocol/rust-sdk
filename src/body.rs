@@ -80,11 +80,18 @@ pub struct Body {
 }
 
 enum Input {
+    Attachment(crate::attachment::SharedAttachment),
     Bytes(Vec<u8>),
     Stream(Box<dyn BodyStream>),
 }
 
 impl Body {
+    pub(crate) fn attachment(source: crate::attachment::SharedAttachment) -> Self {
+        Self {
+            input: Input::Attachment(source),
+            max_chunks: DEFAULT_MAX_CHUNKS,
+        }
+    }
     pub fn bytes(bytes: impl Into<Vec<u8>>) -> Self {
         Self {
             input: Input::Bytes(bytes.into()),
@@ -129,6 +136,11 @@ impl Body {
     /// overflowing byte totals, even when `max_bytes` is `usize::MAX`.
     pub async fn into_bytes(self, max_bytes: usize) -> Result<Vec<u8>, BodyError> {
         match self.input {
+            Input::Attachment(source) => {
+                // Box the recursive owned-body path and apply the delivery limit
+                // before polling any of the original source's chunks.
+                Ok(Box::pin(source.read_limited(max_bytes)).await?.to_vec())
+            }
             Input::Bytes(bytes) => {
                 if bytes.len() > max_bytes {
                     Err(BodyError::TooLarge { limit: max_bytes })

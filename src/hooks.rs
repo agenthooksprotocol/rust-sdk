@@ -1118,6 +1118,7 @@ struct Settings<'a> {
     exchange: Option<&'a Exchange>,
     targets: BTreeMap<String, String>,
     sources: Vec<generated::ergonomic_inputs::ContentSourceBinding<Body>>,
+    attachments: BTreeMap<String, crate::attachment::SharedAttachment>,
 }
 macro_rules! settings_methods {
     () => {
@@ -1133,6 +1134,32 @@ macro_rules! settings_methods {
             binding: generated::ergonomic_inputs::ContentSourceBinding<Body>,
         ) -> Self {
             self.settings.sources.push(binding);
+            self
+        }
+        /// Own an attachment in a generated content slot. No store or staging is required.
+        /// Binary attachments do not add edit capabilities; existing negotiated
+        /// edit-target constraints still apply.
+        pub fn attachment(
+            mut self,
+            binding: generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>,
+        ) -> Self {
+            let pointer = format!(
+                "/{}",
+                binding
+                    .path
+                    .iter()
+                    .map(|part| part.replace('~', "~0").replace('/', "~1"))
+                    .collect::<Vec<_>>()
+                    .join("/")
+            );
+            let (source, retained) = binding.source.bind(self.hooks.options.max_body_bytes);
+            self.settings.attachments.insert(pointer, retained);
+            self.settings
+                .sources
+                .push(generated::ergonomic_inputs::ContentSourceBinding {
+                    path: binding.path,
+                    source,
+                });
             self
         }
         pub fn initial_snapshot(mut self, snapshot: impl Serialize) -> Result<Self, HookError> {
@@ -1364,8 +1391,10 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     )
                     .await;
                 diagnostics.extend(preparation_diagnostics);
-                let retained =
+                let mut retained =
                     retain_event_content(&content, &effective_event, &self.settings.targets);
+                retained.attachments = self.settings.attachments;
+                retained.retain_attachment_results(&effective_event);
                 drop(client);
                 drop(content);
                 drop(_sources);
@@ -1512,7 +1541,8 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                 diagnostics.extend(preparation_diagnostics);
                 // Application input and return/injection values are opaque JSON, not
                 // event envelopes or schema-owned content-reference locations.
-                let retained = content.retain(&[]);
+                let mut retained = content.retain(&[]);
+                retained.attachments = self.settings.attachments;
                 drop(client);
                 drop(content);
                 drop(_sources);
