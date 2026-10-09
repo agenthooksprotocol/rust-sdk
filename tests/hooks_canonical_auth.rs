@@ -68,8 +68,9 @@ fn removed_and_unknown_authentication_mechanisms_remain_rejected() {
 mod runtime {
     use super::*;
     use agenthooksprotocol::{
-        body::Body,
+        Attachment,
         client::{Decision, ToolContext},
+        ergonomic_inputs::tool_before_sources::items,
     };
     use std::sync::Mutex;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -90,15 +91,11 @@ mod runtime {
         }
     }
     async fn dispatch(hooks: &Hooks) -> agenthooksprotocol::hooks::ToolOutcome<Value> {
-        let body = hooks
-            .stage_body(Body::bytes(b"upload payload".to_vec()))
-            .await
-            .unwrap();
         hooks.tool_input(json!({})).context(ToolContext::new(json!({
             "tool":{"name":"shell","kind":"shell","origin":"native"},
             "call":{"id":"call-upload"},"path":"native",
-            "items":[{"id":"body-1","kind":"text","mediaType":"text/plain","selection":"body","body":body}]
-        }))).initial_state(Decision::Allow).await.unwrap()
+            "items":[{"id":"body-1","kind":"text","mediaType":"text/plain","selection":"metadata"}]
+        }))).attachment(items(0, Attachment::bytes(b"upload payload".to_vec()))).initial_state(Decision::Allow).await.unwrap()
     }
     fn configured(endpoint: String, missing_upload_token: bool) -> (Hooks, Arc<Recorded>) {
         let backend = Arc::new(Recorded::default());

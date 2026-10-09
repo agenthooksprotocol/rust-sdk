@@ -1,10 +1,11 @@
 //! Runtime-neutral, canonical full-event transactions. No application execution occurs here.
+use crate::attachment::InvocationAttachments;
 use crate::client::*;
 use crate::client::{
     ProgressGuard, delivery_diagnostics, error, has, native_outcome, snapshot_value, subset,
     validate_request,
 };
-use crate::content::ContentContext;
+use crate::content::{ContentAccess, ContentContext};
 use crate::elicitation::Exchange;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -24,6 +25,7 @@ pub struct EventBoundary<'a, T> {
     reauthorization: bool,
     progress: BoundaryProgress,
     content: Option<ContentContext<'a>>,
+    attachments: Option<InvocationAttachments>,
     exchange: Option<&'a Exchange>,
     continuation_budget: Option<(u64, u64, u64)>,
     content_targets: std::collections::BTreeMap<String, String>,
@@ -43,6 +45,7 @@ impl<'a, T> EventBoundary<'a, T> {
             reauthorization: true,
             progress: BoundaryProgress::default(),
             content: None,
+            attachments: None,
             exchange: None,
             continuation_budget: None,
             content_targets: Default::default(),
@@ -103,13 +106,19 @@ impl<'a, T> EventBoundary<'a, T> {
     /// Bind a generic effect target to one host-selected canonical content item.
     /// The pointer must address a direct element of the event's canonical primary
     /// content array. Descriptor kind, category and role never select a target.
-    /// Validation and content resolution remain lazy until this builder is awaited.
+    /// Validation and content resolution occur when this builder is awaited.
+    /// Owned targets must use eager bytes for edit negotiation; lazy attachments
+    /// remain available for selected delivery without advertising generic edits.
     pub fn content_target(mut self, target: impl Into<String>, pointer: impl Into<String>) -> Self {
         self.content_targets.insert(target.into(), pointer.into());
         self
     }
     pub fn content(mut self, content: ContentContext<'a>) -> Self {
         self.content = Some(content);
+        self
+    }
+    pub(crate) fn attachments(mut self, attachments: InvocationAttachments) -> Self {
+        self.attachments = Some(attachments);
         self
     }
     pub fn elicitation_exchange(mut self, exchange: &'a Exchange) -> Self {
@@ -152,17 +161,26 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
             let mut input = serde_json::to_value(self.event).map_err(|e| error(e.to_string()))?;
             let name = input["type"].as_str().ok_or_else(|| error("missing canonical event type"))?.to_owned();
             if self.name.is_some_and(|expected| expected != name) { return Err(error("event name mismatch")); }
+            if (name.starts_with("user.elicitation.") || name.starts_with("context.compact."))
+                && let Some(attachments) = &self.attachments
+            {
+                // Specialized semantics validate selected payloads even without
+                // an interceptor; this is a real payload demand, not negotiation.
+                materialize_specialized(&input, attachments).await?;
+            }
+            let content: Option<&(dyn ContentAccess + Sync)> = self.attachments.as_ref().map(|a| a as &(dyn ContentAccess + Sync))
+                .or_else(|| self.content.as_ref().map(|c| c as &(dyn ContentAccess + Sync)));
             let mut supported = supported_capabilities(&name, self.continuation_budget)?;
             if let Some(caps) = supported.as_mut() {
-                narrow_content_support(caps, &input, self.content.as_ref(), &self.content_targets)?;
-                narrow_specialized_support(caps, &input, self.content.as_ref(), self.exchange)?;
+                narrow_content_support(caps, &input, content, &self.content_targets)?;
+                narrow_specialized_support(caps, &input, content, self.exchange)?;
             } else if !self.content_targets.is_empty() { return Err(error("content mapping requires an interceptable target")); }
             let interceptable = supported.is_some();
             let mut capabilities = self.capabilities.unwrap_or_else(|| supported.clone().unwrap_or(json!({"effects":[]})));
             if !subset(&capabilities, &supported.unwrap_or(json!({"effects":[]}))) {
                 return Err(error("capabilities may only narrow supported operations"));
             }
-            narrow_specialized_support(&mut capabilities, &input, self.content.as_ref(), self.exchange)?;
+            narrow_specialized_support(&mut capabilities, &input, content, self.exchange)?;
             if self.client.subscriptions.iter().any(|s| matches_event(s, &name) && interceptable && matches!(s.mode, Mode::Intercept(_)) && s.timeout.is_zero()) {
                 return Err(error("interception timeout must be positive"));
             }
@@ -180,7 +198,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
             // no subscriptions, no effects, or an initially denied/allowed path.
             // Metadata/omit descriptors remain no-read views inside the stages.
             if name.starts_with("user.elicitation.") || name.starts_with("context.compact.") {
-                let content = self.content.as_ref().ok_or_else(|| error("specialized boundary requires an authorized content resolver"))?;
+                let content = content.ok_or_else(|| error("specialized boundary requires an authorized content resolver"))?;
                 if name == "user.elicitation.result" && self.exchange.is_none() {
                     return Err(error("elicitation result requires original exchange"));
                 }
@@ -219,8 +237,8 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 // A prior JSON replacement can remove merge support. Never
                 // re-expand explicitly narrowed or previously removed grants.
                 let mut current_caps = request["params"]["capabilities"].clone();
-                narrow_content_support(&mut current_caps, &input, self.content.as_ref(), &self.content_targets)?;
-                narrow_specialized_support(&mut current_caps, &input, self.content.as_ref(), self.exchange)?;
+                narrow_content_support(&mut current_caps, &input, content, &self.content_targets)?;
+                narrow_specialized_support(&mut current_caps, &input, content, self.exchange)?;
                 request["params"]["capabilities"] = current_caps;
                 let response = match validate_request(&request) {
                     Ok(()) => {
@@ -237,7 +255,9 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 self.progress.0.lock().expect("progress lock poisoned").waker = None;
                 if self.progress.interrupted() { return Err(error("boundary interrupted")); }
                 let raw_response = response.as_ref().ok().cloned();
-                let accepted = response.and_then(|response| stage(&request, &response, &state, self.content.as_ref(), self.exchange, &self.content_targets).map_err(|e| e.classify_if_unset(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)));
+                let staged_attachments = self.attachments.as_ref().map(InvocationAttachments::fork);
+                let stage_content = staged_attachments.as_ref().map(|a| a as &(dyn ContentAccess + Sync)).or(content);
+                let accepted = response.and_then(|response| stage(&request, &response, &state, stage_content, self.exchange, &self.content_targets).map_err(|e| e.classify_if_unset(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)));
                 // Check the original monotonic budget after full parsing/staging,
                 // immediately before atomic publication. Never salvage a late deny.
                 let accepted = if started.elapsed() >= subscription.timeout {
@@ -245,6 +265,9 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 } else { accepted };
                 match accepted {
                     Ok((next, next_state, replaced_candidate)) => {
+                        if let (Some(attachments), Some(staged)) = (&self.attachments, staged_attachments) {
+                            attachments.commit(staged);
+                        }
                         state_present = true;
                         if next_state.candidate.is_none() {
                             candidate_descriptor = Value::Null;
@@ -394,7 +417,7 @@ fn stage(
     request: &Value,
     response: &Value,
     prior: &ProtocolOutcome,
-    content: Option<&ContentContext<'_>>,
+    content: Option<&(dyn ContentAccess + Sync)>,
     exchange: Option<&Exchange>,
     targets: &std::collections::BTreeMap<String, String>,
 ) -> Result<(Value, ProtocolOutcome, bool), HookError> {
@@ -507,31 +530,55 @@ fn stage(
     if let Some(staged) = &staged {
         event = staged["event"].clone();
     } else {
-        for effect in effects.iter().filter(|e| e["type"] == "modify") {
+        // Capture original byte owners before any slot is overwritten. The
+        // checkpoint owns handles, not copies or a reference-indexed archive.
+        let mut originals = std::collections::BTreeMap::new();
+        if let Some(content) = content {
+            for effect in effects.iter().filter(|effect| effect["type"] == "modify") {
+                if let Some(pointer) = effect["target"]
+                    .as_str()
+                    .and_then(|target| targets.get(target))
+                    && !originals.contains_key(pointer)
+                {
+                    let item = original
+                        .pointer(pointer)
+                        .ok_or_else(|| error("missing mapped item"))?;
+                    let bytes = content
+                        .resolve_selected(pointer, item)
+                        .map_err(|e| error(e.to_string()))?;
+                    originals.insert(pointer.clone(), bytes);
+                }
+            }
+        }
+        // Preserve per-effect serialization, validation, and allocation limits.
+        for effect in effects.iter().filter(|effect| effect["type"] == "modify") {
             modify(&mut event, effect, content, targets)?;
         }
-        // Intermediate immutable uploads are not publication. If the response
-        // restores the original bytes, retain the original descriptor exactly so
-        // neither approval nor a bound candidate is spuriously invalidated.
         if let Some(content) = content {
-            for pointer in targets.values() {
-                if let (Some(before), Some(after)) =
-                    (original.pointer(pointer), event.pointer(pointer))
-                    && before != after
-                    && content
-                        .resolve_selected(before)
-                        .map_err(|e| error(e.to_string()))?
+            for (pointer, bytes) in originals {
+                let before = original
+                    .pointer(&pointer)
+                    .ok_or_else(|| error("missing mapped item"))?;
+                let after = event
+                    .pointer(&pointer)
+                    .ok_or_else(|| error("missing mapped item"))?;
+                if before != after
+                    && bytes
                         == content
-                            .resolve_selected(after)
+                            .resolve_selected(&pointer, after)
                             .map_err(|e| error(e.to_string()))?
                 {
+                    content
+                        .restore_original(&pointer, before)
+                        .map_err(|e| error(e.to_string()))?;
                     *event
-                        .pointer_mut(pointer)
+                        .pointer_mut(&pointer)
                         .ok_or_else(|| error("missing mapped item"))? = before.clone();
                 }
             }
         }
     }
+
     let mut effective = request.clone();
     effective["params"]["event"] = event.clone();
     validate_request(&effective)?;
@@ -600,7 +647,7 @@ fn change(current: &mut Value, effect: &Value) -> Result<(), HookError> {
 fn modify(
     event: &mut Value,
     effect: &Value,
-    content: Option<&ContentContext<'_>>,
+    content: Option<&(dyn ContentAccess + Sync)>,
     targets: &std::collections::BTreeMap<String, String>,
 ) -> Result<(), HookError> {
     let target = effect["target"]
@@ -620,7 +667,7 @@ fn modify(
                 .pointer_mut(pointer)
                 .ok_or_else(|| error("missing mapped content item"))?;
             let bytes = content
-                .resolve_selected(item)
+                .resolve_selected(pointer, item)
                 .map_err(|e| error(e.to_string()))?
                 .ok_or_else(|| error("primary body not selected"))?;
             let json_body = is_json_media(item["mediaType"].as_str().unwrap_or(""));
@@ -635,6 +682,9 @@ fn modify(
             };
             let original_value = value.clone();
             change(&mut value, effect)?;
+            if !json_body && !value.is_string() {
+                return Err(error("text replacement must be a string"));
+            }
             if value == original_value {
                 return Ok(());
             }
@@ -648,7 +698,9 @@ fn modify(
                     .to_vec()
             };
             if new_bytes.as_slice() != bytes.as_ref() {
-                let reference = content.put(&new_bytes).map_err(|e| error(e.to_string()))?;
+                let reference = content
+                    .put(pointer, &new_bytes)
+                    .map_err(|e| error(e.to_string()))?;
                 if item.get("size").is_some() {
                     item["size"] = reference["size"].clone();
                 }
@@ -663,12 +715,52 @@ fn modify(
     }
 }
 
-fn validate_selected_bodies(event: &Value, content: &ContentContext<'_>) -> Result<(), HookError> {
+async fn materialize_specialized(
+    event: &Value,
+    attachments: &InvocationAttachments,
+) -> Result<(), HookError> {
+    let mut paths = Vec::new();
     for pointer in ["/items", "/message/text", "/message/payload"] {
         if let Some(items) = event.pointer(pointer).and_then(Value::as_array) {
-            for item in items {
+            for (index, item) in items.iter().enumerate() {
+                if item["selection"] == "body" && item.get("gap").is_none() {
+                    paths.push(format!("{pointer}/{index}"));
+                }
+            }
+        }
+    }
+    for pointer in [
+        "/instructions",
+        "/summary",
+        "/elicitation/request",
+        "/elicitation/result",
+    ] {
+        if let Some(item) = event.pointer(pointer)
+            && item["selection"] == "body"
+            && item.get("gap").is_none()
+        {
+            paths.push(pointer.to_owned());
+        }
+    }
+    for path in paths {
+        attachments
+            .materialize(&path, usize::MAX)
+            .await
+            .map_err(|e| error(e.to_string()))?;
+    }
+    Ok(())
+}
+
+fn validate_selected_bodies(
+    event: &Value,
+    content: &(dyn ContentAccess + Sync),
+) -> Result<(), HookError> {
+    for pointer in ["/items", "/message/text", "/message/payload"] {
+        if let Some(items) = event.pointer(pointer).and_then(Value::as_array) {
+            for (index, item) in items.iter().enumerate() {
+                let pointer = &format!("{pointer}/{index}");
                 content
-                    .resolve_selected(item)
+                    .resolve_selected(pointer, item)
                     .map_err(|e| error(e.to_string()))?;
             }
         }
@@ -681,7 +773,7 @@ fn validate_selected_bodies(event: &Value, content: &ContentContext<'_>) -> Resu
     ] {
         if let Some(item) = event.pointer(pointer) {
             content
-                .resolve_selected(item)
+                .resolve_selected(pointer, item)
                 .map_err(|e| error(e.to_string()))?;
         }
     }
@@ -706,7 +798,7 @@ fn content_array(name: &str, target: &str) -> Option<&'static str> {
 fn narrow_content_support(
     caps: &mut Value,
     event: &Value,
-    content: Option<&ContentContext<'_>>,
+    content: Option<&(dyn ContentAccess + Sync)>,
     targets: &std::collections::BTreeMap<String, String>,
 ) -> Result<(), HookError> {
     let name = event["type"]
@@ -753,7 +845,7 @@ fn narrow_content_support(
                 && (is_json_media(media) || media.starts_with("text/"))
             {
                 let bytes = content
-                    .resolve_selected(item)
+                    .resolve_selected(pointer, item)
                     .map_err(|e| error(e.to_string()))?
                     .ok_or_else(|| error("mapped body unavailable"))?;
                 let merge = if is_json_media(media) {
@@ -803,7 +895,7 @@ fn remove_effect(caps: &mut Value, kind: &str) {
 fn narrow_specialized_support(
     caps: &mut Value,
     event: &Value,
-    content: Option<&ContentContext<'_>>,
+    content: Option<&(dyn ContentAccess + Sync)>,
     original: Option<&Exchange>,
 ) -> Result<(), HookError> {
     let name = event["type"].as_str().unwrap_or("");
@@ -815,7 +907,7 @@ fn narrow_specialized_support(
         };
         let available = if let (Some(content), Some(item)) = (content, event.get(target)) {
             match content
-                .resolve_selected(item)
+                .resolve_selected(&format!("/{target}"), item)
                 .map_err(|e| error(e.to_string()))?
             {
                 Some(bytes) => {
@@ -856,7 +948,7 @@ fn narrow_specialized_support(
                 (content, event["elicitation"].get("result"))
             {
                 match content
-                    .resolve_selected(item)
+                    .resolve_selected("/elicitation/result", item)
                     .map_err(|e| error(e.to_string()))?
                 {
                     Some(bytes) => {
@@ -875,4 +967,222 @@ fn narrow_specialized_support(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod owned_content_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn generic_fixture(media: &str, bytes: &[u8], limit: usize) -> (Value, InvocationAttachments) {
+        let mut event = json!({"id":"outbound","source":"urn:test:runtime","type":"user.message.outbound","time":"2026-09-15T12:00:00Z","message":{"channel":"chat","payload":[{"id":"item","kind":"content","role":"assistant","mediaType":media,"selection":"body"}]}});
+        let attachments = InvocationAttachments::bind(
+            &mut event,
+            vec![crate::ergonomic_inputs::ContentSourceBinding {
+                path: vec!["message".into(), "payload".into(), "0".into()],
+                source: crate::Attachment::bytes(bytes.to_vec()),
+            }],
+            crate::attachment::Budget::new(65536, 16),
+            limit,
+        )
+        .unwrap();
+        (event, attachments)
+    }
+
+    fn generic_stage(
+        event: &Value,
+        content: &InvocationAttachments,
+        effects: Value,
+    ) -> Result<(Value, ProtocolOutcome, bool), HookError> {
+        let request = json!({"jsonrpc":"2.0","id":"outbound","method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":{"effects":["modify"],"modify":{"content":{"replace":true,"merge":true}}}}});
+        let response = json!({"jsonrpc":"2.0","id":"outbound","result":{"protocolVersion":"draft","effects":effects}});
+        let (prior, _) =
+            native_outcome(&json!({"permission":"allow","candidate":{"value":"candidate"}}))
+                .unwrap();
+        let targets = [("content".to_owned(), "/message/payload/0".to_owned())].into();
+        stage(&request, &response, &prior, Some(content), None, &targets)
+    }
+
+    #[test]
+    fn compact_json_exact_revert_restores_original_owner_and_approval() {
+        let (event, attachments) = generic_fixture("application/json", br#"{"a":1}"#, 4096);
+        let path = "/message/payload/0";
+        let original_bytes = attachments
+            .resolve_selected(path, event.pointer(path).unwrap())
+            .unwrap()
+            .unwrap();
+        let staged = attachments.fork();
+        let (next, state, _) = generic_stage(
+            &event,
+            &staged,
+            json!([
+                {"type":"modify","target":"content","operation":"merge","value":{"a":2}},
+                {"type":"modify","target":"content","operation":"merge","value":{"a":1}}
+            ]),
+        )
+        .unwrap();
+        assert_eq!(next, event);
+        assert_eq!(state.decision, Decision::Allow);
+        assert_eq!(state.candidate, Some(json!("candidate")));
+        assert!(!state.approval_invalidated);
+        let final_bytes = staged
+            .resolve_selected(path, next.pointer(path).unwrap())
+            .unwrap()
+            .unwrap();
+        assert!(Arc::ptr_eq(&original_bytes, &final_bytes));
+    }
+
+    #[test]
+    fn spaced_json_logical_revert_normalizes_bytes_and_invalidates_approval() {
+        let (event, attachments) = generic_fixture("application/json", br#"{ "a": 1 }"#, 4096);
+        let staged = attachments.fork();
+        let (next, state, _) = generic_stage(
+            &event,
+            &staged,
+            json!([
+                {"type":"modify","target":"content","operation":"merge","value":{"a":2}},
+                {"type":"modify","target":"content","operation":"merge","value":{"a":1}}
+            ]),
+        )
+        .unwrap();
+        assert_ne!(next, event);
+        assert_eq!(state.decision, Decision::None);
+        assert!(state.candidate.is_none());
+        assert!(state.approval_invalidated);
+        assert_eq!(
+            staged
+                .resolve_selected("/message/payload/0", &next["message"]["payload"][0])
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            br#"{"a":1}"#
+        );
+    }
+
+    fn assert_rejected(media: &str, bytes: &[u8], limit: usize, effects: Value) {
+        let (event, attachments) = generic_fixture(media, bytes, limit);
+        let path = "/message/payload/0";
+        let original_bytes = attachments
+            .resolve_selected(path, event.pointer(path).unwrap())
+            .unwrap()
+            .unwrap();
+        let staged = attachments.fork();
+        assert!(generic_stage(&event, &staged, effects).is_err());
+        drop(staged);
+        let final_bytes = attachments
+            .resolve_selected(path, event.pointer(path).unwrap())
+            .unwrap()
+            .unwrap();
+        assert!(Arc::ptr_eq(&original_bytes, &final_bytes));
+        assert_eq!(final_bytes.as_ref(), bytes);
+    }
+
+    #[test]
+    fn invalid_intermediate_text_cannot_be_repaired_by_changed_string() {
+        assert_rejected(
+            "text/plain",
+            b"original",
+            4096,
+            json!([
+                {"type":"modify","target":"content","operation":"replace","value":{"invalid":true}},
+                {"type":"modify","target":"content","operation":"replace","value":"changed"}
+            ]),
+        );
+    }
+
+    #[test]
+    fn invalid_intermediate_text_cannot_be_repaired_by_original_string() {
+        assert_rejected(
+            "text/plain",
+            b"original",
+            4096,
+            json!([
+                {"type":"modify","target":"content","operation":"replace","value":{"invalid":true}},
+                {"type":"modify","target":"content","operation":"replace","value":"original"}
+            ]),
+        );
+    }
+
+    #[test]
+    fn invalid_intermediate_json_merge_cannot_be_repaired_by_replacement() {
+        assert_rejected(
+            "application/json",
+            br#"{"a":1}"#,
+            4096,
+            json!([
+                {"type":"modify","target":"content","operation":"replace","value":42},
+                {"type":"modify","target":"content","operation":"merge","value":{"a":2}},
+                {"type":"modify","target":"content","operation":"replace","value":{"a":1}}
+            ]),
+        );
+    }
+
+    #[test]
+    fn oversized_intermediate_text_cannot_be_repaired_by_original_string() {
+        assert_rejected(
+            "text/plain",
+            b"original",
+            8,
+            json!([
+                {"type":"modify","target":"content","operation":"replace","value":"too long for limit"},
+                {"type":"modify","target":"content","operation":"replace","value":"original"}
+            ]),
+        );
+    }
+
+    fn bind(event: &mut Value, path: &[&str], bytes: &[u8]) -> InvocationAttachments {
+        InvocationAttachments::bind(
+            event,
+            vec![crate::ergonomic_inputs::ContentSourceBinding {
+                path: path.iter().map(|part| (*part).to_owned()).collect(),
+                source: crate::Attachment::bytes(bytes.to_vec()),
+            }],
+            crate::attachment::Budget::new(65536, 16),
+            4096,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn owned_compaction_replacement_uses_transactional_instruction_slot() {
+        let mut event = json!({"id":"before","source":"urn:test:owned","time":"2026-09-15T12:00:00Z","type":"context.compact.before","trigger":"manual","items":[],
+            "instructions":{"id":"instructions","kind":"instructions","role":"system","mediaType":"text/plain","selection":"body"}});
+        let attachments = bind(&mut event, &["instructions"], b"original");
+        let request = json!({"jsonrpc":"2.0","id":"before","method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":crate::compaction::capabilities("before",false).unwrap()}});
+        let staged = attachments.fork();
+        let next = crate::compaction::stage_boundary(&request, &[json!({"type":"modify","target":"instructions","operation":"replace","value":"changed"})], &staged).unwrap();
+        assert_eq!(
+            attachments
+                .resolve_selected("/instructions", &event["instructions"])
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            b"original"
+        );
+        attachments.commit(staged);
+        assert_eq!(
+            attachments
+                .resolve_selected("/instructions", &next["event"]["instructions"])
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            b"changed"
+        );
+    }
+
+    #[test]
+    fn owned_elicitation_request_resolves_original_request_slot() {
+        let payload = json!({"message":"Answer?","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}});
+        let mut event = json!({"id":"request","source":"urn:test:owned","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},"elicitation":{"server":"server","mode":"form","request":{"id":"request-item","kind":"elicitation.request","mediaType":"application/json","selection":"body"}}});
+        let attachments = bind(
+            &mut event,
+            &["elicitation", "request"],
+            &serde_json::to_vec(&payload).unwrap(),
+        );
+        let request = json!({"jsonrpc":"2.0","id":"request","method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":{"effects":["return","deny","message"],"elicitation":{"form":{}}}}});
+        let exchange = Exchange::new(&request, &attachments).unwrap();
+        assert_eq!(exchange.original_request(), Some(&payload));
+        let next = crate::elicitation::stage_boundary(&request, &[], &attachments, None).unwrap();
+        assert_eq!(next["event"], event);
+    }
 }

@@ -133,12 +133,13 @@ fn eager_and_lazy_limits_are_terminal_and_release_sources() {
         assert!(result.content.read("/message/payload/0").await.is_err());
         assert_eq!(reads.load(Ordering::SeqCst), 1);
         assert_eq!(drops.load(Ordering::SeqCst), 1);
-        let result = hooks
-            .event(event())
-            .attachment(message_payload(0, Attachment::bytes(vec![1, 2, 3])))
-            .await
-            .unwrap();
-        assert!(result.content.read("/message/payload/0").await.is_err());
+        assert!(
+            hooks
+                .event(event())
+                .attachment(message_payload(0, Attachment::bytes(vec![1, 2, 3])))
+                .await
+                .is_err()
+        );
         let result = hooks
             .event(event())
             .attachment(message_payload(0, Attachment::bytes(vec![1, 2])))
@@ -324,7 +325,7 @@ impl agenthooksprotocol::adapters::registered::ManagedBackend for UnreachableBac
 }
 
 #[test]
-fn attachment_binding_rejects_noncanonical_integrity_fields_without_reading() {
+fn attachment_integrity_metadata_is_checked_on_demand_not_sent_on_wire() {
     block_on(async {
         for metadata in [json!({"size":999}), json!({"sha256":"0".repeat(64)})] {
             let hooks = hooks(10);
@@ -334,17 +335,110 @@ fn attachment_binding_rejects_noncanonical_integrity_fields_without_reading() {
                 .as_object_mut()
                 .unwrap()
                 .extend(metadata.as_object().unwrap().clone());
-            // A source binding creates a body view, whose canonical schema
-            // forbids size/sha256 fields. It must fail before polling the source.
-            assert!(
-                hooks
-                    .event(input)
-                    .attachment(message_payload(0, attachment))
-                    .await
-                    .is_err()
-            );
+            let result = hooks
+                .event(input)
+                .attachment(message_payload(0, attachment))
+                .await
+                .unwrap();
             assert_eq!(reads.load(Ordering::SeqCst), 0);
+            let item = &result.effective_event["message"]["payload"][0];
+            assert!(item.get("size").is_none());
+            assert!(item.get("sha256").is_none());
+            assert!(result.content.read("/message/payload/0").await.is_err());
+            let attempted = reads.load(Ordering::SeqCst);
+            assert!(attempted > 0);
+            assert!(result.content.read("/message/payload/0").await.is_err());
+            assert_eq!(reads.load(Ordering::SeqCst), attempted);
             assert_eq!(drops.load(Ordering::SeqCst), 1);
+        }
+        let hooks = hooks(10);
+        let (attachment, reads, drops) = source();
+        let mut input = event();
+        input["message"]["payload"][0]["size"] = json!(3);
+        let result = hooks
+            .event(input)
+            .attachment(message_payload(0, attachment))
+            .await
+            .unwrap();
+        assert_eq!(reads.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            result
+                .content
+                .read("/message/payload/0")
+                .await
+                .unwrap()
+                .as_ref(),
+            &[0, 255, 42]
+        );
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    });
+}
+
+#[test]
+fn specialized_attachment_slots_and_elicitation_exchange_outlive_hooks() {
+    use agenthooksprotocol::ergonomic_inputs::{
+        context_compact_before_sources::instructions,
+        user_elicitation_request_sources::elicitation_request,
+    };
+    block_on(async {
+        let cases = [
+            ("context.compact.before", "/instructions", json!({
+                "type":"context.compact.before", "trigger":"manual", "items":[],
+                "instructions":{"id":"instructions","kind":"instructions","mediaType":"text/plain","selection":"metadata"}
+            }), b"compact these items".to_vec()),
+            ("user.elicitation.request", "/elicitation/request", json!({
+                "type":"user.elicitation.request", "elicitation":{"server":"mcp-server","mode":"form",
+                "request":{"id":"request","kind":"elicitation.request","mediaType":"application/json","selection":"metadata"}}
+            }), serde_json::to_vec(&json!({"message":"Your answer", "requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}})).unwrap()),
+        ];
+        for (name, path, event, bytes) in cases {
+            let mut config = registration();
+            config["hooks"][0]["subscriptions"][0]["events"] = json!([name]);
+            let options = HooksOptions::new(
+                "urn:test:specialized",
+                BTreeMap::from([(
+                    name.into(),
+                    EventGrant::intercept(if name == "user.elicitation.request" {
+                        Capabilities::none().elicitation_form()
+                    } else {
+                        Capabilities::none()
+                    }),
+                )]),
+            )
+            .with_backend("org.example.attachments", Arc::new(Noop));
+            let hooks = Hooks::new(config, options).unwrap();
+            let boundary = hooks.event(event);
+            let result = if name == "context.compact.before" {
+                boundary
+                    .attachment(instructions(Attachment::bytes(bytes.clone())))
+                    .await
+                    .unwrap()
+            } else {
+                boundary
+                    .attachment(elicitation_request(Attachment::bytes(bytes.clone())))
+                    .await
+                    .unwrap()
+            };
+            assert!(
+                result.outcome.failures.is_empty(),
+                "{:?}",
+                result.outcome.failures
+            );
+            hooks.shutdown().await.unwrap();
+            drop(hooks);
+            assert_eq!(result.content.read(path).await.unwrap().as_ref(), bytes);
+            if name == "user.elicitation.request" {
+                let envelope = json!({"jsonrpc":"2.0","id":result.effective_event["id"],"method":"hooks/intercept","params":{"protocolVersion":"draft","event":result.effective_event,
+                    "capabilities":{"effects":["return","deny","message"],"elicitation":{"form":{}}}}});
+                let exchange =
+                    agenthooksprotocol::elicitation::Exchange::new(&envelope, &result.content)
+                        .unwrap();
+                drop(result);
+                assert_eq!(
+                    exchange.original_request().unwrap()["message"],
+                    "Your answer"
+                );
+            }
         }
     });
 }

@@ -1,9 +1,9 @@
 //! Public ownership and capacity regressions for Hooks-managed content.
 use agenthooksprotocol::{
-    Hooks,
+    Attachment, Hooks,
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
-    content::UploadError,
+    ergonomic_inputs::user_message_outbound_sources::message_payload,
     hooks::{Capabilities, EventGrant, HooksOptions},
 };
 use serde_json::{Value, json};
@@ -11,7 +11,7 @@ use std::{
     collections::BTreeMap,
     future::IntoFuture,
     sync::{
-        Arc, Barrier,
+        Arc,
         atomic::{AtomicUsize, Ordering},
     },
     task::{Context, Poll},
@@ -72,25 +72,17 @@ fn event(reference: Value) -> Value {
 
 #[test]
 fn default_capacity_is_reused_across_more_than_4096_invocations() {
-    let hooks = Hooks::new(
-        registration(),
-        options().with_backend("org.example.lifecycle", Arc::new(Noop)),
-    )
-    .unwrap();
+    let hooks = hooks_with_limits(8, 1);
     for invocation in 0..4100 {
-        let scope = hooks.content_scope();
-        let reference = scope.context().put(b"original").unwrap_or_else(|error| {
-            panic!("invocation {invocation} could not stage content: {error}")
-        });
         let result = futures::executor::block_on(
             hooks
-                .event(event(reference.clone()))
-                .content_scope(scope)
+                .event(event(json!({"ref":"unused"})))
+                .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
                 .into_future(),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("invocation {invocation}: {error}"));
         assert_eq!(
-            result.content.resolve(&reference).unwrap().as_ref(),
+            &*futures::executor::block_on(result.content.read("/message/payload/0")).unwrap(),
             b"original"
         );
     }
@@ -99,107 +91,179 @@ fn default_capacity_is_reused_across_more_than_4096_invocations() {
 #[test]
 fn returned_content_outlives_hooks_and_does_not_charge_active_capacity() {
     let hooks = hooks_with_limits(8, 1);
-    let scope = hooks.content_scope();
-    let reference = scope.context().put(b"original").unwrap();
     let result = futures::executor::block_on(
         hooks
-            .event(event(reference.clone()))
-            .content_scope(scope)
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
             .into_future(),
     )
     .unwrap();
-    let next = hooks.content_scope();
-    next.context()
-        .put(b"next")
-        .expect("completed invocation must release active capacity even while its outcome lives");
-    drop(next);
+    let next = futures::executor::block_on(
+        hooks
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, Attachment::bytes(b"next".to_vec())))
+            .into_future(),
+    )
+    .unwrap();
     drop(hooks);
-    let returned = &result.effective_event["message"]["payload"][0]["body"];
     assert_eq!(
-        result.content.resolve(returned).unwrap().as_ref(),
+        &*futures::executor::block_on(result.content.read("/message/payload/0")).unwrap(),
         b"original"
     );
     assert_eq!(
-        result
-            .content
-            .context()
-            .resolve(&reference)
-            .unwrap()
-            .as_ref(),
-        b"original"
+        &*futures::executor::block_on(next.content.read("/message/payload/0")).unwrap(),
+        b"next"
     );
 }
 
 #[test]
-fn explicit_scopes_share_entry_and_byte_budgets_and_release_on_drop() {
-    for (bytes, entries, first_body) in [(32, 1, b"a".as_slice()), (4, 8, b"full".as_slice())] {
-        let hooks = hooks_with_limits(bytes, entries);
-        let first = hooks.content_scope();
-        let second = hooks.content_scope();
-        let reference = first.context().put(first_body).unwrap();
-        assert!(
-            second.context().resolve(&reference).is_err(),
-            "a sibling scope must not gain authority from a reference"
+fn boundary_attachments_enforce_eager_byte_limits() {
+    let mut options = options().with_backend("org.example.lifecycle", Arc::new(Noop));
+    options.max_body_bytes = 4;
+    let hooks = Hooks::new(registration(), options).unwrap();
+    for bytes in [b"full".to_vec(), b"large".to_vec(), b"x".to_vec()] {
+        let result = futures::executor::block_on(
+            hooks
+                .event(event(json!({"ref":"unused"})))
+                .attachment(message_payload(0, Attachment::bytes(bytes.clone())))
+                .into_future(),
         );
-        assert_eq!(
-            second.context().put(b"x").unwrap_err(),
-            UploadError::Capacity
-        );
-        drop(first);
-        let replacement = second.context().put(b"x").unwrap();
-        assert_eq!(
-            second.context().resolve(&replacement).unwrap().as_ref(),
-            b"x"
-        );
-        assert!(second.context().resolve(&reference).is_err());
+        if bytes.len() > 4 {
+            assert!(
+                result.is_err(),
+                "oversized eager attachment escaped binding limits"
+            );
+        } else {
+            let result = result.unwrap();
+            let read = futures::executor::block_on(result.content.read("/message/payload/0"));
+            assert_eq!(&*read.unwrap(), bytes.as_slice());
+        }
     }
 }
 
 #[test]
-fn concurrent_staging_cannot_multiply_configured_capacity() {
-    let hooks = hooks_with_limits(4, 4);
-    let scopes: Vec<_> = (0..12).map(|_| hooks.content_scope()).collect();
-    let start = Arc::new(Barrier::new(scopes.len()));
-    let staged = Arc::new(Barrier::new(scopes.len()));
-    let successes = Arc::new(AtomicUsize::new(0));
+fn active_boundaries_share_entry_and_byte_budgets_and_release_on_drop() {
+    for (bytes, entries, first_body) in [(32, 1, b"a".as_slice()), (4, 8, b"full".as_slice())] {
+        let backend = Arc::new(Backend {
+            pending: true,
+            calls: AtomicUsize::new(0),
+        });
+        let mut options = options().with_backend("org.example.lifecycle", backend);
+        options.max_stored_bytes = bytes;
+        options.max_stored_entries = entries;
+        let hooks = Hooks::new(registration(), options).unwrap();
+        let mut first = hooks
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, Attachment::bytes(first_body.to_vec())))
+            .into_future();
+        let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+        assert!(first.as_mut().poll(&mut cx).is_pending());
+        let blocked = hooks
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, Attachment::bytes(vec![0])))
+            .into_future();
+        assert!(futures::executor::block_on(blocked).is_err());
+        drop(first);
+        let mut replacement = hooks
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, Attachment::bytes(vec![0])))
+            .into_future();
+        assert!(
+            replacement.as_mut().poll(&mut cx).is_pending(),
+            "dropping the first boundary must release its budget"
+        );
+        drop(replacement);
+    }
+}
+
+#[test]
+fn concurrent_attachment_binding_cannot_multiply_capacity() {
+    let backend = Arc::new(Backend {
+        pending: true,
+        calls: AtomicUsize::new(0),
+    });
+    let mut options = options().with_backend("org.example.lifecycle", backend);
+    options.max_stored_bytes = 4;
+    options.max_stored_entries = 4;
+    let hooks = Hooks::new(registration(), options).unwrap();
+    let start = std::sync::Barrier::new(12);
+    let bound = std::sync::Barrier::new(12);
+    let successes = AtomicUsize::new(0);
     std::thread::scope(|threads| {
-        for scope in scopes {
-            let start = start.clone();
-            let staged = staged.clone();
-            let successes = successes.clone();
-            threads.spawn(move || {
+        for _ in 0..12 {
+            threads.spawn(|| {
+                let mut future = hooks
+                    .event(event(json!({"ref":"unused"})))
+                    .attachment(message_payload(0, Attachment::bytes(vec![0])))
+                    .into_future();
+                let mut cx = Context::from_waker(futures::task::noop_waker_ref());
                 start.wait();
-                match scope.context().put(b"x") {
-                    Ok(_) => {
+                match future.as_mut().poll(&mut cx) {
+                    Poll::Pending => {
                         successes.fetch_add(1, Ordering::SeqCst);
                     }
-                    Err(error) => assert_eq!(error, UploadError::Capacity),
+                    Poll::Ready(result) => assert!(result.is_err()),
                 }
-                // Keep every successful scope live until all writes were attempted.
-                staged.wait();
+                // Successful invocations keep every reservation until all attempts finish.
+                bound.wait();
             });
         }
     });
     assert_eq!(successes.load(Ordering::SeqCst), 4);
-    hooks.content_scope().context().put(b"full").unwrap();
+    let mut future = hooks
+        .event(event(json!({"ref":"unused"})))
+        .attachment(message_payload(0, Attachment::bytes(b"full".to_vec())))
+        .into_future();
+    let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+    assert!(future.as_mut().poll(&mut cx).is_pending());
 }
 
 #[test]
-fn preflight_failure_and_unpolled_boundary_drop_release_staged_content() {
+fn concurrent_attachment_results_keep_independent_owners() {
     let hooks = hooks_with_limits(8, 1);
-    let scope = hooks.content_scope();
-    scope.context().put(b"original").unwrap();
+    futures::executor::block_on(async {
+        let results = futures::future::join_all((0..12).map(|index| {
+            hooks
+                .event(event(json!({"ref":"same-literal"})))
+                .attachment(message_payload(0, Attachment::bytes(vec![index])))
+                .into_future()
+        }))
+        .await;
+        drop(hooks);
+        for (index, result) in results.into_iter().enumerate() {
+            assert_eq!(
+                &*result
+                    .unwrap()
+                    .content
+                    .read("/message/payload/0")
+                    .await
+                    .unwrap(),
+                &[index as u8]
+            );
+        }
+    });
+}
+
+#[test]
+fn preflight_failure_and_unpolled_boundary_drop_release_attachments() {
+    let hooks = hooks_with_limits(8, 1);
+    let reads = Arc::new(AtomicUsize::new(0));
+    let drops = Arc::new(AtomicUsize::new(0));
     let result = futures::executor::block_on(
         hooks
             .event(json!({"type":"not-an-event"}))
-            .content_scope(scope)
+            .attachment(message_payload(0, counted_attachment(&reads, &drops)))
             .into_future(),
     );
     assert!(result.is_err());
-    let scope = hooks.content_scope();
-    let reference = scope.context().put(b"original").unwrap();
-    drop(hooks.event(event(reference)).content_scope(scope));
-    hooks.content_scope().context().put(b"reused").unwrap();
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    drop(
+        hooks
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, counted_attachment(&reads, &drops))),
+    );
+    assert_eq!(drops.load(Ordering::SeqCst), 2);
+    assert_eq!(reads.load(Ordering::SeqCst), 0);
 }
 
 struct Backend {
@@ -245,20 +309,25 @@ fn backend_hooks(pending: bool) -> (Hooks, Arc<Backend>) {
 #[test]
 fn backend_failure_releases_active_capacity_while_outcome_is_retained() {
     let (hooks, backend) = backend_hooks(false);
-    let scope = hooks.content_scope();
-    let reference = scope.context().put(b"original").unwrap();
+    let reference = json!({"ref":"unused"});
     let result = futures::executor::block_on(
         hooks
             .event(event(reference.clone()))
-            .content_scope(scope)
+            .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
             .into_future(),
     )
     .unwrap();
     assert_eq!(backend.calls.load(Ordering::SeqCst), 1);
     assert!(!result.outcome.failures.is_empty());
-    hooks.content_scope().context().put(b"reused").unwrap();
+    drop(
+        hooks
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, Attachment::bytes(b"reused".to_vec()))),
+    );
     assert_eq!(
-        result.content.resolve(&reference).unwrap().as_ref(),
+        futures::executor::block_on(result.content.read("/message/payload/0"))
+            .unwrap()
+            .as_ref(),
         b"original"
     );
 }
@@ -266,30 +335,30 @@ fn backend_failure_releases_active_capacity_while_outcome_is_retained() {
 #[test]
 fn dropping_an_in_flight_invocation_releases_its_content() {
     let (hooks, backend) = backend_hooks(true);
-    let scope = hooks.content_scope();
-    let reference = scope.context().put(b"original").unwrap();
+    let reads = Arc::new(AtomicUsize::new(0));
+    let drops = Arc::new(AtomicUsize::new(0));
     let mut future = hooks
-        .event(event(reference))
-        .content_scope(scope)
+        .event(event(json!({"ref":"unused"})))
+        .attachment(message_payload(0, counted_attachment(&reads, &drops)))
         .into_future();
     let mut cx = Context::from_waker(futures::task::noop_waker_ref());
     assert!(matches!(future.as_mut().poll(&mut cx), Poll::Pending));
     assert_eq!(backend.calls.load(Ordering::SeqCst), 1);
-    assert_eq!(
-        hooks.content_scope().context().put(b"x").unwrap_err(),
-        UploadError::Capacity
-    );
+    assert_eq!(drops.load(Ordering::SeqCst), 0);
     drop(future);
-    hooks.content_scope().context().put(b"reused").unwrap();
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    assert_eq!(reads.load(Ordering::SeqCst), 0);
 }
 
 #[test]
 fn cancellation_and_expired_budget_release_content() {
     let (hooks, _) = backend_hooks(true);
     for cancellation in [true, false] {
-        let scope = hooks.content_scope();
-        let reference = scope.context().put(b"original").unwrap();
-        let boundary = hooks.event(event(reference)).content_scope(scope);
+        let reads = Arc::new(AtomicUsize::new(0));
+        let drops = Arc::new(AtomicUsize::new(0));
+        let boundary = hooks
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, counted_attachment(&reads, &drops)));
         let (signal, receiver) = futures::channel::oneshot::channel();
         let expiry = async move {
             let _ = receiver.await;
@@ -304,7 +373,8 @@ fn cancellation_and_expired_budget_release_content() {
         assert!(matches!(future.as_mut().poll(&mut cx), Poll::Pending));
         signal.send(()).unwrap();
         assert!(futures::executor::block_on(future).is_err());
-        hooks.content_scope().context().put(b"reused").unwrap();
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        assert_eq!(reads.load(Ordering::SeqCst), 0);
     }
 }
 
@@ -325,11 +395,8 @@ impl Drop for CountedSource {
         self.drops.fetch_add(1, Ordering::SeqCst);
     }
 }
-fn counted_body(
-    reads: &Arc<AtomicUsize>,
-    drops: &Arc<AtomicUsize>,
-) -> agenthooksprotocol::body::Body {
-    agenthooksprotocol::body::Body::stream(CountedSource {
+fn counted_attachment(reads: &Arc<AtomicUsize>, drops: &Arc<AtomicUsize>) -> Attachment {
+    Attachment::lazy(CountedSource {
         reads: reads.clone(),
         drops: drops.clone(),
         bytes: Some(b"original".to_vec()),
@@ -337,49 +404,28 @@ fn counted_body(
 }
 
 #[test]
-fn scoped_lazy_sources_drop_unread_and_release_registry_capacity() {
+fn lazy_attachment_result_owns_unread_source_until_drop() {
     futures::executor::block_on(async {
         let hooks = hooks_with_limits(8, 1);
         let reads = Arc::new(AtomicUsize::new(0));
         let drops = Arc::new(AtomicUsize::new(0));
-        let mut first = hooks.content_scope();
-        first
-            .stage_body(counted_body(&reads, &drops))
-            .await
-            .unwrap();
-        let mut second = hooks.content_scope();
-        assert!(matches!(
-            second
-                .stage_body(agenthooksprotocol::body::Body::text("blocked"))
-                .await,
-            Err(agenthooksprotocol::body::BodyError::Capacity)
-        ));
-        assert_eq!(reads.load(Ordering::SeqCst), 0);
-        assert_eq!(drops.load(Ordering::SeqCst), 0);
-        drop(first);
-        assert_eq!(drops.load(Ordering::SeqCst), 1);
-
-        let reference = second
-            .stage_body(counted_body(&reads, &drops))
-            .await
-            .unwrap();
-        // The configured metadata-only route must never read this source. Keep its
-        // outcome alive while checking that the invocation releases the registry.
         let outcome = hooks
-            .event(event(reference))
-            .content_scope(second)
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, counted_attachment(&reads, &drops)))
             .await
             .unwrap();
         assert!(outcome.outcome.failures.is_empty());
         assert_eq!(reads.load(Ordering::SeqCst), 0);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        drop(
+            hooks
+                .event(event(json!({"ref":"unused"})))
+                .attachment(message_payload(0, counted_attachment(&reads, &drops))),
+        );
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        drop(hooks);
+        drop(outcome);
         assert_eq!(drops.load(Ordering::SeqCst), 2);
-        let mut third = hooks.content_scope();
-        third
-            .stage_body(counted_body(&reads, &drops))
-            .await
-            .unwrap();
-        drop(third);
-        assert_eq!(drops.load(Ordering::SeqCst), 3);
         assert_eq!(reads.load(Ordering::SeqCst), 0);
     });
 }
@@ -604,21 +650,80 @@ mod chained_replacements {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn failed_generic_edit_transaction_preserves_original_attachment() {
+        struct Effects;
+        impl ManagedBackend for Effects {
+            fn call(
+                &self,
+                request: Value,
+                _: Duration,
+            ) -> LocalFuture<'_, Result<Value, HookError>> {
+                Box::pin(async move {
+                    assert_eq!(
+                        request["params"]["capabilities"]["modify"]["content"]["replace"],
+                        true
+                    );
+                    Ok(
+                        json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","effects":[
+                            {"type":"modify","target":"content","operation":"replace","value":"middle"},
+                            {"type":"modify","target":"content","operation":"replace","value":"x".repeat(65)}
+                        ]}}),
+                    )
+                })
+            }
+            fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
+                Box::pin(async { Ok(()) })
+            }
+        }
+        let (endpoint, server) = upload_server(1);
+        let mut config = registration();
+        config["hooks"][0]["subscriptions"][0]["content"] = json!({"default":"body"});
+        config["hooks"][0]["subscriptions"][0]["upload"] =
+            json!({"endpoint":endpoint,"maxBytes":64,"timeoutMs":5000});
+        let mut options = HooksOptions::new(
+            "urn:test:content-lifecycle",
+            BTreeMap::from([(
+                "user.message.outbound".into(),
+                EventGrant::intercept(Capabilities::none().modify("content", true, false)),
+            )]),
+        )
+        .with_backend("org.example.lifecycle", Arc::new(Effects));
+        options.backend.allow_loopback_http = true;
+        options.max_body_bytes = 64;
+        let hooks = Hooks::new(config, options).unwrap();
+        let result = hooks
+            .event(event(Value::Null))
+            .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
+            .content_target("content", "/message/payload/0")
+            .await
+            .unwrap();
+        assert!(!result.outcome.failures.is_empty());
+        assert!(result.outcome.is_denied());
+        drop(hooks);
+        assert_eq!(
+            result
+                .content
+                .read("/message/payload/0")
+                .await
+                .unwrap()
+                .as_ref(),
+            b"original"
+        );
+        assert_eq!(server.join().unwrap(), vec![b"original".to_vec()]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn inline_replacements_chain_and_only_outcome_bytes_survive() {
         let (endpoint, server) = upload_server(8);
         let hooks = chain_hooks(&endpoint, None);
         let mut outcomes = Vec::new();
         for _ in 0..4 {
-            let scope = hooks.content_scope();
-            let original = scope.put(b"original").unwrap();
-            let bytes = scope.resolve(&original).unwrap();
-            let original_bytes = Arc::downgrade(&bytes);
-            drop(bytes);
+            let original = json!({"ref":"opaque-original"});
             let mut input = event(original.clone());
             input["native"] = json!({"opaque": original, "nested": event(original.clone())});
             let result = hooks
                 .event(input)
-                .content_scope(scope)
+                .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
                 .content_target("content", "/message/payload/0")
                 .await
                 .unwrap();
@@ -627,24 +732,25 @@ mod chained_replacements {
                 "{:?}",
                 result.outcome.failures
             );
-            let reference = &result.effective_event["message"]["payload"][0]["body"];
             assert_eq!(
-                result.content.resolve(reference).unwrap().as_ref(),
+                &*result.content.read("/message/payload/0").await.unwrap(),
                 b"final"
             );
+            assert!(result.content.read("/native/opaque").await.is_err());
             assert!(
-                original_bytes.upgrade().is_none(),
-                "opaque native references must not retain overwritten originals"
+                result
+                    .content
+                    .read("/native/nested/message/payload/0")
+                    .await
+                    .is_err()
             );
-            assert!(result.content.resolve(&original).is_err());
             assert_eq!(result.effective_event["native"]["opaque"], original);
             outcomes.push(result);
         }
         drop(hooks);
         for result in outcomes {
-            let reference = &result.effective_event["message"]["payload"][0]["body"];
             assert_eq!(
-                result.content.resolve(reference).unwrap().as_ref(),
+                &*result.content.read("/message/payload/0").await.unwrap(),
                 b"final"
             );
         }
@@ -657,7 +763,7 @@ mod chained_replacements {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn selected_lazy_scope_roundtrip_retains_alias_and_ignores_foreign_reference_copy() {
+    async fn selected_lazy_attachment_roundtrip_ignores_foreign_reference_copy() {
         let (endpoint, server) = upload_server(1);
         let mut registration = registration();
         let subscription = &mut registration["hooks"][0]["subscriptions"][0];
@@ -670,55 +776,35 @@ mod chained_replacements {
         let hooks = Hooks::new(registration, options).unwrap();
         let reads = Arc::new(AtomicUsize::new(0));
         let drops = Arc::new(AtomicUsize::new(0));
-        let mut scope = hooks.content_scope();
-        let alias = scope
-            .stage_body(counted_body(&reads, &drops))
-            .await
-            .unwrap();
-        assert_eq!(reads.load(Ordering::SeqCst), 0);
+        let alias = json!({"ref":"opaque-copy"});
+        let boundary = hooks
+            .event(event(alias.clone()))
+            .attachment(message_payload(0, counted_attachment(&reads, &drops)));
         let invalid = hooks
             .event(json!({"type":"not-an-event", "native":{"copied":alias}}))
             .await;
         assert!(invalid.is_err());
         assert_eq!(reads.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            drops.load(Ordering::SeqCst),
-            0,
-            "foreign reference discovery must not retire the owning scope's source"
-        );
-
-        // No mapped edit target: selected projection, not runtime capability
-        // negotiation, is responsible for materializing the lazy body.
-        let outcome = hooks
-            .event(event(alias.clone()))
-            .content_scope(scope)
-            .await
-            .unwrap();
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        // Selected projection must materialize without any mapped edit target.
+        let outcome = boundary.await.unwrap();
         assert!(
             outcome.outcome.failures.is_empty(),
             "{:?}",
             outcome.outcome.failures
         );
         assert!(outcome.diagnostics.is_empty());
-        assert_eq!(reads.load(Ordering::SeqCst), 2); // one chunk, then EOF
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
         assert_eq!(drops.load(Ordering::SeqCst), 1);
-        hooks.content_scope().put(b"reused").unwrap();
-        let mut unused = hooks.content_scope();
-        unused
-            .stage_body(agenthooksprotocol::body::Body::text("next"))
-            .await
-            .unwrap();
-        drop(unused);
         drop(hooks);
-        assert_eq!(
-            outcome.content.resolve(&alias).unwrap().as_ref(),
-            b"original"
+        let first = outcome.content.read("/message/payload/0").await.unwrap();
+        let again = outcome.content.read("/message/payload/0").await.unwrap();
+        assert_eq!(&*first, b"original");
+        assert!(
+            Arc::ptr_eq(&first, &again),
+            "upload and result reads must share the same owner"
         );
-        let returned = &outcome.effective_event["message"]["payload"][0]["body"];
-        assert_eq!(
-            outcome.content.resolve(returned).unwrap().as_ref(),
-            b"original"
-        );
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
         assert_eq!(server.join().unwrap(), vec![b"original".to_vec()]);
     }
 
@@ -749,7 +835,7 @@ mod chained_replacements {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn pending_observer_frees_invocation_capacity_without_retiring_unrelated_scopes() {
+    async fn pending_observer_completion_does_not_retire_unrelated_attachments() {
         for finish in ["complete", "drop", "cancel"] {
             let (endpoint, server) = upload_server(3);
             let (entered_tx, entered_rx) = futures::channel::oneshot::channel();
@@ -759,12 +845,11 @@ mod chained_replacements {
                 release: std::sync::Mutex::new(Some(release_rx)),
             });
             let hooks = chain_hooks(&endpoint, Some(observer));
-            let scope = hooks.content_scope();
-            let original = scope.put(b"original").unwrap();
+            let original = json!({"ref":"unused"});
             let (cancel_tx, cancel_rx) = futures::channel::oneshot::channel();
             let future = hooks
                 .event(event(original))
-                .content_scope(scope)
+                .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
                 .content_target("content", "/message/payload/0")
                 .cancel_when(async move {
                     let _ = cancel_rx.await;
@@ -791,32 +876,26 @@ mod chained_replacements {
                 vec![b"original".to_vec(), b"middle".to_vec(), b"final".to_vec()]
             );
 
-            // All originals and both replacements must already have left the active
-            // store, despite the invocation future still waiting for observation I/O.
-            let unrelated = hooks.content_scope();
-            let payloads: [&[u8]; 3] = [b"1234567", b"abcdef", b"UVWXYZ"];
-            let references: Vec<_> = payloads
-                .iter()
-                .map(|bytes| {
-                    unrelated
-                        .context()
-                        .put(bytes)
-                        .expect("pending observer must not retain invocation capacity")
-                })
-                .collect();
-            assert_eq!(
-                unrelated.context().put(b"x").unwrap_err(),
-                UploadError::Capacity
-            );
+            // A separate unpolled boundary owns its source independently of the
+            // invocation waiting for observation I/O.
+            let reads = Arc::new(AtomicUsize::new(0));
+            let drops = Arc::new(AtomicUsize::new(0));
+            let unrelated = hooks
+                .event(event(json!({"ref":"unused"})))
+                .attachment(message_payload(0, counted_attachment(&reads, &drops)));
             match finish {
                 "complete" => {
                     release_tx.send(()).unwrap();
                     let outcome = future.await.unwrap();
                     assert!(outcome.outcome.failures.is_empty());
                     assert!(outcome.diagnostics.is_empty());
-                    let reference = &outcome.effective_event["message"]["payload"][0]["body"];
                     assert_eq!(
-                        outcome.content.resolve(reference).unwrap().as_ref(),
+                        outcome
+                            .content
+                            .read("/message/payload/0")
+                            .await
+                            .unwrap()
+                            .as_ref(),
                         b"final"
                     );
                 }
@@ -831,94 +910,77 @@ mod chained_replacements {
                 }
                 _ => unreachable!(),
             }
-            // Completion and either cancellation path may release only their own
-            // allocations, not those created while the observer was blocked.
-            for (reference, bytes) in references.iter().zip(payloads) {
-                assert_eq!(
-                    unrelated.context().resolve(reference).unwrap().as_ref(),
-                    bytes
-                );
-            }
-            assert_eq!(
-                hooks.content_scope().context().put(b"x").unwrap_err(),
-                UploadError::Capacity
-            );
+            assert_eq!(drops.load(Ordering::SeqCst), 0);
+            assert_eq!(reads.load(Ordering::SeqCst), 0);
             drop(unrelated);
-            hooks.content_scope().context().put(&[0; 19]).unwrap();
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
         }
     }
 }
 
 #[test]
-fn shutdown_releases_staged_bytes_without_repolling_suspended_caller() {
+fn shutdown_cancels_suspended_attachment_invocation() {
     let (hooks, backend) = backend_hooks(true);
-    let scope = hooks.content_scope();
-    let reference = scope.put(b"original").unwrap();
-    let bytes = scope.resolve(&reference).unwrap();
-    let weak = Arc::downgrade(&bytes);
-    drop(bytes);
+    let reads = Arc::new(AtomicUsize::new(0));
+    let drops = Arc::new(AtomicUsize::new(0));
     let mut future = hooks
-        .event(event(reference))
-        .content_scope(scope)
+        .event(event(json!({"ref":"unused"})))
+        .attachment(message_payload(0, counted_attachment(&reads, &drops)))
         .into_future();
-    let waker = futures::task::noop_waker();
-    assert!(
-        future
-            .as_mut()
-            .poll(&mut Context::from_waker(&waker))
-            .is_pending()
-    );
-    assert!(weak.upgrade().is_some());
+    let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+    assert!(future.as_mut().poll(&mut cx).is_pending());
+    assert_eq!(backend.calls.load(Ordering::SeqCst), 1);
     futures::executor::block_on(hooks.shutdown()).unwrap();
-    assert!(
-        weak.upgrade().is_none(),
-        "shutdown must free backing before caller repolls"
-    );
-    assert_eq!(
-        hooks.content_scope().put(b"x").unwrap_err(),
-        UploadError::Unavailable
-    );
     assert!(futures::executor::block_on(future).is_err());
-    drop(backend);
-}
-
-#[test]
-fn abandoned_staged_body_owners_do_not_fill_host_registry() {
-    let hooks = hooks_with_limits(8, 1);
-    for _ in 0..4100 {
-        let staged = futures::executor::block_on(
-            hooks.stage_body(agenthooksprotocol::body::Body::text("unread")),
-        )
-        .unwrap();
-        assert!(
-            futures::executor::block_on(
-                hooks.stage_body(agenthooksprotocol::body::Body::text("blocked")),
-            )
-            .is_err()
-        );
-        drop(staged);
-    }
-}
-
-#[test]
-fn foreign_hooks_scope_is_rejected_without_releasing_sibling_allocations() {
-    let first = hooks_with_limits(8, 1);
-    let second = hooks_with_limits(8, 1);
-    let foreign = first.content_scope();
-    let reference = foreign.put(b"original").unwrap();
-    let sibling = second.content_scope();
-    let sibling_ref = sibling.put(b"retained").unwrap();
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    assert_eq!(reads.load(Ordering::SeqCst), 0);
     assert!(
         futures::executor::block_on(
-            second
-                .event(event(reference))
-                .content_scope(foreign)
-                .into_future(),
+            hooks
+                .event(event(json!({"ref":"unused"})))
+                .attachment(message_payload(0, Attachment::bytes(vec![0])))
+                .into_future()
         )
         .is_err()
     );
-    assert_eq!(sibling.resolve(&sibling_ref).unwrap().as_ref(), b"retained");
-    first.content_scope().put(b"reused").unwrap();
+}
+
+#[test]
+fn abandoned_attachment_owners_do_not_fill_host_registry() {
+    let hooks = hooks_with_limits(8, 1);
+    let reads = Arc::new(AtomicUsize::new(0));
+    let drops = Arc::new(AtomicUsize::new(0));
+    for _ in 0..4100 {
+        drop(
+            hooks
+                .event(event(json!({"ref":"unused"})))
+                .attachment(message_payload(0, counted_attachment(&reads, &drops))),
+        );
+    }
+    assert_eq!(drops.load(Ordering::SeqCst), 4100);
+    assert_eq!(reads.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn foreign_reference_does_not_grant_attachment_read_authority() {
+    let first = hooks_with_limits(8, 1);
+    let second = hooks_with_limits(8, 1);
+    let owner = futures::executor::block_on(
+        first
+            .event(event(json!({"ref":"unused"})))
+            .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
+            .into_future(),
+    )
+    .unwrap();
+    let copied = owner.effective_event["message"]["payload"][0]["body"].clone();
+    let foreign = futures::executor::block_on(second.event(event(copied)).into_future()).unwrap();
+    assert!(futures::executor::block_on(foreign.content.read("/message/payload/0")).is_err());
+    drop(first);
+    drop(second);
+    assert_eq!(
+        &*futures::executor::block_on(owner.content.read("/message/payload/0")).unwrap(),
+        b"original"
+    );
 }
 
 #[test]
@@ -965,12 +1027,11 @@ fn observation_route_budgets_exclude_other_routes_delivery_time() {
             .with_backend("org.example.second", second.clone()),
     )
     .unwrap();
-    let scope = hooks.content_scope();
-    let reference = scope.put(b"original").unwrap();
+    let reference = json!({"ref":"unused"});
     futures::executor::block_on(
         hooks
             .event(event(reference))
-            .content_scope(scope)
+            .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
             .into_future(),
     )
     .unwrap();
@@ -984,7 +1045,7 @@ fn observation_route_budgets_exclude_other_routes_delivery_time() {
 }
 
 #[test]
-fn typed_decode_failure_preserves_result_bytes_but_releases_staging() {
+fn typed_decode_failure_preserves_result_bytes_but_releases_active_capacity() {
     struct CannotDecode(Value);
     impl serde::Serialize for CannotDecode {
         fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -997,55 +1058,48 @@ fn typed_decode_failure_preserves_result_bytes_but_releases_staging() {
         }
     }
     let hooks = hooks_with_limits(8, 1);
-    let scope = hooks.content_scope();
-    let reference = scope.put(b"original").unwrap();
+    let reference = json!({"ref":"unused"});
     let result = futures::executor::block_on(
         hooks
             .event(CannotDecode(event(reference.clone())))
-            .content_scope(scope)
+            .attachment(message_payload(0, Attachment::bytes(b"original".to_vec())))
             .into_future(),
     )
     .unwrap();
     assert!(result.event.is_err());
     assert_eq!(
-        result.content.resolve(&reference).unwrap().as_ref(),
+        futures::executor::block_on(result.content.read("/message/payload/0"))
+            .unwrap()
+            .as_ref(),
         b"original"
     );
-    hooks.content_scope().put(b"reusable").unwrap();
 }
 
 #[test]
-fn native_reference_collisions_do_not_pin_unused_bytes_but_message_slots_survive() {
+fn native_reference_collisions_do_not_grant_reads_but_message_slots_survive() {
     let hooks = hooks_with_limits(64, 2);
-    let scope = hooks.content_scope();
-    let unused = scope.put(b"unused").unwrap();
-    let bytes = scope.resolve(&unused).unwrap();
-    let weak = Arc::downgrade(&bytes);
-    drop(bytes);
-    let current = scope.put(b"effective").unwrap();
-    let mut input = event(current.clone());
-    input["native"] = json!({
-        "opaque": unused,
-        "fake_event": event(unused.clone()),
-        "literal": unused["ref"],
-        "candidate": {"value": unused}
-    });
+    let reference = json!({"ref":"content-1"});
+    let mut input = event(reference.clone());
+    input["native"] = json!({"opaque":reference,"fake_event":event(reference.clone()),
+        "literal":reference["ref"],"candidate":{"value":reference}});
     let result = futures::executor::block_on(
         hooks
             .event(input.clone())
-            .content_scope(scope)
+            .attachment(message_payload(0, Attachment::bytes(b"effective".to_vec())))
             .into_future(),
     )
     .unwrap();
     assert_eq!(result.effective_event["native"], input["native"]);
-    assert!(
-        weak.upgrade().is_none(),
-        "opaque values retained unused bytes"
-    );
-    assert!(result.content.resolve(&unused).is_err());
+    for path in [
+        "/native/opaque",
+        "/native/fake_event/message/payload/0",
+        "/native/candidate/value",
+    ] {
+        assert!(futures::executor::block_on(result.content.read(path)).is_err());
+    }
     drop(hooks);
     assert_eq!(
-        result.content.resolve(&current).unwrap().as_ref(),
+        &*futures::executor::block_on(result.content.read("/message/payload/0")).unwrap(),
         b"effective"
     );
 }
@@ -1064,7 +1118,7 @@ fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
             Box::pin(async { Ok(()) })
         }
     }
-    // First allocation is deliberately a literal ref collision in all opaque values.
+    // An arbitrary descriptor in opaque values must never grant content authority.
     let reference = json!({"ref":"content-1"});
     let opaque = event(reference.clone());
     let message = json!({"type":"message","text":"literal {\"ref\":\"content-1\"}"});
@@ -1086,11 +1140,6 @@ fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
         options.with_backend("org.example.lifecycle", Arc::new(Effects(effects))),
     )
     .unwrap();
-    let scope = hooks.content_scope();
-    assert_eq!(scope.put(b"must not be pinned").unwrap(), reference);
-    let bytes = scope.resolve(&reference).unwrap();
-    let weak = Arc::downgrade(&bytes);
-    drop(bytes);
     let context = agenthooksprotocol::client::ToolContext::new(json!({
         "tool":{"name":"shell","kind":"shell","origin":"native"},
         "call":{"id":"call-1"},"path":"native","native":{"copied":reference}
@@ -1099,7 +1148,6 @@ fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
         hooks
             .tool_input(opaque.clone())
             .context(context)
-            .content_scope(scope)
             .into_future(),
     )
     .unwrap();
@@ -1113,10 +1161,11 @@ fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
     assert_eq!(result.outcome.messages, vec![message]);
     assert_eq!(result.outcome.injections, vec![injection]);
     assert!(!result.outcome.responses.is_empty());
-    assert!(
-        weak.upgrade().is_none(),
-        "opaque input/effects retained staged bytes"
-    );
-    assert!(result.content.resolve(&reference).is_err());
-    hooks.content_scope().put(b"reused").unwrap();
+    for path in [
+        "/message/payload/0",
+        "/native/copied",
+        "/candidate/message/payload/0",
+    ] {
+        assert!(futures::executor::block_on(result.content.read(path)).is_err());
+    }
 }

@@ -121,26 +121,23 @@ for a complete `StaticCapabilityManifest`, including tool paths,
 limits, and extension fields; the simple event-grant constructor only advertises
 its supported event/mode/capability subset.
 
-Use generated named source bindings, for example
-`.body_source(ergonomic_inputs::tool_before_sources::items(index, Body::stream(source)))`,
-to transfer a source into an operation without raw JSON-pointer strings. The
-source is dropped on success, failure, cancellation, or an unused metadata/omit
-route; it is not read until body delivery is selected. Capture is shared immutably
-across fan-out, but each destination has independent upload authority.
+Use generated named attachment bindings, for example
+`.attachment(ergonomic_inputs::tool_before_sources::items(index, Attachment::lazy(source)))`,
+to transfer a source into an operation without raw JSON-pointer strings.
+`Attachment::bytes(bytes)` supplies eager bytes; `Attachment::from_body(body)` and
+`.body_source(...)` are conveniences for existing `Body` inputs, not staging APIs.
+A lazy source is read only when selected delivery or an explicit
+result read needs its bytes. For ordinary boundaries, metadata, omit, and unmatched routes do not read it.
+Specialized compaction and elicitation selected-body validation can require
+materialization even without a selected route, preserving protocol semantics.
+Capture is shared immutably across fan-out and result reads, but each destination
+has independent upload authority.
 
-The advanced `hooks.stage_body(Body::stream(source)).await` transfers ownership without
-reading the stream. `Body::bytes`, `Body::text`, and `Body::json` are available for
-already-owned inputs. Place `staged.reference()` in an event content item,
-and keep the returned `StagedBody` owner alive until the boundary completes or
-is cancelled. Matching subscriptions select body delivery; metadata, omit, and unmatched
-routes do not read it. Selected bodies use bounded capture, immutable storage,
-and size/SHA-256 verification. Configure `max_body_bytes`, `max_stored_bytes`, and
-`max_stored_entries` in `HooksOptions`; upload credentials are resolved separately
-from event credentials. This is bounded in-memory spooling, not unbounded or
-disk-backed streaming. Drop the staged owner after the boundary finishes; dropping
-an unused owner releases its source without reading it. Retaining an owner after
-an unselected invocation can retain its unread source until owner drop or Hooks
-shutdown. Prefer operation-scoped bindings when a source belongs to one call.
+Selected bodies use bounded capture and size/SHA-256 verification. Configure
+`max_body_bytes`, `max_stored_bytes`, and `max_stored_entries` in `HooksOptions`;
+upload credentials are resolved separately from event credentials. This is
+bounded in-memory capture, not unbounded or disk-backed streaming. Unused
+attachments are dropped with their boundary or result owner.
 
 ## Quick start
 
@@ -218,11 +215,12 @@ The content item still carries its media type, identity, role, and other metadat
 No store, scope, staging handle, or reference resolution is required. Moving an
 attachment transfers ownership into one invocation; it is not a reusable
 cross-invocation handle. Bytes are immutable, and `Arc::make_mut` creates a private
-copy when other owners exist. Existing `Body`, scope, and reference APIs remain
-available for advanced uses.
+copy when other owners exist. `Body` inputs can be converted with
+`Attachment::from_body` or passed through `.body_source(...)`.
 
-A lazy source is read at most once, only for a selected body delivery or an explicit
-result read. Metadata-only and unmatched hooks do not read it. The result owns
+A lazy source is read at most once, only for selected body delivery or an explicit
+result read. Ordinary metadata-only and unmatched hooks do not read it. Specialized
+compaction/elicitation selected-body validation may still require materialization. The result owns
 unread sources as well as effective materialized bytes independently of Hooks;
 dropping its last owner releases unopened sources. Read failure or cancellation is
 terminal. Serialize concurrent first reads of the same lazy source. Invocation
@@ -230,14 +228,16 @@ cancellation, timeout, and errors drop invocation-owned sources; cancellation of
 result read drops its in-flight source too.
 
 The configured `max_body_bytes` and source chunk limit apply to result reads;
-selected deliveries additionally use existing upload and active store budgets.
-Result ownership does not create a session archive or charge active staging
-capacity. Applications must bound the number of retained results themselves.
+selected deliveries additionally use upload budgets. Invocation byte and entry
+budgets are shared across active boundaries; eager bytes reserve capacity at bind,
+and lazy bytes reserve it when captured. Returned content detaches from active
+invocation budgets. Result ownership does not create a session archive. Applications must bound the number of retained results themselves.
 Lazy implementations must yield while waiting, and bound their own chunk allocations.
 
-Attachments add no binary editing capability. Existing generic edit negotiation
-requires materialized target bytes before delivery; use the existing explicit
-scope/staging path for negotiated text/JSON edits, not lazy attachments.
+Attachments add no binary editing capability. Use `.content_target(...)` to map
+text/JSON attachments for negotiated edits. Use `Attachment::bytes` for these
+negotiated edits: eager bytes need no staging. Lazy inputs do not advertise edits
+that require materialized target bytes.
 See [`examples/file_attachment.rs`](examples/file_attachment.rs) for a standalone
 file example with metadata-only auditing and a post-shutdown read.
 
@@ -292,7 +292,8 @@ protocol state), `effective_event` (canonical JSON), and `event` (the subsequent
 The SDK does not execute tools, install model context, or make application-policy
 decisions.
 
-Content-backed boundaries use `.content(ContentContext { store, scope })`. The
+Lower-level `Client` content-backed boundaries use
+`.content(ContentContext { store, scope })`. The
 scope must come from authenticated credentials or an explicit anonymous host
 policy, never an event ID or content reference. `ContentStore` is the host-storage
 interface; `MemoryContentStore` provides bounded immutable storage without durable
@@ -303,67 +304,66 @@ exchange lifetime.
 
 ### Hooks content lifetimes
 
-`Hooks` does not keep an archive of staged bodies. Each awaited boundary owns an
-invocation scope, including the original bytes and replacement bytes created by
-locally applying inline hook edits. Completion, errors, dropped futures, deadline
-expiration, and cancellation release that scope. Concurrent scopes share the
-configured byte and entry limits; limits are not reset or increased per call.
+`Hooks` does not own a global content store or staging registry. Each boundary
+owns its attachments and transfers surviving attachments to its result. The
+result retains the same shared owners used for delivery, rather than copies
+recovered from canonical references. Errors and dropped futures release their
+owners; result-owned bytes and unread sources survive `Hooks` shutdown and drop.
+Applications that retain many results must bound their own history.
 
-Use `.body_source(...)` for generated input slots: a source remains unread unless
-a selected route needs its body, and an unused source is dropped with the boundary.
-For explicit references, stage bytes in an owned scope and move it into the boundary:
+Attach eager bytes or a lazy source through a generated content-slot binding:
 
 ```rust,ignore
-let scope = hooks.content_scope();
-let reference = scope.context().put(b"original text")?;
+use agenthooksprotocol::{Attachment, ergonomic_inputs::user_message_outbound_sources::message_payload};
+
 let event = serde_json::json!({
     "type": "user.message.outbound",
-    "message": {"role": "assistant", "payload": [{
-        "id": "text", "kind": "text", "mediaType": "text/plain",
-        "selection": "body", "body": reference
+    "message": {"channel": "chat", "payload": [{
+        "id": "text", "kind": "content", "category": "content", "role": "assistant",
+        "mediaType": "text/plain", "selection": "metadata"
     }]}
 });
-let result = hooks.event(event).content_scope(scope).await?;
-let bytes = result.content.resolve(
-    &result.effective_event["message"]["payload"][0]["body"]
-)?;
+let result = hooks.event(event)
+    .attachment(message_payload(0, Attachment::bytes(b"original text".to_vec())))
+    .content_target("content", "/message/payload/0")
+    .await?;
+let bytes = result.content.read("/message/payload/0").await?;
 // `bytes` is an independently owned Arc<[u8]>; it survives result/Hooks drop.
 ```
 
 `EventOutcome::content` and `ToolOutcome::content` are read-only, result-owned
-payloads, not a reference to the invocation store. Keep that owner when retaining
-canonical references, or resolve the bytes before discarding the result. Only
-payloads in schema-owned content slots or explicitly declared content targets are
-retained; overwritten intermediate bodies are released. Reference-shaped objects
-in opaque native metadata, tool arguments, return candidates, and injection
-values do not retain backing bytes. Their JSON values are preserved unchanged. Result-owned bytes are application data, not active staging
-allocations. Applications that retain many results must bound their own history.
+payloads. Read them by the canonical content item's JSON pointer, not by copying
+its body descriptor. Canonical local markers are not reusable handles: moving a
+marker into another boundary does not transfer the attachment. To reuse bytes,
+read them and create a new attachment. Only schema-owned content slots and
+explicitly declared content targets retain attachments; reference-shaped objects
+in opaque metadata, tool arguments, return candidates, and injection values do
+not retain backing bytes.
 
-Observation preparation resolves selected bodies and confirms uploads before
-transport delivery. After preparation, invocation storage is released; pending
-notifications own only their projected wire payload and backend. They cannot pin
-an invocation archive or delete another invocation's content. The boundary still
-awaits its selected observations, and shutdown cancels pending owned work.
+Eager bytes are available immediately for mapped text/JSON edits through
+`.content_target(...)`; no external staging is needed. Use `Attachment::bytes`
+for negotiated edits. Ordinary lazy sources remain unread until selected body delivery or
+`result.content.read(...)`; specialized selected-body validation may also read them. A failed
+or cancelled read is terminal, and repeated reads do not restart the source.
+Observation preparation confirms selected uploads before transport delivery;
+each notification owns its projected wire payload independently.
 
-**Migration from host-global staging:** `Hooks::content_context()` is deprecated
-and now returns an owned `ContentScope`, not a borrowed global `ContentContext`.
-Use `hooks.content_scope()`, borrow `scope.context()` for staging/resolution, then
-move the scope into `.content_scope(scope)`. A scope belongs to exactly one Hooks
-instance and one invocation. Reusing its references in a later invocation requires
-staging the retained bytes in a new scope. Never copy a descriptor alone and assume
-that it keeps its backing bytes alive.
+The following scope and staging APIs are removed:
+- `Hooks::{content_scope, content_context, stage_body}`
+- boundary `.content_scope(...)`
+- `content::ContentScope` and `body::StagedBody`
+- `OwnedContent::{context, resolve}`
 
-For lazy explicit staging, `scope.stage_body(body).await?` returns a local reference
-owned by that scope. `Hooks::stage_body` now returns an owned `StagedBody` rather
-than a bare JSON value: use `staged.reference()` in the event and keep `staged`
-alive until the boundary completes or is cancelled, then drop it. Dropping an unused staged owner releases the
-source without reading it. These handles are single-invocation; prefer
-`.body_source(...)` or `ContentScope` to make transfer and cleanup automatic.
-Generic `.content_target(...)` edit negotiation currently needs an already
-materialized original, so use `scope.put(...)` for that path. Lazy sources work
-with selected body delivery but do not change this pre-existing negotiation rule.
-The lower-level `Client` / `ContentStore` APIs remain caller-managed; a standalone
-`MemoryContentStore` still retains its allocations until its owners are dropped.
+Use `.attachment(...)` (or the `.body_source(...)` conversion convenience) and
+`result.content.read(pointer)`. Generated bindings are checked against canonical
+content slots after the event type is supplied; a binding cannot attach bytes to
+an arbitrary location inside opaque JSON.
+
+`max_stored_bytes` and `max_stored_entries` retain their historical field names,
+but now limit numeric active-owner accounting, not a content store. Returned
+results release that accounting while retaining their own attachment owners.
+Receiver-side `UploadReceiver` and standalone lower-level `ContentContext` /
+`MemoryContentStore` APIs remain separate, caller-managed interfaces.
 
 Generic prompt, response, output, and content modifications additionally require
 `.content_target(target, pointer)`, an explicit host mapping to a canonical content
