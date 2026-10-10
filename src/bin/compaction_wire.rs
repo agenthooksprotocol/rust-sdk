@@ -401,8 +401,7 @@ fn main() -> Result<()> {
                     })
                     .collect()
             };
-            let input =
-                json!({"instructions":"base","name":name,"itemId":format!("{name}:summary")});
+            let input = json!({"instructions":[{"id":"instructions","kind":"text","mediaType":"text/plain","selection":"body","text":"base"}],"name":name,"itemId":format!("{name}:summary")});
             let result = fixture::run_public_fixture(
                 &input,
                 subscriptions("before")?,
@@ -411,8 +410,10 @@ fn main() -> Result<()> {
             )?;
             let mut downstream = vec![];
             if result["applied"] == true {
-                downstream
-                    .push(result["bodies"][result["summary"]["ref"].as_str().unwrap()].clone());
+                downstream.push(json!(agenthooksprotocol::compaction::selected_text(
+                    &result["summary"],
+                    &fixture::fixture_content(&store),
+                )?));
             }
             out.push(json!({
                 "name": name,

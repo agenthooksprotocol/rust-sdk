@@ -152,7 +152,21 @@ fn stage(
             usize::MAX,
         )?;
         let request = json!({"jsonrpc":"2.0","id":boundary,"method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":capabilities(boundary,observe_only)?}});
-        let result = stage_boundary(&request, effects, &content)?;
+        // This string convenience API projects its candidates to canonical parts.
+        let canonical_effects: Vec<_> = effects
+            .iter()
+            .map(|effect| {
+                let mut effect = effect.clone();
+                if effect["type"] == "return"
+                    && let Some(text) = effect["value"].as_str()
+                {
+                    effect["value"] = json!([{ "id":item_id, "kind":"text",
+                    "mediaType":"text/plain", "selection":"body", "text":text }]);
+                }
+                effect
+            })
+            .collect();
+        let result = stage_boundary(&request, &canonical_effects, &content)?;
         let mut staged = state.clone();
         let changed = selected_text_at(&format!("/{target}"), &result["event"][target], &content)?;
         let replacement_reference = if changed != body {
@@ -171,7 +185,7 @@ fn stage(
             staged["summary"] = json!({"id":item_id,"ref":reference});
         }
         if let Some(candidate) = result.get("candidate") {
-            staged["candidate"] = json!({"body":candidate,"supplier":supplier});
+            staged["candidate"] = json!({"body":inline_text(candidate)?,"supplier":supplier});
         }
         if result["denied"] == true {
             staged["denied"] = json!(true);
@@ -398,7 +412,9 @@ pub fn stage_boundary(
                 )?;
             }
             "return" if before => {
-                effect["value"].as_str().ok_or("summary must be text")?;
+                let _: Vec<crate::generated::TextBodyPart> =
+                    serde_json::from_value(effect["value"].clone())?;
+                inline_text(&effect["value"])?;
             }
             "deny" if before => {}
             "message" => {}

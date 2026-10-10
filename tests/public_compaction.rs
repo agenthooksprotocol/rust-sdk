@@ -64,6 +64,52 @@ fn immutable_rewrites_preserve_identity_correlations_and_exact_utf8() {
 }
 
 #[test]
+fn canonical_return_preserves_parts_and_rejects_invalid_candidate_atomically() {
+    let store = CountingStore::new();
+    let content = ContentContext {
+        store: &store,
+        scope: AuthorizedScope::new("scope"),
+    };
+    let request = request(&content, false);
+    let original = request.clone();
+    let mut supplied = parts("first");
+    let mut second = parts("second")[0].clone();
+    second["id"] = json!("second-part");
+    second["category"] = json!("reasoning");
+    supplied.as_array_mut().unwrap().push(second);
+    let result = stage_boundary(
+        &request,
+        &[json!({"type":"return","value":supplied})],
+        &content,
+    )
+    .unwrap();
+    assert_eq!(result["candidate"], supplied);
+    let mut metadata = parts("hidden");
+    metadata[0]["selection"] = json!("metadata");
+    metadata[0].as_object_mut().unwrap().remove("text");
+    let mut gap = parts("hidden");
+    gap[0].as_object_mut().unwrap().remove("text");
+    gap[0]["gap"] = json!({"reason":"unavailable"});
+    let binary = json!([{"id":"binary", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"body", "body":{"ref":"unconfirmed"}}]);
+    for invalid in [json!("scalar"), json!(null), metadata, gap, binary] {
+        assert!(
+            stage_boundary(
+                &request,
+                &[
+                    json!({"type":"return","value":supplied}),
+                    modify("instructions", "must not publish"),
+                    json!({"type":"return","value":invalid}),
+                ],
+                &content
+            )
+            .is_err()
+        );
+        assert_eq!(request, original);
+    }
+    assert_eq!(store.writes(), 0);
+}
+
+#[test]
 fn no_effects_preserve_optional_presence_and_absent_candidate() {
     let store = store();
     let content = ContentContext {
@@ -82,11 +128,11 @@ fn no_effects_preserve_optional_presence_and_absent_candidate() {
     assert_eq!(result["denied"], false);
     let returned = stage_boundary(
         &request,
-        &[json!({"type":"return","value":"supplied"})],
+        &[json!({"type":"return","value":parts("supplied")})],
         &content,
     )
     .unwrap();
-    assert_eq!(returned["candidate"], "supplied");
+    assert_eq!(returned["candidate"], parts("supplied"));
     assert!(stage_boundary(&request, &[json!({"type":"return","value":null})], &content).is_err());
 }
 
@@ -149,14 +195,14 @@ fn denial_and_messages_are_staged_but_not_allowed_after() {
         scope: AuthorizedScope::new("scope"),
     };
     let effects = [
-        json!({"type":"return","value":"cached"}),
+        json!({"type":"return","value":parts("cached")}),
         json!({"type":"message","text":"notice"}),
         json!({"type":"deny","reason":"policy"}),
     ];
     let before = request(&content, false);
     let result = stage_boundary(&before, &effects, &content).unwrap();
     assert_eq!(result["denied"], true);
-    assert_eq!(result["candidate"], "cached");
+    assert_eq!(result["candidate"], parts("cached"));
     assert_eq!(result["messages"], json!(["notice"]));
     assert_eq!(result["event"], before["params"]["event"]);
     assert!(stage_boundary(&request(&content, true), &effects, &content).is_err());
