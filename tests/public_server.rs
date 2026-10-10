@@ -433,7 +433,7 @@ fn content_request(items: serde_json::Value) -> Request {
     request
 }
 fn selected_item(reference: serde_json::Value) -> serde_json::Value {
-    serde_json::json!({"id":"message", "kind":"message", "mediaType":"text/plain", "role":"user", "selection":"body", "body":reference})
+    serde_json::json!({"id":"message", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"body", "body":reference})
 }
 struct CountingContentStore {
     store: agenthooksprotocol::content::MemoryContentStore,
@@ -538,7 +538,7 @@ fn content_resolution_never_uses_payload_scope_and_never_partially_dispatches() 
         .status,
         400
     );
-    let gap = serde_json::json!({"id":"gap", "kind":"message", "mediaType":"text/plain", "selection":"body", "gap":{"reason":"unavailable"}});
+    let gap = serde_json::json!({"id":"gap", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"body", "gap":{"reason":"unavailable"}});
     assert_eq!(
         block_on(server.handle_with_content(content_request(serde_json::json!([gap])), &store))
             .status,
@@ -568,8 +568,9 @@ fn metadata_omit_and_open_tool_input_never_trigger_content_reads() {
         max_body_bytes: 65536,
     };
     let items = serde_json::json!([
-        {"id":"meta", "kind":"message", "mediaType":"text/plain", "selection":"metadata"},
-        {"id":"omitted", "kind":"message", "mediaType":"text/plain", "selection":"omit"}
+        {"id":"meta", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"metadata"},
+        {"id":"omitted", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"omit"},
+        {"id":"inline", "kind":"text", "mediaType":"text/plain", "selection":"body", "text":"inline text needs no storage"}
     ]);
     let mut request = content_request(items);
     let mut value: serde_json::Value = serde_json::from_slice(&request.body).unwrap();

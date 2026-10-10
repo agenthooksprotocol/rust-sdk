@@ -70,7 +70,7 @@ fn session_start_collects_injection_and_message_without_rewriting_event() {
         }),
     );
     let inject = json!({"type":"inject","target":"context","operation":"append",
-        "deliverAt":"now","value":"Read the project instructions before editing."});
+        "deliverAt":"now","value":[{"id":"injection","role":"system","parts":[{"id":"text","kind":"text","mediaType":"text/plain","selection":"body","text":"Read the project instructions before editing."}]}]});
     let message = json!({"type":"message","text":"Project instructions queued."});
     let calls = Arc::new(Mutex::new(vec![]));
     let c = client(json!([inject, message]), &calls);
@@ -138,7 +138,7 @@ struct ModelRequest {
     envelope: BTreeMap<String, Value>,
 }
 #[test]
-fn model_request_modifies_params_and_settles_typed_event_with_candidate() {
+fn model_request_appends_messages_preserves_params_and_settles_typed_event() {
     let input = event(
         "model.request.before",
         json!({"model":model(),"attempt":{"id":"attempt_1","number":1},
@@ -146,10 +146,10 @@ fn model_request_modifies_params_and_settles_typed_event_with_candidate() {
     );
     let typed: ModelRequest = serde_json::from_value(input).unwrap();
     let calls = Arc::new(Mutex::new(vec![]));
-    let candidate = json!({"text":"Cached answer"});
+    let candidate = json!([{"id":"cached","role":"assistant","parts":[{"id":"cached-text","kind":"text","mediaType":"text/plain","selection":"body","text":"Cached answer"}]}]);
     let c = client(
         json!([
-            {"type":"modify","target":"request","operation":"merge","value":{"temperature":0}},
+            {"type":"modify","target":"request","operation":"merge","value":[{"id":"request","role":"user","parts":[{"id":"request-text","kind":"text","mediaType":"text/plain","selection":"body","text":"revised request"}]}]},
             {"type":"return","value":candidate}
         ]),
         &calls,
@@ -158,7 +158,11 @@ fn model_request_modifies_params_and_settles_typed_event_with_candidate() {
     assert!(result.outcome.failures.is_empty());
     assert_eq!(result.outcome.candidate, Some(candidate));
     let typed = result.event.unwrap();
-    assert_eq!(typed.params["temperature"], 0);
+    assert_eq!(typed.params["temperature"], 1);
+    assert_eq!(
+        typed.envelope["items"][0]["parts"][0]["text"],
+        "revised request"
+    );
     assert_eq!(typed.params["hostOption"], "preserved");
     assert_eq!(typed.envelope["hostMetadata"]["trace"], "retained");
     assert_eq!(serde_json::to_value(typed).unwrap(), result.effective_event);
@@ -214,7 +218,7 @@ fn unknown_effect_rolls_back_entire_model_request_response_before_next_hook() {
     let calls = Arc::new(Mutex::new(vec![]));
     let c = client(
         json!([
-            {"type":"modify","target":"request","operation":"merge","value":{"temperature":0}},
+            {"type":"modify","target":"request","operation":"merge","value":[{"id":"request","role":"user","parts":[{"id":"request-text","kind":"text","mediaType":"text/plain","selection":"body","text":"revised request"}]}]},
             {"type":"return","value":"must not survive"},
             {"type":"message","text":"must not survive"},
             {"type":"future_effect"}
@@ -232,7 +236,7 @@ fn unknown_effect_rolls_back_entire_model_request_response_before_next_hook() {
 }
 
 #[test]
-fn remaining_content_families_modify_only_explicitly_mapped_item() {
+fn remaining_content_families_replace_inline_lists_preserving_siblings() {
     for (name, target, array, fields) in [
         (
             "turn.start",
@@ -257,7 +261,7 @@ fn remaining_content_families_modify_only_explicitly_mapped_item() {
         (
             "user.message.inbound",
             "prompt",
-            "/message/text",
+            "/message/messages",
             json!({"message":{"channel":"chat","sender":"user"}}),
         ),
     ] {
@@ -266,49 +270,79 @@ fn remaining_content_families_modify_only_explicitly_mapped_item() {
             store: &store,
             scope: AuthorizedScope::new("family"),
         };
-        let role = match name {
-            "model.response.after" => "assistant",
-            "tool.after" => "tool",
-            _ => "user",
-        };
-        let first = json!({"id":"first","kind":"content","category":"content","role":role,
-            "mediaType":"text/plain","selection":"body","body":content.put(b"leave me alone").unwrap()});
-        let selected = json!({"id":"selected","kind":"content","category":"content","role":role,
-            "mediaType":"text/plain","selection":"body","body":content.put(b"original").unwrap()});
+        let first = json!({"id":"first","kind":"text","mediaType":"text/plain","selection":"body","text":"leave me alone"});
+        let selected = json!({"id":"selected","kind":"text","mediaType":"text/plain","selection":"body","text":"original"});
         let mut input = event(name, fields);
-        if array == "/items" {
-            input["items"] = json!([first, selected]);
+        let parts = json!([first, selected]);
+        let messages = json!([{"id":"message","role":match name { "model.response.after" => "assistant", "tool.after" => "tool", _ => "user" },"parts":parts}]);
+        let pointer = if array == "/items" {
+            input["items"] = messages;
+            "/items/0/parts/1"
         } else {
-            input["message"]["text"] = json!([first, selected]);
-        }
+            input["message"]["messages"] = messages;
+            "/message/messages/0/parts/1"
+        };
         let calls = Arc::new(Mutex::new(vec![]));
+        let mut replacement = input.pointer(array).unwrap().clone();
+        replacement[0]["parts"][1]["text"] = json!("revised");
         let c = client(
-            json!([{"type":"modify","target":target,"operation":"replace","value":"revised"}]),
+            json!([{"type":"modify","target":target,"operation":"replace","value":replacement}]),
             &calls,
         );
-        let pointer = format!("{array}/1");
         let result = block_on(async {
             c.event(input.clone())
                 .content(content.clone())
-                .content_target(target, &pointer)
+                .content_target(target, pointer)
                 .await
                 .unwrap()
         });
         assert!(result.outcome.failures.is_empty(), "{name}");
         let effective = result.event.unwrap();
-        assert_eq!(effective.pointer(array).unwrap()[0], first, "{name}");
-        let mapped = effective.pointer(&pointer).unwrap();
         assert_eq!(
-            content.resolve_selected(mapped).unwrap().unwrap().as_ref(),
-            b"revised",
+            effective.pointer(&pointer.replace("/1", "/0")).unwrap(),
+            &first,
             "{name}"
         );
+        let mapped = effective.pointer(pointer).unwrap();
+        assert_eq!(mapped["text"], "revised", "{name}");
         let mut expected = input;
-        expected.pointer_mut(&pointer).unwrap()["body"] = mapped["body"].clone();
+        expected.pointer_mut(pointer).unwrap()["text"] = mapped["text"].clone();
         assert_eq!(effective, expected, "only mapped body changes: {name}");
         assert_eq!(
             calls.lock().unwrap()[0]["params"]["capabilities"]["modify"][target]["replace"],
             true
         );
     }
+}
+
+#[test]
+fn tool_output_replacement_substitutes_and_merge_appends_canonical_messages() {
+    fn message(id: &str) -> Value {
+        json!({"id":id,"role":"tool","parts":[{"id":format!("{id}-text"),"kind":"text","mediaType":"text/plain","selection":"body","text":id}]})
+    }
+    let original = event(
+        "tool.after",
+        json!({"call":{"id":"call"},"tool":tool(),"path":"native",
+        "outcome":"ok","execution":{"status":"executed"},"items":[message("original")]}),
+    );
+    let calls = Arc::new(Mutex::new(vec![]));
+    let c = client(
+        json!([
+            {"type":"modify","target":"output","operation":"replace","value":[message("replacement")]},
+            {"type":"modify","target":"output","operation":"merge","value":[message("appended"),message("appended")]}
+        ]),
+        &calls,
+    );
+    let result = block_on(async { c.event(original.clone()).await.unwrap() });
+    assert!(result.outcome.failures.is_empty());
+    assert_eq!(
+        result.effective_event["items"],
+        json!([
+            message("replacement"),
+            message("appended"),
+            message("appended")
+        ])
+    );
+    assert_eq!(original["items"], json!([message("original")]));
+    assert!(result.effective_event["tool"].get("output").is_none());
 }

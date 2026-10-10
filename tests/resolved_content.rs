@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::{sync::Arc, sync::Mutex};
 
 fn item(reference: Value) -> Value {
-    json!({"id":"stable", "kind":"message", "mediaType":"text/plain", "role":"assistant", "selection":"body", "body":reference, "category":"reasoning", "parentItemId":"owner", "synthesized":true})
+    json!({"id":"stable", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"body", "body":reference, "synthesized":true})
 }
 
 #[test]

@@ -148,7 +148,7 @@ mod content_reference_tests {
             parse_content_reference_value(reference.clone()),
             ParseResult::Success { .. }
         ));
-        let body = json!({"id":"item", "kind":"text", "mediaType":"text/plain", "selection":"body", "body":reference});
+        let body = json!({"id":"item", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"body", "body":reference});
         validate("content-item", &body).unwrap();
         assert!(matches!(
             parse_content_item_value(body.clone()),

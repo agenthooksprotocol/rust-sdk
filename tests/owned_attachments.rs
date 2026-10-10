@@ -1,7 +1,8 @@
 use agenthooksprotocol::{
     Attachment, Hooks,
     body::{BodyChunkFuture, BodyStream},
-    ergonomic_inputs::user_message_outbound_sources::message_payload,
+    ergonomic_inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
+    generated::CanonicalMessageRole,
     hooks::{Capabilities, EventGrant, HooksOptions},
 };
 use futures::executor::block_on;
@@ -67,27 +68,102 @@ fn hooks(limit: usize) -> Hooks {
     .unwrap()
 }
 fn event() -> Value {
-    json!({"type":"user.message.outbound", "message":{"channel":"chat", "payload":[{
-        "id":"file", "kind":"content", "category":"content", "role":"assistant", "mediaType":"application/octet-stream", "selection":"metadata"
+    json!({"type":"user.message.outbound", "message":{"channel":"chat", "messages":[{
+        "id":"message", "role":"assistant", "parts":[{"id":"body", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"body", "body":{"ref":"ahp:host-pending"}}]
     }]}})
 }
+fn attachment_input(
+    event: Value,
+    attachment: Attachment,
+) -> HostInput<UserMessageOutboundInput, Attachment> {
+    let metadata =
+        serde_json::from_value(event["message"]["messages"][0]["parts"][0].clone()).unwrap();
+    let input: UserMessageOutboundInput = serde_json::from_value(event).unwrap();
+    input
+        .with_sources()
+        .with_message_messages(vec![MessageInput::from_parts(
+            CanonicalMessageRole::Assistant,
+            vec![PartInput::attachment(metadata, attachment)],
+        )])
+}
+#[test]
+fn mixed_inline_text_and_binary_parts_keep_distinct_ownership() {
+    block_on(async {
+        let hooks = hooks(10);
+        let (attachment, reads, drops) = source();
+        let input = UserMessageOutboundInput::new(
+            serde_json::from_value(event()["message"].clone()).unwrap(),
+        )
+        .with_sources()
+        .with_message_messages(vec![MessageInput::from_parts(
+            CanonicalMessageRole::Assistant,
+            vec![
+                PartInput::text(agenthooksprotocol::generated::TextBodyPart::new(
+                    "caption",
+                    "Binary caption",
+                )),
+                PartInput::owned_attachment("binary", "application/octet-stream", attachment),
+            ],
+        )]);
+        let result = hooks.user_message_outbound(input).await.unwrap();
+        assert_eq!(reads.load(Ordering::SeqCst), 0);
+        let parts = &result.effective_event["message"]["messages"][0]["parts"];
+        assert_eq!(parts[0]["kind"], "text");
+        assert_eq!(parts[0]["text"], "Binary caption");
+        assert!(parts[0].get("body").is_none());
+        assert_eq!(parts[1]["kind"], "attachment");
+        assert_eq!(parts[1]["mediaType"], "application/octet-stream");
+        assert!(parts[1].get("text").is_none());
+        hooks.shutdown().await.unwrap();
+        drop(hooks);
+        assert!(
+            result
+                .content
+                .read("/message/messages/0/parts/0")
+                .await
+                .is_err()
+        );
+        let bytes = result
+            .content
+            .read("/message/messages/0/parts/1")
+            .await
+            .unwrap();
+        let again = result
+            .content
+            .read("/message/messages/0/parts/1")
+            .await
+            .unwrap();
+        assert_eq!(bytes.as_ref(), &[0, 255, 42]);
+        assert!(Arc::ptr_eq(&bytes, &again));
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    });
+}
+
 #[test]
 fn metadata_retains_unread_source_after_shutdown_and_returns_immutable_bytes() {
     block_on(async {
         let hooks = hooks(10);
         let (source, reads, drops) = source();
         let result = hooks
-            .event(event())
-            .attachment(message_payload(0, source))
+            .user_message_outbound(attachment_input(event(), source))
             .await
             .unwrap();
         assert_eq!(reads.load(Ordering::SeqCst), 0);
         hooks.shutdown().await.unwrap();
         drop(hooks);
-        let bytes = result.content.read("/message/payload/0").await.unwrap();
+        let bytes = result
+            .content
+            .read("/message/messages/0/parts/0")
+            .await
+            .unwrap();
         assert_eq!(&*bytes, &[0, 255, 42]);
         assert_eq!(drops.load(Ordering::SeqCst), 1);
-        let again = result.content.read("/message/payload/0").await.unwrap();
+        let again = result
+            .content
+            .read("/message/messages/0/parts/0")
+            .await
+            .unwrap();
         assert!(Arc::ptr_eq(&bytes, &again));
         let mut owned = bytes;
         Arc::make_mut(&mut owned)[0] = 100;
@@ -101,8 +177,7 @@ fn unopened_result_and_unpolled_invocation_drop_sources() {
     let (source, reads, drops) = source();
     let result = block_on(
         hooks
-            .event(event())
-            .attachment(message_payload(0, source))
+            .user_message_outbound(attachment_input(event(), source))
             .into_future(),
     )
     .unwrap();
@@ -112,8 +187,7 @@ fn unopened_result_and_unpolled_invocation_drop_sources() {
     let (source, reads, drops) = self::source();
     drop(
         hooks
-            .event(event())
-            .attachment(message_payload(0, source))
+            .user_message_outbound(attachment_input(event(), source))
             .into_future(),
     );
     assert_eq!(reads.load(Ordering::SeqCst), 0);
@@ -125,29 +199,42 @@ fn eager_and_lazy_limits_are_terminal_and_release_sources() {
         let hooks = hooks(2);
         let (source, reads, drops) = source();
         let result = hooks
-            .event(event())
-            .attachment(message_payload(0, source))
+            .user_message_outbound(attachment_input(event(), source))
             .await
             .unwrap();
-        assert!(result.content.read("/message/payload/0").await.is_err());
-        assert!(result.content.read("/message/payload/0").await.is_err());
+        assert!(
+            result
+                .content
+                .read("/message/messages/0/parts/0")
+                .await
+                .is_err()
+        );
+        assert!(
+            result
+                .content
+                .read("/message/messages/0/parts/0")
+                .await
+                .is_err()
+        );
         assert_eq!(reads.load(Ordering::SeqCst), 1);
         assert_eq!(drops.load(Ordering::SeqCst), 1);
         assert!(
             hooks
-                .event(event())
-                .attachment(message_payload(0, Attachment::bytes(vec![1, 2, 3])))
+                .user_message_outbound(attachment_input(event(), Attachment::bytes(vec![1, 2, 3])))
                 .await
                 .is_err()
         );
         let result = hooks
-            .event(event())
-            .attachment(message_payload(0, Attachment::bytes(vec![1, 2])))
+            .user_message_outbound(attachment_input(event(), Attachment::bytes(vec![1, 2])))
             .await
             .unwrap();
         hooks.shutdown().await.unwrap();
         assert_eq!(
-            &*result.content.read("/message/payload/0").await.unwrap(),
+            &*result
+                .content
+                .read("/message/messages/0/parts/0")
+                .await
+                .unwrap(),
             &[1, 2]
         );
     });
@@ -204,15 +291,27 @@ fn no_match_typed_input_is_not_mutated_and_sources_remain_unread() {
         let original = serde_json::to_value(&input).unwrap();
         let (attachment, reads, drops) = source();
         let result = hooks
-            .user_message_outbound(input.clone())
-            .attachment(message_payload(0, attachment))
+            .user_message_outbound(input.clone().with_sources().with_message_messages(vec![
+                MessageInput::from_parts(
+                    CanonicalMessageRole::Assistant,
+                    vec![PartInput::owned_attachment(
+                        "body",
+                        "application/octet-stream",
+                        attachment,
+                    )],
+                ),
+            ]))
             .await
             .unwrap();
         assert_eq!(serde_json::to_value(input).unwrap(), original);
         assert_eq!(reads.load(Ordering::SeqCst), 0);
         drop(hooks);
         assert_eq!(
-            &*result.content.read("/message/payload/0").await.unwrap(),
+            &*result
+                .content
+                .read("/message/messages/0/parts/0")
+                .await
+                .unwrap(),
             &[0, 255, 42]
         );
         assert_eq!(drops.load(Ordering::SeqCst), 1);
@@ -240,12 +339,14 @@ fn cancelled_result_read_drops_source_and_cannot_restart() {
     let drops = Arc::new(AtomicUsize::new(0));
     let result = block_on(
         hooks
-            .event(event())
-            .attachment(message_payload(0, Attachment::lazy(Pending(drops.clone()))))
+            .user_message_outbound(attachment_input(
+                event(),
+                Attachment::lazy(Pending(drops.clone())),
+            ))
             .into_future(),
     )
     .unwrap();
-    let mut read = Box::pin(result.content.read("/message/payload/0"));
+    let mut read = Box::pin(result.content.read("/message/messages/0/parts/0"));
     assert!(matches!(
         read.as_mut()
             .poll(&mut Context::from_waker(futures::task::noop_waker_ref())),
@@ -253,7 +354,7 @@ fn cancelled_result_read_drops_source_and_cannot_restart() {
     ));
     drop(read);
     assert_eq!(drops.load(Ordering::SeqCst), 1);
-    assert!(block_on(result.content.read("/message/payload/0")).is_err());
+    assert!(block_on(result.content.read("/message/messages/0/parts/0")).is_err());
 }
 
 #[test]
@@ -263,8 +364,20 @@ fn invalid_binding_and_chunk_limit_drop_owned_sources() {
     assert!(
         block_on(
             hooks
-                .event(event())
-                .attachment(message_payload(99, attachment))
+                .user_message_outbound(
+                    UserMessageOutboundInput::new(
+                        serde_json::from_value(event()["message"].clone()).unwrap()
+                    )
+                    .with_sources()
+                    .with_message_messages(vec![MessageInput::from_parts(
+                        CanonicalMessageRole::Assistant,
+                        vec![PartInput::owned_attachment(
+                            "invalid",
+                            "text/plain",
+                            attachment
+                        )]
+                    )])
+                )
                 .into_future()
         )
         .is_err()
@@ -274,12 +387,11 @@ fn invalid_binding_and_chunk_limit_drop_owned_sources() {
     let (attachment, _, drops) = source();
     let result = block_on(
         hooks
-            .event(event())
-            .attachment(message_payload(0, attachment.with_max_chunks(0)))
+            .user_message_outbound(attachment_input(event(), attachment.with_max_chunks(0)))
             .into_future(),
     )
     .unwrap();
-    assert!(block_on(result.content.read("/message/payload/0")).is_err());
+    assert!(block_on(result.content.read("/message/messages/0/parts/0")).is_err());
     assert_eq!(drops.load(Ordering::SeqCst), 1);
 }
 
@@ -288,9 +400,7 @@ fn invocation_cancellation_and_timeout_drop_unopened_sources() {
     let hooks = hooks(10);
     for cancelled in [true, false] {
         let (attachment, reads, drops) = source();
-        let boundary = hooks
-            .event(event())
-            .attachment(message_payload(0, attachment));
+        let boundary = hooks.user_message_outbound(attachment_input(event(), attachment));
         let boundary = if cancelled {
             boundary.cancel_when(std::future::ready(()))
         } else {
@@ -325,100 +435,90 @@ impl agenthooksprotocol::adapters::registered::ManagedBackend for UnreachableBac
 }
 
 #[test]
-fn attachment_integrity_metadata_is_checked_on_demand_not_sent_on_wire() {
+fn forbidden_integrity_metadata_rejects_unopened_owned_sources() {
     block_on(async {
         for metadata in [json!({"size":999}), json!({"sha256":"0".repeat(64)})] {
             let hooks = hooks(10);
             let (attachment, reads, drops) = source();
-            let mut input = event();
-            input["message"]["payload"][0]
-                .as_object_mut()
-                .unwrap()
+            let mut part = agenthooksprotocol::generated::AttachmentBodyPart::new(
+                agenthooksprotocol::generated::ContentReference::new("ahp:host-pending"),
+                "body",
+                "application/octet-stream",
+            );
+            part.additional_properties
                 .extend(metadata.as_object().unwrap().clone());
-            let result = hooks
-                .event(input)
-                .attachment(message_payload(0, attachment))
-                .await
-                .unwrap();
+            let input: UserMessageOutboundInput = serde_json::from_value(event()).unwrap();
+            let input = input
+                .with_sources()
+                .with_message_messages(vec![MessageInput::from_parts(
+                    CanonicalMessageRole::Assistant,
+                    vec![PartInput::attachment(part, attachment)],
+                )]);
+            assert!(hooks.user_message_outbound(input).await.is_err());
             assert_eq!(reads.load(Ordering::SeqCst), 0);
-            let item = &result.effective_event["message"]["payload"][0];
-            assert!(item.get("size").is_none());
-            assert!(item.get("sha256").is_none());
-            assert!(result.content.read("/message/payload/0").await.is_err());
-            let attempted = reads.load(Ordering::SeqCst);
-            assert!(attempted > 0);
-            assert!(result.content.read("/message/payload/0").await.is_err());
-            assert_eq!(reads.load(Ordering::SeqCst), attempted);
             assert_eq!(drops.load(Ordering::SeqCst), 1);
         }
         let hooks = hooks(10);
         let (attachment, reads, drops) = source();
-        let mut input = event();
-        input["message"]["payload"][0]["size"] = json!(3);
         let result = hooks
-            .event(input)
-            .attachment(message_payload(0, attachment))
+            .user_message_outbound(attachment_input(event(), attachment))
             .await
             .unwrap();
         assert_eq!(reads.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            result
-                .content
-                .read("/message/payload/0")
-                .await
-                .unwrap()
-                .as_ref(),
-            &[0, 255, 42]
-        );
+        let part = &result.effective_event["message"]["messages"][0]["parts"][0];
+        assert!(part.get("size").is_none());
+        assert!(part.get("sha256").is_none());
+        let first = result
+            .content
+            .read("/message/messages/0/parts/0")
+            .await
+            .unwrap();
+        let again = result
+            .content
+            .read("/message/messages/0/parts/0")
+            .await
+            .unwrap();
+        assert_eq!(first.as_ref(), &[0, 255, 42]);
+        assert!(Arc::ptr_eq(&first, &again));
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
         assert_eq!(drops.load(Ordering::SeqCst), 1);
     });
 }
 
 #[test]
-fn specialized_attachment_slots_and_elicitation_exchange_outlive_hooks() {
-    use agenthooksprotocol::ergonomic_inputs::{
-        context_compact_before_sources::instructions,
-        user_elicitation_request_sources::elicitation_request,
-    };
+fn inline_instructions_and_elicitation_exchange_outlive_hooks() {
     block_on(async {
+        let payload = json!({"message":"Your answer", "requestedSchema":{"type":"object", "properties":{"answer":{"type":"string"}}, "required":["answer"]}});
         let cases = [
-            ("context.compact.before", "/instructions", json!({
-                "type":"context.compact.before", "trigger":"manual", "items":[],
-                "instructions":{"id":"instructions","kind":"instructions","mediaType":"text/plain","selection":"metadata"}
-            }), b"compact these items".to_vec()),
-            ("user.elicitation.request", "/elicitation/request", json!({
-                "type":"user.elicitation.request", "elicitation":{"server":"mcp-server","mode":"form",
-                "request":{"id":"request","kind":"elicitation.request","mediaType":"application/json","selection":"metadata"}}
-            }), serde_json::to_vec(&json!({"message":"Your answer", "requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}})).unwrap()),
+            (
+                "context.compact.before",
+                "/instructions/0",
+                json!({"type":"context.compact.before", "trigger":"manual", "items":[], "instructions":[{"id":"instructions", "kind":"text", "mediaType":"text/plain", "selection":"body", "text":"compact these items"}]}),
+                "compact these items".to_owned(),
+            ),
+            (
+                "user.elicitation.request",
+                "/elicitation/request",
+                json!({"type":"user.elicitation.request", "elicitation":{"server":"mcp-server", "mode":"form", "request":{"id":"request", "kind":"text", "mediaType":"text/plain", "selection":"body", "text":payload.to_string()}}}),
+                payload.to_string(),
+            ),
         ];
-        for (name, path, event, bytes) in cases {
+        for (name, path, event, text) in cases {
             let mut config = registration();
             config["hooks"][0]["subscriptions"][0]["events"] = json!([name]);
+            config["hooks"][0]["subscriptions"][0]["content"] = json!({"default":"body"});
+            let caps = if name == "user.elicitation.request" {
+                Capabilities::none().elicitation_form()
+            } else {
+                Capabilities::none()
+            };
             let options = HooksOptions::new(
-                "urn:test:specialized",
-                BTreeMap::from([(
-                    name.into(),
-                    EventGrant::intercept(if name == "user.elicitation.request" {
-                        Capabilities::none().elicitation_form()
-                    } else {
-                        Capabilities::none()
-                    }),
-                )]),
+                "urn:test:inline",
+                BTreeMap::from([(name.into(), EventGrant::intercept(caps))]),
             )
             .with_backend("org.example.attachments", Arc::new(Noop));
             let hooks = Hooks::new(config, options).unwrap();
-            let boundary = hooks.event(event);
-            let result = if name == "context.compact.before" {
-                boundary
-                    .attachment(instructions(Attachment::bytes(bytes.clone())))
-                    .await
-                    .unwrap()
-            } else {
-                boundary
-                    .attachment(elicitation_request(Attachment::bytes(bytes.clone())))
-                    .await
-                    .unwrap()
-            };
+            let result = hooks.event(event).await.unwrap();
             assert!(
                 result.outcome.failures.is_empty(),
                 "{:?}",
@@ -426,10 +526,15 @@ fn specialized_attachment_slots_and_elicitation_exchange_outlive_hooks() {
             );
             hooks.shutdown().await.unwrap();
             drop(hooks);
-            assert_eq!(result.content.read(path).await.unwrap().as_ref(), bytes);
+            assert_eq!(
+                result.effective_event.pointer(path).unwrap()["text"]
+                    .as_str()
+                    .unwrap()
+                    .as_bytes(),
+                text.as_bytes()
+            );
             if name == "user.elicitation.request" {
-                let envelope = json!({"jsonrpc":"2.0","id":result.effective_event["id"],"method":"hooks/intercept","params":{"protocolVersion":"draft","event":result.effective_event,
-                    "capabilities":{"effects":["return","deny","message"],"elicitation":{"form":{}}}}});
+                let envelope = json!({"jsonrpc":"2.0", "id":result.effective_event["id"], "method":"hooks/intercept", "params":{"protocolVersion":"draft", "event":result.effective_event, "capabilities":{"effects":["return","deny","message"], "elicitation":{"form":{}}}}});
                 let exchange =
                     agenthooksprotocol::elicitation::Exchange::new(&envelope, &result.content)
                         .unwrap();

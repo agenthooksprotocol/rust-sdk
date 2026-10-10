@@ -110,8 +110,7 @@ impl Drop for UnusedSource {
 #[test]
 fn generated_named_source_is_closed_unused_without_reads_and_capacity_is_reusable() {
     use agenthooksprotocol::{
-        body::Body,
-        ergonomic_inputs::{ToolBeforeInput, tool_before_sources},
+        ergonomic_inputs::{PartInput, ToolBeforeInput},
         generated::ToolBeforeInputOrigin,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -122,7 +121,6 @@ fn generated_named_source_is_closed_unused_without_reads_and_capacity_is_reusabl
     let reads = Arc::new(AtomicUsize::new(0));
     let drops = Arc::new(AtomicUsize::new(0));
     for _ in 0..2 {
-        let item = serde_json::from_value(json!({"id":"owned-text","kind":"text","mediaType":"text/plain","selection":"metadata"})).unwrap();
         let proposal = ToolBeforeInput::new(
             "typed-call".into(),
             "native".into(),
@@ -130,16 +128,16 @@ fn generated_named_source_is_closed_unused_without_reads_and_capacity_is_reusabl
             "shell".into(),
             ToolBeforeInputOrigin::Native,
         )
-        .with_items(vec![Box::new(item)]);
-        let pending = hooks
-            .tool_before(proposal)
-            .body_source(tool_before_sources::items(
-                0,
-                Body::stream(UnusedSource {
-                    reads: reads.clone(),
-                    drops: drops.clone(),
-                }),
-            ));
+        .with_sources()
+        .with_items(vec![PartInput::owned_attachment(
+            "owned-binary",
+            "application/octet-stream",
+            agenthooksprotocol::Attachment::lazy(UnusedSource {
+                reads: reads.clone(),
+                drops: drops.clone(),
+            }),
+        )]);
+        let pending = hooks.tool_before(proposal);
         assert_eq!(reads.load(Ordering::SeqCst), 0);
         block_on(pending).unwrap();
     }

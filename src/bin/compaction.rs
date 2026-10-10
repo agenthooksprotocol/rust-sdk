@@ -40,6 +40,28 @@ struct FixtureLog {
     bodies: Value,
     instructions: String,
     returned: Vec<(String, Value)>,
+    next_reference: u64,
+    summary_id: String,
+    summary: Value,
+    summary_text: Option<String>,
+}
+impl FixtureLog {
+    // Legacy identifiers are report fields only, never attachment references.
+    fn record_summary(
+        &mut self,
+        parts: &Value,
+        content: &ContentContext<'_>,
+    ) -> Result<Value, String> {
+        let text = selected_text(parts, content).map_err(|e| e.to_string())?;
+        if self.summary_text.as_ref() != Some(&text) {
+            self.next_reference += 1;
+            let reference = format!("content-{}", self.next_reference);
+            self.bodies[&reference] = json!(text);
+            self.summary = json!({"id":self.summary_id,"ref":reference});
+            self.summary_text = Some(text);
+        }
+        Ok(self.summary.clone())
+    }
 }
 struct RecordingHook {
     inner: Box<dyn Hook>,
@@ -64,13 +86,8 @@ impl Hook for RecordingHook {
                 let summary = if before {
                     Value::Null
                 } else {
-                    let item = &event["summary"];
-                    let reference = item["body"]["ref"]
-                        .as_str()
-                        .ok_or_else(|| HookError("reference".into()))?;
-                    log.bodies[reference] =
-                        json!(selected_text(item, &content).map_err(|e| HookError(e.to_string()))?);
-                    json!({"id":item["id"],"ref":reference})
+                    log.record_summary(&event["summary"], &content)
+                        .map_err(HookError)?
                 };
                 let snapshot = json!({"boundary":if before {"before"} else {"after"},"instructions":instructions,"summary":summary,"bodies":log.bodies,"capabilities":request["params"].get("capabilities").cloned().unwrap_or(json!({"effects":[],"modify":{}}))});
                 log.seen.push(snapshot);
@@ -120,15 +137,13 @@ pub fn fixture_subscription(
     })
 }
 fn content_item(
-    content: &ContentContext<'_>,
+    _content: &ContentContext<'_>,
     id: &str,
-    kind: &str,
-    role: &str,
+    _kind: &str,
+    _role: &str,
     text: &str,
 ) -> Result<Value, String> {
-    Ok(
-        json!({"id":id,"kind":kind,"role":role,"mediaType":"text/plain","selection":"body","body":content.put(text.as_bytes()).map_err(|e|e.to_string())?}),
-    )
+    Ok(json!([{"id":id,"kind":"text","mediaType":"text/plain","selection":"body","text":text}]))
 }
 /// Host fixture only: protocol settlement runs through Client::event. Generation,
 /// permissive host policy and legacy report shaping are application responsibilities.
@@ -146,6 +161,8 @@ pub fn run_public_fixture(
         let log = Arc::new(Mutex::new(FixtureLog {
             bodies: json!({}),
             instructions: instructions.to_owned(),
+            next_reference: 2,
+            summary_id: summary_id.to_owned(),
             ..Default::default()
         }));
         let make_client = |subscriptions: Vec<Subscription>| {
@@ -163,7 +180,8 @@ pub fn run_public_fixture(
             )
         };
         let before_client = make_client(before);
-        let before_event = json!({"id":format!("{name}:before"),"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","session":{"id":name},"type":"context.compact.before","trigger":"manual","items":[content_item(&content,&format!("{name}:context"),"user","user","conversation")?],"instructions":content_item(&content,&format!("{name}:instructions"),"instructions","system",instructions)?});
+        let before_event = json!({"id":format!("{name}:before"),"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","session":{"id":name},"type":"context.compact.before","trigger":"manual","items":[{"id":format!("{name}:context"),"role":"user","parts":content_item(&content,&format!("{name}:context:text"),"text","user","conversation")?}],"instructions":content_item(&content,&format!("{name}:instructions"),"instructions","system",instructions)?});
+        let initial_parts = before_event["instructions"].clone();
         let settled = futures::executor::block_on(async {
             before_client
                 .event(before_event)
@@ -173,6 +191,31 @@ pub fn run_public_fixture(
                 .await
                 .map_err(|e| e.to_string())
         })?;
+        // Preserve the old report allocator sequence for accepted input edits.
+        let mut prior = initial_parts;
+        for response in &settled.outcome.responses {
+            let mut changed = prior.clone();
+            for effect in response["result"]["effects"]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                if effect["type"] == "modify" && effect["target"] == "instructions" {
+                    if effect["operation"] == "merge" {
+                        changed
+                            .as_array_mut()
+                            .ok_or("parts")?
+                            .extend(effect["value"].as_array().ok_or("parts")?.clone());
+                    } else {
+                        changed = effect["value"].clone();
+                    }
+                }
+            }
+            if changed != prior {
+                log.lock().unwrap().next_reference += 1;
+            }
+            prior = changed;
+        }
         let instructions = selected_text(&settled.effective_event["instructions"], &content)?;
         log.lock().unwrap().instructions = instructions.clone();
         let mut failures: Vec<Value> = settled
@@ -223,8 +266,7 @@ pub fn run_public_fixture(
                 format!("summary:{instructions}")
             };
             let item = content_item(&content, summary_id, "summary", "assistant", &body)?;
-            let reference = item["body"]["ref"].as_str().ok_or("reference")?;
-            log.lock().unwrap().bodies[reference] = json!(body);
+            log.lock().unwrap().record_summary(&item, &content)?;
             let after_event = json!({"id":format!("{name}:after"),"source":settled.effective_event["source"],"time":settled.effective_event["time"],"session":settled.effective_event["session"],"parentEventId":settled.effective_event["id"],"type":"context.compact.after","summary":item,"removed":[{"id":format!("{name}:context")}],"execution":if generated {json!({"status":"executed"})} else {json!({"status":"skipped","reason":"supplied_result"})}});
             let after_client = make_client(after);
             let observe = p["observeOnly"] == true;
@@ -261,10 +303,10 @@ pub fn run_public_fixture(
             injections.extend(settled_after.outcome.injections.clone());
             denied = settled_after.outcome.is_denied();
             applied = !denied;
-            let item = &settled_after.effective_event["summary"];
-            let reference = item["body"]["ref"].as_str().ok_or("reference")?;
-            log.lock().unwrap().bodies[reference] = json!(selected_text(item, &content)?);
-            summary = json!({"id":item["id"],"ref":reference});
+            summary = log
+                .lock()
+                .unwrap()
+                .record_summary(&settled_after.effective_event["summary"], &content)?;
             // The fixture explicitly schedules observations after settlement;
             // returned effects have no authority and delivery is best effort.
             if observe {
@@ -509,5 +551,29 @@ mod tests {
             assert_eq!(snapshot["capabilities"], json!({"effects":[],"modify":{}}));
             assert_eq!(snapshot["summary"], result["summary"]);
         }
+    }
+    #[test]
+    fn inline_compaction_keeps_legacy_report_reference_sequence() {
+        let edit = |target: &str, text: &str| {
+            json!({"type":"modify","target":target,"operation":"replace",
+            "value":[{"id":"edit","kind":"text","mediaType":"text/plain","selection":"body","text":text}]})
+        };
+        let params = json!({"instructions":"base","itemId":"logical-summary",
+            "before":[{"supplier":"before","effects":[edit("instructions","changed")],"failurePolicy":"fail-closed"}],
+            "after":[{"supplier":"after","effects":[edit("summary","redacted")],"failurePolicy":"fail-closed"}]});
+        let result = evaluate(&params).unwrap();
+        assert_eq!(result["failures"], json!([]));
+        assert_eq!(
+            result["seen"][1]["summary"],
+            json!({"id":"logical-summary","ref":"content-4"})
+        );
+        assert_eq!(
+            result["summary"],
+            json!({"id":"logical-summary","ref":"content-5"})
+        );
+        assert_eq!(
+            result["bodies"],
+            json!({"content-4":"summary:changed","content-5":"redacted"})
+        );
     }
 }

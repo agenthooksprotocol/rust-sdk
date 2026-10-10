@@ -1,11 +1,11 @@
 {
   "sourceRepository": "agenthooksprotocol/agent-hooks-protocol",
-  "sourceCommit": "05b4750cb2dccf17d75236182d6971f3cbe97e1f",
+  "sourceCommit": "11abecf070c908880e29f6018fa5cc4bed0c2d7b",
   "schemaRevision": "draft",
   "protocolVersion": "draft",
   "generatorVersion": "0.1.0",
   "language": "rust",
-  "schemaManifestSha256": "b397a3c4d613a67396f1727190052ce2f3bb208cdfa03e066f0c045525f25451",
+  "schemaManifestSha256": "e4690b48c58d4197edc64642b03d46f8cc92d3ef0bc02fcec136a7fdaa9d0318",
   "documents": [
     {
       "path": "schema/draft/capabilities-request.schema.json",
@@ -25,11 +25,11 @@
     },
     {
       "path": "schema/draft/common.schema.json",
-      "sha256": "d46f541db8a5f2a401a6b2b77f1d93e75076847e8f2b2e5d5ed201b8562107e5"
+      "sha256": "a17b92db32a7145cd548aa8c0c2794518a09864ba1149eeaa663bd1f3ef411b5"
     },
     {
       "path": "schema/draft/content-item.schema.json",
-      "sha256": "21ce30d451d6fe20eb56cf09108fe33500e40839669d2922911dd9b0b8cfe762"
+      "sha256": "620a4e8812a8b31b593ea46dc8f533e4da6142ae42f887729a759b1bfd587e73"
     },
     {
       "path": "schema/draft/content-reference.schema.json",
@@ -53,7 +53,7 @@
     },
     {
       "path": "schema/draft/effect.schema.json",
-      "sha256": "1448151926563244194ed56b15e3074ddfc8ec8c10889f2e42ab49d66be2d031"
+      "sha256": "f04fd180950397496b69a252063a0fda9a03149ebd9e98b60a34b7563bd3f599"
     },
     {
       "path": "schema/draft/event.schema.json",
@@ -61,7 +61,7 @@
     },
     {
       "path": "schema/draft/execution-event.schema.json",
-      "sha256": "d9b13cf28e20eced629cfe8eb822eb6dfb2ac453fe14e6d2334c2f4b2793512a"
+      "sha256": "eeba0d02b87ea03526ead14b56fe2611176cfc0bc60991244be68e5f4d59e1b2"
     },
     {
       "path": "schema/draft/extensions.schema.json",
@@ -69,7 +69,7 @@
     },
     {
       "path": "schema/draft/interaction-event.schema.json",
-      "sha256": "34550586dde5748f14df80e8879b5eec5e3b2ae5353ef84b0208e9248d6a0fb2"
+      "sha256": "8a518ba6a5871ed00ecee43d093783e2b9d11af7b217eda2e4f5c91f00ca0e24"
     },
     {
       "path": "schema/draft/intercept-deny-response.schema.json",
@@ -117,7 +117,7 @@
     },
     {
       "path": "schema/draft/task-workspace-event.schema.json",
-      "sha256": "9a11955ba26ca3d2d7f9362f82460d8247f77720d2991b54117b88b42338be21"
+      "sha256": "9570f22e0e21094cad75091d3170fa56cd5695c6ed621ea65232d4dae70de106"
     },
     {
       "path": "schema/draft/tool-after.schema.json",

@@ -233,23 +233,23 @@ fn selection<'a>(meta: &'a Value, stage: &str) -> &'a str {
 pub fn read_selected(
     meta: &Value,
     stage: &str,
-    resolve: &impl Fn(&Value) -> Result<Vec<u8>>,
+    _resolve: &impl Fn(&Value) -> Result<Vec<u8>>,
     validate: &impl Fn(&str, &Value) -> Result<()>,
 ) -> Result<Option<Value>> {
     let Some(item) = meta.get(stage) else {
         return Ok(None);
     };
     validate("content-item", item)?;
-    if item["mediaType"] != "application/json" {
-        return Err("MCP body must be application/json".into());
+    if item["mediaType"] != "text/plain" || item["kind"] != "text" {
+        return Err("MCP payload must be an inline text part".into());
     }
     if item["selection"] != "body" {
         return Ok(None);
     }
-    let body = item
-        .get("body")
-        .ok_or("Selected body unavailable (fail closed)")?;
-    let payload: Value = serde_json::from_slice(&resolve(body)?)?;
+    let text = item["text"]
+        .as_str()
+        .ok_or("Selected inline text unavailable (fail closed)")?;
+    let payload: Value = serde_json::from_str(text)?;
     validate(&format!("mcp-elicitation#{stage}"), &payload)?;
     if stage == "request"
         && meta["mode"]
@@ -310,13 +310,14 @@ mod tests {
         let request = json!({"id":"request","params":{"event":{
             "id":"request","source":"source","session":{"id":"session"},
             "type":"user.elicitation.request","elicitation":{"mode":"form","server":"server",
-                "request":{"mediaType":"application/json","selection":"body","body":{"requestedSchema":{}}}}}}});
+                "request":{"id":"request","kind":"text","mediaType":"text/plain","selection":"body","text":"{\"requestedSchema\":{}}"}}}}});
         let result = json!({"id":"result","params":{"capabilities":{"effects":["modify"],"modify":{"content":{"replace":true,"future":true}}},
             "event":{"id":"result","source":"source","session":{"id":"session"},"parentEventId":"request",
                 "type":"user.elicitation.result","elicitation":{"mode":"form","server":"server","action":"accept",
-                    "result":{"mediaType":"application/json","selection":"body","body":{"action":"accept","content":{"original":true}}}}}}});
+                    "result":{"id":"result","kind":"text","mediaType":"text/plain","selection":"body","text":"{\"action\":\"accept\",\"content\":{\"original\":true}}"}}}}});
         // A permissive callback isolates semantic enforcement from schema checks.
-        let resolve = |body: &Value| Ok(serde_json::to_vec(body).unwrap());
+        let resolve =
+            |_: &Value| -> Result<Vec<u8>> { panic!("inline payload must not call resolver") };
         let validate = |_: &str, _: &Value| Ok(());
         let valid = json!({"type":"modify","target":"content","operation":"replace","value":{"changed":true}});
         let invalid =
@@ -355,7 +356,12 @@ mod tests {
             .is_err()
         );
         assert_eq!(
-            result["params"]["event"]["elicitation"]["result"]["body"]["content"],
+            serde_json::from_str::<Value>(
+                result["params"]["event"]["elicitation"]["result"]["text"]
+                    .as_str()
+                    .unwrap()
+            )
+            .unwrap()["content"],
             json!({"original":true})
         );
     }
@@ -394,17 +400,12 @@ impl Exchange {
 fn read_public_selected(
     meta: &Value,
     stage: &str,
-    content: &dyn crate::content::ContentAccess,
+    _content: &dyn crate::content::ContentAccess,
 ) -> Result<Option<Value>> {
     read_selected(
         meta,
         stage,
-        &|_| {
-            Ok(content
-                .resolve_selected(&format!("/elicitation/{stage}"), &meta[stage])?
-                .ok_or("Selected body unavailable")?
-                .to_vec())
-        },
+        &|_| Err("inline payloads do not resolve attachments".into()),
         &public_validate,
     )
 }
@@ -424,7 +425,7 @@ fn public_validate(name: &str, value: &Value) -> Result<()> {
 }
 
 /// Atomically stage a boundary. `candidate` is absent, not null, when no answer
-/// is selected. Changed complete JSON is uploaded and verified before publish.
+/// is selected. Changed complete JSON is serialized into the inline result text.
 pub fn stage_boundary(
     request: &Value,
     effects: &[Value],
@@ -508,6 +509,12 @@ pub fn stage_boundary(
                 return Err("Modify not granted".into());
             }
             let answer = answer.as_mut().ok_or("Modify requires selected result")?;
+            if event["elicitation"]["mode"] != "form"
+                || answer["action"] != "accept"
+                || !effect["value"].is_object()
+            {
+                return Err("Content modification requires an accepted form answer object".into());
+            }
             if op == "replace" {
                 answer["content"] = effect["value"].clone();
             } else {
@@ -530,28 +537,8 @@ pub fn stage_boundary(
         if let Some(payload) = payload {
             validate_answer(payload, answer, &public_validate)?;
         }
-        if original_answer.as_ref() != Some(answer) {
-            let bytes = serde_json::to_vec(answer)?;
-            let reference = serde_json::to_value(content.put("/elicitation/result", &bytes)?)?;
-            if content
-                .resolve_selected(
-                    "/elicitation/result",
-                    &json!({"selection":"body","body":reference}),
-                )?
-                .as_deref()
-                != Some(bytes.as_slice())
-            {
-                return Err("Published answer integrity".into());
-            }
-            if result_stage {
-                let item = &mut event["elicitation"]["result"];
-                for hint in ["size", "sha256"] {
-                    if let Some(item) = item.as_object_mut() {
-                        item.remove(hint);
-                    }
-                }
-                item["body"] = reference;
-            }
+        if original_answer.as_ref() != Some(answer) && result_stage {
+            event["elicitation"]["result"]["text"] = json!(serde_json::to_string(answer)?);
         }
     }
     let mut staged =

@@ -208,7 +208,7 @@ fn specialized_event(name: &str) -> Value {
             event["items"] = json!([]);
         }
         "context.compact.after" => {
-            event["summary"] = json!({"id":"summary","kind":"summary","role":"assistant","mediaType":"text/plain","selection":"metadata"});
+            event["summary"] = json!([{ "id":"summary","kind":"text","mediaType":"text/plain","selection":"metadata" }]);
             event["removed"] = json!([]);
             event["execution"] = json!({"status":"executed"});
         }
@@ -225,30 +225,27 @@ fn specialized_event(name: &str) -> Value {
 }
 
 #[test]
-fn specialized_preflight_requires_resolver_without_subscriptions_or_effects() {
+fn specialized_inline_boundaries_do_not_require_content_resolver() {
     let c = client();
     for name in [
         "context.compact.before",
         "context.compact.after",
         "user.elicitation.request",
-        "user.elicitation.result",
     ] {
         let result = block_on(async {
             c.event(specialized_event(name))
                 .initial_state(Decision::Allow)
                 .await
         });
-        let error = match result {
-            Err(error) => error,
-            Ok(_) => panic!("unverified boundary settled: {name}"),
-        };
-        assert_eq!(error.kind, BoundaryErrorKind::Preflight);
-        assert!(error.partial.is_none());
-        assert!(
-            error.to_string().contains("content resolver"),
-            "{name}: {error}"
-        );
+        assert!(result.is_ok(), "{name}: {:?}", result.as_ref().err());
     }
+    let result = block_on(async { c.event(specialized_event("user.elicitation.result")).await });
+    let error = match result {
+        Err(error) => error,
+        Ok(_) => panic!("unverified exchange settled"),
+    };
+    assert_eq!(error.kind, BoundaryErrorKind::Preflight);
+    assert!(error.partial.is_none());
 }
 
 #[test]
@@ -293,68 +290,60 @@ fn elicitation_modes_can_be_narrowed_independently() {
 }
 
 fn outbound(items: Value) -> Value {
-    json!({"id":"outbound","source":"urn:test:runtime","type":"user.message.outbound","time":"2026-09-15T12:00:00Z","message":{"channel":"chat","payload":items}})
+    json!({"id":"outbound","source":"urn:test:runtime","type":"user.message.outbound","time":"2026-09-15T12:00:00Z","message":{"channel":"chat","messages":[{"id":"message","role":"assistant","parts":items}]}})
 }
 fn selected_item(
     content: &agenthooksprotocol::content::ContentContext<'_>,
     media: &str,
     bytes: &[u8],
 ) -> Value {
-    json!({"id":"item","kind":"content","category":"content","role":"assistant","mediaType":media,"selection":"body","body":content.put(bytes).unwrap()})
+    if media == "text/plain" || media == "application/json" {
+        json!({"id":"item","kind":"text","mediaType":"text/plain","selection":"body","text":std::str::from_utf8(bytes).unwrap()})
+    } else {
+        json!({"id":"item","kind":"attachment","mediaType":media,"selection":"body","body":content.put(bytes).unwrap()})
+    }
 }
 #[test]
-fn generic_body_grants_require_mapping_resolver_selection_and_supported_encoding() {
+fn generic_list_grants_do_not_require_mapping_resolver_or_selected_attachment() {
     use agenthooksprotocol::content::{AuthorizedScope, ContentContext, MemoryContentStore};
     let store = MemoryContentStore::new(1024, 16384, 64);
     let content = ContentContext {
         store: &store,
         scope: AuthorizedScope::new("scope"),
     };
-    for (media, bytes, view, resolver, mapping, expected) in [
-        (
-            "text/plain",
-            b"text".as_slice(),
-            "body",
-            true,
-            true,
-            Some(false),
-        ),
-        (
-            "application/json",
-            b"{}".as_slice(),
-            "body",
-            true,
-            true,
-            Some(true),
-        ),
-        (
-            "application/json",
-            b"[]".as_slice(),
-            "body",
-            true,
-            true,
-            Some(false),
-        ),
+    for (media, bytes, view, resolver, mapping) in [
+        ("text/plain", b"text".as_slice(), "body", true, true),
+        ("application/json", b"{}".as_slice(), "body", true, true),
         (
             "application/octet-stream",
             b"binary".as_slice(),
             "body",
             true,
             true,
-            None,
         ),
         (
-            "text/plain",
-            b"text".as_slice(),
+            "application/octet-stream",
+            b"binary".as_slice(),
             "metadata",
             true,
             true,
-            None,
         ),
-        ("text/plain", b"text".as_slice(), "omit", true, true, None),
-        ("text/plain", b"text".as_slice(), "gap", true, true, None),
-        ("text/plain", b"text".as_slice(), "body", false, true, None),
-        ("text/plain", b"text".as_slice(), "body", true, false, None),
+        (
+            "application/octet-stream",
+            b"binary".as_slice(),
+            "omit",
+            true,
+            true,
+        ),
+        (
+            "application/octet-stream",
+            b"binary".as_slice(),
+            "gap",
+            true,
+            true,
+        ),
+        ("text/plain", b"text".as_slice(), "body", false, true),
+        ("text/plain", b"text".as_slice(), "body", true, false),
     ] {
         let calls = Arc::new(Mutex::new(vec![]));
         let c = client().with_subscription(subscription("inspect", json!([]), &calls));
@@ -372,67 +361,61 @@ fn generic_body_grants_require_mapping_resolver_selection_and_supported_encoding
             boundary = boundary.content(content.clone());
         }
         if mapping {
-            boundary = boundary.content_target("content", "/message/payload/0");
+            boundary = boundary.content_target("content", "/message/messages/0/parts/0");
         }
         let result = block_on(async { boundary.await });
-        assert!(result.is_ok(), "case {media}/{view}/{resolver}/{mapping}");
-        let calls = calls.lock().unwrap();
-        let caps = &calls[0]["params"]["capabilities"];
-        match expected {
-            Some(merge) => assert_eq!(
-                caps["modify"]["content"],
-                json!({"replace":true,"merge":merge})
-            ),
-            None => {
-                assert!(caps.get("modify").is_none());
-                assert!(
-                    !caps["effects"]
-                        .as_array()
-                        .unwrap()
-                        .contains(&json!("modify"))
-                );
-            }
-        }
+        assert!(
+            result.is_ok(),
+            "case {media}/{view}/{resolver}/{mapping}: {:?}",
+            result.as_ref().err()
+        );
+        assert_eq!(
+            calls.lock().unwrap()[0]["params"]["capabilities"]["modify"]["content"],
+            json!({"replace":true,"merge":true})
+        );
     }
 }
 #[test]
-fn explicit_content_mapping_ignores_misleading_metadata_and_preserves_siblings() {
+fn inline_content_list_replacement_preserves_siblings_and_metadata() {
     use agenthooksprotocol::content::{AuthorizedScope, ContentContext, MemoryContentStore};
     let store = MemoryContentStore::new(1024, 16384, 64);
     let content = ContentContext {
         store: &store,
         scope: AuthorizedScope::new("scope"),
     };
-    let sibling = selected_item(&content, "text/plain", b"attachment");
+    let sibling = selected_item(&content, "application/octet-stream", b"attachment");
     let mut primary = selected_item(&content, "text/plain", b"primary");
     primary["id"] = json!("host-primary");
-    primary["kind"] = json!("attachment");
-    primary["category"] = json!("unrelated");
-    primary["role"] = json!("system");
+    primary["synthesized"] = json!(true);
+    let original = outbound(json!([sibling, primary]));
+    let mut replacement = original["message"]["messages"].clone();
+    replacement[0]["parts"][1]["text"] = json!("changed");
     let calls = Arc::new(Mutex::new(vec![]));
     let c = client().with_subscription(subscription(
         "modify",
-        json!([{"type":"modify","target":"content","operation":"replace","value":"changed"}]),
+        json!([{"type":"modify","target":"content","operation":"replace","value":replacement}]),
         &calls,
     ));
-    let result = block_on(async {
-        c.event(outbound(json!([sibling, primary])))
-            .content(content.clone())
-            .content_target("content", "/message/payload/1")
-            .await
-            .unwrap()
-    });
-    assert!(result.outcome.failures.is_empty());
-    assert_eq!(result.effective_event["message"]["payload"][0], sibling);
-    let item = &result.effective_event["message"]["payload"][1];
-    assert_eq!(item["id"], "host-primary");
+    let result = block_on(async { c.event(original.clone()).await.unwrap() });
+    assert!(
+        result.outcome.failures.is_empty(),
+        "{:?}",
+        result.outcome.failures
+    );
+    let mut expected = original;
+    expected["message"]["messages"][0]["parts"][1]["text"] = json!("changed");
+    assert_eq!(result.effective_event, expected);
     assert_eq!(
-        content.resolve_selected(item).unwrap().unwrap().as_ref(),
-        b"changed"
+        content
+            .resolve_selected(&sibling)
+            .unwrap()
+            .unwrap()
+            .as_ref(),
+        b"attachment"
     );
 }
 #[test]
-fn restored_generic_body_keeps_original_reference_approval_and_candidate() {
+fn restored_inline_list_keeps_original_approval_and_candidate() {
     use agenthooksprotocol::content::{AuthorizedScope, ContentContext, MemoryContentStore};
     let store = MemoryContentStore::new(1024, 16384, 64);
     let content = ContentContext {
@@ -440,19 +423,15 @@ fn restored_generic_body_keeps_original_reference_approval_and_candidate() {
         scope: AuthorizedScope::new("scope"),
     };
     let original = outbound(json!([selected_item(&content, "text/plain", b"original")]));
+    let mut temporary = original["message"]["messages"].clone();
+    temporary[0]["parts"][0]["text"] = json!("temporary");
     let calls = Arc::new(Mutex::new(vec![]));
-    let c = client().with_subscription(subscription(
-        "restore",
-        json!([
-            {"type":"modify","target":"content","operation":"replace","value":"temporary"},
-            {"type":"modify","target":"content","operation":"replace","value":"original"}
-        ]),
-        &calls,
-    ));
+    let c = client().with_subscription(subscription("restore", json!([
+        {"type":"modify","target":"content","operation":"replace","value":temporary},
+        {"type":"modify","target":"content","operation":"replace","value":original["message"]["messages"]}
+    ]), &calls));
     let result = block_on(async {
         c.event(original.clone())
-            .content(content)
-            .content_target("content", "/message/payload/0")
             .initial_state(Decision::Allow)
             .initial_candidate(json!({"value":"candidate","provenance":{"source":"native"}}))
             .await
@@ -465,27 +444,33 @@ fn restored_generic_body_keeps_original_reference_approval_and_candidate() {
     assert!(!result.outcome.approval_invalidated);
 }
 #[test]
-fn content_mapping_rejects_noncanonical_or_nested_locations_before_dispatch() {
-    let calls = Arc::new(Mutex::new(vec![]));
-    let c = client().with_subscription(subscription("inspect", json!([]), &calls));
-    for pointer in [
-        "/tool/input",
-        "/message/payload/0/body",
-        "/message/payload/99",
-        "/message/payload/00",
+fn content_list_edits_reject_legacy_and_nested_part_values_atomically() {
+    use agenthooksprotocol::content::{AuthorizedScope, ContentContext, MemoryContentStore};
+    let store = MemoryContentStore::new(1024, 4096, 8);
+    let content = ContentContext {
+        store: &store,
+        scope: AuthorizedScope::new("scope"),
+    };
+    let original = outbound(json!([selected_item(&content, "text/plain", b"original")]));
+    for value in [
+        json!("legacy"),
+        json!({"text":"nested"}),
+        original["message"]["messages"][0]["parts"].clone(),
     ] {
-        let item =
-            json!({"id":"item","kind":"content","mediaType":"text/plain","selection":"metadata"});
-        assert!(
-            block_on(async {
-                c.event(outbound(json!([item])))
-                    .content_target("content", pointer)
-                    .await
-            })
-            .is_err()
-        );
+        let calls = Arc::new(Mutex::new(vec![]));
+        let c = client().with_subscription(subscription(
+            "invalid",
+            json!([
+                {"type":"message","text":"must not publish"},
+                {"type":"modify","target":"content","operation":"replace","value":value}
+            ]),
+            &calls,
+        ));
+        let result = block_on(async { c.event(original.clone()).await.unwrap() });
+        assert_eq!(result.outcome.failures.len(), 1);
+        assert!(result.outcome.messages.is_empty());
+        assert_eq!(result.effective_event, original);
     }
-    assert!(calls.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -508,7 +493,7 @@ fn compaction_unselected_targets_do_not_advertise_modify() {
             if selection == "absent" {
                 event.as_object_mut().unwrap().remove(target);
             } else {
-                event[target] = json!({"id":"target","kind":target,"role":"assistant","mediaType":"text/plain","selection":selection});
+                event[target] = json!([{ "id":"target","kind":"text","mediaType":"text/plain","selection":selection }]);
             }
             let calls = Arc::new(Mutex::new(vec![]));
             let c = client().with_subscription(subscription("inspect", json!([]), &calls));
@@ -536,7 +521,7 @@ fn elicitation_unselected_request_advertises_only_independent_messages() {
     for selection in ["metadata", "omit", "absent"] {
         let mut event = specialized_event("user.elicitation.request");
         if selection != "absent" {
-            event["elicitation"]["request"] = json!({"id":"request-item","kind":"elicitation.request","mediaType":"application/json","selection":selection});
+            event["elicitation"]["request"] = json!({"id":"request-item","kind":"text","mediaType":"text/plain","selection":selection});
         }
         let calls = Arc::new(Mutex::new(vec![]));
         let c = client().with_subscription(subscription("inspect", json!([]), &calls));
@@ -566,9 +551,9 @@ fn elicitation_result_modify_requires_both_original_request_and_current_result_b
         let mut request_event = specialized_event("user.elicitation.request");
         request_event["id"] = json!("request");
         request_event["elicitation"]["request"] = if original_selected {
-            selected_item(&content, "application/json", br#"{"message":"Name?","requestedSchema":{"type":"object","properties":{"name":{"type":"string"}}}}"#)
+            selected_item(&content, "text/plain", br#"{"message":"Name?","requestedSchema":{"type":"object","properties":{"name":{"type":"string"}}}}"#)
         } else {
-            json!({"id":"original","kind":"elicitation.request","mediaType":"application/json","selection":"metadata"})
+            json!({"id":"original","kind":"text","mediaType":"text/plain","selection":"metadata"})
         };
         let envelope = json!({"jsonrpc":"2.0","id":"request","method":"hooks/intercept","params":{"protocolVersion":"draft","event":request_event,"capabilities":{"effects":[],"elicitation":{"form":{}}}}});
         let exchange = Exchange::new(&envelope, &content).unwrap();
@@ -577,11 +562,11 @@ fn elicitation_result_modify_requires_both_original_request_and_current_result_b
         event["elicitation"]["result"] = if result_selected {
             selected_item(
                 &content,
-                "application/json",
+                "text/plain",
                 br#"{"action":"accept","content":{"name":"Ada"}}"#,
             )
         } else {
-            json!({"id":"result","kind":"elicitation.result","mediaType":"application/json","selection":"metadata"})
+            json!({"id":"result","kind":"text","mediaType":"text/plain","selection":"metadata"})
         };
         let calls = Arc::new(Mutex::new(vec![]));
         let c = client().with_subscription(subscription("inspect", json!([]), &calls));

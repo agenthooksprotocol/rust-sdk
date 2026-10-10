@@ -52,7 +52,7 @@ fn ask_and_deny_win_over_allow_and_return() {
 fn stop_discards_candidate_and_injections_are_staged() {
     let schemas = schemas();
     let req = request();
-    let injection = json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":"context"});
+    let injection = json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":[{"id":"injection","role":"system","parts":[{"id":"text","kind":"text","mediaType":"text/plain","selection":"body","text":"context"}]}]});
     let actual = apply(&req,&response(json!([injection,{"type":"return","value":1},{"type":"flow","operation":"stop","reason":"done"}])),&schemas).unwrap();
     assert_eq!(actual["flow"], "stop");
     assert_eq!(actual["executed"], false);
@@ -159,7 +159,7 @@ fn task_workspace_payloads_and_capabilities_are_enforced() {
 fn prior_stop_injections_and_instructions_survive_later_serial_responses() {
     let schemas = schemas();
     let mut req = request();
-    let injection = json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":"accepted earlier"});
+    let injection = json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":[{"id":"injection","role":"system","parts":[{"id":"text","kind":"text","mediaType":"text/plain","selection":"body","text":"accepted earlier"}]}]});
     req["params"]["state"] = json!({"permission":"allow","candidate":{"value":"old candidate","provenance":{"source":"earlier"}},"flow":"stop","instructions":["old instruction"],"injections":[injection]});
     let original = req.clone();
     for effects in [
@@ -177,7 +177,7 @@ fn prior_stop_injections_and_instructions_survive_later_serial_responses() {
         assert_eq!(actual["injections"], json!([injection]));
         assert_eq!(req, original);
     }
-    let next_injection = json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":"accepted later"});
+    let next_injection = json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":[{"id":"injection","role":"system","parts":[{"id":"text","kind":"text","mediaType":"text/plain","selection":"body","text":"accepted later"}]}]});
     let actual = apply(&req, &response(json!([next_injection])), &schemas).unwrap();
     assert_eq!(actual["injections"], json!([injection, next_injection]));
     assert_eq!(actual["flow"], "stop");
@@ -275,7 +275,7 @@ fn unsupported_operations_discard_the_entire_compound_response() {
     let before = req.clone();
     for operation in [
         json!({"type":"modify","target":"input","operation":"future","value":{"task":2}}),
-        json!({"type":"inject","target":"context","operation":"future","deliverAt":"now","value":"context"}),
+        json!({"type":"inject","target":"context","operation":"future","deliverAt":"now","value":[{"id":"injection","role":"system","parts":[{"id":"text","kind":"text","mediaType":"text/plain","selection":"body","text":"context"}]}]}),
         json!({"type":"flow","operation":"future"}),
     ] {
         let effects = json!([{"type":"message","text":"must not publish"},{"type":"return","value":"must not publish"},operation]);
@@ -311,7 +311,7 @@ fn bundled_schemas_enforce_strict_effect_fields_beyond_structural_parsing() {
         json!({"type":"return","value":null}),
         json!({"type":"flow","operation":"stop","reason":"done"}),
         json!({"type":"flow","operation":"continue"}),
-        json!({"type":"inject","target":"context","operation":"append","deliverAt":"now","value":"context"}),
+        json!({"type":"inject","target":"context","operation":"append","deliverAt":"now","value":[{"id":"injection","role":"system","parts":[{"id":"text","kind":"text","mediaType":"text/plain","selection":"body","text":"context"}]}]}),
     ] {
         assert!(
             schemas

@@ -121,17 +121,29 @@ for a complete `StaticCapabilityManifest`, including tool paths,
 limits, and extension fields; the simple event-grant constructor only advertises
 its supported event/mode/capability subset.
 
-Use generated named attachment bindings, for example
-`.attachment(ergonomic_inputs::tool_before_sources::items(index, Attachment::lazy(source)))`,
-to transfer a source into an operation without raw JSON-pointer strings.
-`Attachment::bytes(bytes)` supplies eager bytes; `Attachment::from_body(body)` and
-`.body_source(...)` accept `Body` inputs.
-A lazy source is read only when selected delivery or an explicit
-result read needs its bytes. For ordinary boundaries, metadata, omit, and unmatched routes do not read it.
-Specialized compaction and elicitation selected-body validation can require
-materialization even without a selected route, preserving protocol semantics.
-Capture is shared immutably across fan-out and result reads, but each destination
-has independent upload authority.
+Use generated host inputs with `PartInput::inline_text(...)` and
+`PartInput::owned(Attachment::lazy(source), media_type)` in canonical message
+parts. `Attachment::bytes(bytes)` supplies eager bytes and
+`Attachment::from_body(body)` accepts a `Body` source. Named Hooks methods
+project these owners internally when awaited.
+A lazy source is read only when selected delivery or an explicit result read
+needs its bytes. Metadata, omit, and unmatched routes do not read attachments.
+Capture is shared immutably across fan-out and result reads; each destination
+has independent upload authority. Before serial interception begins, the operation
+prepares and uploads selected binary bodies for every initially matching,
+host-authorized route. `HooksOptions::max_concurrent_uploads` bounds simultaneous
+transfers across active operations on the same `Hooks` instance. It defaults to
+`8` and must be positive. Inline text needs no binary upload. Compaction and elicitation validate inline text, without
+binary attachment reads.
+
+Each route receives its own confirmed references and independently scoped upload
+credentials, even when backends use the same endpoint URL. Confirmed receipts are
+reused for that route's owned observations after denial; observations do not repeat
+successful uploads. Upload failures are retained per route and applied at that
+route's normal failure-policy point, so a fail-open upload failure does not prevent
+healthy subscribers from receiving the same immutable source. Interceptors still
+run serially. A later interceptor can remove an attachment after its upfront
+upload; that unused upload does not invalidate the operation.
 
 Selected bodies use bounded capture and size/SHA-256 verification. Configure
 `max_body_bytes`, `max_stored_bytes`, and `max_stored_entries` in `HooksOptions`;
@@ -196,35 +208,42 @@ optional-member builders. Parsing preserves absent members unchanged.
 
 ### Owned file and binary attachments
 
-Use `Attachment::bytes(Vec<u8>)` or `Attachment::lazy(impl BodyStream)` with a
-boundary's `.attachment(...)` method and a generated source binding:
+Use `Attachment::bytes(Vec<u8>)` or `Attachment::lazy(impl BodyStream)` directly
+in a generated host part. Messages own their role and ordered parts; text parts
+carry inline strings and attachments carry immutable binary bodies.
 
 ```rust,ignore
-use agenthooksprotocol::{Attachment, ergonomic_inputs::user_message_outbound_sources};
+use agenthooksprotocol::{Attachment, CanonicalMessageRole};
+use agenthooksprotocol::ergonomic_inputs::{MessageInput, PartInput};
 
-let result = hooks.user_message_outbound(input)
-    .attachment(user_message_outbound_sources::message_payload(
-        0, Attachment::lazy(file_source),
-    ))
-    .await?;
+let result = hooks.user_message_outbound(
+    input.with_sources().with_message_messages(vec![MessageInput::from_parts(
+        CanonicalMessageRole::Assistant,
+        vec![
+            PartInput::inline_text("The requested file"),
+            PartInput::owned(Attachment::lazy(file_source), "application/octet-stream"),
+        ],
+    )]),
+).await?;
 hooks.shutdown().await?;
-let bytes = result.content.read("/message/payload/0").await?; // Arc<[u8]>
+let bytes = result.content.read("/message/messages/0/parts/1").await?; // Arc<[u8]>
 ```
 
-The content item carries its media type, identity, role, and other metadata.
-Moving an attachment transfers ownership into one invocation; it is not a reusable
-cross-invocation handle. Bytes are immutable, and `Arc::make_mut` creates a private
-copy when other owners exist. `Body` inputs can be converted with
-`Attachment::from_body` or passed through `.body_source(...)`.
+Messages and parts preserve supplied identities; convenience constructors mark
+synthesized identities explicitly. Moving an attachment transfers ownership into
+one invocation. The part carries media type and metadata; the message carries
+its role. `Body` inputs can be converted with `Attachment::from_body`.
 
-A lazy source is read at most once, only for selected body delivery or an explicit
-result read. Ordinary metadata-only and unmatched hooks do not read it. Specialized
-compaction/elicitation selected-body validation may still require materialization. The result owns
-unread sources as well as effective materialized bytes independently of Hooks;
-dropping its last owner releases unopened sources. Read failure or cancellation is
-terminal. Serialize concurrent first reads of the same lazy source. Invocation
-cancellation, timeout, and errors drop invocation-owned sources; cancellation of a
-result read drops its in-flight source too.
+Projection and serialization happen when the hook is awaited. Projection does
+not open an attachment. A lazy source is read at most once, only for selected
+body delivery or an explicit result read. Metadata-only and unmatched hooks do
+not read it. The result owns unread sources and effective materialized bytes
+independently of Hooks. Dropping its last owner releases unopened sources.
+Concurrent first reads join one poll-driven materialization and share its
+immutable result or terminal error. Cancelling one reader leaves other active
+readers intact. Cancelling the last active reader is terminal and releases the
+source. Invocation cancellation, timeout, and errors release invocation-owned
+work; result-owned unread sources remain available after Hooks shutdown.
 
 The configured `max_body_bytes` and source chunk limit apply to result reads;
 selected deliveries additionally use upload budgets. Invocation byte and entry
@@ -233,10 +252,9 @@ and lazy bytes reserve it when captured. Returned content detaches from active
 invocation budgets. Result ownership does not create a session archive. Applications must bound the number of retained results themselves.
 Lazy implementations must yield while waiting, and bound their own chunk allocations.
 
-Binary attachments do not support editing. Use `.content_target(...)` to map
-text/JSON attachments for negotiated edits, supplying eager bytes through
-`Attachment::bytes`. Lazy inputs do not advertise edits
-that require materialized target bytes.
+Binary attachments are immutable and do not support editing. Text edits operate
+on inline text parts. Message and part-list merges append; replacements
+substitute the selected list. Object merges are shallow.
 See [`examples/file_attachment.rs`](examples/file_attachment.rs) for a standalone
 file example with metadata-only auditing and a post-shutdown read.
 
@@ -309,74 +327,16 @@ dropped futures release their owners; result-owned bytes and unread sources
 survive `Hooks` shutdown and drop.
 Applications that retain many results must bound their own history.
 
-Attach eager bytes or a lazy source through a generated content-slot binding:
+The generated host input accepts owners directly in its canonical part slots.
+Normal named methods, including `tool_before` and `tool_before_event`, project
+those inputs internally. No source registration or body preparation call is
+required. Attachment results are read by their canonical JSON Pointer, such as
+`/message/messages/0/parts/1`.
 
-```rust,ignore
-use agenthooksprotocol::{Attachment, ergonomic_inputs::user_message_outbound_sources::message_payload};
-
-let event = serde_json::json!({
-    "type": "user.message.outbound",
-    "message": {"channel": "chat", "payload": [{
-        "id": "text", "kind": "content", "category": "content", "role": "assistant",
-        "mediaType": "text/plain", "selection": "metadata"
-    }]}
-});
-let result = hooks.event(event)
-    .attachment(message_payload(0, Attachment::bytes(b"original text".to_vec())))
-    .content_target("content", "/message/payload/0")
-    .await?;
-let bytes = result.content.read("/message/payload/0").await?;
-// `bytes` is an independently owned Arc<[u8]>; it survives result/Hooks drop.
-```
-
-`EventOutcome::content` and `ToolOutcome::content` are read-only, result-owned
-payloads. Read them by the canonical content item's JSON pointer, not by copying
-its body descriptor. Canonical local markers are not reusable handles: moving a
-marker into another boundary does not transfer the attachment. To reuse bytes,
-read them and create a new attachment. Only schema-owned content slots and
-explicitly declared content targets retain attachments; reference-shaped objects
-in opaque metadata, tool arguments, return candidates, and injection values do
-not retain backing bytes.
-
-Eager bytes are available immediately for mapped text/JSON edits through
-`.content_target(...)`. Use `Attachment::bytes`
-for negotiated edits. Ordinary lazy sources remain unread until selected body delivery or
-`result.content.read(...)`; specialized selected-body validation may also read them. A failed
-or cancelled read is terminal, and repeated reads do not restart the source.
-Observation preparation confirms selected uploads before transport delivery;
-each notification owns its projected wire payload independently.
-
-Generated bindings are checked against canonical content slots after the event
-type is supplied; a binding cannot attach bytes to an arbitrary location inside
-opaque JSON.
-
-`max_stored_bytes` and `max_stored_entries` limit bytes and attachment owners
-across active boundaries. Returned results release that accounting while retaining
-their attachment owners. Applications manage receiver-side `UploadReceiver` storage
-and lower-level `ContentContext` / `MemoryContentStore` lifetimes separately.
-
-Generic prompt, response, output, and content modifications additionally require
-`.content_target(target, pointer)`, an explicit host mapping to a canonical content
-item (for example, `/items/0`). The SDK does not infer a primary item from its kind,
-category, role, or position. Without a mapping and resolver, those modification
-grants are absent. Verified text supports replacement; verified JSON objects can
-also support merge. Metadata, omitted, gapped, and binary views do not advertise
-these operations. The host is responsible for mapping the selected item to its
-native operation.
-
-For elicitation, capture an `elicitation::Exchange` from the original request and
-its verified selected payload, then supply `.elicitation_exchange(&exchange)` to
-the result boundary. Correlation and form-answer validation use that original
-snapshot, not a later reread of a mutable request. Compaction replacement text is
-verified UTF-8 and published through new immutable receiver-allocated references;
-item identity and unrelated metadata remain intact. Failed staging does not commit
-partial effects, although a host store may retain unreachable allocations from a
-failed transaction. No replay or downstream model-consumption guarantee is implied.
-
-Observation delivery is explicit: await each returned `Observation::deliver()`
-(or schedule it on a host-owned executor). `dispatch_observations` returns
-deferred observations. Its synchronous callbacks run when delivery is polled
-and must not block an executor thread unless the caller intentionally chooses that execution context.
+Canonical local markers are not reusable handles. To reuse bytes in another
+invocation, read them and construct a new attachment. Only schema-owned part
+slots retain attachments; objects in application inputs, native snapshots,
+results, and extensions are opaque and do not create content authority.
 
 ### Interruption and acceptance deadlines
 

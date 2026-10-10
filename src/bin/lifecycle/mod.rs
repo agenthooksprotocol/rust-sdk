@@ -250,34 +250,33 @@ fn resolve_bodies(
         context.resolve_selected(&item)?;
         return Ok(());
     }
-    if let Some(items) = value["items"].as_array() {
-        for item in items {
-            context.resolve_selected(item)?;
-        }
-    }
-    let path = match s(value, "type") {
-        "turn.progress" => Some("/delta"),
-        "tool.progress" => Some("/partialOutput"),
-        "context.compact.before" => Some("/instructions"),
-        "context.compact.after" => Some("/summary"),
-        "user.elicitation.request" => Some("/elicitation/request"),
-        "user.elicitation.result" => Some("/elicitation/result"),
-        _ => None,
-    };
-    if let Some(item) = path.and_then(|path| value.pointer(path)) {
-        context.resolve_selected(item)?;
-    }
-    let paths: &[&str] = match s(value, "type") {
-        "user.attention" => &["/attention/message", "/attention/title"],
-        "user.message.inbound" => &["/message/text"],
-        "user.message.outbound" => &["/message/payload"],
-        _ => &[],
-    };
-    for path in paths {
-        if let Some(items) = value.pointer(path).and_then(Value::as_array) {
-            for item in items {
-                context.resolve_selected(item)?;
+    fn selected(value: &Value, context: &ContentContext<'_>) -> Result<()> {
+        if let Some(values) = value.as_array() {
+            for value in values {
+                selected(value, context)?;
             }
+        } else if let Some(parts) = value.get("parts") {
+            selected(parts, context)?;
+        } else {
+            context.resolve_selected(value)?;
+        }
+        Ok(())
+    }
+    // Visit only canonical content slots, never arbitrary tool input JSON.
+    for path in [
+        "/items",
+        "/delta",
+        "/partialOutput",
+        "/instructions",
+        "/summary",
+        "/elicitation/request",
+        "/elicitation/result",
+        "/attention/message",
+        "/attention/title",
+        "/message/messages",
+    ] {
+        if let Some(item) = value.pointer(path) {
+            selected(item, &context)?;
         }
     }
     if value["type"] == "file.changed"
@@ -2226,11 +2225,8 @@ mod lifecycle_tests {
                         }
                     },
                     "items": [{
-                        "id": "item",
-                        "kind": "text",
-                        "mediaType": "text/plain",
-                        "selection": "body",
-                        "body": descriptor
+                        "id":"item","kind":"attachment","mediaType":"application/octet-stream",
+                        "selection":"body","body":descriptor
                     }]
                 }
             }
@@ -2654,7 +2650,7 @@ mod hardening_tests {
         ] {
             let mut message = request();
             message["params"]["event"]["items"] = json!([{
-                "id":"body", "kind":"message", "mediaType":"text/plain", "selection":"body", "body":reference
+                "id":"body","kind":"attachment","mediaType":"application/octet-stream","selection":"body","body":reference
             }]);
             let response = client.post(&endpoint).json(&message).send().unwrap();
             assert_eq!(response.status().as_u16(), expected_status);
@@ -2675,7 +2671,7 @@ mod hardening_tests {
             test_upload(&state, &json!({"text":"abc", "sha256":sha256(b"abc")})).unwrap();
         let mut message = request();
         message["params"]["event"]["items"] = json!([{
-            "id":"body", "kind":"message", "mediaType":"text/plain", "selection":"body", "body":reference
+            "id":"body","kind":"attachment","mediaType":"application/octet-stream","selection":"body","body":reference
         }]);
         message["params"]["event"]["tool"]["input"] = json!({"body":{"ref":"not-content"}, "nested":{"selection":"body", "gap":{"reason":"opaque user data"}}});
         // Interceptions intentionally wait for an explicit fixture release.

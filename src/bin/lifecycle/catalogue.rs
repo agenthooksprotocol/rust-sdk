@@ -115,8 +115,8 @@ fn event_client(
 
 async fn deliver_event(client: &agenthooksprotocol::client::Client, event: Value) -> Result<Value> {
     use agenthooksprotocol::content::{AuthorizedScope, ContentContext, MemoryContentStore};
-    // Catalogue fixtures authorize metadata/omit views, not body access. Even a
-    // metadata-only compaction occurrence needs an explicit verification context.
+    // Catalogue fixtures carry inline text, not attachment body access.
+    // Compaction occurrences still receive an explicit verification context.
     // This empty, zero-capacity store cannot resolve or publish any body; its
     // trusted scope is never derived from event identity or descriptor fields.
     let store = MemoryContentStore::new(0, 0, 0);
@@ -309,7 +309,7 @@ mod tests {
     fn progress_event() -> Value {
         json!({"id":"progress","source":"urn:catalogue-test","time":"2026-09-01T00:00:00Z",
             "type":"turn.progress","turn":{"id":"turn"},"item":{"id":"item"},"final":false,
-            "delta":{"id":"item","kind":"message","mediaType":"text/plain","selection":"metadata","role":"assistant"}})
+            "delta":{"id":"item","role":"assistant","parts":[{"id":"part","kind":"text","mediaType":"text/plain","selection":"body","text":"Progress"}]}})
     }
     #[test]
     fn complete_event_boundary_is_lazy_and_observation_is_deferred() {
@@ -351,11 +351,11 @@ mod tests {
         assert_eq!(*messages.lock().unwrap(), vec![message]);
     }
     #[test]
-    fn metadata_only_compaction_uses_explicit_content_context() {
+    fn inline_compaction_uses_explicit_content_context() {
         let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
-        let before = json!({"id":"compact-before","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.before","trigger":"auto","items":[]});
-        let after = json!({"id":"compact-after","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":{"id":"summary","kind":"message","mediaType":"text/plain","selection":"metadata","role":"system"},"removed":[],"execution":{"status":"executed"}});
+        let before = json!({"id":"compact-before","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.before","trigger":"auto","items":[],"instructions":[{"id":"instructions","kind":"text","mediaType":"text/plain","selection":"body","text":"Summarize the context"}]});
+        let after = json!({"id":"compact-after","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":[{"id":"summary","kind":"text","mediaType":"text/plain","selection":"body","text":"Context summary"}],"removed":[],"execution":{"status":"executed"}});
         for event in [before, after] {
             let emitted =
                 futures::executor::block_on(deliver_event(&client, event.clone())).unwrap();
@@ -364,10 +364,10 @@ mod tests {
         assert_eq!(messages.lock().unwrap().len(), 2);
     }
     #[test]
-    fn catalogue_content_context_does_not_grant_body_access() {
+    fn catalogue_rejects_referenced_text_summary() {
         let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
-        let event = json!({"id":"compact-body","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":{"id":"summary","kind":"message","mediaType":"text/plain","selection":"body","role":"system","body":{"ref":"not-authorized"}},"removed":[],"execution":{"status":"executed"}});
+        let event = json!({"id":"compact-body","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":[{"id":"summary","kind":"text","mediaType":"text/plain","selection":"body","body":{"ref":"not-authorized"}}],"removed":[],"execution":{"status":"executed"}});
         assert!(futures::executor::block_on(deliver_event(&client, event)).is_err());
         assert!(messages.lock().unwrap().is_empty());
     }
@@ -548,53 +548,39 @@ mod tests {
         );
     }
     #[test]
-    fn canonical_model_visible_roles_and_hashes_are_not_shape_only() {
+    fn canonical_messages_require_roles_parts_and_inline_text() {
         let validation = Validation::new(&json!({})).unwrap();
-        let mut notification = json!({
+        let notification = json!({
             "jsonrpc": "2.0",
             "method": "hooks/observe",
-            "params": {
-                "protocolVersion": "draft",
-                "event": {
-                    "id": "progress",
-                    "source": "urn:catalogue-test",
-                    "time": "2026-09-01T00:00:00Z",
-                    "type": "turn.progress",
-                    "turn": {
-                        "id": "turn"
-                    },
-                    "item": {
-                        "id": "item"
-                    },
-                    "final": false,
-                    "delta": {
-                        "id": "item",
-                        "kind": "message",
-                        "mediaType": "text/plain",
-                        "selection": "metadata",
-                        "role": "assistant"
-                    }
-                }
-            }
+            "params": {"protocolVersion": "draft", "event": progress_event()}
         });
         validation.observe(&notification).unwrap();
-        notification["params"]["event"]["delta"]
+        for field in ["role", "parts"] {
+            let mut invalid = notification.clone();
+            invalid["params"]["event"]["delta"]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(validation.observe(&invalid).is_err());
+        }
+        let mut invalid = notification.clone();
+        invalid["params"]["event"]["delta"]["role"] = json!("unknown");
+        assert!(validation.observe(&invalid).is_err());
+        let mut invalid = notification.clone();
+        invalid["params"]["event"]["delta"]["parts"][0]
             .as_object_mut()
             .unwrap()
-            .remove("role");
-        assert!(validation.observe(&notification).is_err());
-        notification["params"]["event"]["delta"]["role"] = json!("assistant");
-        notification["params"]["event"]["delta"]["selection"] = json!("body");
-        notification["params"]["event"]["delta"]["body"] = json!({"ref":"ref"});
-        validation.observe(&notification).unwrap();
-        for hash in [
-            "0".repeat(63),
-            "0".repeat(64),
-            "A".repeat(64),
-            "0".repeat(65),
+            .remove("text");
+        assert!(validation.observe(&invalid).is_err());
+        for (field, value) in [
+            ("body", json!({"ref":"ref"})),
+            ("sha256", json!("0".repeat(64))),
+            ("size", json!(8)),
         ] {
-            notification["params"]["event"]["delta"]["body"]["sha256"] = json!(hash);
-            assert!(validation.observe(&notification).is_err());
+            let mut invalid = notification.clone();
+            invalid["params"]["event"]["delta"]["parts"][0][field] = value;
+            assert!(validation.observe(&invalid).is_err());
         }
     }
     #[test]

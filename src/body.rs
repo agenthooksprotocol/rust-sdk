@@ -128,11 +128,22 @@ impl Body {
     /// owned by the source. It is checked before extending the spool and without
     /// overflowing byte totals, even when `max_bytes` is `usize::MAX`.
     pub async fn into_bytes(self, max_bytes: usize) -> Result<Vec<u8>, BodyError> {
+        self.into_bytes_accounted(max_bytes, |_| Ok(())).await
+    }
+
+    // Reserve shared payload budget before accepting source bytes into the spool.
+    // The caller owns rollback of reservations on failure or cancellation.
+    pub(crate) async fn into_bytes_accounted(
+        self,
+        max_bytes: usize,
+        mut reserve: impl FnMut(usize) -> Result<(), BodyError> + Send,
+    ) -> Result<Vec<u8>, BodyError> {
         match self.input {
             Input::Bytes(bytes) => {
                 if bytes.len() > max_bytes {
                     Err(BodyError::TooLarge { limit: max_bytes })
                 } else {
+                    reserve(bytes.len())?;
                     Ok(bytes)
                 }
             }
@@ -149,6 +160,7 @@ impl Body {
                     if chunk.len() > max_bytes - bytes.len() {
                         return Err(BodyError::TooLarge { limit: max_bytes });
                     }
+                    reserve(chunk.len())?;
                     bytes
                         .try_reserve_exact(chunk.len())
                         .map_err(|_| BodyError::Capacity)?;

@@ -347,36 +347,6 @@ fn resolve_event_content(
     request: &serde_json::Value,
     context: &ContentContext<'_>,
 ) -> Result<ResolvedContent, UploadError> {
-    use serde_json::Value;
-    fn selected(
-        result: &mut ResolvedContent,
-        context: &ContentContext<'_>,
-        item: &Value,
-        pointer: String,
-    ) -> Result<(), UploadError> {
-        if let Some(bytes) = context.resolve_selected(item)? {
-            result.bodies.insert(pointer, bytes);
-        }
-        Ok(())
-    }
-    fn array(
-        result: &mut ResolvedContent,
-        context: &ContentContext<'_>,
-        event: &Value,
-        path: &str,
-    ) -> Result<(), UploadError> {
-        if let Some(items) = event.pointer(path).and_then(Value::as_array) {
-            for (index, item) in items.iter().enumerate() {
-                selected(
-                    result,
-                    context,
-                    item,
-                    format!("/params/event{path}/{index}"),
-                )?;
-            }
-        }
-        Ok(())
-    }
     let mut result = ResolvedContent::default();
     if !matches!(
         request["method"].as_str(),
@@ -385,80 +355,14 @@ fn resolve_event_content(
         return Ok(result);
     }
     let event = &request["params"]["event"];
-    let kind = event["type"].as_str().ok_or(UploadError::Descriptor)?;
-    if matches!(
-        kind,
-        "session.start"
-            | "session.end"
-            | "tool.before"
-            | "tool.after"
-            | "config.change.before"
-            | "config.change.after"
-            | "turn.start"
-            | "turn.finish.before"
-            | "turn.end"
-            | "turn.progress"
-            | "model.request.before"
-            | "model.response.after"
-            | "model.error"
-            | "model.switch.before"
-            | "model.switch.after"
-            | "tool.permission.request"
-            | "tool.permission.resolved"
-            | "tool.progress"
-            | "tool.batch.after"
-            | "context.compact.before"
-            | "context.compact.after"
-            | "task.change.before"
-            | "task.change.after"
-            | "workspace.change.before"
-            | "workspace.change.after"
-            | "file.changed"
-            | "user.attention"
-            | "user.elicitation.request"
-            | "user.elicitation.result"
-            | "user.message.inbound"
-            | "user.message.outbound"
-            | "hook.failure"
-    ) {
-        array(&mut result, context, event, "/items")?;
-    }
-    let item_path = match kind {
-        "turn.progress" => Some("/delta"),
-        "tool.progress" => Some("/partialOutput"),
-        "context.compact.before" => Some("/instructions"),
-        "context.compact.after" => Some("/summary"),
-        "user.elicitation.request" => Some("/elicitation/request"),
-        "user.elicitation.result" => Some("/elicitation/result"),
-        _ => None,
-    };
-    if let Some(path) = item_path
-        && let Some(item) = event.pointer(path)
-    {
-        selected(&mut result, context, item, format!("/params/event{path}"))?;
-    }
-    match kind {
-        "user.attention" => {
-            array(&mut result, context, event, "/attention/message")?;
-            array(&mut result, context, event, "/attention/title")?;
+    for path in crate::hooks_content::locations(event) {
+        let item = event.pointer(&path).ok_or(UploadError::Descriptor)?;
+        // Inline text belongs to the event, not an upload or resolver cache.
+        if item["kind"] == "attachment"
+            && let Some(bytes) = context.resolve_selected(item)?
+        {
+            result.bodies.insert(format!("/params/event{path}"), bytes);
         }
-        "user.message.inbound" => array(&mut result, context, event, "/message/text")?,
-        "user.message.outbound" => array(&mut result, context, event, "/message/payload")?,
-        "file.changed" => {
-            if let Some(changes) = event["changes"].as_array() {
-                for (index, change) in changes.iter().enumerate() {
-                    for field in ["before", "after"] {
-                        if let Some(reference) = change.get(field) {
-                            result.bodies.insert(
-                                format!("/params/event/changes/{index}/{field}"),
-                                context.resolve(reference)?,
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        _ => {}
     }
     Ok(result)
 }

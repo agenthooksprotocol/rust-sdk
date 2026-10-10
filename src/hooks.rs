@@ -3,7 +3,6 @@
 use crate::{
     adapters::registered::{self, BackendOptions, ManagedBackend},
     attachment::{Budget, InvocationAttachments},
-    body::Body,
     client::{
         Client, Decision, DeliveryDiagnostic, DeliveryStage, FailurePolicy, Hook, HookError,
         InputDecodeError, LocalFuture, Mode, ProtocolOutcome, Subscription, ToolContext,
@@ -170,6 +169,8 @@ pub struct HooksOptions {
     pub backend: BackendOptions,
     pub observation_timeout: Duration,
     pub max_observations: usize,
+    /// Maximum simultaneous upload transfers across active Hooks operations.
+    pub max_concurrent_uploads: usize,
     manifest: Option<Value>,
     pub max_body_bytes: usize,
     /// Active attachment byte budget. Historical name; no harness store exists.
@@ -207,6 +208,7 @@ impl HooksOptions {
             backend: BackendOptions::default(),
             observation_timeout: Duration::from_secs(30),
             max_observations: 1024,
+            max_concurrent_uploads: 8,
             manifest: None,
             max_body_bytes: 4 * 1024 * 1024,
             max_stored_bytes: 64 * 1024 * 1024,
@@ -290,14 +292,15 @@ impl Route {
         }
     }
 }
+type UploadPlans = BTreeMap<String, Result<crate::hooks_content::Receipts, HookError>>;
+
 #[derive(Clone)]
 struct RouteHook {
     route: Route,
-    attachments: InvocationAttachments,
-    options: BackendOptions,
     life: Weak<Lifecycle>,
     deadline: Option<Instant>,
     prepare_only: bool,
+    uploads: Arc<UploadPlans>,
 }
 impl Hook for RouteHook {
     fn call(&self, mut request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
@@ -318,18 +321,18 @@ impl Hook for RouteHook {
             {
                 event.remove("native");
             }
-            request = crate::hooks_content::project_attachments(
+            let local_event = request["params"]["event"].clone();
+            let receipts = owned
+                .uploads
+                .get(&owned.route.id)
+                .ok_or_else(|| err("missing authorized upload plan"))?
+                .as_ref()
+                .map_err(Clone::clone)?;
+            request = crate::hooks_content::project_receipts(
                 request,
                 &owned.route.configuration["content"],
-                owned.route.configuration.get("upload"),
-                &owned.attachments,
-                &owned.options,
-                &owned.route.backend_id,
-                start
-                    .checked_add(timeout)
-                    .ok_or_else(|| err("subscription deadline overflow"))?,
+                receipts,
             )
-            .await
             .map_err(|error| {
                 error.classify_if_unset(generated::DeliveryDiagnosticCode::Preparation)
             })?;
@@ -343,12 +346,13 @@ impl Hook for RouteHook {
             if owned.prepare_only {
                 return Ok(request);
             }
-            let response = owned.route.backend.call(request.clone(), remaining).await?;
+            let mut response = owned.route.backend.call(request.clone(), remaining).await?;
             if request["method"] == "hooks/intercept" {
                 crate::client::check_rpc_error(&response, &request["id"])?;
                 crate::hooks_content::validate_response_grants(&request, &response).map_err(
                     |error| error.classified(generated::DeliveryDiagnosticCode::ProtocolRejection),
                 )?;
+                restore_effect_attachment_refs(&local_event, receipts, &mut response)?;
             }
             Ok(response)
         });
@@ -357,6 +361,59 @@ impl Hook for RouteHook {
             None => Box::pin(async { Err(err("Hooks has been dropped")) }),
         }
     }
+}
+// A backend speaks its own confirmed receipt namespace. Restore only canonical
+// effect message parts to invocation owner identities before serial staging.
+fn restore_effect_attachment_refs(
+    original: &Value,
+    receipts: &crate::hooks_content::Receipts,
+    response: &mut Value,
+) -> Result<(), HookError> {
+    let originals: Vec<&Value> = crate::hooks_content::locations(original)
+        .iter()
+        .filter_map(|path| original.pointer(path))
+        .filter(|part| part["kind"] == "attachment")
+        .collect();
+    let Some(effects) = response["result"]["effects"].as_array_mut() else {
+        return Ok(());
+    };
+    for effect in effects {
+        let canonical = matches!(effect["type"].as_str(), Some("modify" | "inject"))
+            || (effect["type"] == "return" && original["type"] == "model.request.before");
+        if !canonical {
+            continue;
+        }
+        let Some(messages) = effect["value"].as_array_mut() else {
+            continue;
+        };
+        for message in messages {
+            let Some(parts) = message["parts"].as_array_mut() else {
+                continue;
+            };
+            for part in parts {
+                if part["kind"] != "attachment" || part["selection"] != "body" {
+                    continue;
+                }
+                let prior = originals
+                    .iter()
+                    .find(|prior| {
+                        ["id", "mediaType", "category", "synthesized"]
+                            .iter()
+                            .all(|field| prior[*field] == part[*field])
+                            && prior["body"]["ref"]
+                                .as_str()
+                                .and_then(|key| receipts.get(key))
+                                == Some(&part["body"])
+                    })
+                    .ok_or_else(|| {
+                        err("effect references an unconfirmed or unknown binary attachment")
+                            .classified(generated::DeliveryDiagnosticCode::ProtocolRejection)
+                    })?;
+                part["body"] = prior["body"].clone();
+            }
+        }
+    }
+    Ok(())
 }
 fn err(value: impl std::fmt::Display) -> HookError {
     HookError(value.to_string())
@@ -543,6 +600,7 @@ pub struct Hooks {
     budget: Arc<Budget>,
     life: Arc<Lifecycle>,
     next_id: AtomicU64,
+    upload_limiter: crate::upload_plan::UploadLimiter,
 }
 impl Drop for Hooks {
     fn drop(&mut self) {
@@ -557,6 +615,7 @@ impl Hooks {
         }
         if options.observation_timeout.is_zero()
             || options.max_observations == 0
+            || options.max_concurrent_uploads == 0
             || options.max_body_bytes == 0
             || options.max_stored_entries == 0
         {
@@ -660,6 +719,7 @@ impl Hooks {
         }
         let budget = Budget::new(options.max_stored_bytes, options.max_stored_entries);
         Ok(Self {
+            upload_limiter: crate::upload_plan::UploadLimiter::new(options.max_concurrent_uploads),
             options,
             routes,
             backends,
@@ -688,32 +748,40 @@ impl Hooks {
             settings: Settings::default(),
         }
     }
-    /// Generated named methods use this lazy projection adapter.
-    pub fn input_for<T>(
+    /// Generated named methods defer consuming host projection until await.
+    #[doc(hidden)]
+    pub fn host_input_for<T: generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>>(
         &self,
         name: &'static str,
         input: T,
-        project: fn(&T) -> Result<Value, serde_json::Error>,
     ) -> InputBoundary<'_, T> {
         InputBoundary {
             hooks: self,
             input,
             name,
-            project,
             settings: Settings::default(),
         }
     }
     /// Typed host facts. Projection and serialization are deferred until await.
     pub fn tool_before<T: Serialize + DeserializeOwned>(
         &self,
-        input: generated::ergonomic_inputs::ToolBeforeInput<T>,
+        input: impl Into<ToolHostInput<T>>,
     ) -> ToolBoundary<'_, T> {
         ToolBoundary {
             hooks: self,
-            input: ToolInput::Host(Box::new(input)),
+            input: input.into().0,
             context: json!({}),
             settings: Settings::default(),
         }
+    }
+    /// Return the complete canonical event for typed tool facts and owned parts.
+    pub fn tool_before_event<
+        I: generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>,
+    >(
+        &self,
+        input: I,
+    ) -> InputBoundary<'_, I> {
+        self.host_input_for("tool.before", input)
     }
     /// Advanced application-input API; provide canonical context with `.context(...)`.
     pub fn tool_input<T: Serialize + DeserializeOwned>(&self, input: T) -> ToolBoundary<'_, T> {
@@ -812,12 +880,72 @@ impl Hooks {
                 "correlationIdentityFields":[]})
         })
     }
+    async fn plan_uploads(
+        &self,
+        event: &Value,
+        name: &str,
+        deadline: Option<Instant>,
+        attachments: &InvocationAttachments,
+    ) -> Arc<UploadPlans> {
+        let _materialization = attachments.planning_reads();
+        let limiter = self.upload_limiter.clone();
+        let mut jobs: Vec<
+            LocalFuture<'static, (String, Result<crate::hooks_content::Receipts, HookError>)>,
+        > = Vec::new();
+        for route in self.routes.iter().filter(|route| {
+            route.events.iter().any(|e| e == name)
+                && !filtered(&route.configuration, event)
+                && (route.mode != Mode::Observe || self.options.capabilities[name].observe)
+        }) {
+            let route = route.clone();
+            let id = route.id.clone();
+            let event = event.clone();
+            let owners = attachments.clone();
+            let options = self.options.backend.clone();
+            let limiter = limiter.clone();
+            let work = Box::pin(async move {
+                let now = Instant::now();
+                let end = now
+                    .checked_add(route.timeout)
+                    .ok_or_else(|| err("subscription deadline overflow"))?;
+                let end = deadline.map_or(end, |deadline| end.min(deadline));
+                let request = json!({"params":{"event":event}});
+                let receipts = crate::hooks_content::preupload(
+                    request,
+                    &route.configuration["content"],
+                    route.configuration.get("upload"),
+                    &owners,
+                    &options,
+                    &route.backend_id,
+                    end,
+                    &limiter,
+                )
+                .await
+                .map_err(|e| e.classify_if_unset(generated::DeliveryDiagnosticCode::Preparation))?;
+                serde_json::to_value(receipts).map_err(err)
+            });
+            let owned = self.life.run(work);
+            jobs.push(Box::pin(async move {
+                let result = owned
+                    .await
+                    .and_then(|value| serde_json::from_value(value).map_err(err));
+                (id, result)
+            }));
+        }
+        Arc::new(
+            crate::upload_plan::run_bounded(jobs, self.options.max_concurrent_uploads)
+                .await
+                .into_iter()
+                .collect(),
+        )
+    }
     fn client(
         &self,
         event: &Value,
         name: &str,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
+        uploads: &Arc<UploadPlans>,
     ) -> Client {
         self.routes
             .iter()
@@ -832,7 +960,7 @@ impl Hooks {
                         events: vec![name.into()],
                         mode: route.mode,
                         timeout: route.timeout,
-                        hook: Box::new(self.route_hook(route, deadline, attachments)),
+                        hook: Box::new(self.route_hook(route, deadline, attachments, uploads)),
                     })
                 },
             )
@@ -841,15 +969,15 @@ impl Hooks {
         &self,
         route: &Route,
         deadline: Option<Instant>,
-        attachments: &InvocationAttachments,
+        _attachments: &InvocationAttachments,
+        uploads: &Arc<UploadPlans>,
     ) -> RouteHook {
         RouteHook {
             route: route.clone(),
-            attachments: attachments.clone(),
-            options: self.options.backend.clone(),
             life: Arc::downgrade(&self.life),
             deadline,
             prepare_only: false,
+            uploads: uploads.clone(),
         }
     }
     async fn prepare_observations<'a>(
@@ -858,6 +986,7 @@ impl Hooks {
         observations: Vec<crate::client::Observation<'_>>,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
+        uploads: &Arc<UploadPlans>,
     ) -> (Vec<PreparedObservation<'a>>, Vec<DeliveryDiagnostic>) {
         let mut prepared = Vec::new();
         let mut diagnostics = vec![];
@@ -892,7 +1021,7 @@ impl Hooks {
             let route_deadline = started
                 .checked_add(route.timeout)
                 .map(|end| deadline.map_or(end, |deadline| deadline.min(end)));
-            let mut hook = self.route_hook(route, route_deadline, attachments);
+            let mut hook = self.route_hook(route, route_deadline, attachments, uploads);
             hook.prepare_only = true;
             let result =
                 match crate::canonical::validate("observe-notification", &observation.notification)
@@ -1026,27 +1155,6 @@ struct Settings<'a> {
 }
 macro_rules! settings_methods {
     () => {
-        /// Transfer a body source into one invocation-owned attachment slot.
-        pub fn body_source(
-            mut self,
-            binding: generated::ergonomic_inputs::ContentSourceBinding<Body>,
-        ) -> Self {
-            self.settings
-                .sources
-                .push(generated::ergonomic_inputs::ContentSourceBinding {
-                    path: binding.path,
-                    source: crate::Attachment::from_body(binding.source),
-                });
-            self
-        }
-        /// Own a source in a generated content slot, without staging or a store.
-        pub fn attachment(
-            mut self,
-            binding: generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>,
-        ) -> Self {
-            self.settings.sources.push(binding);
-            self
-        }
         pub fn initial_snapshot(mut self, snapshot: impl Serialize) -> Result<Self, HookError> {
             self.settings.snapshot = Some(serde_json::to_value(snapshot).map_err(err)?);
             self.settings.initial = None;
@@ -1103,7 +1211,6 @@ pub struct InputBoundary<'a, T> {
     hooks: &'a Hooks,
     input: T,
     name: &'static str,
-    project: fn(&T) -> Result<Value, serde_json::Error>,
     settings: Settings<'a>,
 }
 impl<'a, T> InputBoundary<'a, T> {
@@ -1123,7 +1230,9 @@ impl<'a, T> InputBoundary<'a, T> {
         self
     }
 }
-impl<'a, T: Send + 'a> IntoFuture for InputBoundary<'a, T> {
+impl<'a, T: generated::ergonomic_inputs::ProjectHostInput<crate::Attachment> + Send + 'a> IntoFuture
+    for InputBoundary<'a, T>
+{
     type Output = Result<EventOutcome<Value>, HookError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(mut self) -> Self::IntoFuture {
@@ -1138,7 +1247,8 @@ impl<'a, T: Send + 'a> IntoFuture for InputBoundary<'a, T> {
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let event = (self.project)(&self.input).map_err(err)?;
+                let (event, sources) = self.input.into_host_event().map_err(err)?;
+                self.settings.sources.extend(sources);
                 EventBoundary {
                     hooks: self.hooks,
                     event,
@@ -1222,9 +1332,13 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 })?;
                 let (event, name, granted) = self.hooks.prepare(event)?;
                 let caps = narrow(self.settings.capabilities, granted)?;
-                let client = self
+                let uploads = self
                     .hooks
-                    .client(&event, &name, self.settings.deadline, &content);
+                    .plan_uploads(&event, &name, self.settings.deadline, &content)
+                    .await;
+                let client =
+                    self.hooks
+                        .client(&event, &name, self.settings.deadline, &content, &uploads);
                 let mut boundary = client
                     .event(event)
                     .capabilities(caps.0)
@@ -1275,10 +1389,16 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 }
                 let (observations, preparation_diagnostics) = self
                     .hooks
-                    .prepare_observations(&name, observations, self.settings.deadline, &content)
+                    .prepare_observations(
+                        &name,
+                        observations,
+                        self.settings.deadline,
+                        &content,
+                        &uploads,
+                    )
                     .await;
                 diagnostics.extend(preparation_diagnostics);
-                let retained = content.finish();
+                let retained = content.finish_for(&effective_event);
                 drop(client);
                 drop(content);
                 diagnostics.extend(self.hooks.deliver_observations(observations).await);
@@ -1299,7 +1419,40 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
         )
     }
 }
+/// Consuming typed host facts accepted by `Hooks::tool_before`.
+#[doc(hidden)]
+pub struct ToolHostInput<T>(ToolInput<T>);
+impl<T> From<generated::ergonomic_inputs::ToolBeforeInput<T>> for ToolHostInput<T> {
+    fn from(input: generated::ergonomic_inputs::ToolBeforeInput<T>) -> Self {
+        Self(ToolInput::Host(Box::new(input)))
+    }
+}
+impl<T>
+    From<
+        generated::ergonomic_inputs::HostInput<
+            generated::ergonomic_inputs::ToolBeforeInput<T>,
+            crate::Attachment,
+        >,
+    > for ToolHostInput<T>
+{
+    fn from(
+        input: generated::ergonomic_inputs::HostInput<
+            generated::ergonomic_inputs::ToolBeforeInput<T>,
+            crate::Attachment,
+        >,
+    ) -> Self {
+        Self(ToolInput::Owned(Box::new(input)))
+    }
+}
 enum ToolInput<T> {
+    Owned(
+        Box<
+            generated::ergonomic_inputs::HostInput<
+                generated::ergonomic_inputs::ToolBeforeInput<T>,
+                crate::Attachment,
+            >,
+        >,
+    ),
     Host(Box<generated::ergonomic_inputs::ToolBeforeInput<T>>),
     Raw(T),
 }
@@ -1361,6 +1514,14 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                         let context = host.to_event_value().map_err(err)?;
                         (host.input, context)
                     }
+                    ToolInput::Owned(host) => {
+                        use generated::ergonomic_inputs::ProjectHostInput;
+                        let (context, sources) = (*host).into_host_event().map_err(err)?;
+                        self.settings.sources.extend(sources);
+                        let input = serde_json::from_value(context["tool"]["input"].clone())
+                            .map_err(err)?;
+                        (input, context)
+                    }
                     ToolInput::Raw(input) => (input, self.context),
                 };
                 context
@@ -1378,9 +1539,13 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                 })?;
                 let (context, name, granted) = self.hooks.prepare(context)?;
                 let caps = narrow(self.settings.capabilities, granted)?;
-                let client = self
+                let uploads = self
                     .hooks
-                    .client(&context, &name, self.settings.deadline, &content);
+                    .plan_uploads(&context, &name, self.settings.deadline, &content)
+                    .await;
+                let client =
+                    self.hooks
+                        .client(&context, &name, self.settings.deadline, &content, &uploads);
                 let mut boundary = client.tool_before(input).capabilities(caps.0);
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;
@@ -1419,7 +1584,13 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                 }
                 let (observations, preparation_diagnostics) = self
                     .hooks
-                    .prepare_observations(&name, observations, self.settings.deadline, &content)
+                    .prepare_observations(
+                        &name,
+                        observations,
+                        self.settings.deadline,
+                        &content,
+                        &uploads,
+                    )
                     .await;
                 diagnostics.extend(preparation_diagnostics);
                 // Application input and return/injection values are opaque JSON, not
@@ -1446,8 +1617,65 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
 
 // Both the named methods and their inventory are generated from the schema catalogue.
 pub const NAMED_BOUNDARIES: &[&str] = crate::ahp_hooks_boundary_methods!(inventory);
-impl Hooks {
-    crate::ahp_ergonomic_hook_methods!();
+impl<T: Serialize> generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>
+    for generated::ergonomic_inputs::ToolBeforeInput<T>
+{
+    fn into_host_event(
+        self,
+    ) -> Result<
+        (
+            Value,
+            Vec<generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>>,
+        ),
+        serde_json::Error,
+    > {
+        Ok((self.to_event_value()?, Vec::new()))
+    }
+}
+// Named methods accept either canonical generated facts or direct owned host inputs.
+macro_rules! host_methods {
+    ($(($method:ident, $input:ident, $name:literal)),* $(,)?) => {
+        $(impl generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>
+            for generated::ergonomic_inputs::$input {
+            fn into_host_event(self) -> Result<(Value, Vec<generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>>), serde_json::Error> {
+                Ok((self.to_event_value()?, Vec::new()))
+            }
+        })*
+        impl Hooks {
+            $(pub fn $method<I: generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>>(&self, input: I) -> InputBoundary<'_, I> {
+                self.host_input_for($name, input)
+            })*
+        }
+    };
+}
+host_methods! {
+    (config_change_after, ConfigChangeAfterInput, "config.change.after"),
+    (config_change_before, ConfigChangeBeforeInput, "config.change.before"),
+    (context_compact_after, ContextCompactAfterInput, "context.compact.after"),
+    (context_compact_before, ContextCompactBeforeInput, "context.compact.before"),
+    (file_changed, FileChangedInput, "file.changed"),
+    (hook_failure, HookFailureInput, "hook.failure"),
+    (model_error, ModelErrorInput, "model.error"),
+    (model_request_before, ModelRequestBeforeInput, "model.request.before"),
+    (model_response_after, ModelResponseAfterInput, "model.response.after"),
+    (model_switch_after, ModelSwitchAfterInput, "model.switch.after"),
+    (model_switch_before, ModelSwitchBeforeInput, "model.switch.before"),
+    (session_end, SessionEndInput, "session.end"),
+    (session_start, SessionStartInput, "session.start"),
+    (task_change_after, TaskChangeAfterInput, "task.change.after"),
+    (task_change_before, TaskChangeBeforeInput, "task.change.before"),
+    (tool_batch_after, ToolBatchAfterInput, "tool.batch.after"),
+    (turn_end, TurnEndInput, "turn.end"),
+    (turn_finish_before, TurnFinishBeforeInput, "turn.finish.before"),
+    (turn_progress, TurnProgressInput, "turn.progress"),
+    (turn_start, TurnStartInput, "turn.start"),
+    (user_attention, UserAttentionInput, "user.attention"),
+    (user_elicitation_request, UserElicitationRequestInput, "user.elicitation.request"),
+    (user_elicitation_result, UserElicitationResultInput, "user.elicitation.result"),
+    (user_message_inbound, UserMessageInboundInput, "user.message.inbound"),
+    (user_message_outbound, UserMessageOutboundInput, "user.message.outbound"),
+    (workspace_change_after, WorkspaceChangeAfterInput, "workspace.change.after"),
+    (workspace_change_before, WorkspaceChangeBeforeInput, "workspace.change.before"),
 }
 
 fn bounded<'a, T: Send + 'a>(

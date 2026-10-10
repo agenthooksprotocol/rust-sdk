@@ -44,7 +44,7 @@ fn intercept_and_observe_expose_the_same_shared_event() {
         "id":"shared", "source":"urn:test", "time":"2026-09-01T00:00:00Z",
         "type":"tool.before", "path":"native", "call":{"id":"call"},
         "tool":{"name":"read", "origin":"native", "input":{}},
-        "items":[{"id":"body", "kind":"text", "mediaType":"text/plain",
+        "items":[{"id":"body", "kind":"attachment", "mediaType":"application/octet-stream",
                   "selection":"body", "body":{"ref":"stored"}}]
     });
     let intercept = json!({"jsonrpc":"2.0", "id":"rpc", "method":"hooks/intercept",

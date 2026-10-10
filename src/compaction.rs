@@ -93,7 +93,7 @@ pub fn capabilities(boundary: &str, observe_only: bool) -> Result<Value, String>
         vec!["modify", "message", "inject"]
     };
     Ok(
-        json!({"effects":effects,"modify":{target:{"replace":true,"merge":false}},"inject":{"context":{"append":true,"deliverAt":["now","next_turn"]}}}),
+        json!({"effects":effects,"modify":{target:{"replace":true,"merge":true}},"inject":{"context":{"append":true,"deliverAt":["now","next_turn"]}}}),
     )
 }
 // Legacy JSON exposes content-N identifiers. Preserve their sequence without
@@ -134,7 +134,7 @@ fn stage(
         }
         .ok_or("compaction text")?;
         let mut event = json!({"id":boundary,"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","type":format!("context.compact.{boundary}")});
-        event[target] = json!({"id":if before { "instructions" } else { item_id },"kind":target,"role":if before { "system" } else { "assistant" },"mediaType":"text/plain","selection":"body"});
+        event[target] = json!([{"id":if before { "instructions" } else { item_id },"kind":"text","mediaType":"text/plain","selection":"body","text":body}]);
         if before {
             event["trigger"] = json!("manual");
             event["items"] = json!([]);
@@ -147,10 +147,7 @@ fn stage(
         legacy_reference(next)?;
         let content = crate::attachment::InvocationAttachments::bind(
             &mut event,
-            vec![crate::ergonomic_inputs::ContentSourceBinding {
-                path: vec![target.to_owned()],
-                source: crate::Attachment::bytes(body.as_bytes().to_vec()),
-            }],
+            vec![],
             crate::attachment::Budget::new(usize::MAX, usize::MAX),
             usize::MAX,
         )?;
@@ -323,26 +320,32 @@ pub fn selected_text(
     item: &Value,
     content: &crate::content::ContentContext<'_>,
 ) -> CompactionResult<String> {
-    let bytes = content
-        .resolve_selected(item)?
-        .ok_or("compaction text body not selected")?;
-    Ok(std::str::from_utf8(&bytes)?.to_owned())
+    let _ = content;
+    inline_text(item)
+}
+
+fn inline_text(parts: &Value) -> CompactionResult<String> {
+    let mut text = String::new();
+    for part in parts.as_array().ok_or("compaction text parts required")? {
+        if part["selection"] != "body" || part.get("gap").is_some() {
+            return Err("compaction text not selected".into());
+        }
+        text.push_str(part["text"].as_str().ok_or("inline text required")?);
+    }
+    Ok(text)
 }
 
 fn selected_text_at(
-    path: &str,
+    _path: &str,
     item: &Value,
-    content: &dyn crate::content::ContentAccess,
+    _content: &dyn crate::content::ContentAccess,
 ) -> CompactionResult<String> {
-    let bytes = content
-        .resolve_selected(path, item)?
-        .ok_or("compaction text body not selected")?;
-    Ok(std::str::from_utf8(&bytes)?.to_owned())
+    inline_text(item)
 }
 
 /// Stage one canonical compaction response atomically. Publish the returned
-/// event only on success. Failed stages can leave unreachable store allocations,
-/// but cannot commit references, messages, injections, denial or a candidate.
+/// event only on success. Inline edits do not allocate attachments; failed stages
+/// cannot commit text parts, messages, injections, denial or a candidate.
 /// `injections` contains full canonical inject effects in response order. They
 /// request host delivery; they do not mutate the event or install context. This does not
 /// install context or promise downstream model consumption or replay.
@@ -362,20 +365,6 @@ pub fn stage_boundary(
         _ => return Err("not a compaction boundary".into()),
     };
     let target = if before { "instructions" } else { "summary" };
-    // Check the original snapshot even with no effects. A replacement cannot
-    // conceal unavailable or corrupt selected content in the original exchange.
-    if let Some(items) = original["items"].as_array() {
-        for (index, item) in items.iter().enumerate() {
-            content.resolve_selected(&format!("/items/{index}"), item)?;
-        }
-    }
-    for key in ["instructions", "summary"] {
-        if let Some(item) = original.get(key)
-            && let Some(bytes) = content.resolve_selected(&format!("/{key}"), item)?
-        {
-            std::str::from_utf8(&bytes)?;
-        }
-    }
     crate::canonical::validate(
         "intercept-response",
         &json!({
@@ -396,9 +385,9 @@ pub fn stage_boundary(
         match kind {
             "modify" => {
                 if effect["target"] != target
-                    || effect["operation"] != "replace"
-                    || caps["modify"][target]["replace"] != true
-                    || !effect["value"].is_string()
+                    || !["replace", "merge"].contains(&effect["operation"].as_str().unwrap_or(""))
+                    || caps["modify"][target][effect["operation"].as_str().unwrap_or("")] != true
+                    || !effect["value"].is_array()
                 {
                     return Err("unsupported compaction modification".into());
                 }
@@ -432,41 +421,25 @@ pub fn stage_boundary(
     let mut injections = Vec::new();
     let mut denied = false;
     let mut candidate = None;
-    // Stage text in memory: repeated replacements can restore the original.
-    // Allocate only the final changed body so semantic no-ops preserve both the
-    // descriptor and runtime approval/candidate state.
-    let mut replacement = None;
     for effect in effects {
         match effect["type"].as_str().unwrap() {
-            "modify" => replacement = effect["value"].as_str(),
+            "modify" if effect["operation"] == "merge" => {
+                event[target]
+                    .as_array_mut()
+                    .ok_or("text parts required")?
+                    .extend(
+                        effect["value"]
+                            .as_array()
+                            .ok_or("text parts required")?
+                            .clone(),
+                    );
+            }
+            "modify" => event[target] = effect["value"].clone(),
             "return" => candidate = Some(effect["value"].clone()),
             "deny" => denied = true,
             "message" => messages.push(effect["text"].clone()),
             "inject" => injections.push(effect.clone()),
             _ => unreachable!(),
-        }
-    }
-    if let Some(text) = replacement {
-        let original_text = selected_text_at(&format!("/{target}"), &original[target], content)?;
-        if text.as_bytes() != original_text.as_bytes() {
-            let descriptor = content.put(&format!("/{target}"), text.as_bytes())?;
-            if content
-                .resolve_selected(
-                    &format!("/{target}"),
-                    &json!({"selection":"body","body":descriptor}),
-                )?
-                .as_deref()
-                != Some(text.as_bytes())
-            {
-                return Err("stored compaction replacement mismatch".into());
-            }
-            let item = &mut event[target];
-            item["body"] = descriptor.clone();
-            // Preserve optional presence; integrity hints track final bytes.
-            if let Some(item) = item.as_object_mut() {
-                item.remove("size");
-                item.remove("sha256");
-            }
         }
     }
     let mut effective_request = request.clone();
@@ -514,14 +487,14 @@ mod legacy_owned_tests {
     fn temporary_owners_preserve_legacy_identifiers_and_callback_snapshots() {
         let before = |_: &Value| {
             Ok(vec![
-                json!({"type":"modify","target":"instructions","operation":"replace","value":"edited"}),
+                json!({"type":"modify","target":"instructions","operation":"replace","value":[{"id":"edit","kind":"text","mediaType":"text/plain","selection":"body","text":"edited"}]}),
             ])
         };
         let after = |snapshot: &Value| {
             assert_eq!(snapshot["summary"]["ref"], "content-3");
             assert_eq!(snapshot["bodies"]["content-3"], "summary:edited");
             Ok(vec![
-                json!({"type":"modify","target":"summary","operation":"replace","value":"redacted"}),
+                json!({"type":"modify","target":"summary","operation":"replace","value":[{"id":"edit","kind":"text","mediaType":"text/plain","selection":"body","text":"redacted"}]}),
             ])
         };
         let result = run_compaction(
