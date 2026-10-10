@@ -1,11 +1,11 @@
 #![cfg(feature = "reqwest")]
 use agenthooksprotocol::{
-    Hooks, Permission,
+    Attachment, Hooks, Permission,
     adapters::registered::ManagedBackend,
-    body::{Body, BodyChunkFuture, BodyStream},
+    body::{BodyChunkFuture, BodyStream},
     client::{HookError, LocalFuture},
     content::{AuthorizedScope, UploadError, UploadReceiver},
-    ergonomic_inputs::{ToolBeforeInput, tool_before_sources},
+    ergonomic_inputs::{PartInput, ToolBeforeInput},
     generated::ToolBeforeInputOrigin,
     hooks::{Capabilities, EventGrant, HooksOptions},
     transport::Request,
@@ -160,8 +160,6 @@ async fn named_source_snapshots_once_and_uploads_to_each_independently_authorize
     let hooks = Hooks::new(registration, options).unwrap();
     let reads = Arc::new(AtomicUsize::new(0));
     let drops = Arc::new(AtomicUsize::new(0));
-    // Descriptor metadata, not a caller-invented reference or guessed size/hash.
-    let item = serde_json::from_value(json!({"id":"binary","kind":"data","mediaType":"application/octet-stream","selection":"metadata"})).unwrap();
     let input = ToolBeforeInput::new(
         "call".into(),
         "native".into(),
@@ -169,18 +167,17 @@ async fn named_source_snapshots_once_and_uploads_to_each_independently_authorize
         "read".into(),
         ToolBeforeInputOrigin::Native,
     )
-    .with_items(vec![Box::new(item)]);
-    let call = hooks
-        .tool_before(input)
-        .body_source(tool_before_sources::items(
-            0,
-            Body::stream(Source {
-                bytes: Some(expected.clone()),
-                reads: reads.clone(),
-                drops: drops.clone(),
-            }),
-        ))
-        .initial_state(Permission::Allow);
+    .with_sources()
+    .with_items(vec![PartInput::owned_attachment(
+        "binary",
+        "application/octet-stream",
+        Attachment::lazy(Source {
+            bytes: Some(expected.clone()),
+            reads: reads.clone(),
+            drops: drops.clone(),
+        }),
+    )]);
+    let call = hooks.tool_before(input).initial_state(Permission::Allow);
     assert_eq!(reads.load(Ordering::SeqCst), 0);
     let result = call.await.unwrap();
     assert_eq!(

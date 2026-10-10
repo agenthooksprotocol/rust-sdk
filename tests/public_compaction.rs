@@ -11,9 +11,9 @@ use std::sync::Arc;
 fn request(content: &ContentContext<'_>, after: bool) -> Value {
     let boundary = if after { "after" } else { "before" };
     let target = if after { "summary" } else { "instructions" };
-    let descriptor = content.put("original\r\nλ".as_bytes()).unwrap();
+    let _ = content;
     let mut event = json!({"id":boundary,"source":"urn:test:compaction","time":"2026-09-15T12:00:00Z","type":format!("context.compact.{boundary}"),"session":{"id":"session"},"parentEventId":"original-exchange","native":{"host":"test"}});
-    event[target] = json!({"id":"logical-item","kind":target,"role":"assistant","category":"test","parentItemId":"parent-item","mediaType":"text/plain","selection":"body","body":descriptor});
+    event[target] = parts("original\r\nλ");
     if after {
         event["removed"] = json!([{"id":"context-item"}]);
         event["execution"] = json!({"status":"executed"});
@@ -23,8 +23,11 @@ fn request(content: &ContentContext<'_>, after: bool) -> Value {
     }
     json!({"jsonrpc":"2.0","id":boundary,"method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":capabilities(boundary,false).unwrap()}})
 }
+fn parts(text: &str) -> Value {
+    json!([{"id":"logical-item","kind":"text","mediaType":"text/plain","selection":"body","text":text}])
+}
 fn modify(target: &str, text: &str) -> Value {
-    json!({"type":"modify","target":target,"operation":"replace","value":text})
+    json!({"type":"modify","target":target,"operation":"replace","value":parts(text)})
 }
 fn store() -> MemoryContentStore {
     MemoryContentStore::new(4096, 65536, 100)
@@ -51,27 +54,59 @@ fn immutable_rewrites_preserve_identity_correlations_and_exact_utf8() {
             selected_text(&original[target], &content).unwrap(),
             "original\r\nλ"
         );
-        assert_ne!(result["event"][target]["body"], original[target]["body"]);
-        for key in [
-            "id",
-            "role",
-            "category",
-            "parentItemId",
-            "selection",
-            "mediaType",
-        ] {
-            assert_eq!(result["event"][target][key], original[target][key]);
-        }
+        assert_eq!(result["event"][target], parts(" redacted\r\nλ "));
         for key in ["parentEventId", "session", "native", "removed", "execution"] {
             assert_eq!(result["event"].get(key), original.get(key));
         }
         assert!(result["event"][target].get("size").is_none());
         assert!(result["event"][target].get("sha256").is_none());
-        assert_eq!(
-            result["event"][target]["body"].as_object().unwrap().len(),
-            1
-        );
     }
+}
+
+#[test]
+fn canonical_return_preserves_parts_and_rejects_invalid_candidate_atomically() {
+    let store = CountingStore::new();
+    let content = ContentContext {
+        store: &store,
+        scope: AuthorizedScope::new("scope"),
+    };
+    let request = request(&content, false);
+    let original = request.clone();
+    let mut supplied = parts("first");
+    let mut second = parts("second")[0].clone();
+    second["id"] = json!("second-part");
+    second["category"] = json!("reasoning");
+    supplied.as_array_mut().unwrap().push(second);
+    let result = stage_boundary(
+        &request,
+        &[json!({"type":"return","value":supplied})],
+        &content,
+    )
+    .unwrap();
+    assert_eq!(result["candidate"], supplied);
+    let mut metadata = parts("hidden");
+    metadata[0]["selection"] = json!("metadata");
+    metadata[0].as_object_mut().unwrap().remove("text");
+    let mut gap = parts("hidden");
+    gap[0].as_object_mut().unwrap().remove("text");
+    gap[0]["gap"] = json!({"reason":"unavailable"});
+    let binary = json!([{"id":"binary", "kind":"attachment", "mediaType":"application/octet-stream", "selection":"body", "body":{"ref":"unconfirmed"}}]);
+    for invalid in [json!("scalar"), json!(null), metadata, gap, binary] {
+        assert!(
+            stage_boundary(
+                &request,
+                &[
+                    json!({"type":"return","value":supplied}),
+                    modify("instructions", "must not publish"),
+                    json!({"type":"return","value":invalid}),
+                ],
+                &content
+            )
+            .is_err()
+        );
+        assert_eq!(request, original);
+    }
+    assert_eq!(store.writes(), 0);
 }
 
 #[test]
@@ -93,11 +128,11 @@ fn no_effects_preserve_optional_presence_and_absent_candidate() {
     assert_eq!(result["denied"], false);
     let returned = stage_boundary(
         &request,
-        &[json!({"type":"return","value":"supplied"})],
+        &[json!({"type":"return","value":parts("supplied")})],
         &content,
     )
     .unwrap();
-    assert_eq!(returned["candidate"], "supplied");
+    assert_eq!(returned["candidate"], parts("supplied"));
     assert!(stage_boundary(&request, &[json!({"type":"return","value":null})], &content).is_err());
 }
 
@@ -135,73 +170,21 @@ fn malformed_effects_reject_whole_response_and_leave_original_unchanged() {
 }
 
 #[test]
-fn original_integrity_missing_bodies_and_scope_cannot_be_hidden_by_replacement() {
-    let store = store();
-    let content = ContentContext {
-        store: &store,
-        scope: AuthorizedScope::new("scope"),
-    };
-    let request = request(&content, false);
-    for field in ["size", "sha256"] {
-        let mut corrupt = request.clone();
-        corrupt["params"]["event"]["instructions"][field] = if field == "size" {
-            json!(999)
-        } else {
-            json!("0".repeat(64))
-        };
-        assert!(
-            stage_boundary(&corrupt, &[modify("instructions", "replacement")], &content).is_err()
-        );
-    }
-    let mut missing = request.clone();
-    missing["params"]["event"]["instructions"]
-        .as_object_mut()
-        .unwrap()
-        .remove("body");
-    assert!(stage_boundary(&missing, &[], &content).is_err());
-    missing["params"]["event"]["instructions"]["gap"] = json!({"reason":"unavailable"});
-    assert!(stage_boundary(&missing, &[], &content).is_err());
-    let wrong_scope = ContentContext {
-        store: &store,
-        scope: AuthorizedScope::new("other"),
-    };
-    assert!(stage_boundary(&request, &[], &wrong_scope).is_err());
-}
-
-struct LyingStore;
-impl ContentStore for LyingStore {
-    fn resolve(&self, _: &AuthorizedScope, _: &ContentReference) -> Result<Arc<[u8]>, UploadError> {
-        Ok(Arc::from(&b"wrong"[..]))
-    }
-    fn put(&self, _: &AuthorizedScope, _: Arc<[u8]>) -> Result<ContentReference, UploadError> {
-        Err(UploadError::Unavailable)
-    }
-}
-#[test]
-fn scoped_store_bytes_are_authoritative_and_metadata_never_resolves() {
-    let store = store();
+fn inline_edits_do_not_read_or_write_the_store_and_gaps_fail_closed() {
+    let store = CountingStore::new();
     let content = ContentContext {
         store: &store,
         scope: AuthorizedScope::new("scope"),
     };
     let mut request = request(&content, false);
-    let lying = ContentContext {
-        store: &LyingStore,
-        scope: AuthorizedScope::new("scope"),
-    };
-    let staged = stage_boundary(&request, &[], &lying).unwrap();
+    let staged = stage_boundary(&request, &[modify("instructions", "changed")], &content).unwrap();
     assert_eq!(
-        selected_text(&staged["event"]["instructions"], &lying).unwrap(),
-        "wrong"
+        selected_text(&staged["event"]["instructions"], &content).unwrap(),
+        "changed"
     );
-    let item = &mut request["params"]["event"]["instructions"];
-    item.as_object_mut().unwrap().remove("body");
-    item["selection"] = json!("metadata");
-    assert_eq!(
-        stage_boundary(&request, &[], &lying).unwrap()["event"],
-        request["params"]["event"]
-    );
-    assert!(stage_boundary(&request, &[modify("instructions", "forbidden")], &lying).is_err());
+    assert_eq!(store.writes(), 0);
+    request["params"]["event"]["instructions"][0] = json!({"id":"gap","kind":"text","mediaType":"text/plain","selection":"body","gap":{"reason":"unavailable"}});
+    assert!(stage_boundary(&request, &[modify("instructions", "hidden")], &content).is_err());
 }
 
 #[test]
@@ -212,14 +195,14 @@ fn denial_and_messages_are_staged_but_not_allowed_after() {
         scope: AuthorizedScope::new("scope"),
     };
     let effects = [
-        json!({"type":"return","value":"cached"}),
+        json!({"type":"return","value":parts("cached")}),
         json!({"type":"message","text":"notice"}),
         json!({"type":"deny","reason":"policy"}),
     ];
     let before = request(&content, false);
     let result = stage_boundary(&before, &effects, &content).unwrap();
     assert_eq!(result["denied"], true);
-    assert_eq!(result["candidate"], "cached");
+    assert_eq!(result["candidate"], parts("cached"));
     assert_eq!(result["messages"], json!(["notice"]));
     assert_eq!(result["event"], before["params"]["event"]);
     assert!(stage_boundary(&request(&content, true), &effects, &content).is_err());
@@ -317,7 +300,7 @@ fn no_op_and_restoring_replacements_preserve_descriptor_without_allocating() {
         .unwrap();
         assert_eq!(
             store.writes(),
-            writes + 1,
+            writes,
             "only final changed bytes are stored"
         );
         assert_eq!(
@@ -374,7 +357,6 @@ fn public_runtime_no_op_preserves_approval_and_candidate_at_both_boundaries() {
             let result = futures::executor::block_on(async {
                 client
                     .event(original.clone())
-                    .content(content.clone())
                     .capabilities(request["params"]["capabilities"].clone())
                     .initial_state(Decision::Allow)
                     .initial_candidate(json!({"value":"cached"}))
@@ -392,6 +374,9 @@ fn public_runtime_no_op_preserves_approval_and_candidate_at_both_boundaries() {
     }
 }
 
+fn messages(text: &str) -> Value {
+    json!([{"id":"context","role":"system","parts":parts(text)}])
+}
 fn inject(value: Value, deliver_at: &str) -> Value {
     json!({"type":"inject","target":"context","operation":"append","deliverAt":deliver_at,"value":value})
 }
@@ -409,8 +394,8 @@ fn compaction_injections_stage_in_order_without_mutating_original_context() {
             let saved = request.clone();
             let target = if after { "summary" } else { "instructions" };
             // Injection payload is protocol JSON, not an SDK application schema.
-            let first = inject(json!({"text":"one","applicationField":7}), "now");
-            let second = inject(Value::Null, "next_turn");
+            let first = inject(messages("one"), "now");
+            let second = inject(messages("two"), "next_turn");
             let mut effects = vec![first.clone()];
             if modified {
                 effects.push(modify(target, "modified"));
@@ -429,7 +414,7 @@ fn compaction_injections_stage_in_order_without_mutating_original_context() {
                     selected_text(&staged["event"][target], &content).unwrap(),
                     "modified"
                 );
-                assert_eq!(store.writes(), writes + 1);
+                assert_eq!(store.writes(), writes);
             } else {
                 assert_eq!(staged["event"], saved["params"]["event"]);
                 assert_eq!(store.writes(), writes);
@@ -453,7 +438,7 @@ fn malformed_or_unadvertised_injections_reject_all_effects_before_allocation() {
         let request = request(&content, after);
         let saved = request.clone();
         let target = if after { "summary" } else { "instructions" };
-        let valid = inject(json!("accepted only on full success"), "now");
+        let valid = inject(messages("accepted only on full success"), "now");
         let mut invalid = vec![];
         for (field, value) in [
             ("target", json!("summary")),
@@ -527,8 +512,8 @@ fn public_runtime_accumulates_compaction_injections_once_across_subscriptions() 
         };
         let request = request(&content, after);
         let target = if after { "summary" } else { "instructions" };
-        let first = inject(json!({"text":"one"}), "now");
-        let second = inject(json!(["two"]), "next_turn");
+        let first = inject(messages("one"), "now");
+        let second = inject(messages("two"), "next_turn");
         let mut client = Client::new(ToolContext::new(json!({})));
         for (id, effects) in [
             ("one", vec![first.clone()]),
@@ -563,5 +548,54 @@ fn public_runtime_accumulates_compaction_injections_once_across_subscriptions() 
             result.effective_event.get("items"),
             request["params"]["event"].get("items")
         );
+    }
+}
+
+#[test]
+fn compaction_merge_appends_parts_preserving_order_and_duplicates() {
+    let store = CountingStore::new();
+    let content = ContentContext {
+        store: &store,
+        scope: AuthorizedScope::new("scope"),
+    };
+    for after in [false, true] {
+        let request = request(&content, after);
+        let target = if after { "summary" } else { "instructions" };
+        let merge = json!({"type":"modify","target":target,"operation":"merge","value":parts("original\r\nλ")});
+        let staged = stage_boundary(&request, &[merge.clone(), merge], &content).unwrap();
+        let list = staged["event"][target].as_array().unwrap();
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0], list[1]);
+        assert_eq!(list[1], list[2]);
+        assert_eq!(
+            selected_text(&staged["event"][target], &content).unwrap(),
+            "original\r\nλoriginal\r\nλoriginal\r\nλ"
+        );
+        assert_eq!(store.writes(), 0);
+    }
+}
+
+struct NoAttachmentAccess;
+impl agenthooksprotocol::content::ContentAccess for NoAttachmentAccess {
+    fn resolve_selected(&self, _: &str, _: &Value) -> Result<Option<Arc<[u8]>>, UploadError> {
+        panic!("inline edits must not read attachments")
+    }
+    fn put(&self, _: &str, _: &[u8]) -> Result<Value, UploadError> {
+        panic!("inline edits must not upload attachments")
+    }
+}
+#[test]
+fn specialized_inline_edits_never_touch_attachment_access() {
+    let store = store();
+    let context = ContentContext {
+        store: &store,
+        scope: AuthorizedScope::new("scope"),
+    };
+    for after in [false, true] {
+        let request = request(&context, after);
+        let target = if after { "summary" } else { "instructions" };
+        let staged =
+            stage_boundary(&request, &[modify(target, "changed")], &NoAttachmentAccess).unwrap();
+        assert_eq!(staged["event"][target], parts("changed"));
     }
 }

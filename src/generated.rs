@@ -849,6 +849,446 @@ macro_rules! ahp_hooks_boundary_methods {
         }
     };
 }
+/// Source: schema/draft/content-item.schema.json#/$defs/attachmentBodyPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AttachmentBodyPart {
+    #[serde(rename = "body")]
+    pub body: Box<ContentReference>,
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: AttachmentBodyPartKind,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "selection")]
+    pub selection: AttachmentBodyPartSelection,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl AttachmentBodyPart {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        body: impl Into<Box<ContentReference>>,
+        id: impl Into<String>,
+        media_type: impl Into<String>,
+    ) -> Self {
+        Self {
+            body: body.into(),
+            category: Presence::Missing,
+            id: id.into(),
+            kind: Default::default(),
+            media_type: media_type.into(),
+            selection: Default::default(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+        self.body = value.into();
+        self
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
+        self.media_type = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentBodyPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"attachment\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "AttachmentBodyPart")]
+        struct Hydration {
+            #[serde(rename = "body")]
+            pub body: Box<ContentReference>,
+            #[serde(rename = "category")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub category: Presence<String>,
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "kind")]
+            pub kind: AttachmentBodyPartKind,
+            #[serde(rename = "mediaType")]
+            pub media_type: String,
+            #[serde(rename = "selection")]
+            pub selection: AttachmentBodyPartSelection,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/attachmentGapPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AttachmentGapPart {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: AttachmentGapPartGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: AttachmentGapPartKind,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "selection")]
+    pub selection: AttachmentGapPartSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl AttachmentGapPart {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        gap: impl Into<AttachmentGapPartGap>,
+        id: impl Into<String>,
+        media_type: impl Into<String>,
+    ) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: Default::default(),
+            media_type: media_type.into(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(mut self, value: impl Into<AttachmentGapPartGap>) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
+        self.media_type = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentGapPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"attachment\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "AttachmentGapPart")]
+        struct Hydration {
+            #[serde(rename = "category")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub category: Presence<String>,
+            #[serde(rename = "gap")]
+            pub gap: AttachmentGapPartGap,
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "kind")]
+            pub kind: AttachmentGapPartKind,
+            #[serde(rename = "mediaType")]
+            pub media_type: String,
+            #[serde(rename = "selection")]
+            pub selection: AttachmentGapPartSelection,
+            #[serde(rename = "sha256")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub sha256: Presence<String>,
+            #[serde(rename = "size")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub size: Presence<Integer>,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/attachmentMetadataPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AttachmentMetadataPart {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: AttachmentMetadataPartKind,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "selection")]
+    pub selection: AttachmentMetadataPartSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl AttachmentMetadataPart {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, media_type: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: Default::default(),
+            media_type: media_type.into(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
+        self.media_type = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentMetadataPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"attachment\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "AttachmentMetadataPart")]
+        struct Hydration {
+            #[serde(rename = "category")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub category: Presence<String>,
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "kind")]
+            pub kind: AttachmentMetadataPartKind,
+            #[serde(rename = "mediaType")]
+            pub media_type: String,
+            #[serde(rename = "selection")]
+            pub selection: AttachmentMetadataPartSelection,
+            #[serde(rename = "sha256")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub sha256: Presence<String>,
+            #[serde(rename = "size")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub size: Presence<Integer>,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/attachmentOmittedPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AttachmentOmittedPart {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: AttachmentOmittedPartKind,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    #[serde(rename = "selection")]
+    pub selection: AttachmentOmittedPartSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl AttachmentOmittedPart {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, media_type: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: Default::default(),
+            media_type: media_type.into(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
+        self.media_type = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentOmittedPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"attachment\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "AttachmentOmittedPart")]
+        struct Hydration {
+            #[serde(rename = "category")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub category: Presence<String>,
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "kind")]
+            pub kind: AttachmentOmittedPartKind,
+            #[serde(rename = "mediaType")]
+            pub media_type: String,
+            #[serde(rename = "selection")]
+            pub selection: AttachmentOmittedPartSelection,
+            #[serde(rename = "sha256")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub sha256: Presence<String>,
+            #[serde(rename = "size")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub size: Presence<Integer>,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
 /// Source: schema/draft/registration.schema.json#/$defs/authentication
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -964,6 +1404,126 @@ impl<'de> Deserialize<'de> for Backend {
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
         }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/message
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CanonicalMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "parts")]
+    pub parts: Vec<Box<ContentItem>>,
+    #[serde(rename = "role")]
+    pub role: CanonicalMessageRole,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl CanonicalMessage {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(
+        id: impl Into<String>,
+        parts: impl Into<Vec<Box<ContentItem>>>,
+        role: impl Into<CanonicalMessageRole>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            parts: parts.into(),
+            role: role.into(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_parts(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.parts = value.into();
+        self
+    }
+    pub fn with_role(mut self, value: impl Into<CanonicalMessageRole>) -> Self {
+        self.role = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for CanonicalMessage {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parts\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "CanonicalMessage")]
+        struct Hydration {
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "parts")]
+            pub parts: Vec<Box<ContentItem>>,
+            #[serde(rename = "role")]
+            pub role: CanonicalMessageRole,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/messages
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct CanonicalMessages(pub Vec<Box<CanonicalMessage>>);
+
+impl CanonicalMessages {
+    pub fn new(value: impl Into<Vec<Box<CanonicalMessage>>>) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<Vec<Box<CanonicalMessage>>> for CanonicalMessages {
+    fn from(value: Vec<Box<CanonicalMessage>>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl Deref for CanonicalMessages {
+    type Target = [Box<CanonicalMessage>];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for CanonicalMessages {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "CanonicalMessages")]
+        #[serde(transparent)]
+        struct Hydration(pub Vec<Box<CanonicalMessage>>);
 
         Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
     }
@@ -2123,33 +2683,109 @@ impl<'de> Deserialize<'de> for ConfigChangeBeforeEvent {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ContentItem {
-    Body(ContentItemBody),
-    BodyGap(ContentItemBodyGap),
-    Metadata(ContentItemMetadata),
-    Omit(ContentItemOmit),
+    TextBodyPart(Box<TextBodyPart>),
+    TextGapPart(Box<TextGapPart>),
+    TextTextPlainMetadata(Box<TextMetadataPart>),
+    TextTextPlainOmit(Box<TextOmittedPart>),
+    AttachmentBodyPart(Box<AttachmentBodyPart>),
+    AttachmentGapPart(Box<AttachmentGapPart>),
+    AttachmentMetadata(Box<AttachmentMetadataPart>),
+    AttachmentOmit(Box<AttachmentOmittedPart>),
 }
 
-impl From<ContentItemBody> for ContentItem {
-    fn from(value: ContentItemBody) -> Self {
-        Self::Body(value)
+impl From<Box<TextBodyPart>> for ContentItem {
+    fn from(value: Box<TextBodyPart>) -> Self {
+        Self::TextBodyPart(value)
     }
 }
 
-impl From<ContentItemBodyGap> for ContentItem {
-    fn from(value: ContentItemBodyGap) -> Self {
-        Self::BodyGap(value)
+impl From<TextBodyPart> for ContentItem {
+    fn from(value: TextBodyPart) -> Self {
+        Self::TextBodyPart(Box::new(value))
     }
 }
 
-impl From<ContentItemMetadata> for ContentItem {
-    fn from(value: ContentItemMetadata) -> Self {
-        Self::Metadata(value)
+impl From<Box<TextGapPart>> for ContentItem {
+    fn from(value: Box<TextGapPart>) -> Self {
+        Self::TextGapPart(value)
     }
 }
 
-impl From<ContentItemOmit> for ContentItem {
-    fn from(value: ContentItemOmit) -> Self {
-        Self::Omit(value)
+impl From<TextGapPart> for ContentItem {
+    fn from(value: TextGapPart) -> Self {
+        Self::TextGapPart(Box::new(value))
+    }
+}
+
+impl From<Box<TextMetadataPart>> for ContentItem {
+    fn from(value: Box<TextMetadataPart>) -> Self {
+        Self::TextTextPlainMetadata(value)
+    }
+}
+
+impl From<TextMetadataPart> for ContentItem {
+    fn from(value: TextMetadataPart) -> Self {
+        Self::TextTextPlainMetadata(Box::new(value))
+    }
+}
+
+impl From<Box<TextOmittedPart>> for ContentItem {
+    fn from(value: Box<TextOmittedPart>) -> Self {
+        Self::TextTextPlainOmit(value)
+    }
+}
+
+impl From<TextOmittedPart> for ContentItem {
+    fn from(value: TextOmittedPart) -> Self {
+        Self::TextTextPlainOmit(Box::new(value))
+    }
+}
+
+impl From<Box<AttachmentBodyPart>> for ContentItem {
+    fn from(value: Box<AttachmentBodyPart>) -> Self {
+        Self::AttachmentBodyPart(value)
+    }
+}
+
+impl From<AttachmentBodyPart> for ContentItem {
+    fn from(value: AttachmentBodyPart) -> Self {
+        Self::AttachmentBodyPart(Box::new(value))
+    }
+}
+
+impl From<Box<AttachmentGapPart>> for ContentItem {
+    fn from(value: Box<AttachmentGapPart>) -> Self {
+        Self::AttachmentGapPart(value)
+    }
+}
+
+impl From<AttachmentGapPart> for ContentItem {
+    fn from(value: AttachmentGapPart) -> Self {
+        Self::AttachmentGapPart(Box::new(value))
+    }
+}
+
+impl From<Box<AttachmentMetadataPart>> for ContentItem {
+    fn from(value: Box<AttachmentMetadataPart>) -> Self {
+        Self::AttachmentMetadata(value)
+    }
+}
+
+impl From<AttachmentMetadataPart> for ContentItem {
+    fn from(value: AttachmentMetadataPart) -> Self {
+        Self::AttachmentMetadata(Box::new(value))
+    }
+}
+
+impl From<Box<AttachmentOmittedPart>> for ContentItem {
+    fn from(value: Box<AttachmentOmittedPart>) -> Self {
+        Self::AttachmentOmit(value)
+    }
+}
+
+impl From<AttachmentOmittedPart> for ContentItem {
+    fn from(value: AttachmentOmittedPart) -> Self {
+        Self::AttachmentOmit(Box::new(value))
     }
 }
 
@@ -2158,7 +2794,7 @@ impl<'de> Deserialize<'de> for ContentItem {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]}",
+            "{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TextBodyPart\"},{\"kind\":\"ref\",\"name\":\"TextGapPart\"},{\"kind\":\"ref\",\"name\":\"TextMetadataPart\"},{\"kind\":\"ref\",\"name\":\"TextOmittedPart\"},{\"kind\":\"ref\",\"name\":\"AttachmentBodyPart\"},{\"kind\":\"ref\",\"name\":\"AttachmentGapPart\"},{\"kind\":\"ref\",\"name\":\"AttachmentMetadataPart\"},{\"kind\":\"ref\",\"name\":\"AttachmentOmittedPart\"}]}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -2166,10 +2802,14 @@ impl<'de> Deserialize<'de> for ContentItem {
         #[serde(remote = "ContentItem")]
         #[serde(untagged)]
         enum Hydration {
-            Body(ContentItemBody),
-            BodyGap(ContentItemBodyGap),
-            Metadata(ContentItemMetadata),
-            Omit(ContentItemOmit),
+            TextBodyPart(Box<TextBodyPart>),
+            TextGapPart(Box<TextGapPart>),
+            TextTextPlainMetadata(Box<TextMetadataPart>),
+            TextTextPlainOmit(Box<TextOmittedPart>),
+            AttachmentBodyPart(Box<AttachmentBodyPart>),
+            AttachmentGapPart(Box<AttachmentGapPart>),
+            AttachmentMetadata(Box<AttachmentMetadataPart>),
+            AttachmentOmit(Box<AttachmentOmittedPart>),
         }
 
         Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
@@ -2893,7 +3533,7 @@ impl<'de> Deserialize<'de> for Effect {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"DenyEffect\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"allow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"ask\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"replace\",\"merge\"],\"open_strings\":true}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"input\",\"output\",\"prompt\",\"request\",\"response\",\"content\",\"instructions\",\"summary\",\"workspace\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"modify\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"message\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"return\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stop\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"instruction\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"continue\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"append\"}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"inject\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]}",
+            "{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"DenyEffect\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"allow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"ask\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"replace\",\"merge\"],\"open_strings\":true}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"input\",\"output\",\"prompt\",\"request\",\"response\",\"content\",\"instructions\",\"summary\",\"workspace\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"modify\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"message\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"return\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stop\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"instruction\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"continue\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"append\"}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"inject\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"CanonicalMessages\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -4054,7 +4694,7 @@ pub struct ExecutionEventContextCompactAfter {
     #[serde(rename = "source")]
     pub source: String,
     #[serde(rename = "summary")]
-    pub summary: Box<ModelVisibleItem>,
+    pub summary: Box<TextParts>,
     #[serde(rename = "synthesized")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
     pub synthesized: Presence<bool>,
@@ -4080,7 +4720,7 @@ impl ExecutionEventContextCompactAfter {
         id: impl Into<String>,
         removed: impl Into<Vec<ExecutionEventContextCompactAfterRemovedItem>>,
         source: impl Into<String>,
-        summary: impl Into<Box<ModelVisibleItem>>,
+        summary: impl Into<Box<TextParts>>,
         time: impl Into<String>,
     ) -> Self {
         Self {
@@ -4149,7 +4789,7 @@ impl ExecutionEventContextCompactAfter {
         self.source = value.into();
         self
     }
-    pub fn with_summary(mut self, value: impl Into<Box<ModelVisibleItem>>) -> Self {
+    pub fn with_summary(mut self, value: impl Into<Box<TextParts>>) -> Self {
         self.summary = value.into();
         self
     }
@@ -4176,7 +4816,7 @@ impl<'de> Deserialize<'de> for ExecutionEventContextCompactAfter {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"removed\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"removed\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -4210,7 +4850,7 @@ impl<'de> Deserialize<'de> for ExecutionEventContextCompactAfter {
             #[serde(rename = "source")]
             pub source: String,
             #[serde(rename = "summary")]
-            pub summary: Box<ModelVisibleItem>,
+            pub summary: Box<TextParts>,
             #[serde(rename = "synthesized")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
             pub synthesized: Presence<bool>,
@@ -4245,7 +4885,7 @@ pub struct ExecutionEventContextCompactBefore {
     pub id: String,
     #[serde(rename = "instructions")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub instructions: Presence<Box<ContentItem>>,
+    pub instructions: Presence<Box<TextParts>>,
     #[serde(rename = "items")]
     pub items: Vec<Box<ModelVisibleItem>>,
     #[serde(rename = "native")]
@@ -4322,7 +4962,7 @@ impl ExecutionEventContextCompactBefore {
         self.id = value.into();
         self
     }
-    pub fn with_instructions(mut self, value: impl Into<Box<ContentItem>>) -> Self {
+    pub fn with_instructions(mut self, value: impl Into<Box<TextParts>>) -> Self {
         self.instructions = Presence::Present(value.into());
         self
     }
@@ -4376,7 +5016,7 @@ impl<'de> Deserialize<'de> for ExecutionEventContextCompactBefore {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"auto\",\"manual\",\"hook\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"any\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"auto\",\"manual\",\"hook\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"any\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -4393,7 +5033,7 @@ impl<'de> Deserialize<'de> for ExecutionEventContextCompactBefore {
             pub id: String,
             #[serde(rename = "instructions")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub instructions: Presence<Box<ContentItem>>,
+            pub instructions: Presence<Box<TextParts>>,
             #[serde(rename = "items")]
             pub items: Vec<Box<ModelVisibleItem>>,
             #[serde(rename = "native")]
@@ -8616,7 +9256,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserAttention {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attention\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.attention\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attention\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.attention\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -8670,7 +9310,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequest {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -8724,7 +9364,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationResult {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.result\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.result\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -8778,7 +9418,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserMessageInbound {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.inbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"user\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.inbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -8832,7 +9472,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserMessageOutbound {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"payload\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.outbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"assistant\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.outbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -11531,35 +12171,18 @@ impl<'de> Deserialize<'de> for ModelSwitchBeforeEvent {
 }
 /// Source: schema/draft/content-item.schema.json#/$defs/modelVisibleItem
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum ModelVisibleItem {
-    Body(ModelVisibleItemBody),
-    BodyGap(ModelVisibleItemBodyGap),
-    Metadata(ModelVisibleItemMetadata),
-    Omit(ModelVisibleItemOmit),
-}
+#[serde(transparent)]
+pub struct ModelVisibleItem(pub Box<CanonicalMessage>);
 
-impl From<ModelVisibleItemBody> for ModelVisibleItem {
-    fn from(value: ModelVisibleItemBody) -> Self {
-        Self::Body(value)
+impl ModelVisibleItem {
+    pub fn new(value: impl Into<Box<CanonicalMessage>>) -> Self {
+        Self(value.into())
     }
 }
 
-impl From<ModelVisibleItemBodyGap> for ModelVisibleItem {
-    fn from(value: ModelVisibleItemBodyGap) -> Self {
-        Self::BodyGap(value)
-    }
-}
-
-impl From<ModelVisibleItemMetadata> for ModelVisibleItem {
-    fn from(value: ModelVisibleItemMetadata) -> Self {
-        Self::Metadata(value)
-    }
-}
-
-impl From<ModelVisibleItemOmit> for ModelVisibleItem {
-    fn from(value: ModelVisibleItemOmit) -> Self {
-        Self::Omit(value)
+impl From<CanonicalMessage> for ModelVisibleItem {
+    fn from(value: CanonicalMessage) -> Self {
+        Self::new(value)
     }
 }
 
@@ -11568,19 +12191,14 @@ impl<'de> Deserialize<'de> for ModelVisibleItem {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
+            "{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
         #[derive(Deserialize)]
         #[serde(remote = "ModelVisibleItem")]
-        #[serde(untagged)]
-        enum Hydration {
-            Body(ModelVisibleItemBody),
-            BodyGap(ModelVisibleItemBodyGap),
-            Metadata(ModelVisibleItemMetadata),
-            Omit(ModelVisibleItemOmit),
-        }
+        #[serde(transparent)]
+        struct Hydration(pub Box<CanonicalMessage>);
 
         Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
     }
@@ -13158,7 +13776,7 @@ impl<'de> Deserialize<'de> for TaskWorkspaceEventFileChanged {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"changes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"file.changed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"changes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"file.changed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -13911,6 +14529,543 @@ impl<'de> Deserialize<'de> for TaskWorkspaceEventWorkspaceChangeBefore {
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
         }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/textBodyPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TextBodyPart {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: TextBodyPartKind,
+    #[serde(rename = "mediaType")]
+    pub media_type: TextBodyPartMediaType,
+    #[serde(rename = "selection")]
+    pub selection: TextBodyPartSelection,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    #[serde(rename = "text")]
+    pub text: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TextBodyPart {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: Default::default(),
+            media_type: Default::default(),
+            selection: Default::default(),
+            synthesized: Presence::Missing,
+            text: text.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+    pub fn with_text(mut self, value: impl Into<String>) -> Self {
+        self.text = value.into();
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for TextBodyPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text/plain\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "TextBodyPart")]
+        struct Hydration {
+            #[serde(rename = "category")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub category: Presence<String>,
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "kind")]
+            pub kind: TextBodyPartKind,
+            #[serde(rename = "mediaType")]
+            pub media_type: TextBodyPartMediaType,
+            #[serde(rename = "selection")]
+            pub selection: TextBodyPartSelection,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            #[serde(rename = "text")]
+            pub text: String,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/textGapPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TextGapPart {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "gap")]
+    pub gap: TextGapPartGap,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: TextGapPartKind,
+    #[serde(rename = "mediaType")]
+    pub media_type: TextGapPartMediaType,
+    #[serde(rename = "selection")]
+    pub selection: TextGapPartSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TextGapPart {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(gap: impl Into<TextGapPartGap>, id: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            gap: gap.into(),
+            id: id.into(),
+            kind: Default::default(),
+            media_type: Default::default(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_gap(mut self, value: impl Into<TextGapPartGap>) -> Self {
+        self.gap = value.into();
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for TextGapPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text/plain\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "TextGapPart")]
+        struct Hydration {
+            #[serde(rename = "category")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub category: Presence<String>,
+            #[serde(rename = "gap")]
+            pub gap: TextGapPartGap,
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "kind")]
+            pub kind: TextGapPartKind,
+            #[serde(rename = "mediaType")]
+            pub media_type: TextGapPartMediaType,
+            #[serde(rename = "selection")]
+            pub selection: TextGapPartSelection,
+            #[serde(rename = "sha256")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub sha256: Presence<String>,
+            #[serde(rename = "size")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub size: Presence<Integer>,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/textMetadataPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TextMetadataPart {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: TextMetadataPartKind,
+    #[serde(rename = "mediaType")]
+    pub media_type: TextMetadataPartMediaType,
+    #[serde(rename = "selection")]
+    pub selection: TextMetadataPartSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TextMetadataPart {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: Default::default(),
+            media_type: Default::default(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for TextMetadataPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text/plain\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "TextMetadataPart")]
+        struct Hydration {
+            #[serde(rename = "category")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub category: Presence<String>,
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "kind")]
+            pub kind: TextMetadataPartKind,
+            #[serde(rename = "mediaType")]
+            pub media_type: TextMetadataPartMediaType,
+            #[serde(rename = "selection")]
+            pub selection: TextMetadataPartSelection,
+            #[serde(rename = "sha256")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub sha256: Presence<String>,
+            #[serde(rename = "size")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub size: Presence<Integer>,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/textOmittedPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TextOmittedPart {
+    #[serde(rename = "category")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub category: Presence<String>,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "kind")]
+    pub kind: TextOmittedPartKind,
+    #[serde(rename = "mediaType")]
+    pub media_type: TextOmittedPartMediaType,
+    #[serde(rename = "selection")]
+    pub selection: TextOmittedPartSelection,
+    #[serde(rename = "sha256")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub sha256: Presence<String>,
+    #[serde(rename = "size")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub size: Presence<Integer>,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TextOmittedPart {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            category: Presence::Missing,
+            id: id.into(),
+            kind: Default::default(),
+            media_type: Default::default(),
+            selection: Default::default(),
+            sha256: Presence::Missing,
+            size: Presence::Missing,
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_category(mut self, value: impl Into<String>) -> Self {
+        self.category = Presence::Present(value.into());
+        self
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
+        self.sha256 = Presence::Present(value.into());
+        self
+    }
+    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
+        self.size = Presence::Present(value.into());
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for TextOmittedPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text/plain\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "TextOmittedPart")]
+        struct Hydration {
+            #[serde(rename = "category")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub category: Presence<String>,
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "kind")]
+            pub kind: TextOmittedPartKind,
+            #[serde(rename = "mediaType")]
+            pub media_type: TextOmittedPartMediaType,
+            #[serde(rename = "selection")]
+            pub selection: TextOmittedPartSelection,
+            #[serde(rename = "sha256")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub sha256: Presence<String>,
+            #[serde(rename = "size")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub size: Presence<Integer>,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/textPart
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum TextPart {
+    TextBodyPart(Box<TextBodyPart>),
+    TextGapPart(Box<TextGapPart>),
+    TextTextPlainMetadata(Box<TextMetadataPart>),
+    TextTextPlainOmit(Box<TextOmittedPart>),
+}
+
+impl From<Box<TextBodyPart>> for TextPart {
+    fn from(value: Box<TextBodyPart>) -> Self {
+        Self::TextBodyPart(value)
+    }
+}
+
+impl From<TextBodyPart> for TextPart {
+    fn from(value: TextBodyPart) -> Self {
+        Self::TextBodyPart(Box::new(value))
+    }
+}
+
+impl From<Box<TextGapPart>> for TextPart {
+    fn from(value: Box<TextGapPart>) -> Self {
+        Self::TextGapPart(value)
+    }
+}
+
+impl From<TextGapPart> for TextPart {
+    fn from(value: TextGapPart) -> Self {
+        Self::TextGapPart(Box::new(value))
+    }
+}
+
+impl From<Box<TextMetadataPart>> for TextPart {
+    fn from(value: Box<TextMetadataPart>) -> Self {
+        Self::TextTextPlainMetadata(value)
+    }
+}
+
+impl From<TextMetadataPart> for TextPart {
+    fn from(value: TextMetadataPart) -> Self {
+        Self::TextTextPlainMetadata(Box::new(value))
+    }
+}
+
+impl From<Box<TextOmittedPart>> for TextPart {
+    fn from(value: Box<TextOmittedPart>) -> Self {
+        Self::TextTextPlainOmit(value)
+    }
+}
+
+impl From<TextOmittedPart> for TextPart {
+    fn from(value: TextOmittedPart) -> Self {
+        Self::TextTextPlainOmit(Box::new(value))
+    }
+}
+
+impl<'de> Deserialize<'de> for TextPart {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TextBodyPart\"},{\"kind\":\"ref\",\"name\":\"TextGapPart\"},{\"kind\":\"ref\",\"name\":\"TextMetadataPart\"},{\"kind\":\"ref\",\"name\":\"TextOmittedPart\"}]}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "TextPart")]
+        #[serde(untagged)]
+        enum Hydration {
+            TextBodyPart(Box<TextBodyPart>),
+            TextGapPart(Box<TextGapPart>),
+            TextTextPlainMetadata(Box<TextMetadataPart>),
+            TextTextPlainOmit(Box<TextOmittedPart>),
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Source: schema/draft/content-item.schema.json#/$defs/textParts
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct TextParts(pub Vec<Box<TextPart>>);
+
+impl TextParts {
+    pub fn new(value: impl Into<Vec<Box<TextPart>>>) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<Vec<Box<TextPart>>> for TextParts {
+    fn from(value: Vec<Box<TextPart>>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl Deref for TextParts {
+    type Target = [Box<TextPart>];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for TextParts {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"TextPart\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "TextParts")]
+        #[serde(transparent)]
+        struct Hydration(pub Vec<Box<TextPart>>);
 
         Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
     }
@@ -17062,6 +18217,266 @@ pub mod ergonomic_inputs {
         pub path: Vec<String>,
         pub source: S,
     }
+
+    // Identity is assigned once at construction and retained by the owned input.
+    fn host_identity() -> String {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        format!("ahp-host-{epoch:x}-{sequence:x}")
+    }
+    fn host_error(message: &str) -> serde_json::Error {
+        <serde_json::Error as serde::ser::Error>::custom(message)
+    }
+    fn validate_host_identity(value: &serde_json::Value) -> Result<(), serde_json::Error> {
+        if value
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(|id| id.is_empty())
+        {
+            return Err(host_error("host identity must be nonempty"));
+        }
+        if value
+            .get("category")
+            .is_some_and(|category| category.as_str().is_none_or(|s| s.is_empty()))
+        {
+            return Err(host_error("host category must be nonempty"));
+        }
+        Ok(())
+    }
+    fn validate_host_part(value: &serde_json::Value) -> Result<(), serde_json::Error> {
+        validate_host_identity(value)?;
+        if value["kind"] == "attachment" {
+            let media = value["mediaType"]
+                .as_str()
+                .ok_or_else(|| host_error("attachment mediaType must be a string"))?;
+            let lower = media.to_ascii_lowercase();
+            let base = lower.split(';').next().unwrap_or("");
+            let subtype = base.split_once('/').map(|(_, subtype)| subtype);
+            if media.is_empty()
+                || lower.starts_with("text/")
+                || subtype.is_some_and(|s| s == "json" || s.ends_with("+json"))
+            {
+                return Err(host_error(
+                    "attachment mediaType must identify non-text, non-JSON media",
+                ));
+            }
+        }
+        let _: ContentItem = serde_json::from_value(value.clone())?;
+        Ok(())
+    }
+    /// Owned host parts. Projection never serializes or opens S.
+    pub enum PartInput<S> {
+        Wire(ContentItem),
+        Text(TextBodyPart),
+        Attachment {
+            metadata: AttachmentBodyPart,
+            body: S,
+        },
+    }
+    impl<S> PartInput<S> {
+        pub fn text(value: TextBodyPart) -> Self {
+            Self::Text(value)
+        }
+        pub fn inline_text(text: impl Into<String>) -> Self {
+            Self::text(TextBodyPart::new(host_identity(), text).with_synthesized(true))
+        }
+        pub fn owned(body: S, media_type: impl Into<String>) -> Self {
+            Self::synthesized_attachment(host_identity(), media_type, body)
+        }
+        /// Preserve metadata, replacing only the reference during runtime planning.
+        pub fn attachment(metadata: AttachmentBodyPart, body: S) -> Self {
+            Self::Attachment { metadata, body }
+        }
+        /// Direct owned attachment construction without a wire reference.
+        pub fn owned_attachment(
+            id: impl Into<String>,
+            media_type: impl Into<String>,
+            body: S,
+        ) -> Self {
+            Self::attachment(
+                AttachmentBodyPart::new(ContentReference::new("ahp:host-pending"), id, media_type),
+                body,
+            )
+        }
+        /// Caller supplies a stable identity deliberately when host identity is absent.
+        pub fn synthesized_attachment(
+            id: impl Into<String>,
+            media_type: impl Into<String>,
+            body: S,
+        ) -> Self {
+            Self::attachment(
+                AttachmentBodyPart::new(ContentReference::new("ahp:host-pending"), id, media_type)
+                    .with_synthesized(true),
+                body,
+            )
+        }
+        fn project(
+            self,
+            path: Vec<String>,
+            sources: &mut Vec<ContentSourceBinding<S>>,
+        ) -> Result<serde_json::Value, serde_json::Error> {
+            match self {
+                Self::Wire(value) => {
+                    let value = serde_json::to_value(value)?;
+                    validate_host_part(&value)?;
+                    Ok(value)
+                }
+                Self::Text(value) => {
+                    let value = serde_json::to_value(value)?;
+                    validate_host_part(&value)?;
+                    Ok(value)
+                }
+                Self::Attachment { metadata, body } => {
+                    let mut value = serde_json::to_value(metadata)?;
+                    if value["kind"] != "attachment" || value["selection"] != "body" {
+                        return Err(host_error(
+                            "owned attachment requires kind attachment and selection body",
+                        ));
+                    }
+                    value["body"] = serde_json::json!({"ref":"ahp:host-pending"});
+                    validate_host_part(&value)?;
+                    sources.push(ContentSourceBinding { path, source: body });
+                    Ok(value)
+                }
+            }
+        }
+    }
+    pub struct MessageInput<S> {
+        pub metadata: CanonicalMessage,
+        pub parts: Vec<PartInput<S>>,
+    }
+    impl<S> MessageInput<S> {
+        pub fn from_parts(role: CanonicalMessageRole, parts: Vec<PartInput<S>>) -> Self {
+            Self::synthesized(host_identity(), role, parts)
+        }
+        pub fn new(
+            id: impl Into<String>,
+            role: CanonicalMessageRole,
+            parts: Vec<PartInput<S>>,
+        ) -> Self {
+            Self {
+                metadata: CanonicalMessage::new(id, Vec::new(), role),
+                parts,
+            }
+        }
+        pub fn synthesized(
+            id: impl Into<String>,
+            role: CanonicalMessageRole,
+            parts: Vec<PartInput<S>>,
+        ) -> Self {
+            let mut value = Self::new(id, role, parts);
+            value.metadata = value.metadata.with_synthesized(true);
+            value
+        }
+        fn project(
+            self,
+            path: Vec<String>,
+            sources: &mut Vec<ContentSourceBinding<S>>,
+        ) -> Result<serde_json::Value, serde_json::Error> {
+            let mut value = serde_json::to_value(self.metadata)?;
+            let mut part_path = path;
+            part_path.push("parts".into());
+            value["parts"] = project_parts(self.parts, part_path, sources)?;
+            validate_host_identity(&value)?;
+            let _: CanonicalMessage = serde_json::from_value(value.clone())?;
+            Ok(value)
+        }
+    }
+    fn project_parts<S>(
+        parts: Vec<PartInput<S>>,
+        path: Vec<String>,
+        sources: &mut Vec<ContentSourceBinding<S>>,
+    ) -> Result<serde_json::Value, serde_json::Error> {
+        let mut values = Vec::new();
+        for (index, part) in parts.into_iter().enumerate() {
+            let mut child = path.clone();
+            child.push(index.to_string());
+            values.push(part.project(child, sources)?);
+        }
+        Ok(serde_json::Value::Array(values))
+    }
+    #[allow(dead_code)]
+    enum HostReplacement<S> {
+        Messages(Vec<MessageInput<S>>),
+        Message(MessageInput<S>),
+        Parts(Vec<PartInput<S>>),
+        Part(PartInput<S>),
+    }
+    /// Envelope around unchanged typed event facts; builders exist only for schema-owned slots.
+    pub struct HostInput<I, S> {
+        pub input: I,
+        replacements: Vec<(Vec<String>, HostReplacement<S>)>,
+    }
+    /// Consuming runtime projection with no Serialize, Clone, IO or upload bound on S.
+    #[doc(hidden)]
+    pub trait ProjectHostInput<S> {
+        fn into_host_event(
+            self,
+        ) -> Result<(serde_json::Value, Vec<ContentSourceBinding<S>>), serde_json::Error>;
+    }
+    #[doc(hidden)]
+    pub trait EventInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error>;
+    }
+    impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
+        fn into_host_event(
+            self,
+        ) -> Result<(serde_json::Value, Vec<ContentSourceBinding<S>>), serde_json::Error> {
+            let mut event = self.input.event_value()?;
+            let mut sources = Vec::new();
+            for (path, replacement) in self.replacements {
+                sources
+                    .retain(|binding: &ContentSourceBinding<S>| !binding.path.starts_with(&path));
+                let value = match replacement {
+                    HostReplacement::Message(message) => {
+                        message.project(path.clone(), &mut sources)?
+                    }
+                    HostReplacement::Messages(messages) => {
+                        let mut values = Vec::new();
+                        for (index, message) in messages.into_iter().enumerate() {
+                            let mut child = path.clone();
+                            child.push(index.to_string());
+                            values.push(message.project(child, &mut sources)?);
+                        }
+                        serde_json::Value::Array(values)
+                    }
+                    HostReplacement::Parts(parts) => {
+                        project_parts(parts, path.clone(), &mut sources)?
+                    }
+                    HostReplacement::Part(part) => part.project(path.clone(), &mut sources)?,
+                };
+                let mut target = &mut event;
+                for component in path {
+                    if target.is_array() {
+                        let index: usize = component.parse().map_err(|_| {
+                            <serde_json::Error as serde::ser::Error>::custom(
+                                "invalid host array index",
+                            )
+                        })?;
+                        target = target.get_mut(index).ok_or_else(|| {
+                            <serde_json::Error as serde::ser::Error>::custom(
+                                "host array index out of bounds",
+                            )
+                        })?;
+                    } else {
+                        if target.is_null() {
+                            *target = serde_json::json!({});
+                        }
+                        if !target.is_object() {
+                            return Err(host_error("host slot parent must be an object or array"));
+                        }
+                        target = &mut target[component];
+                    }
+                }
+                *target = value;
+            }
+            Ok((event, sources))
+        }
+    }
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct ConfigChangeAfterInput {
         #[serde(rename = "change")]
@@ -17194,6 +18609,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl EventInput for ConfigChangeAfterInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl ConfigChangeAfterInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<ConfigChangeAfterInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod config_change_after_sources {
@@ -17339,6 +18774,26 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl EventInput for ConfigChangeBeforeInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl ConfigChangeBeforeInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<ConfigChangeBeforeInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
     pub mod config_change_before_sources {
         use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
@@ -17377,7 +18832,7 @@ pub mod ergonomic_inputs {
         #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
         pub session: Option<Box<Session>>,
         #[serde(rename = "summary")]
-        pub summary: Box<ModelVisibleItem>,
+        pub summary: Box<TextParts>,
         #[serde(
             rename = "synthesized",
             default,
@@ -17400,7 +18855,7 @@ pub mod ergonomic_inputs {
         pub fn new(
             execution: Box<ExecutionEventExecution>,
             removed: Vec<ContextCompactAfterInputRemovedItem>,
-            summary: Box<ModelVisibleItem>,
+            summary: Box<TextParts>,
         ) -> Self {
             Self {
                 execution,
@@ -17512,21 +18967,27 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod context_compact_after_sources {
-        use super::ContentSourceBinding;
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
-                source,
-            }
+    impl EventInput for ContextCompactAfterInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
         }
-        pub fn summary<S>(source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["summary".to_owned()],
-                source,
+    }
+    impl ContextCompactAfterInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
     }
+    impl<S> HostInput<ContextCompactAfterInput, S> {
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
+    pub mod context_compact_after_sources {}
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct ContextCompactBeforeInput {
         #[serde(
@@ -17544,7 +19005,7 @@ pub mod ergonomic_inputs {
             default,
             skip_serializing_if = "Option::is_none"
         )]
-        pub instructions: Option<Box<ContentItem>>,
+        pub instructions: Option<Box<TextParts>>,
         #[serde(rename = "items")]
         pub items: Vec<Box<ModelVisibleItem>>,
         #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
@@ -17610,7 +19071,7 @@ pub mod ergonomic_inputs {
             self.id = Some(value);
             self
         }
-        pub fn with_instructions(mut self, value: Box<ContentItem>) -> Self {
+        pub fn with_instructions(mut self, value: Box<TextParts>) -> Self {
             self.instructions = Some(value);
             self
         }
@@ -17688,21 +19149,27 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod context_compact_before_sources {
-        use super::ContentSourceBinding;
-        pub fn instructions<S>(source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["instructions".to_owned()],
-                source,
-            }
+    impl EventInput for ContextCompactBeforeInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
         }
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
-                source,
+    }
+    impl ContextCompactBeforeInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
     }
+    impl<S> HostInput<ContextCompactBeforeInput, S> {
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
+    pub mod context_compact_before_sources {}
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct FileChangedInput {
         #[serde(rename = "changes")]
@@ -17837,8 +19304,62 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl EventInput for FileChangedInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl FileChangedInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<FileChangedInput, S> {
+        pub fn with_changes_after(mut self, index_0: usize, value: PartInput<S>) -> Self {
+            self.replacements.push((
+                vec![
+                    "changes".to_owned(),
+                    index_0.to_string(),
+                    "after".to_owned(),
+                ],
+                HostReplacement::Part(value),
+            ));
+            self
+        }
+        pub fn with_changes_before(mut self, index_0: usize, value: PartInput<S>) -> Self {
+            self.replacements.push((
+                vec![
+                    "changes".to_owned(),
+                    index_0.to_string(),
+                    "before".to_owned(),
+                ],
+                HostReplacement::Part(value),
+            ));
+            self
+        }
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
     pub mod file_changed_sources {
         use super::ContentSourceBinding;
+        pub fn changes_after<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["changes".to_owned(), index.to_string(), "after".to_owned()],
+                source,
+            }
+        }
+        pub fn changes_before<S>(index: usize, source: S) -> ContentSourceBinding<S> {
+            ContentSourceBinding {
+                path: vec!["changes".to_owned(), index.to_string(), "before".to_owned()],
+                source,
+            }
+        }
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
             ContentSourceBinding {
                 path: vec!["items".to_owned(), index.to_string()],
@@ -17970,6 +19491,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl EventInput for HookFailureInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl HookFailureInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<HookFailureInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod hook_failure_sources {
@@ -18168,6 +19709,26 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl EventInput for ModelErrorInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl ModelErrorInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<ModelErrorInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
     pub mod model_error_sources {
         use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
@@ -18324,15 +19885,27 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod model_request_before_sources {
-        use super::ContentSourceBinding;
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
-                source,
+    impl EventInput for ModelRequestBeforeInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl ModelRequestBeforeInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
     }
+    impl<S> HostInput<ModelRequestBeforeInput, S> {
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
+    pub mod model_request_before_sources {}
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct ModelResponseAfterInput {
         #[serde(rename = "attempt")]
@@ -18507,15 +20080,27 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod model_response_after_sources {
-        use super::ContentSourceBinding;
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
-                source,
+    impl EventInput for ModelResponseAfterInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl ModelResponseAfterInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
     }
+    impl<S> HostInput<ModelResponseAfterInput, S> {
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
+    pub mod model_response_after_sources {}
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct ModelSwitchAfterInput {
         #[serde(rename = "current")]
@@ -18664,6 +20249,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl EventInput for ModelSwitchAfterInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl ModelSwitchAfterInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<ModelSwitchAfterInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod model_switch_after_sources {
@@ -18835,6 +20440,26 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl EventInput for ModelSwitchBeforeInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl ModelSwitchBeforeInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<ModelSwitchBeforeInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
     pub mod model_switch_before_sources {
         use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
@@ -18988,6 +20613,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl EventInput for SessionEndInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl SessionEndInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<SessionEndInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod session_end_sources {
@@ -19157,15 +20802,27 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod session_start_sources {
-        use super::ContentSourceBinding;
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
-                source,
+    impl EventInput for SessionStartInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl SessionStartInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
     }
+    impl<S> HostInput<SessionStartInput, S> {
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
+    pub mod session_start_sources {}
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct TaskChangeAfterInput {
         #[serde(
@@ -19298,6 +20955,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl EventInput for TaskChangeAfterInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl TaskChangeAfterInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<TaskChangeAfterInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod task_change_after_sources {
@@ -19441,6 +21118,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl EventInput for TaskChangeBeforeInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl TaskChangeBeforeInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<TaskChangeBeforeInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod task_change_before_sources {
@@ -19730,6 +21427,48 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl<T: serde::Serialize> EventInput for ToolAfterInput<T> {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl<T: serde::Serialize> ToolAfterInput<T> {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<T: serde::Serialize, S> HostInput<ToolAfterInput<T>, S> {
+        pub fn with_file_changes_after(mut self, index_0: usize, value: PartInput<S>) -> Self {
+            self.replacements.push((
+                vec![
+                    "fileChanges".to_owned(),
+                    index_0.to_string(),
+                    "after".to_owned(),
+                ],
+                HostReplacement::Part(value),
+            ));
+            self
+        }
+        pub fn with_file_changes_before(mut self, index_0: usize, value: PartInput<S>) -> Self {
+            self.replacements.push((
+                vec![
+                    "fileChanges".to_owned(),
+                    index_0.to_string(),
+                    "before".to_owned(),
+                ],
+                HostReplacement::Part(value),
+            ));
+            self
+        }
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
     pub mod tool_after_sources {
         use super::ContentSourceBinding;
         pub fn file_changes_after<S>(index: usize, source: S) -> ContentSourceBinding<S> {
@@ -19749,12 +21488,6 @@ pub mod ergonomic_inputs {
                     index.to_string(),
                     "before".to_owned(),
                 ],
-                source,
-            }
-        }
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
                 source,
             }
         }
@@ -19900,6 +21633,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl EventInput for ToolBatchAfterInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl ToolBatchAfterInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<ToolBatchAfterInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod tool_batch_after_sources {
@@ -20138,6 +21891,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl<T: serde::Serialize> EventInput for ToolBeforeInput<T> {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl<T: serde::Serialize> ToolBeforeInput<T> {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<T: serde::Serialize, S> HostInput<ToolBeforeInput<T>, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod tool_before_sources {
@@ -20392,6 +22165,26 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl<T: serde::Serialize> EventInput for ToolPermissionRequestInput<T> {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl<T: serde::Serialize> ToolPermissionRequestInput<T> {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<T: serde::Serialize, S> HostInput<ToolPermissionRequestInput<T>, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
     pub mod tool_permission_request_sources {
         use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
@@ -20642,6 +22435,26 @@ pub mod ergonomic_inputs {
                 event["turn"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl<T: serde::Serialize> EventInput for ToolPermissionResolvedInput<T> {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl<T: serde::Serialize> ToolPermissionResolvedInput<T> {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<T: serde::Serialize, S> HostInput<ToolPermissionResolvedInput<T>, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod tool_permission_resolved_sources {
@@ -20896,17 +22709,38 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl<T: serde::Serialize> EventInput for ToolProgressInput<T> {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl<T: serde::Serialize> ToolProgressInput<T> {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<T: serde::Serialize, S> HostInput<ToolProgressInput<T>, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+        pub fn with_partial_output(mut self, value: MessageInput<S>) -> Self {
+            self.replacements.push((
+                vec!["partialOutput".to_owned()],
+                HostReplacement::Message(value),
+            ));
+            self
+        }
+    }
     pub mod tool_progress_sources {
         use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
             ContentSourceBinding {
                 path: vec!["items".to_owned(), index.to_string()],
-                source,
-            }
-        }
-        pub fn partial_output<S>(source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["partialOutput".to_owned()],
                 source,
             }
         }
@@ -21082,15 +22916,27 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod turn_end_sources {
-        use super::ContentSourceBinding;
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
-                source,
+    impl EventInput for TurnEndInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl TurnEndInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
     }
+    impl<S> HostInput<TurnEndInput, S> {
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
+    pub mod turn_end_sources {}
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct TurnFinishBeforeInput {
         #[serde(rename = "continuationCount")]
@@ -21255,15 +23101,27 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod turn_finish_before_sources {
-        use super::ContentSourceBinding;
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
-                source,
+    impl EventInput for TurnFinishBeforeInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl TurnFinishBeforeInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
     }
+    impl<S> HostInput<TurnFinishBeforeInput, S> {
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
+    pub mod turn_finish_before_sources {}
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct TurnProgressInput {
         #[serde(rename = "delta")]
@@ -21411,14 +23269,33 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod turn_progress_sources {
-        use super::ContentSourceBinding;
-        pub fn delta<S>(source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["delta".to_owned()],
-                source,
+    impl EventInput for TurnProgressInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl TurnProgressInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
+    }
+    impl<S> HostInput<TurnProgressInput, S> {
+        pub fn with_delta(mut self, value: MessageInput<S>) -> Self {
+            self.replacements
+                .push((vec!["delta".to_owned()], HostReplacement::Message(value)));
+            self
+        }
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
+    pub mod turn_progress_sources {
+        use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
             ContentSourceBinding {
                 path: vec!["items".to_owned(), index.to_string()],
@@ -21570,15 +23447,27 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod turn_start_sources {
-        use super::ContentSourceBinding;
-        pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["items".to_owned(), index.to_string()],
-                source,
+    impl EventInput for TurnStartInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl TurnStartInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
     }
+    impl<S> HostInput<TurnStartInput, S> {
+        pub fn with_items(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Messages(value)));
+            self
+        }
+    }
+    pub mod turn_start_sources {}
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct UserAttentionInput {
         #[serde(rename = "attention")]
@@ -21713,28 +23602,28 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl EventInput for UserAttentionInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl UserAttentionInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<UserAttentionInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
     pub mod user_attention_sources {
         use super::ContentSourceBinding;
-        pub fn attention_message<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec![
-                    "attention".to_owned(),
-                    "message".to_owned(),
-                    index.to_string(),
-                ],
-                source,
-            }
-        }
-        pub fn attention_title<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec![
-                    "attention".to_owned(),
-                    "title".to_owned(),
-                    index.to_string(),
-                ],
-                source,
-            }
-        }
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
             ContentSourceBinding {
                 path: vec!["items".to_owned(), index.to_string()],
@@ -21876,14 +23765,28 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod user_elicitation_request_sources {
-        use super::ContentSourceBinding;
-        pub fn elicitation_request<S>(source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["elicitation".to_owned(), "request".to_owned()],
-                source,
+    impl EventInput for UserElicitationRequestInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl UserElicitationRequestInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
+    }
+    impl<S> HostInput<UserElicitationRequestInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
+    pub mod user_elicitation_request_sources {
+        use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
             ContentSourceBinding {
                 path: vec!["items".to_owned(), index.to_string()],
@@ -22025,14 +23928,28 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
-    pub mod user_elicitation_result_sources {
-        use super::ContentSourceBinding;
-        pub fn elicitation_result<S>(source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["elicitation".to_owned(), "result".to_owned()],
-                source,
+    impl EventInput for UserElicitationResultInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl UserElicitationResultInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
             }
         }
+    }
+    impl<S> HostInput<UserElicitationResultInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
+    pub mod user_elicitation_result_sources {
+        use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
             ContentSourceBinding {
                 path: vec!["items".to_owned(), index.to_string()],
@@ -22174,17 +24091,38 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl EventInput for UserMessageInboundInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl UserMessageInboundInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<UserMessageInboundInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+        pub fn with_message_messages(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements.push((
+                vec!["message".to_owned(), "messages".to_owned()],
+                HostReplacement::Messages(value),
+            ));
+            self
+        }
+    }
     pub mod user_message_inbound_sources {
         use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
             ContentSourceBinding {
                 path: vec!["items".to_owned(), index.to_string()],
-                source,
-            }
-        }
-        pub fn message_text<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec!["message".to_owned(), "text".to_owned(), index.to_string()],
                 source,
             }
         }
@@ -22323,21 +24261,38 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl EventInput for UserMessageOutboundInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl UserMessageOutboundInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<UserMessageOutboundInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+        pub fn with_message_messages(mut self, value: Vec<MessageInput<S>>) -> Self {
+            self.replacements.push((
+                vec!["message".to_owned(), "messages".to_owned()],
+                HostReplacement::Messages(value),
+            ));
+            self
+        }
+    }
     pub mod user_message_outbound_sources {
         use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
             ContentSourceBinding {
                 path: vec!["items".to_owned(), index.to_string()],
-                source,
-            }
-        }
-        pub fn message_payload<S>(index: usize, source: S) -> ContentSourceBinding<S> {
-            ContentSourceBinding {
-                path: vec![
-                    "message".to_owned(),
-                    "payload".to_owned(),
-                    index.to_string(),
-                ],
                 source,
             }
         }
@@ -22474,6 +24429,26 @@ pub mod ergonomic_inputs {
                 event["workspace"] = value.clone();
             }
             Ok(event)
+        }
+    }
+    impl EventInput for WorkspaceChangeAfterInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl WorkspaceChangeAfterInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<WorkspaceChangeAfterInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
         }
     }
     pub mod workspace_change_after_sources {
@@ -22619,6 +24594,26 @@ pub mod ergonomic_inputs {
             Ok(event)
         }
     }
+    impl EventInput for WorkspaceChangeBeforeInput {
+        fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+            self.to_event_value()
+        }
+    }
+    impl WorkspaceChangeBeforeInput {
+        pub fn with_sources<S>(self) -> HostInput<Self, S> {
+            HostInput {
+                input: self,
+                replacements: Vec::new(),
+            }
+        }
+    }
+    impl<S> HostInput<WorkspaceChangeBeforeInput, S> {
+        pub fn with_items(mut self, value: Vec<PartInput<S>>) -> Self {
+            self.replacements
+                .push((vec!["items".to_owned()], HostReplacement::Parts(value)));
+            self
+        }
+    }
     pub mod workspace_change_before_sources {
         use super::ContentSourceBinding;
         pub fn items<S>(index: usize, source: S) -> ContentSourceBinding<S> {
@@ -22748,7 +24743,7 @@ pub mod effects {
     }
     pub fn inject_append(
         deliver_at: EffectInjectAppendContextDeliverAt,
-        value: JsonValue,
+        value: Box<CanonicalMessages>,
     ) -> Effect {
         EffectInjectAppendContext::new(deliver_at, value).into()
     }
@@ -23410,6 +25405,343 @@ pub mod capability {
 }
 /// Inline schema model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttachmentBodyPartKind;
+
+impl AttachmentBodyPartKind {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AttachmentBodyPartKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"attachment\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentBodyPartKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"attachment\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"attachment\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttachmentBodyPartSelection;
+
+impl AttachmentBodyPartSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AttachmentBodyPartSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentBodyPartSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AttachmentGapPartGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl AttachmentGapPartGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentGapPartGap {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "AttachmentGapPartGap")]
+        struct Hydration {
+            #[serde(rename = "path")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub path: Presence<String>,
+            #[serde(rename = "reason")]
+            pub reason: String,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttachmentGapPartKind;
+
+impl AttachmentGapPartKind {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AttachmentGapPartKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"attachment\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentGapPartKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"attachment\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"attachment\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttachmentGapPartSelection;
+
+impl AttachmentGapPartSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AttachmentGapPartSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentGapPartSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttachmentMetadataPartKind;
+
+impl AttachmentMetadataPartKind {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AttachmentMetadataPartKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"attachment\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentMetadataPartKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"attachment\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"attachment\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttachmentMetadataPartSelection;
+
+impl AttachmentMetadataPartSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AttachmentMetadataPartSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentMetadataPartSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttachmentOmittedPartKind;
+
+impl AttachmentOmittedPartKind {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AttachmentOmittedPartKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"attachment\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentOmittedPartKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"attachment\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"attachment\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttachmentOmittedPartSelection;
+
+impl AttachmentOmittedPartSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for AttachmentOmittedPartSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentOmittedPartSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct AuthenticationBearerType;
 
 impl AuthenticationBearerType {
@@ -23837,6 +26169,108 @@ impl From<Box<HttpTransport>> for BackendTransport {
 impl From<HttpTransport> for BackendTransport {
     fn from(value: HttpTransport) -> Self {
         Self::Http(Box::new(value))
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CanonicalMessageRole {
+    System,
+    Developer,
+    User,
+    Assistant,
+    Tool,
+    Unknown(String),
+}
+
+impl CanonicalMessageRole {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::System => "system",
+            Self::Developer => "developer",
+            Self::User => "user",
+            Self::Assistant => "assistant",
+            Self::Tool => "tool",
+            Self::Unknown(value) => value.as_str(),
+        }
+    }
+}
+impl Serialize for CanonicalMessageRole {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::System => {
+                let value: JsonValue =
+                    serde_json::from_str("\"system\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Developer => {
+                let value: JsonValue = serde_json::from_str("\"developer\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::User => {
+                let value: JsonValue =
+                    serde_json::from_str("\"user\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Assistant => {
+                let value: JsonValue = serde_json::from_str("\"assistant\"")
+                    .expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Tool => {
+                let value: JsonValue =
+                    serde_json::from_str("\"tool\"").expect("generated enum value is valid JSON");
+                value.serialize(serializer)
+            }
+            Self::Unknown(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CanonicalMessageRole {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true}",
+        )?;
+        if same_json(
+            &value,
+            &serde_json::from_str("\"system\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::System);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"developer\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Developer);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"user\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::User);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"assistant\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Assistant);
+        }
+        if same_json(
+            &value,
+            &serde_json::from_str("\"tool\"").expect("generated enum value is valid JSON"),
+        ) {
+            return Ok(Self::Tool);
+        }
+        if let Some(value) = value.as_str() {
+            return Ok(Self::Unknown(value.to_owned()));
+        }
+        Err(<D::Error as serde::de::Error>::custom(format!(
+            "unknown value for CanonicalMessageRole: {value}"
+        )))
     }
 }
 
@@ -28348,757 +30782,6 @@ impl<'de> Deserialize<'de> for ConfigChangeBeforeEventChange {
     }
 }
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ContentItemBodySelection;
-
-impl ContentItemBodySelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for ContentItemBodySelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemBodySelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ContentItemBody {
-    #[serde(rename = "body")]
-    pub body: Box<ContentReference>,
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: ContentItemBodySelection,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ContentItemBody {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        body: impl Into<Box<ContentReference>>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-        media_type: impl Into<String>,
-    ) -> Self {
-        Self {
-            body: body.into(),
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: media_type.into(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
-        self.body = value.into();
-        self
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
-        self.media_type = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemBody {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ContentItemBody")]
-        struct Hydration {
-            #[serde(rename = "body")]
-            pub body: Box<ContentReference>,
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: String,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: ContentItemBodySelection,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ContentItemBodyGapGap {
-    #[serde(rename = "path")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub path: Presence<String>,
-    #[serde(rename = "reason")]
-    pub reason: String,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ContentItemBodyGapGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self {
-            path: Presence::Missing,
-            reason: reason.into(),
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_path(mut self, value: impl Into<String>) -> Self {
-        self.path = Presence::Present(value.into());
-        self
-    }
-    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
-        self.reason = value.into();
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemBodyGapGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ContentItemBodyGapGap")]
-        struct Hydration {
-            #[serde(rename = "path")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub path: Presence<String>,
-            #[serde(rename = "reason")]
-            pub reason: String,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ContentItemBodyGapSelection;
-
-impl ContentItemBodyGapSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for ContentItemBodyGapSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemBodyGapSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ContentItemBodyGap {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "gap")]
-    pub gap: ContentItemBodyGapGap,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: ContentItemBodyGapSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ContentItemBodyGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        gap: impl Into<ContentItemBodyGapGap>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-        media_type: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            gap: gap.into(),
-            id: id.into(),
-            kind: kind.into(),
-            media_type: media_type.into(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_gap(mut self, value: impl Into<ContentItemBodyGapGap>) -> Self {
-        self.gap = value.into();
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
-        self.media_type = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemBodyGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ContentItemBodyGap")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "gap")]
-            pub gap: ContentItemBodyGapGap,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: String,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: ContentItemBodyGapSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ContentItemMetadataSelection;
-
-impl ContentItemMetadataSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for ContentItemMetadataSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemMetadataSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ContentItemMetadata {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: ContentItemMetadataSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ContentItemMetadata {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        id: impl Into<String>,
-        kind: impl Into<String>,
-        media_type: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: media_type.into(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
-        self.media_type = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemMetadata {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ContentItemMetadata")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: String,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: ContentItemMetadataSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ContentItemOmitSelection;
-
-impl ContentItemOmitSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for ContentItemOmitSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemOmitSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ContentItemOmit {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: ContentItemOmitSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ContentItemOmit {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        id: impl Into<String>,
-        kind: impl Into<String>,
-        media_type: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: media_type.into(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
-        self.media_type = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentItemOmit {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ContentItemOmit")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: String,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: ContentItemOmitSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContentSelectionAudio {
     Body,
@@ -33378,7 +35061,7 @@ pub struct EffectInjectAppendContext {
     #[serde(rename = "type")]
     pub type_: EffectInjectAppendContextType,
     #[serde(rename = "value")]
-    pub value: JsonValue,
+    pub value: Box<CanonicalMessages>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -33388,7 +35071,7 @@ impl EffectInjectAppendContext {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(
         deliver_at: impl Into<EffectInjectAppendContextDeliverAt>,
-        value: impl Into<JsonValue>,
+        value: impl Into<Box<CanonicalMessages>>,
     ) -> Self {
         Self {
             deliver_at: deliver_at.into(),
@@ -33403,7 +35086,7 @@ impl EffectInjectAppendContext {
         self.deliver_at = value.into();
         self
     }
-    pub fn with_value(mut self, value: impl Into<JsonValue>) -> Self {
+    pub fn with_value(mut self, value: impl Into<Box<CanonicalMessages>>) -> Self {
         self.value = value.into();
         self
     }
@@ -33414,7 +35097,7 @@ impl<'de> Deserialize<'de> for EffectInjectAppendContext {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"append\"}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"inject\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"append\"}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"inject\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"CanonicalMessages\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -33430,7 +35113,7 @@ impl<'de> Deserialize<'de> for EffectInjectAppendContext {
             #[serde(rename = "type")]
             pub type_: EffectInjectAppendContextType,
             #[serde(rename = "value")]
-            pub value: JsonValue,
+            pub value: Box<CanonicalMessages>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -41647,9 +43330,9 @@ pub struct InteractionEventUserAttentionAttention {
     #[serde(rename = "kind")]
     pub kind: String,
     #[serde(rename = "message")]
-    pub message: Vec<Box<ContentItem>>,
+    pub message: Box<TextParts>,
     #[serde(rename = "title")]
-    pub title: Vec<Box<ContentItem>>,
+    pub title: Box<TextParts>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -41659,8 +43342,8 @@ impl InteractionEventUserAttentionAttention {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(
         kind: impl Into<String>,
-        message: impl Into<Vec<Box<ContentItem>>>,
-        title: impl Into<Vec<Box<ContentItem>>>,
+        message: impl Into<Box<TextParts>>,
+        title: impl Into<Box<TextParts>>,
     ) -> Self {
         Self {
             kind: kind.into(),
@@ -41673,11 +43356,11 @@ impl InteractionEventUserAttentionAttention {
         self.kind = value.into();
         self
     }
-    pub fn with_message(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn with_message(mut self, value: impl Into<Box<TextParts>>) -> Self {
         self.message = value.into();
         self
     }
-    pub fn with_title(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn with_title(mut self, value: impl Into<Box<TextParts>>) -> Self {
         self.title = value.into();
         self
     }
@@ -41688,7 +43371,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserAttentionAttention {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -41698,9 +43381,9 @@ impl<'de> Deserialize<'de> for InteractionEventUserAttentionAttention {
             #[serde(rename = "kind")]
             pub kind: String,
             #[serde(rename = "message")]
-            pub message: Vec<Box<ContentItem>>,
+            pub message: Box<TextParts>,
             #[serde(rename = "title")]
-            pub title: Vec<Box<ContentItem>>,
+            pub title: Box<TextParts>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -41810,972 +43493,13 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitation
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestBodyMediaType;
-
-impl InteractionEventUserElicitationRequestElicitationRequestBodyMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationRequestElicitationRequestBodyMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationRequestElicitationRequestBodyMediaType
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestBodySelection;
-
-impl InteractionEventUserElicitationRequestElicitationRequestBodySelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationRequestElicitationRequestBodySelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationRequestElicitationRequestBodySelection
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestBody {
-    #[serde(rename = "body")]
-    pub body: Box<ContentReference>,
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: InteractionEventUserElicitationRequestElicitationRequestBodyMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: InteractionEventUserElicitationRequestElicitationRequestBodySelection,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationRequestElicitationRequestBody {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        body: impl Into<Box<ContentReference>>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            body: body.into(),
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
-        self.body = value.into();
-        self
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitationRequestBody {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationRequestElicitationRequestBody")]
-        struct Hydration {
-            #[serde(rename = "body")]
-            pub body: Box<ContentReference>,
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: InteractionEventUserElicitationRequestElicitationRequestBodyMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: InteractionEventUserElicitationRequestElicitationRequestBodySelection,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestBodyGapGap {
-    #[serde(rename = "path")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub path: Presence<String>,
-    #[serde(rename = "reason")]
-    pub reason: String,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationRequestElicitationRequestBodyGapGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self {
-            path: Presence::Missing,
-            reason: reason.into(),
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_path(mut self, value: impl Into<String>) -> Self {
-        self.path = Presence::Present(value.into());
-        self
-    }
-    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
-        self.reason = value.into();
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitationRequestBodyGapGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationRequestElicitationRequestBodyGapGap")]
-        struct Hydration {
-            #[serde(rename = "path")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub path: Presence<String>,
-            #[serde(rename = "reason")]
-            pub reason: String,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType;
-
-impl InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection;
-
-impl InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestBodyGap {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "gap")]
-    pub gap: InteractionEventUserElicitationRequestElicitationRequestBodyGapGap,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationRequestElicitationRequestBodyGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        gap: impl Into<InteractionEventUserElicitationRequestElicitationRequestBodyGapGap>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            gap: gap.into(),
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_gap(
-        mut self,
-        value: impl Into<InteractionEventUserElicitationRequestElicitationRequestBodyGapGap>,
-    ) -> Self {
-        self.gap = value.into();
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitationRequestBodyGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationRequestElicitationRequestBodyGap")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "gap")]
-            pub gap: InteractionEventUserElicitationRequestElicitationRequestBodyGapGap,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type:
-                InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType;
-
-impl InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestMetadataSelection;
-
-impl InteractionEventUserElicitationRequestElicitationRequestMetadataSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationRequestElicitationRequestMetadataSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationRequestElicitationRequestMetadataSelection
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestMetadata {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: InteractionEventUserElicitationRequestElicitationRequestMetadataSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationRequestElicitationRequestMetadata {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitationRequestMetadata {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationRequestElicitationRequestMetadata")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type:
-                InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection:
-                InteractionEventUserElicitationRequestElicitationRequestMetadataSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestOmitMediaType;
-
-impl InteractionEventUserElicitationRequestElicitationRequestOmitMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationRequestElicitationRequestOmitMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationRequestElicitationRequestOmitMediaType
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestOmitSelection;
-
-impl InteractionEventUserElicitationRequestElicitationRequestOmitSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationRequestElicitationRequestOmitSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationRequestElicitationRequestOmitSelection
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationRequestElicitationRequestOmit {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: InteractionEventUserElicitationRequestElicitationRequestOmitMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: InteractionEventUserElicitationRequestElicitationRequestOmitSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationRequestElicitationRequestOmit {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitationRequestOmit {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationRequestElicitationRequestOmit")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: InteractionEventUserElicitationRequestElicitationRequestOmitMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: InteractionEventUserElicitationRequestElicitationRequestOmitSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum InteractionEventUserElicitationRequestElicitationRequest {
-    Body(InteractionEventUserElicitationRequestElicitationRequestBody),
-    BodyGap(InteractionEventUserElicitationRequestElicitationRequestBodyGap),
-    Metadata(InteractionEventUserElicitationRequestElicitationRequestMetadata),
-    Omit(InteractionEventUserElicitationRequestElicitationRequestOmit),
-}
-
-impl From<InteractionEventUserElicitationRequestElicitationRequestBody>
-    for InteractionEventUserElicitationRequestElicitationRequest
-{
-    fn from(value: InteractionEventUserElicitationRequestElicitationRequestBody) -> Self {
-        Self::Body(value)
-    }
-}
-
-impl From<InteractionEventUserElicitationRequestElicitationRequestBodyGap>
-    for InteractionEventUserElicitationRequestElicitationRequest
-{
-    fn from(value: InteractionEventUserElicitationRequestElicitationRequestBodyGap) -> Self {
-        Self::BodyGap(value)
-    }
-}
-
-impl From<InteractionEventUserElicitationRequestElicitationRequestMetadata>
-    for InteractionEventUserElicitationRequestElicitationRequest
-{
-    fn from(value: InteractionEventUserElicitationRequestElicitationRequestMetadata) -> Self {
-        Self::Metadata(value)
-    }
-}
-
-impl From<InteractionEventUserElicitationRequestElicitationRequestOmit>
-    for InteractionEventUserElicitationRequestElicitationRequest
-{
-    fn from(value: InteractionEventUserElicitationRequestElicitationRequestOmit) -> Self {
-        Self::Omit(value)
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitationRequest {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationRequestElicitationRequest")]
-        #[serde(untagged)]
-        enum Hydration {
-            Body(InteractionEventUserElicitationRequestElicitationRequestBody),
-            BodyGap(InteractionEventUserElicitationRequestElicitationRequestBodyGap),
-            Metadata(InteractionEventUserElicitationRequestElicitationRequestMetadata),
-            Omit(InteractionEventUserElicitationRequestElicitationRequestOmit),
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InteractionEventUserElicitationRequestElicitation {
     #[serde(rename = "mode")]
     pub mode: InteractionEventUserElicitationRequestElicitationMode,
     #[serde(rename = "request")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub request: Presence<InteractionEventUserElicitationRequestElicitationRequest>,
+    pub request: Presence<Box<TextPart>>,
     #[serde(rename = "server")]
     pub server: String,
     /// Members not known to this schema revision.
@@ -42803,10 +43527,7 @@ impl InteractionEventUserElicitationRequestElicitation {
         self.mode = value.into();
         self
     }
-    pub fn with_request(
-        mut self,
-        value: impl Into<InteractionEventUserElicitationRequestElicitationRequest>,
-    ) -> Self {
+    pub fn with_request(mut self, value: impl Into<Box<TextPart>>) -> Self {
         self.request = Presence::Present(value.into());
         self
     }
@@ -42821,7 +43542,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitation
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -42832,7 +43553,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationRequestElicitation
             pub mode: InteractionEventUserElicitationRequestElicitationMode,
             #[serde(rename = "request")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub request: Presence<InteractionEventUserElicitationRequestElicitationRequest>,
+            pub request: Presence<Box<TextPart>>,
             #[serde(rename = "server")]
             pub server: String,
             /// Members not known to this schema revision.
@@ -43020,954 +43741,6 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationM
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationResultElicitationResultBodyMediaType;
-
-impl InteractionEventUserElicitationResultElicitationResultBodyMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationResultElicitationResultBodyMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultBodyMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationResultElicitationResultBodySelection;
-
-impl InteractionEventUserElicitationResultElicitationResultBodySelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationResultElicitationResultBodySelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultBodySelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationResultElicitationResultBody {
-    #[serde(rename = "body")]
-    pub body: Box<ContentReference>,
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: InteractionEventUserElicitationResultElicitationResultBodyMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: InteractionEventUserElicitationResultElicitationResultBodySelection,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationResultElicitationResultBody {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        body: impl Into<Box<ContentReference>>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            body: body.into(),
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
-        self.body = value.into();
-        self
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultBody {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationResultElicitationResultBody")]
-        struct Hydration {
-            #[serde(rename = "body")]
-            pub body: Box<ContentReference>,
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: InteractionEventUserElicitationResultElicitationResultBodyMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: InteractionEventUserElicitationResultElicitationResultBodySelection,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationResultElicitationResultBodyGapGap {
-    #[serde(rename = "path")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub path: Presence<String>,
-    #[serde(rename = "reason")]
-    pub reason: String,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationResultElicitationResultBodyGapGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self {
-            path: Presence::Missing,
-            reason: reason.into(),
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_path(mut self, value: impl Into<String>) -> Self {
-        self.path = Presence::Present(value.into());
-        self
-    }
-    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
-        self.reason = value.into();
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultBodyGapGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationResultElicitationResultBodyGapGap")]
-        struct Hydration {
-            #[serde(rename = "path")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub path: Presence<String>,
-            #[serde(rename = "reason")]
-            pub reason: String,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationResultElicitationResultBodyGapMediaType;
-
-impl InteractionEventUserElicitationResultElicitationResultBodyGapMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationResultElicitationResultBodyGapMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationResultElicitationResultBodyGapMediaType
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationResultElicitationResultBodyGapSelection;
-
-impl InteractionEventUserElicitationResultElicitationResultBodyGapSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationResultElicitationResultBodyGapSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationResultElicitationResultBodyGapSelection
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationResultElicitationResultBodyGap {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "gap")]
-    pub gap: InteractionEventUserElicitationResultElicitationResultBodyGapGap,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: InteractionEventUserElicitationResultElicitationResultBodyGapMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: InteractionEventUserElicitationResultElicitationResultBodyGapSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationResultElicitationResultBodyGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        gap: impl Into<InteractionEventUserElicitationResultElicitationResultBodyGapGap>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            gap: gap.into(),
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_gap(
-        mut self,
-        value: impl Into<InteractionEventUserElicitationResultElicitationResultBodyGapGap>,
-    ) -> Self {
-        self.gap = value.into();
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultBodyGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationResultElicitationResultBodyGap")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "gap")]
-            pub gap: InteractionEventUserElicitationResultElicitationResultBodyGapGap,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: InteractionEventUserElicitationResultElicitationResultBodyGapMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: InteractionEventUserElicitationResultElicitationResultBodyGapSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationResultElicitationResultMetadataMediaType;
-
-impl InteractionEventUserElicitationResultElicitationResultMetadataMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationResultElicitationResultMetadataMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationResultElicitationResultMetadataMediaType
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationResultElicitationResultMetadataSelection;
-
-impl InteractionEventUserElicitationResultElicitationResultMetadataSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationResultElicitationResultMetadataSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de>
-    for InteractionEventUserElicitationResultElicitationResultMetadataSelection
-{
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationResultElicitationResultMetadata {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: InteractionEventUserElicitationResultElicitationResultMetadataMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: InteractionEventUserElicitationResultElicitationResultMetadataSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationResultElicitationResultMetadata {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultMetadata {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationResultElicitationResultMetadata")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: InteractionEventUserElicitationResultElicitationResultMetadataMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: InteractionEventUserElicitationResultElicitationResultMetadataSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationResultElicitationResultOmitMediaType;
-
-impl InteractionEventUserElicitationResultElicitationResultOmitMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationResultElicitationResultOmitMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultOmitMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct InteractionEventUserElicitationResultElicitationResultOmitSelection;
-
-impl InteractionEventUserElicitationResultElicitationResultOmitSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for InteractionEventUserElicitationResultElicitationResultOmitSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultOmitSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct InteractionEventUserElicitationResultElicitationResultOmit {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: InteractionEventUserElicitationResultElicitationResultOmitMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: InteractionEventUserElicitationResultElicitationResultOmitSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl InteractionEventUserElicitationResultElicitationResultOmit {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResultOmit {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationResultElicitationResultOmit")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: InteractionEventUserElicitationResultElicitationResultOmitMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: InteractionEventUserElicitationResultElicitationResultOmitSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum InteractionEventUserElicitationResultElicitationResult {
-    Body(InteractionEventUserElicitationResultElicitationResultBody),
-    BodyGap(InteractionEventUserElicitationResultElicitationResultBodyGap),
-    Metadata(InteractionEventUserElicitationResultElicitationResultMetadata),
-    Omit(InteractionEventUserElicitationResultElicitationResultOmit),
-}
-
-impl From<InteractionEventUserElicitationResultElicitationResultBody>
-    for InteractionEventUserElicitationResultElicitationResult
-{
-    fn from(value: InteractionEventUserElicitationResultElicitationResultBody) -> Self {
-        Self::Body(value)
-    }
-}
-
-impl From<InteractionEventUserElicitationResultElicitationResultBodyGap>
-    for InteractionEventUserElicitationResultElicitationResult
-{
-    fn from(value: InteractionEventUserElicitationResultElicitationResultBodyGap) -> Self {
-        Self::BodyGap(value)
-    }
-}
-
-impl From<InteractionEventUserElicitationResultElicitationResultMetadata>
-    for InteractionEventUserElicitationResultElicitationResult
-{
-    fn from(value: InteractionEventUserElicitationResultElicitationResultMetadata) -> Self {
-        Self::Metadata(value)
-    }
-}
-
-impl From<InteractionEventUserElicitationResultElicitationResultOmit>
-    for InteractionEventUserElicitationResultElicitationResult
-{
-    fn from(value: InteractionEventUserElicitationResultElicitationResultOmit) -> Self {
-        Self::Omit(value)
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitationResult {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "InteractionEventUserElicitationResultElicitationResult")]
-        #[serde(untagged)]
-        enum Hydration {
-            Body(InteractionEventUserElicitationResultElicitationResultBody),
-            BodyGap(InteractionEventUserElicitationResultElicitationResultBodyGap),
-            Metadata(InteractionEventUserElicitationResultElicitationResultMetadata),
-            Omit(InteractionEventUserElicitationResultElicitationResultOmit),
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InteractionEventUserElicitationResultElicitation {
     #[serde(rename = "action")]
@@ -43976,7 +43749,7 @@ pub struct InteractionEventUserElicitationResultElicitation {
     pub mode: InteractionEventUserElicitationResultElicitationMode,
     #[serde(rename = "result")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub result: Presence<InteractionEventUserElicitationResultElicitationResult>,
+    pub result: Presence<Box<TextPart>>,
     #[serde(rename = "server")]
     pub server: String,
     /// Members not known to this schema revision.
@@ -44013,10 +43786,7 @@ impl InteractionEventUserElicitationResultElicitation {
         self.mode = value.into();
         self
     }
-    pub fn with_result(
-        mut self,
-        value: impl Into<InteractionEventUserElicitationResultElicitationResult>,
-    ) -> Self {
+    pub fn with_result(mut self, value: impl Into<Box<TextPart>>) -> Self {
         self.result = Presence::Present(value.into());
         self
     }
@@ -44031,7 +43801,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitation 
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -44044,7 +43814,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultElicitation 
             pub mode: InteractionEventUserElicitationResultElicitationMode,
             #[serde(rename = "result")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub result: Presence<InteractionEventUserElicitationResultElicitationResult>,
+            pub result: Presence<Box<TextPart>>,
             #[serde(rename = "server")]
             pub server: String,
             /// Members not known to this schema revision.
@@ -44093,14 +43863,122 @@ impl<'de> Deserialize<'de> for InteractionEventUserElicitationResultType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserMessageInboundMessageMessagesItemRole;
+
+impl InteractionEventUserMessageInboundMessageMessagesItemRole {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserMessageInboundMessageMessagesItemRole {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"user\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserMessageInboundMessageMessagesItemRole {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true},{\"kind\":\"literal\",\"value\":\"user\"}]}",
+        )?;
+        let expected: JsonValue =
+            serde_json::from_str("\"user\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InteractionEventUserMessageInboundMessageMessagesItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "parts")]
+    pub parts: Vec<Box<ContentItem>>,
+    #[serde(rename = "role")]
+    pub role: InteractionEventUserMessageInboundMessageMessagesItemRole,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserMessageInboundMessageMessagesItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, parts: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        Self {
+            id: id.into(),
+            parts: parts.into(),
+            role: Default::default(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_parts(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.parts = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserMessageInboundMessageMessagesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"user\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "InteractionEventUserMessageInboundMessageMessagesItem")]
+        struct Hydration {
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "parts")]
+            pub parts: Vec<Box<ContentItem>>,
+            #[serde(rename = "role")]
+            pub role: InteractionEventUserMessageInboundMessageMessagesItemRole,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InteractionEventUserMessageInboundMessage {
     #[serde(rename = "channel")]
     pub channel: String,
+    #[serde(rename = "messages")]
+    pub messages: Vec<InteractionEventUserMessageInboundMessageMessagesItem>,
     #[serde(rename = "sender")]
     pub sender: String,
-    #[serde(rename = "text")]
-    pub text: Vec<Box<ContentItem>>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -44110,13 +43988,13 @@ impl InteractionEventUserMessageInboundMessage {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(
         channel: impl Into<String>,
+        messages: impl Into<Vec<InteractionEventUserMessageInboundMessageMessagesItem>>,
         sender: impl Into<String>,
-        text: impl Into<Vec<Box<ContentItem>>>,
     ) -> Self {
         Self {
             channel: channel.into(),
+            messages: messages.into(),
             sender: sender.into(),
-            text: text.into(),
             additional_properties: BTreeMap::new(),
         }
     }
@@ -44124,12 +44002,15 @@ impl InteractionEventUserMessageInboundMessage {
         self.channel = value.into();
         self
     }
-    pub fn with_sender(mut self, value: impl Into<String>) -> Self {
-        self.sender = value.into();
+    pub fn with_messages(
+        mut self,
+        value: impl Into<Vec<InteractionEventUserMessageInboundMessageMessagesItem>>,
+    ) -> Self {
+        self.messages = value.into();
         self
     }
-    pub fn with_text(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
-        self.text = value.into();
+    pub fn with_sender(mut self, value: impl Into<String>) -> Self {
+        self.sender = value.into();
         self
     }
 }
@@ -44139,7 +44020,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserMessageInboundMessage {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"user\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -44148,10 +44029,10 @@ impl<'de> Deserialize<'de> for InteractionEventUserMessageInboundMessage {
         struct Hydration {
             #[serde(rename = "channel")]
             pub channel: String,
+            #[serde(rename = "messages")]
+            pub messages: Vec<InteractionEventUserMessageInboundMessageMessagesItem>,
             #[serde(rename = "sender")]
             pub sender: String,
-            #[serde(rename = "text")]
-            pub text: Vec<Box<ContentItem>>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -44198,12 +44079,120 @@ impl<'de> Deserialize<'de> for InteractionEventUserMessageInboundType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractionEventUserMessageOutboundMessageMessagesItemRole;
+
+impl InteractionEventUserMessageOutboundMessageMessagesItemRole {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for InteractionEventUserMessageOutboundMessageMessagesItemRole {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"assistant\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserMessageOutboundMessageMessagesItemRole {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true},{\"kind\":\"literal\",\"value\":\"assistant\"}]}",
+        )?;
+        let expected: JsonValue =
+            serde_json::from_str("\"assistant\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InteractionEventUserMessageOutboundMessageMessagesItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "parts")]
+    pub parts: Vec<Box<ContentItem>>,
+    #[serde(rename = "role")]
+    pub role: InteractionEventUserMessageOutboundMessageMessagesItemRole,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl InteractionEventUserMessageOutboundMessageMessagesItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, parts: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        Self {
+            id: id.into(),
+            parts: parts.into(),
+            role: Default::default(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_parts(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.parts = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionEventUserMessageOutboundMessageMessagesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"assistant\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "InteractionEventUserMessageOutboundMessageMessagesItem")]
+        struct Hydration {
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "parts")]
+            pub parts: Vec<Box<ContentItem>>,
+            #[serde(rename = "role")]
+            pub role: InteractionEventUserMessageOutboundMessageMessagesItemRole,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InteractionEventUserMessageOutboundMessage {
     #[serde(rename = "channel")]
     pub channel: String,
-    #[serde(rename = "payload")]
-    pub payload: Vec<Box<ContentItem>>,
+    #[serde(rename = "messages")]
+    pub messages: Vec<InteractionEventUserMessageOutboundMessageMessagesItem>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -44211,10 +44200,13 @@ pub struct InteractionEventUserMessageOutboundMessage {
 
 impl InteractionEventUserMessageOutboundMessage {
     /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(channel: impl Into<String>, payload: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn new(
+        channel: impl Into<String>,
+        messages: impl Into<Vec<InteractionEventUserMessageOutboundMessageMessagesItem>>,
+    ) -> Self {
         Self {
             channel: channel.into(),
-            payload: payload.into(),
+            messages: messages.into(),
             additional_properties: BTreeMap::new(),
         }
     }
@@ -44222,8 +44214,11 @@ impl InteractionEventUserMessageOutboundMessage {
         self.channel = value.into();
         self
     }
-    pub fn with_payload(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
-        self.payload = value.into();
+    pub fn with_messages(
+        mut self,
+        value: impl Into<Vec<InteractionEventUserMessageOutboundMessageMessagesItem>>,
+    ) -> Self {
+        self.messages = value.into();
         self
     }
 }
@@ -44233,7 +44228,7 @@ impl<'de> Deserialize<'de> for InteractionEventUserMessageOutboundMessage {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"payload\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"assistant\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -44242,8 +44237,8 @@ impl<'de> Deserialize<'de> for InteractionEventUserMessageOutboundMessage {
         struct Hydration {
             #[serde(rename = "channel")]
             pub channel: String,
-            #[serde(rename = "payload")]
-            pub payload: Vec<Box<ContentItem>>,
+            #[serde(rename = "messages")]
+            pub messages: Vec<InteractionEventUserMessageOutboundMessageMessagesItem>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -52704,753 +52699,6 @@ impl<'de> Deserialize<'de> for ModelSwitchBeforeCapabilitiesModify {
 }
 /// Inline schema model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ModelVisibleItemBodySelection;
-
-impl ModelVisibleItemBodySelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for ModelVisibleItemBodySelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemBodySelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ModelVisibleItemBody {
-    #[serde(rename = "body")]
-    pub body: Box<ContentReference>,
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    pub role: String,
-    #[serde(rename = "selection")]
-    pub selection: ModelVisibleItemBodySelection,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ModelVisibleItemBody {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        body: impl Into<Box<ContentReference>>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-        media_type: impl Into<String>,
-        role: impl Into<String>,
-    ) -> Self {
-        Self {
-            body: body.into(),
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: media_type.into(),
-            parent_item_id: Presence::Missing,
-            role: role.into(),
-            selection: Default::default(),
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
-        self.body = value.into();
-        self
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
-        self.media_type = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = value.into();
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemBody {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ModelVisibleItemBody")]
-        struct Hydration {
-            #[serde(rename = "body")]
-            pub body: Box<ContentReference>,
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: String,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            pub role: String,
-            #[serde(rename = "selection")]
-            pub selection: ModelVisibleItemBodySelection,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ModelVisibleItemBodyGapGap {
-    #[serde(rename = "path")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub path: Presence<String>,
-    #[serde(rename = "reason")]
-    pub reason: String,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ModelVisibleItemBodyGapGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self {
-            path: Presence::Missing,
-            reason: reason.into(),
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_path(mut self, value: impl Into<String>) -> Self {
-        self.path = Presence::Present(value.into());
-        self
-    }
-    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
-        self.reason = value.into();
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemBodyGapGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ModelVisibleItemBodyGapGap")]
-        struct Hydration {
-            #[serde(rename = "path")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub path: Presence<String>,
-            #[serde(rename = "reason")]
-            pub reason: String,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ModelVisibleItemBodyGapSelection;
-
-impl ModelVisibleItemBodyGapSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for ModelVisibleItemBodyGapSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemBodyGapSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ModelVisibleItemBodyGap {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "gap")]
-    pub gap: ModelVisibleItemBodyGapGap,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    pub role: String,
-    #[serde(rename = "selection")]
-    pub selection: ModelVisibleItemBodyGapSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ModelVisibleItemBodyGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        gap: impl Into<ModelVisibleItemBodyGapGap>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-        media_type: impl Into<String>,
-        role: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            gap: gap.into(),
-            id: id.into(),
-            kind: kind.into(),
-            media_type: media_type.into(),
-            parent_item_id: Presence::Missing,
-            role: role.into(),
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_gap(mut self, value: impl Into<ModelVisibleItemBodyGapGap>) -> Self {
-        self.gap = value.into();
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
-        self.media_type = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = value.into();
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemBodyGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ModelVisibleItemBodyGap")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "gap")]
-            pub gap: ModelVisibleItemBodyGapGap,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: String,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            pub role: String,
-            #[serde(rename = "selection")]
-            pub selection: ModelVisibleItemBodyGapSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ModelVisibleItemMetadataSelection;
-
-impl ModelVisibleItemMetadataSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for ModelVisibleItemMetadataSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemMetadataSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ModelVisibleItemMetadata {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    pub role: String,
-    #[serde(rename = "selection")]
-    pub selection: ModelVisibleItemMetadataSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ModelVisibleItemMetadata {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        id: impl Into<String>,
-        kind: impl Into<String>,
-        media_type: impl Into<String>,
-        role: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: media_type.into(),
-            parent_item_id: Presence::Missing,
-            role: role.into(),
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
-        self.media_type = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = value.into();
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemMetadata {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ModelVisibleItemMetadata")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: String,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            pub role: String,
-            #[serde(rename = "selection")]
-            pub selection: ModelVisibleItemMetadataSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ModelVisibleItemOmitSelection;
-
-impl ModelVisibleItemOmitSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for ModelVisibleItemOmitSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemOmitSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ModelVisibleItemOmit {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    pub role: String,
-    #[serde(rename = "selection")]
-    pub selection: ModelVisibleItemOmitSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl ModelVisibleItemOmit {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        id: impl Into<String>,
-        kind: impl Into<String>,
-        media_type: impl Into<String>,
-        role: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: media_type.into(),
-            parent_item_id: Presence::Missing,
-            role: role.into(),
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_media_type(mut self, value: impl Into<String>) -> Self {
-        self.media_type = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = value.into();
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for ModelVisibleItemOmit {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "ModelVisibleItemOmit")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: String,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            pub role: String,
-            #[serde(rename = "selection")]
-            pub selection: ModelVisibleItemOmitSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ObserveNotificationJsonrpc;
 
 impl ObserveNotificationJsonrpc {
@@ -58685,12 +57933,12 @@ impl<'de> Deserialize<'de> for TaskWorkspaceEventFileChangedChangesItemOperation
 pub struct TaskWorkspaceEventFileChangedChangesItem {
     #[serde(rename = "after")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub after: Presence<Box<ContentReference>>,
+    pub after: Presence<Box<ContentItem>>,
     #[serde(rename = "agentCaused")]
     pub agent_caused: bool,
     #[serde(rename = "before")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub before: Presence<Box<ContentReference>>,
+    pub before: Presence<Box<ContentItem>>,
     #[serde(rename = "operation")]
     pub operation: TaskWorkspaceEventFileChangedChangesItemOperation,
     #[serde(rename = "path")]
@@ -58716,7 +57964,7 @@ impl TaskWorkspaceEventFileChangedChangesItem {
             additional_properties: BTreeMap::new(),
         }
     }
-    pub fn with_after(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+    pub fn with_after(mut self, value: impl Into<Box<ContentItem>>) -> Self {
         self.after = Presence::Present(value.into());
         self
     }
@@ -58724,7 +57972,7 @@ impl TaskWorkspaceEventFileChangedChangesItem {
         self.agent_caused = value.into();
         self
     }
-    pub fn with_before(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+    pub fn with_before(mut self, value: impl Into<Box<ContentItem>>) -> Self {
         self.before = Presence::Present(value.into());
         self
     }
@@ -58746,7 +57994,7 @@ impl<'de> Deserialize<'de> for TaskWorkspaceEventFileChangedChangesItem {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -58755,12 +58003,12 @@ impl<'de> Deserialize<'de> for TaskWorkspaceEventFileChangedChangesItem {
         struct Hydration {
             #[serde(rename = "after")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub after: Presence<Box<ContentReference>>,
+            pub after: Presence<Box<ContentItem>>,
             #[serde(rename = "agentCaused")]
             pub agent_caused: bool,
             #[serde(rename = "before")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub before: Presence<Box<ContentReference>>,
+            pub before: Presence<Box<ContentItem>>,
             #[serde(rename = "operation")]
             pub operation: TaskWorkspaceEventFileChangedChangesItemOperation,
             #[serde(rename = "path")]
@@ -60652,6 +59900,483 @@ impl<'de> Deserialize<'de> for TaskWorkspaceEventWorkspaceChangeBeforeWorkspace 
         Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
     }
 }
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextBodyPartKind;
+
+impl TextBodyPartKind {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextBodyPartKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"text\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextBodyPartKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"text\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"text\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextBodyPartMediaType;
+
+impl TextBodyPartMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextBodyPartMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"text/plain\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextBodyPartMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"text/plain\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"text/plain\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextBodyPartSelection;
+
+impl TextBodyPartSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextBodyPartSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextBodyPartSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TextGapPartGap {
+    #[serde(rename = "path")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub path: Presence<String>,
+    #[serde(rename = "reason")]
+    pub reason: String,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl TextGapPartGap {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(reason: impl Into<String>) -> Self {
+        Self {
+            path: Presence::Missing,
+            reason: reason.into(),
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_path(mut self, value: impl Into<String>) -> Self {
+        self.path = Presence::Present(value.into());
+        self
+    }
+    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = value.into();
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for TextGapPartGap {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "TextGapPartGap")]
+        struct Hydration {
+            #[serde(rename = "path")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub path: Presence<String>,
+            #[serde(rename = "reason")]
+            pub reason: String,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextGapPartKind;
+
+impl TextGapPartKind {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextGapPartKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"text\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextGapPartKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"text\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"text\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextGapPartMediaType;
+
+impl TextGapPartMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextGapPartMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"text/plain\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextGapPartMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"text/plain\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"text/plain\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextGapPartSelection;
+
+impl TextGapPartSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextGapPartSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextGapPartSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextMetadataPartKind;
+
+impl TextMetadataPartKind {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextMetadataPartKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"text\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextMetadataPartKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"text\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"text\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextMetadataPartMediaType;
+
+impl TextMetadataPartMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextMetadataPartMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"text/plain\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextMetadataPartMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"text/plain\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"text/plain\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextMetadataPartSelection;
+
+impl TextMetadataPartSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextMetadataPartSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextMetadataPartSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextOmittedPartKind;
+
+impl TextOmittedPartKind {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextOmittedPartKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"text\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextOmittedPartKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"text\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"text\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextOmittedPartMediaType;
+
+impl TextOmittedPartMediaType {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextOmittedPartMediaType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"text/plain\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextOmittedPartMediaType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"text/plain\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"text/plain\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextOmittedPartSelection;
+
+impl TextOmittedPartSelection {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for TextOmittedPartSelection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextOmittedPartSelection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated =
+            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
+        let expected: JsonValue =
+            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
 /// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolAfterCapabilitiesEffectsItem {
@@ -69236,9 +68961,9 @@ pub struct UserAttentionEventAttention {
     #[serde(rename = "kind")]
     pub kind: String,
     #[serde(rename = "message")]
-    pub message: Vec<Box<ContentItem>>,
+    pub message: Box<TextParts>,
     #[serde(rename = "title")]
-    pub title: Vec<Box<ContentItem>>,
+    pub title: Box<TextParts>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -69248,8 +68973,8 @@ impl UserAttentionEventAttention {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(
         kind: impl Into<String>,
-        message: impl Into<Vec<Box<ContentItem>>>,
-        title: impl Into<Vec<Box<ContentItem>>>,
+        message: impl Into<Box<TextParts>>,
+        title: impl Into<Box<TextParts>>,
     ) -> Self {
         Self {
             kind: kind.into(),
@@ -69262,11 +68987,11 @@ impl UserAttentionEventAttention {
         self.kind = value.into();
         self
     }
-    pub fn with_message(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn with_message(mut self, value: impl Into<Box<TextParts>>) -> Self {
         self.message = value.into();
         self
     }
-    pub fn with_title(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn with_title(mut self, value: impl Into<Box<TextParts>>) -> Self {
         self.title = value.into();
         self
     }
@@ -69277,7 +69002,7 @@ impl<'de> Deserialize<'de> for UserAttentionEventAttention {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -69287,9 +69012,9 @@ impl<'de> Deserialize<'de> for UserAttentionEventAttention {
             #[serde(rename = "kind")]
             pub kind: String,
             #[serde(rename = "message")]
-            pub message: Vec<Box<ContentItem>>,
+            pub message: Box<TextParts>,
             #[serde(rename = "title")]
-            pub title: Vec<Box<ContentItem>>,
+            pub title: Box<TextParts>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -70803,953 +70528,13 @@ impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationMode {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestEventElicitationRequestBodyMediaType;
-
-impl UserElicitationRequestEventElicitationRequestBodyMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestEventElicitationRequestBodyMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodyMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestEventElicitationRequestBodySelection;
-
-impl UserElicitationRequestEventElicitationRequestBodySelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestEventElicitationRequestBodySelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodySelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestEventElicitationRequestBody {
-    #[serde(rename = "body")]
-    pub body: Box<ContentReference>,
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationRequestEventElicitationRequestBodyMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationRequestEventElicitationRequestBodySelection,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestEventElicitationRequestBody {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        body: impl Into<Box<ContentReference>>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            body: body.into(),
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
-        self.body = value.into();
-        self
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBody {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestEventElicitationRequestBody")]
-        struct Hydration {
-            #[serde(rename = "body")]
-            pub body: Box<ContentReference>,
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationRequestEventElicitationRequestBodyMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationRequestEventElicitationRequestBodySelection,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestEventElicitationRequestBodyGapGap {
-    #[serde(rename = "path")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub path: Presence<String>,
-    #[serde(rename = "reason")]
-    pub reason: String,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestEventElicitationRequestBodyGapGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self {
-            path: Presence::Missing,
-            reason: reason.into(),
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_path(mut self, value: impl Into<String>) -> Self {
-        self.path = Presence::Present(value.into());
-        self
-    }
-    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
-        self.reason = value.into();
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodyGapGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestEventElicitationRequestBodyGapGap")]
-        struct Hydration {
-            #[serde(rename = "path")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub path: Presence<String>,
-            #[serde(rename = "reason")]
-            pub reason: String,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestEventElicitationRequestBodyGapMediaType;
-
-impl UserElicitationRequestEventElicitationRequestBodyGapMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestEventElicitationRequestBodyGapMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodyGapMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestEventElicitationRequestBodyGapSelection;
-
-impl UserElicitationRequestEventElicitationRequestBodyGapSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestEventElicitationRequestBodyGapSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodyGapSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestEventElicitationRequestBodyGap {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "gap")]
-    pub gap: UserElicitationRequestEventElicitationRequestBodyGapGap,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationRequestEventElicitationRequestBodyGapMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationRequestEventElicitationRequestBodyGapSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestEventElicitationRequestBodyGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        gap: impl Into<UserElicitationRequestEventElicitationRequestBodyGapGap>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            gap: gap.into(),
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_gap(
-        mut self,
-        value: impl Into<UserElicitationRequestEventElicitationRequestBodyGapGap>,
-    ) -> Self {
-        self.gap = value.into();
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestBodyGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestEventElicitationRequestBodyGap")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "gap")]
-            pub gap: UserElicitationRequestEventElicitationRequestBodyGapGap,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationRequestEventElicitationRequestBodyGapMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationRequestEventElicitationRequestBodyGapSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestEventElicitationRequestMetadataMediaType;
-
-impl UserElicitationRequestEventElicitationRequestMetadataMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestEventElicitationRequestMetadataMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestMetadataMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestEventElicitationRequestMetadataSelection;
-
-impl UserElicitationRequestEventElicitationRequestMetadataSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestEventElicitationRequestMetadataSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestMetadataSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestEventElicitationRequestMetadata {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationRequestEventElicitationRequestMetadataMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationRequestEventElicitationRequestMetadataSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestEventElicitationRequestMetadata {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestMetadata {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestEventElicitationRequestMetadata")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationRequestEventElicitationRequestMetadataMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationRequestEventElicitationRequestMetadataSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestEventElicitationRequestOmitMediaType;
-
-impl UserElicitationRequestEventElicitationRequestOmitMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestEventElicitationRequestOmitMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestOmitMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestEventElicitationRequestOmitSelection;
-
-impl UserElicitationRequestEventElicitationRequestOmitSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestEventElicitationRequestOmitSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestOmitSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestEventElicitationRequestOmit {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationRequestEventElicitationRequestOmitMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationRequestEventElicitationRequestOmitSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestEventElicitationRequestOmit {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequestOmit {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestEventElicitationRequestOmit")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationRequestEventElicitationRequestOmitMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationRequestEventElicitationRequestOmitSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum UserElicitationRequestEventElicitationRequest {
-    Body(UserElicitationRequestEventElicitationRequestBody),
-    BodyGap(UserElicitationRequestEventElicitationRequestBodyGap),
-    Metadata(UserElicitationRequestEventElicitationRequestMetadata),
-    Omit(UserElicitationRequestEventElicitationRequestOmit),
-}
-
-impl From<UserElicitationRequestEventElicitationRequestBody>
-    for UserElicitationRequestEventElicitationRequest
-{
-    fn from(value: UserElicitationRequestEventElicitationRequestBody) -> Self {
-        Self::Body(value)
-    }
-}
-
-impl From<UserElicitationRequestEventElicitationRequestBodyGap>
-    for UserElicitationRequestEventElicitationRequest
-{
-    fn from(value: UserElicitationRequestEventElicitationRequestBodyGap) -> Self {
-        Self::BodyGap(value)
-    }
-}
-
-impl From<UserElicitationRequestEventElicitationRequestMetadata>
-    for UserElicitationRequestEventElicitationRequest
-{
-    fn from(value: UserElicitationRequestEventElicitationRequestMetadata) -> Self {
-        Self::Metadata(value)
-    }
-}
-
-impl From<UserElicitationRequestEventElicitationRequestOmit>
-    for UserElicitationRequestEventElicitationRequest
-{
-    fn from(value: UserElicitationRequestEventElicitationRequestOmit) -> Self {
-        Self::Omit(value)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitationRequest {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestEventElicitationRequest")]
-        #[serde(untagged)]
-        enum Hydration {
-            Body(UserElicitationRequestEventElicitationRequestBody),
-            BodyGap(UserElicitationRequestEventElicitationRequestBodyGap),
-            Metadata(UserElicitationRequestEventElicitationRequestMetadata),
-            Omit(UserElicitationRequestEventElicitationRequestOmit),
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserElicitationRequestEventElicitation {
     #[serde(rename = "mode")]
     pub mode: UserElicitationRequestEventElicitationMode,
     #[serde(rename = "request")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub request: Presence<UserElicitationRequestEventElicitationRequest>,
+    pub request: Presence<Box<TextPart>>,
     #[serde(rename = "server")]
     pub server: String,
     /// Members not known to this schema revision.
@@ -71777,10 +70562,7 @@ impl UserElicitationRequestEventElicitation {
         self.mode = value.into();
         self
     }
-    pub fn with_request(
-        mut self,
-        value: impl Into<UserElicitationRequestEventElicitationRequest>,
-    ) -> Self {
+    pub fn with_request(mut self, value: impl Into<Box<TextPart>>) -> Self {
         self.request = Presence::Present(value.into());
         self
     }
@@ -71795,7 +70577,7 @@ impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitation {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -71806,7 +70588,7 @@ impl<'de> Deserialize<'de> for UserElicitationRequestEventElicitation {
             pub mode: UserElicitationRequestEventElicitationMode,
             #[serde(rename = "request")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub request: Presence<UserElicitationRequestEventElicitationRequest>,
+            pub request: Presence<Box<TextPart>>,
             #[serde(rename = "server")]
             pub server: String,
             /// Members not known to this schema revision.
@@ -73385,946 +72167,6 @@ impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationMode {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultEventElicitationResultBodyMediaType;
-
-impl UserElicitationResultEventElicitationResultBodyMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultEventElicitationResultBodyMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodyMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultEventElicitationResultBodySelection;
-
-impl UserElicitationResultEventElicitationResultBodySelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultEventElicitationResultBodySelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodySelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultEventElicitationResultBody {
-    #[serde(rename = "body")]
-    pub body: Box<ContentReference>,
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationResultEventElicitationResultBodyMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationResultEventElicitationResultBodySelection,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultEventElicitationResultBody {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        body: impl Into<Box<ContentReference>>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            body: body.into(),
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
-        self.body = value.into();
-        self
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBody {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultEventElicitationResultBody")]
-        struct Hydration {
-            #[serde(rename = "body")]
-            pub body: Box<ContentReference>,
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationResultEventElicitationResultBodyMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationResultEventElicitationResultBodySelection,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultEventElicitationResultBodyGapGap {
-    #[serde(rename = "path")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub path: Presence<String>,
-    #[serde(rename = "reason")]
-    pub reason: String,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultEventElicitationResultBodyGapGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self {
-            path: Presence::Missing,
-            reason: reason.into(),
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_path(mut self, value: impl Into<String>) -> Self {
-        self.path = Presence::Present(value.into());
-        self
-    }
-    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
-        self.reason = value.into();
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodyGapGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultEventElicitationResultBodyGapGap")]
-        struct Hydration {
-            #[serde(rename = "path")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub path: Presence<String>,
-            #[serde(rename = "reason")]
-            pub reason: String,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultEventElicitationResultBodyGapMediaType;
-
-impl UserElicitationResultEventElicitationResultBodyGapMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultEventElicitationResultBodyGapMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodyGapMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultEventElicitationResultBodyGapSelection;
-
-impl UserElicitationResultEventElicitationResultBodyGapSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultEventElicitationResultBodyGapSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodyGapSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultEventElicitationResultBodyGap {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "gap")]
-    pub gap: UserElicitationResultEventElicitationResultBodyGapGap,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationResultEventElicitationResultBodyGapMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationResultEventElicitationResultBodyGapSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultEventElicitationResultBodyGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        gap: impl Into<UserElicitationResultEventElicitationResultBodyGapGap>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            gap: gap.into(),
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_gap(
-        mut self,
-        value: impl Into<UserElicitationResultEventElicitationResultBodyGapGap>,
-    ) -> Self {
-        self.gap = value.into();
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultBodyGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultEventElicitationResultBodyGap")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "gap")]
-            pub gap: UserElicitationResultEventElicitationResultBodyGapGap,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationResultEventElicitationResultBodyGapMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationResultEventElicitationResultBodyGapSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultEventElicitationResultMetadataMediaType;
-
-impl UserElicitationResultEventElicitationResultMetadataMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultEventElicitationResultMetadataMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultMetadataMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultEventElicitationResultMetadataSelection;
-
-impl UserElicitationResultEventElicitationResultMetadataSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultEventElicitationResultMetadataSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultMetadataSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultEventElicitationResultMetadata {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationResultEventElicitationResultMetadataMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationResultEventElicitationResultMetadataSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultEventElicitationResultMetadata {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultMetadata {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultEventElicitationResultMetadata")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationResultEventElicitationResultMetadataMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationResultEventElicitationResultMetadataSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultEventElicitationResultOmitMediaType;
-
-impl UserElicitationResultEventElicitationResultOmitMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultEventElicitationResultOmitMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultOmitMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultEventElicitationResultOmitSelection;
-
-impl UserElicitationResultEventElicitationResultOmitSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultEventElicitationResultOmitSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultOmitSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultEventElicitationResultOmit {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationResultEventElicitationResultOmitMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationResultEventElicitationResultOmitSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultEventElicitationResultOmit {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResultOmit {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultEventElicitationResultOmit")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationResultEventElicitationResultOmitMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationResultEventElicitationResultOmitSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum UserElicitationResultEventElicitationResult {
-    Body(UserElicitationResultEventElicitationResultBody),
-    BodyGap(UserElicitationResultEventElicitationResultBodyGap),
-    Metadata(UserElicitationResultEventElicitationResultMetadata),
-    Omit(UserElicitationResultEventElicitationResultOmit),
-}
-
-impl From<UserElicitationResultEventElicitationResultBody>
-    for UserElicitationResultEventElicitationResult
-{
-    fn from(value: UserElicitationResultEventElicitationResultBody) -> Self {
-        Self::Body(value)
-    }
-}
-
-impl From<UserElicitationResultEventElicitationResultBodyGap>
-    for UserElicitationResultEventElicitationResult
-{
-    fn from(value: UserElicitationResultEventElicitationResultBodyGap) -> Self {
-        Self::BodyGap(value)
-    }
-}
-
-impl From<UserElicitationResultEventElicitationResultMetadata>
-    for UserElicitationResultEventElicitationResult
-{
-    fn from(value: UserElicitationResultEventElicitationResultMetadata) -> Self {
-        Self::Metadata(value)
-    }
-}
-
-impl From<UserElicitationResultEventElicitationResultOmit>
-    for UserElicitationResultEventElicitationResult
-{
-    fn from(value: UserElicitationResultEventElicitationResultOmit) -> Self {
-        Self::Omit(value)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultEventElicitationResult {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultEventElicitationResult")]
-        #[serde(untagged)]
-        enum Hydration {
-            Body(UserElicitationResultEventElicitationResultBody),
-            BodyGap(UserElicitationResultEventElicitationResultBodyGap),
-            Metadata(UserElicitationResultEventElicitationResultMetadata),
-            Omit(UserElicitationResultEventElicitationResultOmit),
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserElicitationResultEventElicitation {
     #[serde(rename = "action")]
@@ -74333,7 +72175,7 @@ pub struct UserElicitationResultEventElicitation {
     pub mode: UserElicitationResultEventElicitationMode,
     #[serde(rename = "result")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub result: Presence<UserElicitationResultEventElicitationResult>,
+    pub result: Presence<Box<TextPart>>,
     #[serde(rename = "server")]
     pub server: String,
     /// Members not known to this schema revision.
@@ -74370,10 +72212,7 @@ impl UserElicitationResultEventElicitation {
         self.mode = value.into();
         self
     }
-    pub fn with_result(
-        mut self,
-        value: impl Into<UserElicitationResultEventElicitationResult>,
-    ) -> Self {
+    pub fn with_result(mut self, value: impl Into<Box<TextPart>>) -> Self {
         self.result = Presence::Present(value.into());
         self
     }
@@ -74388,7 +72227,7 @@ impl<'de> Deserialize<'de> for UserElicitationResultEventElicitation {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -74401,7 +72240,7 @@ impl<'de> Deserialize<'de> for UserElicitationResultEventElicitation {
             pub mode: UserElicitationResultEventElicitationMode,
             #[serde(rename = "result")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub result: Presence<UserElicitationResultEventElicitationResult>,
+            pub result: Presence<Box<TextPart>>,
             #[serde(rename = "server")]
             pub server: String,
             /// Members not known to this schema revision.
@@ -75854,14 +73693,122 @@ impl<'de> Deserialize<'de> for UserMessageInboundEventType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserMessageInboundEventMessageMessagesItemRole;
+
+impl UserMessageInboundEventMessageMessagesItemRole {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserMessageInboundEventMessageMessagesItemRole {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"user\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundEventMessageMessagesItemRole {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true},{\"kind\":\"literal\",\"value\":\"user\"}]}",
+        )?;
+        let expected: JsonValue =
+            serde_json::from_str("\"user\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct UserMessageInboundEventMessageMessagesItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "parts")]
+    pub parts: Vec<Box<ContentItem>>,
+    #[serde(rename = "role")]
+    pub role: UserMessageInboundEventMessageMessagesItemRole,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageInboundEventMessageMessagesItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, parts: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        Self {
+            id: id.into(),
+            parts: parts.into(),
+            role: Default::default(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_parts(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.parts = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundEventMessageMessagesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"user\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "UserMessageInboundEventMessageMessagesItem")]
+        struct Hydration {
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "parts")]
+            pub parts: Vec<Box<ContentItem>>,
+            #[serde(rename = "role")]
+            pub role: UserMessageInboundEventMessageMessagesItemRole,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserMessageInboundEventMessage {
     #[serde(rename = "channel")]
     pub channel: String,
+    #[serde(rename = "messages")]
+    pub messages: Vec<UserMessageInboundEventMessageMessagesItem>,
     #[serde(rename = "sender")]
     pub sender: String,
-    #[serde(rename = "text")]
-    pub text: Vec<Box<ContentItem>>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -75871,13 +73818,13 @@ impl UserMessageInboundEventMessage {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(
         channel: impl Into<String>,
+        messages: impl Into<Vec<UserMessageInboundEventMessageMessagesItem>>,
         sender: impl Into<String>,
-        text: impl Into<Vec<Box<ContentItem>>>,
     ) -> Self {
         Self {
             channel: channel.into(),
+            messages: messages.into(),
             sender: sender.into(),
-            text: text.into(),
             additional_properties: BTreeMap::new(),
         }
     }
@@ -75885,12 +73832,15 @@ impl UserMessageInboundEventMessage {
         self.channel = value.into();
         self
     }
-    pub fn with_sender(mut self, value: impl Into<String>) -> Self {
-        self.sender = value.into();
+    pub fn with_messages(
+        mut self,
+        value: impl Into<Vec<UserMessageInboundEventMessageMessagesItem>>,
+    ) -> Self {
+        self.messages = value.into();
         self
     }
-    pub fn with_text(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
-        self.text = value.into();
+    pub fn with_sender(mut self, value: impl Into<String>) -> Self {
+        self.sender = value.into();
         self
     }
 }
@@ -75900,7 +73850,7 @@ impl<'de> Deserialize<'de> for UserMessageInboundEventMessage {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"user\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -75909,10 +73859,10 @@ impl<'de> Deserialize<'de> for UserMessageInboundEventMessage {
         struct Hydration {
             #[serde(rename = "channel")]
             pub channel: String,
+            #[serde(rename = "messages")]
+            pub messages: Vec<UserMessageInboundEventMessageMessagesItem>,
             #[serde(rename = "sender")]
             pub sender: String,
-            #[serde(rename = "text")]
-            pub text: Vec<Box<ContentItem>>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -77363,12 +75313,120 @@ impl<'de> Deserialize<'de> for UserMessageOutboundEventType {
 }
 
 /// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserMessageOutboundEventMessageMessagesItemRole;
+
+impl UserMessageOutboundEventMessageMessagesItemRole {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserMessageOutboundEventMessageMessagesItemRole {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"assistant\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundEventMessageMessagesItemRole {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true},{\"kind\":\"literal\",\"value\":\"assistant\"}]}",
+        )?;
+        let expected: JsonValue =
+            serde_json::from_str("\"assistant\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct UserMessageOutboundEventMessageMessagesItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "parts")]
+    pub parts: Vec<Box<ContentItem>>,
+    #[serde(rename = "role")]
+    pub role: UserMessageOutboundEventMessageMessagesItemRole,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageOutboundEventMessageMessagesItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, parts: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        Self {
+            id: id.into(),
+            parts: parts.into(),
+            role: Default::default(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_parts(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.parts = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundEventMessageMessagesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"assistant\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "UserMessageOutboundEventMessageMessagesItem")]
+        struct Hydration {
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "parts")]
+            pub parts: Vec<Box<ContentItem>>,
+            #[serde(rename = "role")]
+            pub role: UserMessageOutboundEventMessageMessagesItemRole,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserMessageOutboundEventMessage {
     #[serde(rename = "channel")]
     pub channel: String,
-    #[serde(rename = "payload")]
-    pub payload: Vec<Box<ContentItem>>,
+    #[serde(rename = "messages")]
+    pub messages: Vec<UserMessageOutboundEventMessageMessagesItem>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -77376,10 +75434,13 @@ pub struct UserMessageOutboundEventMessage {
 
 impl UserMessageOutboundEventMessage {
     /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(channel: impl Into<String>, payload: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn new(
+        channel: impl Into<String>,
+        messages: impl Into<Vec<UserMessageOutboundEventMessageMessagesItem>>,
+    ) -> Self {
         Self {
             channel: channel.into(),
-            payload: payload.into(),
+            messages: messages.into(),
             additional_properties: BTreeMap::new(),
         }
     }
@@ -77387,8 +75448,11 @@ impl UserMessageOutboundEventMessage {
         self.channel = value.into();
         self
     }
-    pub fn with_payload(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
-        self.payload = value.into();
+    pub fn with_messages(
+        mut self,
+        value: impl Into<Vec<UserMessageOutboundEventMessageMessagesItem>>,
+    ) -> Self {
+        self.messages = value.into();
         self
     }
 }
@@ -77398,7 +75462,7 @@ impl<'de> Deserialize<'de> for UserMessageOutboundEventMessage {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"payload\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"assistant\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -77407,8 +75471,8 @@ impl<'de> Deserialize<'de> for UserMessageOutboundEventMessage {
         struct Hydration {
             #[serde(rename = "channel")]
             pub channel: String,
-            #[serde(rename = "payload")]
-            pub payload: Vec<Box<ContentItem>>,
+            #[serde(rename = "messages")]
+            pub messages: Vec<UserMessageOutboundEventMessageMessagesItem>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -79595,12 +77659,12 @@ impl<'de> Deserialize<'de> for FileChangedInputChangesItemOperation {
 pub struct FileChangedInputChangesItem {
     #[serde(rename = "after")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub after: Presence<Box<ContentReference>>,
+    pub after: Presence<Box<ContentItem>>,
     #[serde(rename = "agentCaused")]
     pub agent_caused: bool,
     #[serde(rename = "before")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub before: Presence<Box<ContentReference>>,
+    pub before: Presence<Box<ContentItem>>,
     #[serde(rename = "operation")]
     pub operation: FileChangedInputChangesItemOperation,
     #[serde(rename = "path")]
@@ -79626,7 +77690,7 @@ impl FileChangedInputChangesItem {
             additional_properties: BTreeMap::new(),
         }
     }
-    pub fn with_after(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+    pub fn with_after(mut self, value: impl Into<Box<ContentItem>>) -> Self {
         self.after = Presence::Present(value.into());
         self
     }
@@ -79634,7 +77698,7 @@ impl FileChangedInputChangesItem {
         self.agent_caused = value.into();
         self
     }
-    pub fn with_before(mut self, value: impl Into<Box<ContentReference>>) -> Self {
+    pub fn with_before(mut self, value: impl Into<Box<ContentItem>>) -> Self {
         self.before = Presence::Present(value.into());
         self
     }
@@ -79656,7 +77720,7 @@ impl<'de> Deserialize<'de> for FileChangedInputChangesItem {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -79665,12 +77729,12 @@ impl<'de> Deserialize<'de> for FileChangedInputChangesItem {
         struct Hydration {
             #[serde(rename = "after")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub after: Presence<Box<ContentReference>>,
+            pub after: Presence<Box<ContentItem>>,
             #[serde(rename = "agentCaused")]
             pub agent_caused: bool,
             #[serde(rename = "before")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub before: Presence<Box<ContentReference>>,
+            pub before: Presence<Box<ContentItem>>,
             #[serde(rename = "operation")]
             pub operation: FileChangedInputChangesItemOperation,
             #[serde(rename = "path")]
@@ -85361,9 +83425,9 @@ pub struct UserAttentionInputAttention {
     #[serde(rename = "kind")]
     pub kind: String,
     #[serde(rename = "message")]
-    pub message: Vec<Box<ContentItem>>,
+    pub message: Box<TextParts>,
     #[serde(rename = "title")]
-    pub title: Vec<Box<ContentItem>>,
+    pub title: Box<TextParts>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -85373,8 +83437,8 @@ impl UserAttentionInputAttention {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(
         kind: impl Into<String>,
-        message: impl Into<Vec<Box<ContentItem>>>,
-        title: impl Into<Vec<Box<ContentItem>>>,
+        message: impl Into<Box<TextParts>>,
+        title: impl Into<Box<TextParts>>,
     ) -> Self {
         Self {
             kind: kind.into(),
@@ -85387,11 +83451,11 @@ impl UserAttentionInputAttention {
         self.kind = value.into();
         self
     }
-    pub fn with_message(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn with_message(mut self, value: impl Into<Box<TextParts>>) -> Self {
         self.message = value.into();
         self
     }
-    pub fn with_title(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn with_title(mut self, value: impl Into<Box<TextParts>>) -> Self {
         self.title = value.into();
         self
     }
@@ -85402,7 +83466,7 @@ impl<'de> Deserialize<'de> for UserAttentionInputAttention {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -85412,9 +83476,9 @@ impl<'de> Deserialize<'de> for UserAttentionInputAttention {
             #[serde(rename = "kind")]
             pub kind: String,
             #[serde(rename = "message")]
-            pub message: Vec<Box<ContentItem>>,
+            pub message: Box<TextParts>,
             #[serde(rename = "title")]
-            pub title: Vec<Box<ContentItem>>,
+            pub title: Box<TextParts>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -85599,953 +83663,13 @@ impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationMode {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestInputElicitationRequestBodyMediaType;
-
-impl UserElicitationRequestInputElicitationRequestBodyMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestInputElicitationRequestBodyMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodyMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestInputElicitationRequestBodySelection;
-
-impl UserElicitationRequestInputElicitationRequestBodySelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestInputElicitationRequestBodySelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodySelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestInputElicitationRequestBody {
-    #[serde(rename = "body")]
-    pub body: Box<ContentReference>,
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationRequestInputElicitationRequestBodyMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationRequestInputElicitationRequestBodySelection,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestInputElicitationRequestBody {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        body: impl Into<Box<ContentReference>>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            body: body.into(),
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
-        self.body = value.into();
-        self
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBody {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestInputElicitationRequestBody")]
-        struct Hydration {
-            #[serde(rename = "body")]
-            pub body: Box<ContentReference>,
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationRequestInputElicitationRequestBodyMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationRequestInputElicitationRequestBodySelection,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestInputElicitationRequestBodyGapGap {
-    #[serde(rename = "path")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub path: Presence<String>,
-    #[serde(rename = "reason")]
-    pub reason: String,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestInputElicitationRequestBodyGapGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self {
-            path: Presence::Missing,
-            reason: reason.into(),
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_path(mut self, value: impl Into<String>) -> Self {
-        self.path = Presence::Present(value.into());
-        self
-    }
-    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
-        self.reason = value.into();
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodyGapGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestInputElicitationRequestBodyGapGap")]
-        struct Hydration {
-            #[serde(rename = "path")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub path: Presence<String>,
-            #[serde(rename = "reason")]
-            pub reason: String,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestInputElicitationRequestBodyGapMediaType;
-
-impl UserElicitationRequestInputElicitationRequestBodyGapMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestInputElicitationRequestBodyGapMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodyGapMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestInputElicitationRequestBodyGapSelection;
-
-impl UserElicitationRequestInputElicitationRequestBodyGapSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestInputElicitationRequestBodyGapSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodyGapSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestInputElicitationRequestBodyGap {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "gap")]
-    pub gap: UserElicitationRequestInputElicitationRequestBodyGapGap,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationRequestInputElicitationRequestBodyGapMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationRequestInputElicitationRequestBodyGapSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestInputElicitationRequestBodyGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        gap: impl Into<UserElicitationRequestInputElicitationRequestBodyGapGap>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            gap: gap.into(),
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_gap(
-        mut self,
-        value: impl Into<UserElicitationRequestInputElicitationRequestBodyGapGap>,
-    ) -> Self {
-        self.gap = value.into();
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestBodyGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestInputElicitationRequestBodyGap")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "gap")]
-            pub gap: UserElicitationRequestInputElicitationRequestBodyGapGap,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationRequestInputElicitationRequestBodyGapMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationRequestInputElicitationRequestBodyGapSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestInputElicitationRequestMetadataMediaType;
-
-impl UserElicitationRequestInputElicitationRequestMetadataMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestInputElicitationRequestMetadataMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestMetadataMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestInputElicitationRequestMetadataSelection;
-
-impl UserElicitationRequestInputElicitationRequestMetadataSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestInputElicitationRequestMetadataSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestMetadataSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestInputElicitationRequestMetadata {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationRequestInputElicitationRequestMetadataMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationRequestInputElicitationRequestMetadataSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestInputElicitationRequestMetadata {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestMetadata {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestInputElicitationRequestMetadata")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationRequestInputElicitationRequestMetadataMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationRequestInputElicitationRequestMetadataSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestInputElicitationRequestOmitMediaType;
-
-impl UserElicitationRequestInputElicitationRequestOmitMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestInputElicitationRequestOmitMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestOmitMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationRequestInputElicitationRequestOmitSelection;
-
-impl UserElicitationRequestInputElicitationRequestOmitSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationRequestInputElicitationRequestOmitSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestOmitSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationRequestInputElicitationRequestOmit {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationRequestInputElicitationRequestOmitMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationRequestInputElicitationRequestOmitSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationRequestInputElicitationRequestOmit {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequestOmit {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestInputElicitationRequestOmit")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationRequestInputElicitationRequestOmitMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationRequestInputElicitationRequestOmitSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum UserElicitationRequestInputElicitationRequest {
-    Body(UserElicitationRequestInputElicitationRequestBody),
-    BodyGap(UserElicitationRequestInputElicitationRequestBodyGap),
-    Metadata(UserElicitationRequestInputElicitationRequestMetadata),
-    Omit(UserElicitationRequestInputElicitationRequestOmit),
-}
-
-impl From<UserElicitationRequestInputElicitationRequestBody>
-    for UserElicitationRequestInputElicitationRequest
-{
-    fn from(value: UserElicitationRequestInputElicitationRequestBody) -> Self {
-        Self::Body(value)
-    }
-}
-
-impl From<UserElicitationRequestInputElicitationRequestBodyGap>
-    for UserElicitationRequestInputElicitationRequest
-{
-    fn from(value: UserElicitationRequestInputElicitationRequestBodyGap) -> Self {
-        Self::BodyGap(value)
-    }
-}
-
-impl From<UserElicitationRequestInputElicitationRequestMetadata>
-    for UserElicitationRequestInputElicitationRequest
-{
-    fn from(value: UserElicitationRequestInputElicitationRequestMetadata) -> Self {
-        Self::Metadata(value)
-    }
-}
-
-impl From<UserElicitationRequestInputElicitationRequestOmit>
-    for UserElicitationRequestInputElicitationRequest
-{
-    fn from(value: UserElicitationRequestInputElicitationRequestOmit) -> Self {
-        Self::Omit(value)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitationRequest {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationRequestInputElicitationRequest")]
-        #[serde(untagged)]
-        enum Hydration {
-            Body(UserElicitationRequestInputElicitationRequestBody),
-            BodyGap(UserElicitationRequestInputElicitationRequestBodyGap),
-            Metadata(UserElicitationRequestInputElicitationRequestMetadata),
-            Omit(UserElicitationRequestInputElicitationRequestOmit),
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserElicitationRequestInputElicitation {
     #[serde(rename = "mode")]
     pub mode: UserElicitationRequestInputElicitationMode,
     #[serde(rename = "request")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub request: Presence<UserElicitationRequestInputElicitationRequest>,
+    pub request: Presence<Box<TextPart>>,
     #[serde(rename = "server")]
     pub server: String,
     /// Members not known to this schema revision.
@@ -86573,10 +83697,7 @@ impl UserElicitationRequestInputElicitation {
         self.mode = value.into();
         self
     }
-    pub fn with_request(
-        mut self,
-        value: impl Into<UserElicitationRequestInputElicitationRequest>,
-    ) -> Self {
+    pub fn with_request(mut self, value: impl Into<Box<TextPart>>) -> Self {
         self.request = Presence::Present(value.into());
         self
     }
@@ -86591,7 +83712,7 @@ impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitation {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -86602,7 +83723,7 @@ impl<'de> Deserialize<'de> for UserElicitationRequestInputElicitation {
             pub mode: UserElicitationRequestInputElicitationMode,
             #[serde(rename = "request")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub request: Presence<UserElicitationRequestInputElicitationRequest>,
+            pub request: Presence<Box<TextPart>>,
             #[serde(rename = "server")]
             pub server: String,
             /// Members not known to this schema revision.
@@ -86865,946 +83986,6 @@ impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationMode {
 }
 
 /// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultInputElicitationResultBodyMediaType;
-
-impl UserElicitationResultInputElicitationResultBodyMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultInputElicitationResultBodyMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodyMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultInputElicitationResultBodySelection;
-
-impl UserElicitationResultInputElicitationResultBodySelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultInputElicitationResultBodySelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodySelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultInputElicitationResultBody {
-    #[serde(rename = "body")]
-    pub body: Box<ContentReference>,
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationResultInputElicitationResultBodyMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationResultInputElicitationResultBodySelection,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultInputElicitationResultBody {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        body: impl Into<Box<ContentReference>>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            body: body.into(),
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_body(mut self, value: impl Into<Box<ContentReference>>) -> Self {
-        self.body = value.into();
-        self
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBody {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultInputElicitationResultBody")]
-        struct Hydration {
-            #[serde(rename = "body")]
-            pub body: Box<ContentReference>,
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationResultInputElicitationResultBodyMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationResultInputElicitationResultBodySelection,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultInputElicitationResultBodyGapGap {
-    #[serde(rename = "path")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub path: Presence<String>,
-    #[serde(rename = "reason")]
-    pub reason: String,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultInputElicitationResultBodyGapGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(reason: impl Into<String>) -> Self {
-        Self {
-            path: Presence::Missing,
-            reason: reason.into(),
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_path(mut self, value: impl Into<String>) -> Self {
-        self.path = Presence::Present(value.into());
-        self
-    }
-    pub fn with_reason(mut self, value: impl Into<String>) -> Self {
-        self.reason = value.into();
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodyGapGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultInputElicitationResultBodyGapGap")]
-        struct Hydration {
-            #[serde(rename = "path")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub path: Presence<String>,
-            #[serde(rename = "reason")]
-            pub reason: String,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultInputElicitationResultBodyGapMediaType;
-
-impl UserElicitationResultInputElicitationResultBodyGapMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultInputElicitationResultBodyGapMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodyGapMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultInputElicitationResultBodyGapSelection;
-
-impl UserElicitationResultInputElicitationResultBodyGapSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultInputElicitationResultBodyGapSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodyGapSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"body\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"body\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultInputElicitationResultBodyGap {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "gap")]
-    pub gap: UserElicitationResultInputElicitationResultBodyGapGap,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationResultInputElicitationResultBodyGapMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationResultInputElicitationResultBodyGapSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultInputElicitationResultBodyGap {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(
-        gap: impl Into<UserElicitationResultInputElicitationResultBodyGapGap>,
-        id: impl Into<String>,
-        kind: impl Into<String>,
-    ) -> Self {
-        Self {
-            category: Presence::Missing,
-            gap: gap.into(),
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_gap(
-        mut self,
-        value: impl Into<UserElicitationResultInputElicitationResultBodyGapGap>,
-    ) -> Self {
-        self.gap = value.into();
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultBodyGap {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultInputElicitationResultBodyGap")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "gap")]
-            pub gap: UserElicitationResultInputElicitationResultBodyGapGap,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationResultInputElicitationResultBodyGapMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationResultInputElicitationResultBodyGapSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultInputElicitationResultMetadataMediaType;
-
-impl UserElicitationResultInputElicitationResultMetadataMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultInputElicitationResultMetadataMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultMetadataMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultInputElicitationResultMetadataSelection;
-
-impl UserElicitationResultInputElicitationResultMetadataSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultInputElicitationResultMetadataSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultMetadataSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"metadata\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"metadata\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultInputElicitationResultMetadata {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationResultInputElicitationResultMetadataMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationResultInputElicitationResultMetadataSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultInputElicitationResultMetadata {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultMetadata {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultInputElicitationResultMetadata")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationResultInputElicitationResultMetadataMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationResultInputElicitationResultMetadataSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultInputElicitationResultOmitMediaType;
-
-impl UserElicitationResultInputElicitationResultOmitMediaType {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultInputElicitationResultOmitMediaType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultOmitMediaType {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"literal\",\"value\":\"application/json\"},{\"kind\":\"string\"}]}",
-        )?;
-        let expected: JsonValue =
-            serde_json::from_str("\"application/json\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct UserElicitationResultInputElicitationResultOmitSelection;
-
-impl UserElicitationResultInputElicitationResultOmitSelection {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Serialize for UserElicitationResultInputElicitationResultOmitSelection {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let value: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultOmitSelection {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated =
-            validate_decode::<D::Error>(&value, "{\"kind\":\"literal\",\"value\":\"omit\"}")?;
-        let expected: JsonValue =
-            serde_json::from_str("\"omit\"").expect("generated literal is valid JSON");
-        if same_json(&value, &expected) {
-            Ok(Self)
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(format!(
-                "expected {expected}"
-            )))
-        }
-    }
-}
-
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct UserElicitationResultInputElicitationResultOmit {
-    #[serde(rename = "category")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub category: Presence<String>,
-    #[serde(rename = "id")]
-    pub id: String,
-    #[serde(rename = "kind")]
-    pub kind: String,
-    #[serde(rename = "mediaType")]
-    pub media_type: UserElicitationResultInputElicitationResultOmitMediaType,
-    #[serde(rename = "parentItemId")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub parent_item_id: Presence<String>,
-    #[serde(rename = "role")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub role: Presence<String>,
-    #[serde(rename = "selection")]
-    pub selection: UserElicitationResultInputElicitationResultOmitSelection,
-    #[serde(rename = "sha256")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub sha256: Presence<String>,
-    #[serde(rename = "size")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub size: Presence<Integer>,
-    #[serde(rename = "synthesized")]
-    #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub synthesized: Presence<bool>,
-    /// Members not known to this schema revision.
-    #[serde(flatten)]
-    pub additional_properties: BTreeMap<String, JsonValue>,
-}
-
-impl UserElicitationResultInputElicitationResultOmit {
-    /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
-        Self {
-            category: Presence::Missing,
-            id: id.into(),
-            kind: kind.into(),
-            media_type: Default::default(),
-            parent_item_id: Presence::Missing,
-            role: Presence::Missing,
-            selection: Default::default(),
-            sha256: Presence::Missing,
-            size: Presence::Missing,
-            synthesized: Presence::Missing,
-            additional_properties: BTreeMap::new(),
-        }
-    }
-    pub fn with_category(mut self, value: impl Into<String>) -> Self {
-        self.category = Presence::Present(value.into());
-        self
-    }
-    pub fn with_id(mut self, value: impl Into<String>) -> Self {
-        self.id = value.into();
-        self
-    }
-    pub fn with_kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = value.into();
-        self
-    }
-    pub fn with_parent_item_id(mut self, value: impl Into<String>) -> Self {
-        self.parent_item_id = Presence::Present(value.into());
-        self
-    }
-    pub fn with_role(mut self, value: impl Into<String>) -> Self {
-        self.role = Presence::Present(value.into());
-        self
-    }
-    pub fn with_sha256(mut self, value: impl Into<String>) -> Self {
-        self.sha256 = Presence::Present(value.into());
-        self
-    }
-    pub fn with_size(mut self, value: impl Into<Integer>) -> Self {
-        self.size = Presence::Present(value.into());
-        self
-    }
-    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
-        self.synthesized = Presence::Present(value.into());
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResultOmit {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultInputElicitationResultOmit")]
-        struct Hydration {
-            #[serde(rename = "category")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub category: Presence<String>,
-            #[serde(rename = "id")]
-            pub id: String,
-            #[serde(rename = "kind")]
-            pub kind: String,
-            #[serde(rename = "mediaType")]
-            pub media_type: UserElicitationResultInputElicitationResultOmitMediaType,
-            #[serde(rename = "parentItemId")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub parent_item_id: Presence<String>,
-            #[serde(rename = "role")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub role: Presence<String>,
-            #[serde(rename = "selection")]
-            pub selection: UserElicitationResultInputElicitationResultOmitSelection,
-            #[serde(rename = "sha256")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub sha256: Presence<String>,
-            #[serde(rename = "size")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub size: Presence<Integer>,
-            #[serde(rename = "synthesized")]
-            #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub synthesized: Presence<bool>,
-            /// Members not known to this schema revision.
-            #[serde(flatten)]
-            pub additional_properties: BTreeMap<String, JsonValue>,
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum UserElicitationResultInputElicitationResult {
-    Body(UserElicitationResultInputElicitationResultBody),
-    BodyGap(UserElicitationResultInputElicitationResultBodyGap),
-    Metadata(UserElicitationResultInputElicitationResultMetadata),
-    Omit(UserElicitationResultInputElicitationResultOmit),
-}
-
-impl From<UserElicitationResultInputElicitationResultBody>
-    for UserElicitationResultInputElicitationResult
-{
-    fn from(value: UserElicitationResultInputElicitationResultBody) -> Self {
-        Self::Body(value)
-    }
-}
-
-impl From<UserElicitationResultInputElicitationResultBodyGap>
-    for UserElicitationResultInputElicitationResult
-{
-    fn from(value: UserElicitationResultInputElicitationResultBodyGap) -> Self {
-        Self::BodyGap(value)
-    }
-}
-
-impl From<UserElicitationResultInputElicitationResultMetadata>
-    for UserElicitationResultInputElicitationResult
-{
-    fn from(value: UserElicitationResultInputElicitationResultMetadata) -> Self {
-        Self::Metadata(value)
-    }
-}
-
-impl From<UserElicitationResultInputElicitationResultOmit>
-    for UserElicitationResultInputElicitationResult
-{
-    fn from(value: UserElicitationResultInputElicitationResultOmit) -> Self {
-        Self::Omit(value)
-    }
-}
-
-impl<'de> Deserialize<'de> for UserElicitationResultInputElicitationResult {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = JsonValue::deserialize(deserializer)?;
-        let _validated = validate_decode::<D::Error>(
-            &value,
-            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
-        )?;
-        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
-        #[allow(clippy::vec_box, clippy::enum_variant_names)]
-        #[derive(Deserialize)]
-        #[serde(remote = "UserElicitationResultInputElicitationResult")]
-        #[serde(untagged)]
-        enum Hydration {
-            Body(UserElicitationResultInputElicitationResultBody),
-            BodyGap(UserElicitationResultInputElicitationResultBodyGap),
-            Metadata(UserElicitationResultInputElicitationResultMetadata),
-            Omit(UserElicitationResultInputElicitationResultOmit),
-        }
-
-        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
-    }
-}
-/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserElicitationResultInputElicitation {
     #[serde(rename = "action")]
@@ -87813,7 +83994,7 @@ pub struct UserElicitationResultInputElicitation {
     pub mode: UserElicitationResultInputElicitationMode,
     #[serde(rename = "result")]
     #[serde(default, skip_serializing_if = "Presence::is_missing")]
-    pub result: Presence<UserElicitationResultInputElicitationResult>,
+    pub result: Presence<Box<TextPart>>,
     #[serde(rename = "server")]
     pub server: String,
     /// Members not known to this schema revision.
@@ -87850,10 +84031,7 @@ impl UserElicitationResultInputElicitation {
         self.mode = value.into();
         self
     }
-    pub fn with_result(
-        mut self,
-        value: impl Into<UserElicitationResultInputElicitationResult>,
-    ) -> Self {
+    pub fn with_result(mut self, value: impl Into<Box<TextPart>>) -> Self {
         self.result = Presence::Present(value.into());
         self
     }
@@ -87868,7 +84046,7 @@ impl<'de> Deserialize<'de> for UserElicitationResultInputElicitation {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -87881,7 +84059,7 @@ impl<'de> Deserialize<'de> for UserElicitationResultInputElicitation {
             pub mode: UserElicitationResultInputElicitationMode,
             #[serde(rename = "result")]
             #[serde(default, skip_serializing_if = "Presence::is_missing")]
-            pub result: Presence<UserElicitationResultInputElicitationResult>,
+            pub result: Presence<Box<TextPart>>,
             #[serde(rename = "server")]
             pub server: String,
             /// Members not known to this schema revision.
@@ -88060,14 +84238,122 @@ impl<'de> Deserialize<'de> for UserMessageInboundInputGapsItem {
     }
 }
 /// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserMessageInboundInputMessageMessagesItemRole;
+
+impl UserMessageInboundInputMessageMessagesItemRole {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserMessageInboundInputMessageMessagesItemRole {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"user\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundInputMessageMessagesItemRole {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true},{\"kind\":\"literal\",\"value\":\"user\"}]}",
+        )?;
+        let expected: JsonValue =
+            serde_json::from_str("\"user\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct UserMessageInboundInputMessageMessagesItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "parts")]
+    pub parts: Vec<Box<ContentItem>>,
+    #[serde(rename = "role")]
+    pub role: UserMessageInboundInputMessageMessagesItemRole,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageInboundInputMessageMessagesItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, parts: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        Self {
+            id: id.into(),
+            parts: parts.into(),
+            role: Default::default(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_parts(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.parts = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageInboundInputMessageMessagesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"user\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "UserMessageInboundInputMessageMessagesItem")]
+        struct Hydration {
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "parts")]
+            pub parts: Vec<Box<ContentItem>>,
+            #[serde(rename = "role")]
+            pub role: UserMessageInboundInputMessageMessagesItemRole,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserMessageInboundInputMessage {
     #[serde(rename = "channel")]
     pub channel: String,
+    #[serde(rename = "messages")]
+    pub messages: Vec<UserMessageInboundInputMessageMessagesItem>,
     #[serde(rename = "sender")]
     pub sender: String,
-    #[serde(rename = "text")]
-    pub text: Vec<Box<ContentItem>>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -88077,13 +84363,13 @@ impl UserMessageInboundInputMessage {
     /// Construct a model; schema literals and defaults are supplied automatically.
     pub fn new(
         channel: impl Into<String>,
+        messages: impl Into<Vec<UserMessageInboundInputMessageMessagesItem>>,
         sender: impl Into<String>,
-        text: impl Into<Vec<Box<ContentItem>>>,
     ) -> Self {
         Self {
             channel: channel.into(),
+            messages: messages.into(),
             sender: sender.into(),
-            text: text.into(),
             additional_properties: BTreeMap::new(),
         }
     }
@@ -88091,12 +84377,15 @@ impl UserMessageInboundInputMessage {
         self.channel = value.into();
         self
     }
-    pub fn with_sender(mut self, value: impl Into<String>) -> Self {
-        self.sender = value.into();
+    pub fn with_messages(
+        mut self,
+        value: impl Into<Vec<UserMessageInboundInputMessageMessagesItem>>,
+    ) -> Self {
+        self.messages = value.into();
         self
     }
-    pub fn with_text(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
-        self.text = value.into();
+    pub fn with_sender(mut self, value: impl Into<String>) -> Self {
+        self.sender = value.into();
         self
     }
 }
@@ -88106,7 +84395,7 @@ impl<'de> Deserialize<'de> for UserMessageInboundInputMessage {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"user\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -88115,10 +84404,10 @@ impl<'de> Deserialize<'de> for UserMessageInboundInputMessage {
         struct Hydration {
             #[serde(rename = "channel")]
             pub channel: String,
+            #[serde(rename = "messages")]
+            pub messages: Vec<UserMessageInboundInputMessageMessagesItem>,
             #[serde(rename = "sender")]
             pub sender: String,
-            #[serde(rename = "text")]
-            pub text: Vec<Box<ContentItem>>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -88240,12 +84529,120 @@ impl<'de> Deserialize<'de> for UserMessageOutboundInputGapsItem {
     }
 }
 /// Inline schema model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UserMessageOutboundInputMessageMessagesItemRole;
+
+impl UserMessageOutboundInputMessageMessagesItemRole {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Serialize for UserMessageOutboundInputMessageMessagesItemRole {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: JsonValue =
+            serde_json::from_str("\"assistant\"").expect("generated literal is valid JSON");
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundInputMessageMessagesItemRole {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true},{\"kind\":\"literal\",\"value\":\"assistant\"}]}",
+        )?;
+        let expected: JsonValue =
+            serde_json::from_str("\"assistant\"").expect("generated literal is valid JSON");
+        if same_json(&value, &expected) {
+            Ok(Self)
+        } else {
+            Err(<D::Error as serde::de::Error>::custom(format!(
+                "expected {expected}"
+            )))
+        }
+    }
+}
+
+/// Inline schema model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct UserMessageOutboundInputMessageMessagesItem {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "parts")]
+    pub parts: Vec<Box<ContentItem>>,
+    #[serde(rename = "role")]
+    pub role: UserMessageOutboundInputMessageMessagesItemRole,
+    #[serde(rename = "synthesized")]
+    #[serde(default, skip_serializing_if = "Presence::is_missing")]
+    pub synthesized: Presence<bool>,
+    /// Members not known to this schema revision.
+    #[serde(flatten)]
+    pub additional_properties: BTreeMap<String, JsonValue>,
+}
+
+impl UserMessageOutboundInputMessageMessagesItem {
+    /// Construct a model; schema literals and defaults are supplied automatically.
+    pub fn new(id: impl Into<String>, parts: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        Self {
+            id: id.into(),
+            parts: parts.into(),
+            role: Default::default(),
+            synthesized: Presence::Missing,
+            additional_properties: BTreeMap::new(),
+        }
+    }
+    pub fn with_id(mut self, value: impl Into<String>) -> Self {
+        self.id = value.into();
+        self
+    }
+    pub fn with_parts(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
+        self.parts = value.into();
+        self
+    }
+    pub fn with_synthesized(mut self, value: impl Into<bool>) -> Self {
+        self.synthesized = Presence::Present(value.into());
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for UserMessageOutboundInputMessageMessagesItem {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = JsonValue::deserialize(deserializer)?;
+        let _validated = validate_decode::<D::Error>(
+            &value,
+            "{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"assistant\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}",
+        )?;
+        // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
+        #[allow(clippy::vec_box, clippy::enum_variant_names)]
+        #[derive(Deserialize)]
+        #[serde(remote = "UserMessageOutboundInputMessageMessagesItem")]
+        struct Hydration {
+            #[serde(rename = "id")]
+            pub id: String,
+            #[serde(rename = "parts")]
+            pub parts: Vec<Box<ContentItem>>,
+            #[serde(rename = "role")]
+            pub role: UserMessageOutboundInputMessageMessagesItemRole,
+            #[serde(rename = "synthesized")]
+            #[serde(default, skip_serializing_if = "Presence::is_missing")]
+            pub synthesized: Presence<bool>,
+            /// Members not known to this schema revision.
+            #[serde(flatten)]
+            pub additional_properties: BTreeMap<String, JsonValue>,
+        }
+
+        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)
+    }
+}
+/// Inline schema model.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserMessageOutboundInputMessage {
     #[serde(rename = "channel")]
     pub channel: String,
-    #[serde(rename = "payload")]
-    pub payload: Vec<Box<ContentItem>>,
+    #[serde(rename = "messages")]
+    pub messages: Vec<UserMessageOutboundInputMessageMessagesItem>,
     /// Members not known to this schema revision.
     #[serde(flatten)]
     pub additional_properties: BTreeMap<String, JsonValue>,
@@ -88253,10 +84650,13 @@ pub struct UserMessageOutboundInputMessage {
 
 impl UserMessageOutboundInputMessage {
     /// Construct a model; schema literals and defaults are supplied automatically.
-    pub fn new(channel: impl Into<String>, payload: impl Into<Vec<Box<ContentItem>>>) -> Self {
+    pub fn new(
+        channel: impl Into<String>,
+        messages: impl Into<Vec<UserMessageOutboundInputMessageMessagesItem>>,
+    ) -> Self {
         Self {
             channel: channel.into(),
-            payload: payload.into(),
+            messages: messages.into(),
             additional_properties: BTreeMap::new(),
         }
     }
@@ -88264,8 +84664,11 @@ impl UserMessageOutboundInputMessage {
         self.channel = value.into();
         self
     }
-    pub fn with_payload(mut self, value: impl Into<Vec<Box<ContentItem>>>) -> Self {
-        self.payload = value.into();
+    pub fn with_messages(
+        mut self,
+        value: impl Into<Vec<UserMessageOutboundInputMessageMessagesItem>>,
+    ) -> Self {
+        self.messages = value.into();
         self
     }
 }
@@ -88275,7 +84678,7 @@ impl<'de> Deserialize<'de> for UserMessageOutboundInputMessage {
         let value = JsonValue::deserialize(deserializer)?;
         let _validated = validate_decode::<D::Error>(
             &value,
-            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"payload\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
+            "{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"assistant\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}",
         )?;
         // Mirror the public representation exactly; do not rename arms or remove recursive indirection.
         #[allow(clippy::vec_box, clippy::enum_variant_names)]
@@ -88284,8 +84687,8 @@ impl<'de> Deserialize<'de> for UserMessageOutboundInputMessage {
         struct Hydration {
             #[serde(rename = "channel")]
             pub channel: String,
-            #[serde(rename = "payload")]
-            pub payload: Vec<Box<ContentItem>>,
+            #[serde(rename = "messages")]
+            pub messages: Vec<UserMessageOutboundInputMessageMessagesItem>,
             /// Members not known to this schema revision.
             #[serde(flatten)]
             pub additional_properties: BTreeMap<String, JsonValue>,
@@ -89889,20 +86292,6 @@ pub mod client {
         ExecutionEventToolPermissionRequestTurn, ExecutionEventToolPermissionRequestType,
         InteractionEventUserElicitationRequest, InteractionEventUserElicitationRequestElicitation,
         InteractionEventUserElicitationRequestElicitationMode,
-        InteractionEventUserElicitationRequestElicitationRequest,
-        InteractionEventUserElicitationRequestElicitationRequestBody,
-        InteractionEventUserElicitationRequestElicitationRequestBodyGap,
-        InteractionEventUserElicitationRequestElicitationRequestBodyGapGap,
-        InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType,
-        InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection,
-        InteractionEventUserElicitationRequestElicitationRequestBodyMediaType,
-        InteractionEventUserElicitationRequestElicitationRequestBodySelection,
-        InteractionEventUserElicitationRequestElicitationRequestMetadata,
-        InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType,
-        InteractionEventUserElicitationRequestElicitationRequestMetadataSelection,
-        InteractionEventUserElicitationRequestElicitationRequestOmit,
-        InteractionEventUserElicitationRequestElicitationRequestOmitMediaType,
-        InteractionEventUserElicitationRequestElicitationRequestOmitSelection,
         InteractionEventUserElicitationRequestType, InterceptDenyResponse,
         InterceptDenyResponseJsonrpc, InterceptDenyResponseResult, InterceptNoEffectResponse,
         InterceptNoEffectResponseJsonrpc, InterceptNoEffectResponseResult, InterceptRequest,
@@ -89951,15 +86340,19 @@ pub mod common {
 /// Models grouped by protocol domain.
 pub mod content {
     pub use super::{
-        ContentItem, ContentItemBody, ContentItemBodyGap, ContentItemBodyGapGap,
-        ContentItemBodyGapSelection, ContentItemBodySelection, ContentItemMetadata,
-        ContentItemMetadataSelection, ContentItemOmit, ContentItemOmitSelection, ContentReference,
+        AttachmentBodyPart, AttachmentBodyPartKind, AttachmentBodyPartSelection, AttachmentGapPart,
+        AttachmentGapPartGap, AttachmentGapPartKind, AttachmentGapPartSelection,
+        AttachmentMetadataPart, AttachmentMetadataPartKind, AttachmentMetadataPartSelection,
+        AttachmentOmittedPart, AttachmentOmittedPartKind, AttachmentOmittedPartSelection,
+        CanonicalMessage, CanonicalMessageRole, CanonicalMessages, ContentItem, ContentReference,
         ContentSelection, ContentSelectionAudio, ContentSelectionDefault, ContentSelectionFiles,
         ContentSelectionImages, ContentSelectionReasoning, ContentSelectionText,
-        ContentSelectionVideo, ContentUpload, ContentUploadReceipt, ModelVisibleItem,
-        ModelVisibleItemBody, ModelVisibleItemBodyGap, ModelVisibleItemBodyGapGap,
-        ModelVisibleItemBodyGapSelection, ModelVisibleItemBodySelection, ModelVisibleItemMetadata,
-        ModelVisibleItemMetadataSelection, ModelVisibleItemOmit, ModelVisibleItemOmitSelection,
+        ContentSelectionVideo, ContentUpload, ContentUploadReceipt, ModelVisibleItem, TextBodyPart,
+        TextBodyPartKind, TextBodyPartMediaType, TextBodyPartSelection, TextGapPart,
+        TextGapPartGap, TextGapPartKind, TextGapPartMediaType, TextGapPartSelection,
+        TextMetadataPart, TextMetadataPartKind, TextMetadataPartMediaType,
+        TextMetadataPartSelection, TextOmittedPart, TextOmittedPartKind, TextOmittedPartMediaType,
+        TextOmittedPartSelection, TextPart, TextParts,
     };
 }
 
@@ -90081,41 +86474,18 @@ pub mod event {
         InteractionEventUserAttentionType, InteractionEventUserElicitationRequest,
         InteractionEventUserElicitationRequestElicitation,
         InteractionEventUserElicitationRequestElicitationMode,
-        InteractionEventUserElicitationRequestElicitationRequest,
-        InteractionEventUserElicitationRequestElicitationRequestBody,
-        InteractionEventUserElicitationRequestElicitationRequestBodyGap,
-        InteractionEventUserElicitationRequestElicitationRequestBodyGapGap,
-        InteractionEventUserElicitationRequestElicitationRequestBodyGapMediaType,
-        InteractionEventUserElicitationRequestElicitationRequestBodyGapSelection,
-        InteractionEventUserElicitationRequestElicitationRequestBodyMediaType,
-        InteractionEventUserElicitationRequestElicitationRequestBodySelection,
-        InteractionEventUserElicitationRequestElicitationRequestMetadata,
-        InteractionEventUserElicitationRequestElicitationRequestMetadataMediaType,
-        InteractionEventUserElicitationRequestElicitationRequestMetadataSelection,
-        InteractionEventUserElicitationRequestElicitationRequestOmit,
-        InteractionEventUserElicitationRequestElicitationRequestOmitMediaType,
-        InteractionEventUserElicitationRequestElicitationRequestOmitSelection,
         InteractionEventUserElicitationRequestType, InteractionEventUserElicitationResult,
         InteractionEventUserElicitationResultElicitation,
         InteractionEventUserElicitationResultElicitationAction,
         InteractionEventUserElicitationResultElicitationMode,
-        InteractionEventUserElicitationResultElicitationResult,
-        InteractionEventUserElicitationResultElicitationResultBody,
-        InteractionEventUserElicitationResultElicitationResultBodyGap,
-        InteractionEventUserElicitationResultElicitationResultBodyGapGap,
-        InteractionEventUserElicitationResultElicitationResultBodyGapMediaType,
-        InteractionEventUserElicitationResultElicitationResultBodyGapSelection,
-        InteractionEventUserElicitationResultElicitationResultBodyMediaType,
-        InteractionEventUserElicitationResultElicitationResultBodySelection,
-        InteractionEventUserElicitationResultElicitationResultMetadata,
-        InteractionEventUserElicitationResultElicitationResultMetadataMediaType,
-        InteractionEventUserElicitationResultElicitationResultMetadataSelection,
-        InteractionEventUserElicitationResultElicitationResultOmit,
-        InteractionEventUserElicitationResultElicitationResultOmitMediaType,
-        InteractionEventUserElicitationResultElicitationResultOmitSelection,
         InteractionEventUserElicitationResultType, InteractionEventUserMessageInbound,
-        InteractionEventUserMessageInboundMessage, InteractionEventUserMessageInboundType,
-        InteractionEventUserMessageOutbound, InteractionEventUserMessageOutboundMessage,
+        InteractionEventUserMessageInboundMessage,
+        InteractionEventUserMessageInboundMessageMessagesItem,
+        InteractionEventUserMessageInboundMessageMessagesItemRole,
+        InteractionEventUserMessageInboundType, InteractionEventUserMessageOutbound,
+        InteractionEventUserMessageOutboundMessage,
+        InteractionEventUserMessageOutboundMessageMessagesItem,
+        InteractionEventUserMessageOutboundMessageMessagesItemRole,
         InteractionEventUserMessageOutboundType, ModelErrorEvent, ModelRequestBeforeEvent,
         ModelResponseAfterEvent, ModelSwitchAfterEvent, ModelSwitchBeforeEvent,
         TaskChangeAfterEvent, TaskChangeBeforeEvent, TaskWorkspaceEvent,
@@ -90148,42 +86518,17 @@ pub mod event {
         UserAttentionEventAttention, UserAttentionEventGapsItem, UserAttentionEventTurn,
         UserAttentionEventType, UserElicitationRequestEvent,
         UserElicitationRequestEventElicitation, UserElicitationRequestEventElicitationMode,
-        UserElicitationRequestEventElicitationRequest,
-        UserElicitationRequestEventElicitationRequestBody,
-        UserElicitationRequestEventElicitationRequestBodyGap,
-        UserElicitationRequestEventElicitationRequestBodyGapGap,
-        UserElicitationRequestEventElicitationRequestBodyGapMediaType,
-        UserElicitationRequestEventElicitationRequestBodyGapSelection,
-        UserElicitationRequestEventElicitationRequestBodyMediaType,
-        UserElicitationRequestEventElicitationRequestBodySelection,
-        UserElicitationRequestEventElicitationRequestMetadata,
-        UserElicitationRequestEventElicitationRequestMetadataMediaType,
-        UserElicitationRequestEventElicitationRequestMetadataSelection,
-        UserElicitationRequestEventElicitationRequestOmit,
-        UserElicitationRequestEventElicitationRequestOmitMediaType,
-        UserElicitationRequestEventElicitationRequestOmitSelection,
         UserElicitationRequestEventGapsItem, UserElicitationRequestEventTurn,
         UserElicitationRequestEventType, UserElicitationResultEvent,
         UserElicitationResultEventElicitation, UserElicitationResultEventElicitationAction,
-        UserElicitationResultEventElicitationMode, UserElicitationResultEventElicitationResult,
-        UserElicitationResultEventElicitationResultBody,
-        UserElicitationResultEventElicitationResultBodyGap,
-        UserElicitationResultEventElicitationResultBodyGapGap,
-        UserElicitationResultEventElicitationResultBodyGapMediaType,
-        UserElicitationResultEventElicitationResultBodyGapSelection,
-        UserElicitationResultEventElicitationResultBodyMediaType,
-        UserElicitationResultEventElicitationResultBodySelection,
-        UserElicitationResultEventElicitationResultMetadata,
-        UserElicitationResultEventElicitationResultMetadataMediaType,
-        UserElicitationResultEventElicitationResultMetadataSelection,
-        UserElicitationResultEventElicitationResultOmit,
-        UserElicitationResultEventElicitationResultOmitMediaType,
-        UserElicitationResultEventElicitationResultOmitSelection,
-        UserElicitationResultEventGapsItem, UserElicitationResultEventTurn,
-        UserElicitationResultEventType, UserMessageInboundEvent, UserMessageInboundEventGapsItem,
-        UserMessageInboundEventMessage, UserMessageInboundEventTurn, UserMessageInboundEventType,
-        UserMessageOutboundEvent, UserMessageOutboundEventGapsItem,
-        UserMessageOutboundEventMessage, UserMessageOutboundEventTurn,
+        UserElicitationResultEventElicitationMode, UserElicitationResultEventGapsItem,
+        UserElicitationResultEventTurn, UserElicitationResultEventType, UserMessageInboundEvent,
+        UserMessageInboundEventGapsItem, UserMessageInboundEventMessage,
+        UserMessageInboundEventMessageMessagesItem, UserMessageInboundEventMessageMessagesItemRole,
+        UserMessageInboundEventTurn, UserMessageInboundEventType, UserMessageOutboundEvent,
+        UserMessageOutboundEventGapsItem, UserMessageOutboundEventMessage,
+        UserMessageOutboundEventMessageMessagesItem,
+        UserMessageOutboundEventMessageMessagesItemRole, UserMessageOutboundEventTurn,
         UserMessageOutboundEventType, WorkspaceChangeAfterEvent, WorkspaceChangeBeforeEvent,
     };
 }
@@ -90355,7 +86700,7 @@ pub mod transport {
     };
 }
 
-const SCHEMAS_JSON: &str = "{\"Authentication\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenEnv\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenRef\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"bearer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenEnv\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[[\"tokenRef\"]],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenRef\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[[\"tokenEnv\"]],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"clientId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"clientSecretRef\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"flow\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"authorization_code_pkce\",\"client_credentials\"],\"open_strings\":true}},{\"wire_name\":\"issuer\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"resource\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scopes\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"oauth\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"Backend\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ReverseDnsName\"}},{\"wire_name\":\"subscriptions\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InterceptSubscription\"},{\"kind\":\"ref\",\"name\":\"ObserveSubscription\"}],\"discriminator\":\"mode\"}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"StdioTransport\"},{\"kind\":\"ref\",\"name\":\"HttpTransport\"}],\"discriminator\":\"type\"}}],\"forbidden_property_sets\":[[\"contentReceiver\"]],\"additional\":{\"kind\":\"allowed\"}},\"Capabilities\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"deny\",\"allow\",\"ask\",\"modify\",\"message\",\"return\",\"flow\",\"inject\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"elicitation\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"form\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"operations\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}},{\"wire_name\":\"remainingContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"inject\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"context\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"append\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}},{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"input\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"output\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"prompt\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"response\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"summary\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"workspace\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"CapabilitiesRequest\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/capabilities\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"CapabilitiesResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"manifest\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"bearer\",\"oauth\"],\"open_strings\":true}}},{\"wire_name\":\"contentCategories\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"correlationIdentityFields\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Capabilities\"}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true}},{\"wire_name\":\"modes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"observe\",\"intercept\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"limits\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxUploadBytes\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"minTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"managedPolicy\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"disableable\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"scopes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"user\",\"project\",\"managed\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"toolPaths\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"transports\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"http\",\"stdio\",\"in_process\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[[\"identity\"]],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[[\"effects\"]],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"CatalogueEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnEndEvent\"},{\"kind\":\"ref\",\"name\":\"TurnProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ModelErrorEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionResolvedEvent\"},{\"kind\":\"ref\",\"name\":\"ToolProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"UserAttentionEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"FileChangedEvent\"},{\"kind\":\"ref\",\"name\":\"HookFailureEvent\"}],\"discriminator\":\"type\"},\"ConfigChangeAfterEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeAfter\"}]},\"ConfigChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ConfigChangeBeforeEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeBefore\"}]},\"ContentItem\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parentItemId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]},\"ContentReference\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"ref\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},\"ContentSelection\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"audio\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"default\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"files\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"images\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"reasoning\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"text\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"video\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ContentUpload\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"auth\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"endpoint\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"maxBytes\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ContentUploadReceipt\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"ref\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sha256\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":true,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ContextCompactAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"inject\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ContextCompactAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactAfter\"},\"ContextCompactBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"return\",\"inject\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ContextCompactBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactBefore\"},\"DenyEffect\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"code\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"deny\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"Effect\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"DenyEffect\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"allow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"ask\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"replace\",\"merge\"],\"open_strings\":true}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"input\",\"output\",\"prompt\",\"request\",\"response\",\"content\",\"instructions\",\"summary\",\"workspace\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"modify\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"message\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"return\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stop\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"instruction\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"continue\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"append\"}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"inject\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]},\"Event\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolAfterEvent\"},{\"kind\":\"ref\",\"name\":\"SessionStartEvent\"},{\"kind\":\"ref\",\"name\":\"SessionEndEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnEndEvent\"},{\"kind\":\"ref\",\"name\":\"TurnProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ModelErrorEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionResolvedEvent\"},{\"kind\":\"ref\",\"name\":\"ToolProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"UserAttentionEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"FileChangedEvent\"},{\"kind\":\"ref\",\"name\":\"HookFailureEvent\"}],\"discriminator\":\"type\"},\"ExecutionEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnStart\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnFinishBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnEnd\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnProgress\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelRequestBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelResponseAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelError\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionRequest\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionResolved\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolProgress\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolBatchAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactAfter\"}],\"discriminator\":\"type\"},\"ExecutionEventAttempt\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"number\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventAttemptusage\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventUsage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"amount\"}},{\"wire_name\":\"provenance\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"provider\",\"estimate\"],\"open_strings\":true}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"attempt\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventBatch\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"callIds\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventContextCompactAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"removed\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventContextCompactBefore\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"auto\",\"manual\",\"hook\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"any\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventError\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"class\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"code\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"status\",\"required\":false,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"integer\"}]}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventExecution\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"executed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"supplied_result\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"policy\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"cancelled\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"timeout\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"other\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]},\"ExecutionEventFilechange\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"created\",\"modified\",\"deleted\",\"moved\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"previousPath\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventMcp\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"connection\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"http\"}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"sse\"}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"command\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stdio\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"command\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"address\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"addressForm\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"addressForm\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"address\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}],\"discriminator\":\"transport\"}},{\"wire_name\":\"provenance\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"runtime\",\"inferred\"],\"open_strings\":true}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"name\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"toolName\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventModel\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"provider\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventModelError\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"error\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"status\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"executed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"latencyMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"recovery\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.error\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttemptusage\"}}],\"forbidden_property_sets\":[[\"finishReason\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelRequestBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.request.before\"}}],\"forbidden_property_sets\":[[\"error\"],[\"execution\"],[\"finishReason\"],[\"latencyMs\"],[\"usage\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelResponseAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"finishReason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"latencyMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.response.after\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttemptusage\"}}],\"forbidden_property_sets\":[[\"error\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelSwitchAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"current\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"previous\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.switch.after\"}}],\"forbidden_property_sets\":[[\"proposed\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelSwitchBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"current\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"pricing\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"currency\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"inputPerMillionTokens\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"outputPerMillionTokens\",\"required\":false,\"shape\":{\"kind\":\"number\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"proposed\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.switch.before\"}}],\"forbidden_property_sets\":[[\"previous\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTokencounts\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventTool\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"input\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mcp\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventMcp\"}},{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"origin\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"native\",\"mcp\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventToolBatchAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"calls\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"ok\",\"error\",\"denied\",\"cancelled\",\"timeout\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.batch.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolPermissionRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sandboxBypass\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"suggestions\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.permission.request\"}}],\"forbidden_property_sets\":[[\"decidedBy\"],[\"decision\"],[\"execution\"],[\"outcome\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolPermissionResolved\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"decidedBy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"user\",\"policy\",\"hook\",\"auto\",\"classifier\"],\"open_strings\":true}},{\"wire_name\":\"decision\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"allow\",\"deny\"],\"open_strings\":true}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.permission.resolved\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolProgress\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"backgrounded\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"partialOutput\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.progress\"}}],\"forbidden_property_sets\":[[\"execution\"],[\"outcome\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnEnd\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"error\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"lastAssistantItem\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"failed\",\"cancelled\",\"max_iterations\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.end\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnusage\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnFinishBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"lastAssistantItem\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"failed\",\"cancelled\",\"max_iterations\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.finish.before\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnusage\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnProgress\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"delta\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"final\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"item\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.progress\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnStart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"expandedFrom\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"user\",\"continuation\",\"hook\",\"external\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.start\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnusage\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventUsage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"total\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"turn\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventUsage\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cacheReadTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"cacheWriteTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"completeness\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"complete\",\"partial\",\"unknown\"],\"open_strings\":true}},{\"wire_name\":\"cost\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"amount\",\"required\":true,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"basis\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"billed\",\"reported\",\"estimated\"],\"open_strings\":true}},{\"wire_name\":\"currency\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"inputTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"amount\",\"total\"],\"open_strings\":true}},{\"wire_name\":\"outputTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"provenance\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"provider\",\"estimate\",\"mixed\"],\"open_strings\":true}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"attempt\",\"turn\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"Extensions\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"FileChangedEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventFileChanged\"},\"HookFailureEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hook.failure\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventHookFailure\"}]},\"HttpTransport\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"http\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeBefore\"},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeAfter\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserAttention\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationRequest\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationResult\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageInbound\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageOutbound\"},{\"kind\":\"ref\",\"name\":\"InteractionEventHookFailure\"}],\"discriminator\":\"type\"},\"InteractionEventConfigChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mcpServers\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"settings\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventConfigChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"settings\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventHookFailure\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"failure\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"backendId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"policy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"fail-open\",\"fail-closed\"],\"open_strings\":true}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"parentEventId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hook.failure\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserAttention\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attention\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.attention\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserElicitationRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserElicitationResult\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mediaType\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"application/json\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.result\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserMessageInbound\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.inbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserMessageOutbound\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"payload\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.outbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InterceptDenyResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"DenyEffect\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptNoEffectResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"any\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptRequest\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/intercept\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Event\"},{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolAfterEvent\"},{\"kind\":\"ref\",\"name\":\"SessionStartEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"SessionEndEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ConfigChangeAfterEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TurnEndEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TurnProgressEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ModelErrorEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ModelSwitchAfterEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolPermissionResolvedEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolProgressEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TaskChangeAfterEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"UserAttentionEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"WorkspaceChangeAfterEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"FileChangedEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"HookFailureEvent\"},{\"kind\":\"never\"}]}],\"discriminator\":\"type\"}]}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}},{\"wire_name\":\"state\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"candidate\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"null\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"provenance\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"none\",\"stop\",\"continue\"],\"open_strings\":true}},{\"wire_name\":\"injections\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"any\"}}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"permission\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"none\",\"allow\",\"ask\",\"deny\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"Effect\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[[\"manifest\"]],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptSubscription\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentSelection\"}},{\"wire_name\":\"disableable\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"config.change.before\",\"turn.start\",\"turn.finish.before\",\"model.request.before\",\"model.switch.before\",\"tool.permission.request\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"model.response.after\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"failurePolicy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"fail-open\",\"fail-closed\"],\"open_strings\":true}},{\"wire_name\":\"filters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"paths\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"toolKinds\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"includeNative\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"intercept\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"managed\",\"project\",\"user\"],\"open_strings\":true}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"upload\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentUpload\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcErrorResponse\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"error\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"code\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"data\",\"required\":false,\"shape\":{\"kind\":\"any\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcResponseId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}}],\"forbidden_property_sets\":[[\"result\"]],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcId\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"integer\"}]},\"JsonRpcMessage\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"ref\",\"name\":\"JsonRpcNotification\"},{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"ref\",\"name\":\"JsonRpcErrorResponse\"}]},\"JsonRpcNotification\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[[\"id\"]],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcResponseId\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcId\"},{\"kind\":\"null\"}]},\"JsonRpcSuccessResponse\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcResponseId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[[\"error\"]],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationBooleanSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationElicitRequestFormParams\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"progressToken\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationProgressToken\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mode\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"form\"}},{\"wire_name\":\"requestedSchema\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"$schema\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"properties\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"required\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"object\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"task\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationTaskMetadata\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationElicitRequestParams\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestURLParams\"},{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestFormParams\"}]},\"McpElicitationElicitRequestURLParams\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"progressToken\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationProgressToken\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"elicitationId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"url\"}},{\"wire_name\":\"task\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationTaskMetadata\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationElicitResult\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"cancel\",\"decline\"],\"open_strings\":true}},{\"wire_name\":\"content\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationLegacyTitledEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"enumNames\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationNumberSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"maximum\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minimum\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"integer\",\"number\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationPrimitiveSchemaDefinition\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"McpElicitationStringSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationNumberSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationBooleanSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationUntitledSingleSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationTitledSingleSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationUntitledMultiSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationTitledMultiSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationLegacyTitledEnumSchema\"}]},\"McpElicitationProgressToken\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"number\"}]},\"McpElicitationRequest\":{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestParams\"},\"McpElicitationResult\":{\"kind\":\"ref\",\"name\":\"McpElicitationElicitResult\"},\"McpElicitationStringSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"format\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"date\",\"date-time\",\"email\",\"uri\"],\"open_strings\":true}},{\"wire_name\":\"maxLength\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minLength\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationTaskMetadata\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"ttl\",\"required\":false,\"shape\":{\"kind\":\"number\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationTitledMultiSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"anyOf\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"const\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"maxItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"array\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationTitledSingleSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"oneOf\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"const\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationUntitledMultiSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"maxItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"array\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationUntitledSingleSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ModelErrorEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelError\"},\"ModelRequestBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"inject\",\"return\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelRequestBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelRequestBefore\"},\"ModelResponseAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelResponseAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelResponseAfter\"},\"ModelSwitchAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchAfter\"},\"ModelSwitchBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelSwitchBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchBefore\"},\"ModelVisibleItem\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ContentItem\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"NativeEvent\":{\"kind\":\"any\"},\"ObserveNotification\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcNotification\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/observe\"}},{\"wire_name\":\"params\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Event\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ObserveSubscription\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentSelection\"}},{\"wire_name\":\"disableable\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"filters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"paths\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"toolKinds\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"includeNative\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"observe\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"managed\",\"project\",\"user\"],\"open_strings\":true}},{\"wire_name\":\"upload\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentUpload\"}}],\"forbidden_property_sets\":[[\"failurePolicy\"],[\"timeoutMs\"]],\"additional\":{\"kind\":\"allowed\"}},\"ProtocolVersion\":{\"kind\":\"literal\",\"value\":\"draft\"},\"Registration\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"hooks\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"Backend\"}}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"RegistrationContentreceiver\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"maxBytes\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ReverseDnsName\":{\"kind\":\"string\"},\"Session\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"agent\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"model\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"SessionEndEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"counters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"cancelled\",\"error\",\"unknown\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"session.end\"}}],\"forbidden_property_sets\":[[\"tool\"]],\"additional\":{\"kind\":\"allowed\"}},\"SessionStartCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"inject\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"SessionStartEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"harness\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"version\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"manifest\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"StaticCapabilityManifest\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"permissionMode\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"resumedFrom\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"startup\",\"resume\",\"clear\",\"compact\",\"fork\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"session.start\"}}],\"forbidden_property_sets\":[[\"outcome\"],[\"tool\"]],\"additional\":{\"kind\":\"allowed\"}},\"StaticCapabilityManifest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"bearer\",\"oauth\"],\"open_strings\":true}}},{\"wire_name\":\"contentCategories\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"correlationIdentityFields\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Capabilities\"}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true}},{\"wire_name\":\"modes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"observe\",\"intercept\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"limits\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxUploadBytes\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"minTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"managedPolicy\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"disableable\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"scopes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"user\",\"project\",\"managed\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"toolPaths\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"transports\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"http\",\"stdio\",\"in_process\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[[\"identity\"]],\"additional\":{\"kind\":\"allowed\"}},\"StdioTransport\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"command\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"lifecycle\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"persistent\",\"per_event\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stdio\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskChangeAfterEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeAfter\"},\"TaskChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TaskChangeBeforeEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeBefore\"},\"TaskWorkspaceEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeBefore\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeAfter\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeBefore\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeAfter\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventFileChanged\"}],\"discriminator\":\"type\"},\"TaskWorkspaceEventFileChanged\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"changes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"file.changed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventTaskChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"task\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"task.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventTaskChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"task\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"task.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventWorkspaceChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"workspace.change.after\"}},{\"wire_name\":\"workspace\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"cwd\",\"roots\",\"switch\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"reason\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventWorkspaceChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"workspace.change.before\"}},{\"wire_name\":\"workspace\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"cwd\",\"roots\",\"switch\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"reason\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"inject\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolAfterEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"durationMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"error\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"fileChanges\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ExecutionEventFilechange\"}}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"ok\",\"error\",\"denied\",\"cancelled\",\"timeout\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolBatchAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"flow\",\"inject\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolBatchAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolBatchAfter\"},\"ToolBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"allow\",\"ask\",\"modify\",\"inject\",\"flow\",\"return\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolBeforeEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.before\"}}],\"forbidden_property_sets\":[[\"durationMs\"],[\"execution\"],[\"fileChanges\"],[\"outcome\"]],\"additional\":{\"kind\":\"allowed\"}},\"ToolPermissionRequestCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"allow\",\"deny\",\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolPermissionRequestEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionRequest\"},\"ToolPermissionResolvedEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionResolved\"},\"ToolProgressEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolProgress\"},\"TurnEndEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnEnd\"},\"TurnFinishBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TurnFinishBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnFinishBefore\"},\"TurnProgressEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnProgress\"},\"TurnStartCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"inject\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TurnStartEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnStart\"},\"UserAttentionEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.attention\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserAttention\"}]},\"UserElicitationRequestCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"return\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserElicitationRequestEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationRequest\"}]},\"UserElicitationResultCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserElicitationResultEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.result\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationResult\"}]},\"UserMessageInboundCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserMessageInboundEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.inbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageInbound\"}]},\"UserMessageOutboundCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserMessageOutboundEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.outbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageOutbound\"}]},\"WireMessage\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InterceptRequest\"},{\"kind\":\"ref\",\"name\":\"InterceptResponse\"},{\"kind\":\"ref\",\"name\":\"JsonRpcErrorResponse\"},{\"kind\":\"ref\",\"name\":\"ObserveNotification\"},{\"kind\":\"ref\",\"name\":\"CapabilitiesRequest\"},{\"kind\":\"ref\",\"name\":\"CapabilitiesResponse\"}]},\"WorkspaceChangeAfterEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeAfter\"},\"WorkspaceChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"WorkspaceChangeBeforeEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeBefore\"}}";
+const SCHEMAS_JSON: &str = "{\"AttachmentBodyPart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"body\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentReference\"}},{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"attachment\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},\"AttachmentGapPart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"attachment\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"AttachmentMetadataPart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"attachment\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"AttachmentOmittedPart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"attachment\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"Authentication\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenEnv\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenRef\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"bearer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenEnv\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[[\"tokenRef\"]],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenRef\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[[\"tokenEnv\"]],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"clientId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"clientSecretRef\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"flow\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"authorization_code_pkce\",\"client_credentials\"],\"open_strings\":true}},{\"wire_name\":\"issuer\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"resource\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scopes\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"oauth\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"Backend\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ReverseDnsName\"}},{\"wire_name\":\"subscriptions\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InterceptSubscription\"},{\"kind\":\"ref\",\"name\":\"ObserveSubscription\"}],\"discriminator\":\"mode\"}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"StdioTransport\"},{\"kind\":\"ref\",\"name\":\"HttpTransport\"}],\"discriminator\":\"type\"}}],\"forbidden_property_sets\":[[\"contentReceiver\"]],\"additional\":{\"kind\":\"allowed\"}},\"CanonicalMessage\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"parts\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"role\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"system\",\"developer\",\"user\",\"assistant\",\"tool\"],\"open_strings\":true}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"CanonicalMessages\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"}},\"Capabilities\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"deny\",\"allow\",\"ask\",\"modify\",\"message\",\"return\",\"flow\",\"inject\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"elicitation\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"form\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"operations\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}},{\"wire_name\":\"remainingContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"inject\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"context\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"append\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}},{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"input\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"output\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"prompt\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"response\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"summary\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}},{\"wire_name\":\"workspace\",\"required\":false,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"replace\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"merge\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"CapabilitiesRequest\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/capabilities\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"CapabilitiesResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"manifest\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"bearer\",\"oauth\"],\"open_strings\":true}}},{\"wire_name\":\"contentCategories\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"correlationIdentityFields\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Capabilities\"}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true}},{\"wire_name\":\"modes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"observe\",\"intercept\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"limits\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxUploadBytes\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"minTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"managedPolicy\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"disableable\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"scopes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"user\",\"project\",\"managed\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"toolPaths\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"transports\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"http\",\"stdio\",\"in_process\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[[\"identity\"]],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[[\"effects\"]],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"CatalogueEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnEndEvent\"},{\"kind\":\"ref\",\"name\":\"TurnProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ModelErrorEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionResolvedEvent\"},{\"kind\":\"ref\",\"name\":\"ToolProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"UserAttentionEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"FileChangedEvent\"},{\"kind\":\"ref\",\"name\":\"HookFailureEvent\"}],\"discriminator\":\"type\"},\"ConfigChangeAfterEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeAfter\"}]},\"ConfigChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ConfigChangeBeforeEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeBefore\"}]},\"ContentItem\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TextBodyPart\"},{\"kind\":\"ref\",\"name\":\"TextGapPart\"},{\"kind\":\"ref\",\"name\":\"TextMetadataPart\"},{\"kind\":\"ref\",\"name\":\"TextOmittedPart\"},{\"kind\":\"ref\",\"name\":\"AttachmentBodyPart\"},{\"kind\":\"ref\",\"name\":\"AttachmentGapPart\"},{\"kind\":\"ref\",\"name\":\"AttachmentMetadataPart\"},{\"kind\":\"ref\",\"name\":\"AttachmentOmittedPart\"}]},\"ContentReference\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"ref\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},\"ContentSelection\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"audio\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"default\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"files\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"images\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"reasoning\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"text\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}},{\"wire_name\":\"video\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"body\",\"metadata\",\"omit\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ContentUpload\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"auth\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"endpoint\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"maxBytes\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ContentUploadReceipt\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"ref\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sha256\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":true,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ContextCompactAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"inject\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ContextCompactAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactAfter\"},\"ContextCompactBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"return\",\"inject\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ContextCompactBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactBefore\"},\"DenyEffect\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"code\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"deny\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"Effect\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"DenyEffect\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"allow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"ask\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"replace\",\"merge\"],\"open_strings\":true}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"input\",\"output\",\"prompt\",\"request\",\"response\",\"content\",\"instructions\",\"summary\",\"workspace\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"modify\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"message\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"return\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stop\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"instruction\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"continue\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"flow\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"deliverAt\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"now\",\"next_turn\"],\"open_strings\":true}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"append\"}},{\"wire_name\":\"target\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"inject\"}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"CanonicalMessages\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]},\"Event\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolAfterEvent\"},{\"kind\":\"ref\",\"name\":\"SessionStartEvent\"},{\"kind\":\"ref\",\"name\":\"SessionEndEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnEndEvent\"},{\"kind\":\"ref\",\"name\":\"TurnProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ModelErrorEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionResolvedEvent\"},{\"kind\":\"ref\",\"name\":\"ToolProgressEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"UserAttentionEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeAfterEvent\"},{\"kind\":\"ref\",\"name\":\"FileChangedEvent\"},{\"kind\":\"ref\",\"name\":\"HookFailureEvent\"}],\"discriminator\":\"type\"},\"ExecutionEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnStart\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnFinishBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnEnd\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnProgress\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelRequestBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelResponseAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelError\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionRequest\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionResolved\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolProgress\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventToolBatchAfter\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactBefore\"},{\"kind\":\"ref\",\"name\":\"ExecutionEventContextCompactAfter\"}],\"discriminator\":\"type\"},\"ExecutionEventAttempt\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"number\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventAttemptusage\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventUsage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"amount\"}},{\"wire_name\":\"provenance\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"provider\",\"estimate\"],\"open_strings\":true}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"attempt\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventBatch\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"callIds\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventContextCompactAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"removed\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventContextCompactBefore\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTokencounts\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"auto\",\"manual\",\"hook\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"context.compact.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"any\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"tokenCounts\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventError\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"class\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"code\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"status\",\"required\":false,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"integer\"}]}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventExecution\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"executed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"supplied_result\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"policy\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"cancelled\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"timeout\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"detail\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"other\"}},{\"wire_name\":\"status\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"skipped\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}]},\"ExecutionEventFilechange\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"created\",\"modified\",\"deleted\",\"moved\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"previousPath\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventMcp\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"connection\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"http\"}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"sse\"}},{\"wire_name\":\"url\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"command\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stdio\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"command\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"address\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"addressForm\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"transport\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"addressForm\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"address\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}]}],\"discriminator\":\"transport\"}},{\"wire_name\":\"provenance\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"runtime\",\"inferred\"],\"open_strings\":true}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"name\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"toolName\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventModel\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"provider\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventModelError\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"error\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"status\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"executed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"latencyMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"recovery\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.error\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttemptusage\"}}],\"forbidden_property_sets\":[[\"finishReason\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelRequestBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.request.before\"}}],\"forbidden_property_sets\":[[\"error\"],[\"execution\"],[\"finishReason\"],[\"latencyMs\"],[\"usage\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelResponseAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attempt\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttempt\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"finishReason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"latencyMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"model\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.response.after\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventAttemptusage\"}}],\"forbidden_property_sets\":[[\"error\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelSwitchAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"current\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"previous\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.switch.after\"}}],\"forbidden_property_sets\":[[\"proposed\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventModelSwitchBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"current\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"pricing\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"currency\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"inputPerMillionTokens\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"outputPerMillionTokens\",\"required\":false,\"shape\":{\"kind\":\"number\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"proposed\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModel\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"model.switch.before\"}}],\"forbidden_property_sets\":[[\"previous\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTokencounts\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventTool\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"input\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mcp\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventMcp\"}},{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"origin\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"native\",\"mcp\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ExecutionEventToolBatchAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"calls\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"ok\",\"error\",\"denied\",\"cancelled\",\"timeout\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.batch.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolPermissionRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"sandboxBypass\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"suggestions\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.permission.request\"}}],\"forbidden_property_sets\":[[\"decidedBy\"],[\"decision\"],[\"execution\"],[\"outcome\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolPermissionResolved\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"decidedBy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"user\",\"policy\",\"hook\",\"auto\",\"classifier\"],\"open_strings\":true}},{\"wire_name\":\"decision\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"allow\",\"deny\"],\"open_strings\":true}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.permission.resolved\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventToolProgress\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"backgrounded\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"partialOutput\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.progress\"}}],\"forbidden_property_sets\":[[\"execution\"],[\"outcome\"]],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnEnd\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"error\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"lastAssistantItem\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"failed\",\"cancelled\",\"max_iterations\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.end\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnusage\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnFinishBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"continuationCount\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"lastAssistantItem\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"failed\",\"cancelled\",\"max_iterations\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.finish.before\"}},{\"wire_name\":\"usage\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnusage\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnProgress\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"delta\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"final\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"item\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.progress\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnStart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"expandedFrom\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"user\",\"continuation\",\"hook\",\"external\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"turn.start\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ExecutionEventTurnusage\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ExecutionEventUsage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"total\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"turn\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ExecutionEventUsage\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cacheReadTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"cacheWriteTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"completeness\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"complete\",\"partial\",\"unknown\"],\"open_strings\":true}},{\"wire_name\":\"cost\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"amount\",\"required\":true,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"basis\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"billed\",\"reported\",\"estimated\"],\"open_strings\":true}},{\"wire_name\":\"currency\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"inputTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"amount\",\"total\"],\"open_strings\":true}},{\"wire_name\":\"outputTokens\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"provenance\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"provider\",\"estimate\",\"mixed\"],\"open_strings\":true}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"attempt\",\"turn\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"Extensions\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"FileChangedEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventFileChanged\"},\"HookFailureEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hook.failure\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventHookFailure\"}]},\"HttpTransport\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"http\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeBefore\"},{\"kind\":\"ref\",\"name\":\"InteractionEventConfigChangeAfter\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserAttention\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationRequest\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationResult\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageInbound\"},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageOutbound\"},{\"kind\":\"ref\",\"name\":\"InteractionEventHookFailure\"}],\"discriminator\":\"type\"},\"InteractionEventConfigChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mcpServers\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"settings\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventConfigChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"scope\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"settings\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"summary\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"config.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventHookFailure\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"failure\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"backendId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"policy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"fail-open\",\"fail-closed\"],\"open_strings\":true}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"parentEventId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hook.failure\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserAttention\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"attention\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"TextParts\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.attention\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserElicitationRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"request\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserElicitationResult\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"elicitation\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"decline\",\"cancel\"],\"open_strings\":true}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"form\",\"url\"],\"open_strings\":true}},{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},{\"wire_name\":\"server\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.result\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserMessageInbound\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"user\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}},{\"wire_name\":\"sender\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.inbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InteractionEventUserMessageOutbound\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"channel\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"messages\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"role\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"assistant\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.outbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"InterceptDenyResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"DenyEffect\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptNoEffectResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"any\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptRequest\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/intercept\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Event\"},{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolAfterEvent\"},{\"kind\":\"ref\",\"name\":\"SessionStartEvent\"},{\"kind\":\"ref\",\"name\":\"ConfigChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"TurnStartEvent\"},{\"kind\":\"ref\",\"name\":\"TurnFinishBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelRequestBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelSwitchBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ToolPermissionRequestEvent\"},{\"kind\":\"ref\",\"name\":\"ToolBatchAfterEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ContextCompactAfterEvent\"},{\"kind\":\"ref\",\"name\":\"TaskChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationRequestEvent\"},{\"kind\":\"ref\",\"name\":\"UserElicitationResultEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageInboundEvent\"},{\"kind\":\"ref\",\"name\":\"UserMessageOutboundEvent\"},{\"kind\":\"ref\",\"name\":\"WorkspaceChangeBeforeEvent\"},{\"kind\":\"ref\",\"name\":\"ModelResponseAfterEvent\"},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"SessionEndEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ConfigChangeAfterEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TurnEndEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TurnProgressEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ModelErrorEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ModelSwitchAfterEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolPermissionResolvedEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"ToolProgressEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TaskChangeAfterEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"UserAttentionEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"WorkspaceChangeAfterEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"FileChangedEvent\"},{\"kind\":\"never\"}]},{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"HookFailureEvent\"},{\"kind\":\"never\"}]}],\"discriminator\":\"type\"}]}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}},{\"wire_name\":\"state\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"candidate\",\"required\":true,\"shape\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"null\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"provenance\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"value\",\"required\":true,\"shape\":{\"kind\":\"any\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"none\",\"stop\",\"continue\"],\"open_strings\":true}},{\"wire_name\":\"injections\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"any\"}}},{\"wire_name\":\"instructions\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"permission\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"none\",\"allow\",\"ask\",\"deny\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptResponse\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"Effect\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[[\"manifest\"]],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"InterceptSubscription\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentSelection\"}},{\"wire_name\":\"disableable\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"config.change.before\",\"turn.start\",\"turn.finish.before\",\"model.request.before\",\"model.switch.before\",\"tool.permission.request\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"model.response.after\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"failurePolicy\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"fail-open\",\"fail-closed\"],\"open_strings\":true}},{\"wire_name\":\"filters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"paths\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"toolKinds\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"includeNative\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"intercept\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"managed\",\"project\",\"user\"],\"open_strings\":true}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"upload\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentUpload\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcErrorResponse\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"error\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"code\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"data\",\"required\":false,\"shape\":{\"kind\":\"any\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcResponseId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}}],\"forbidden_property_sets\":[[\"result\"]],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcId\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"integer\"}]},\"JsonRpcMessage\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcRequest\"},{\"kind\":\"ref\",\"name\":\"JsonRpcNotification\"},{\"kind\":\"ref\",\"name\":\"JsonRpcSuccessResponse\"},{\"kind\":\"ref\",\"name\":\"JsonRpcErrorResponse\"}]},\"JsonRpcNotification\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[[\"id\"]],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcRequest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"method\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"params\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"JsonRpcResponseId\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcId\"},{\"kind\":\"null\"}]},\"JsonRpcSuccessResponse\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"JsonRpcResponseId\"}},{\"wire_name\":\"jsonrpc\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"2.0\"}},{\"wire_name\":\"result\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[[\"error\"]],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationBooleanSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationElicitRequestFormParams\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"progressToken\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationProgressToken\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mode\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"form\"}},{\"wire_name\":\"requestedSchema\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"$schema\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"properties\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"required\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"object\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"task\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationTaskMetadata\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationElicitRequestParams\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestURLParams\"},{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestFormParams\"}]},\"McpElicitationElicitRequestURLParams\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"progressToken\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationProgressToken\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"elicitationId\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"message\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"url\"}},{\"wire_name\":\"task\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"McpElicitationTaskMetadata\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationElicitResult\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"_meta\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"action\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"accept\",\"cancel\",\"decline\"],\"open_strings\":true}},{\"wire_name\":\"content\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationLegacyTitledEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"enumNames\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationNumberSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"maximum\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minimum\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"integer\",\"number\"],\"open_strings\":true}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationPrimitiveSchemaDefinition\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"McpElicitationStringSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationNumberSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationBooleanSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationUntitledSingleSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationTitledSingleSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationUntitledMultiSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationTitledMultiSelectEnumSchema\"},{\"kind\":\"ref\",\"name\":\"McpElicitationLegacyTitledEnumSchema\"}]},\"McpElicitationProgressToken\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"string\"},{\"kind\":\"number\"}]},\"McpElicitationRequest\":{\"kind\":\"ref\",\"name\":\"McpElicitationElicitRequestParams\"},\"McpElicitationResult\":{\"kind\":\"ref\",\"name\":\"McpElicitationElicitResult\"},\"McpElicitationStringSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"format\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"date\",\"date-time\",\"email\",\"uri\"],\"open_strings\":true}},{\"wire_name\":\"maxLength\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minLength\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationTaskMetadata\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"ttl\",\"required\":false,\"shape\":{\"kind\":\"number\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"McpElicitationTitledMultiSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"anyOf\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"const\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"maxItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"array\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationTitledSingleSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"oneOf\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"const\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"title\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationUntitledMultiSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"maxItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"minItems\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"array\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"McpElicitationUntitledSingleSelectEnumSchema\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"default\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"enum\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"title\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"ModelErrorEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelError\"},\"ModelRequestBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"inject\",\"return\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelRequestBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelRequestBefore\"},\"ModelResponseAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelResponseAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelResponseAfter\"},\"ModelSwitchAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchAfter\"},\"ModelSwitchBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ModelSwitchBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventModelSwitchBefore\"},\"ModelVisibleItem\":{\"kind\":\"ref\",\"name\":\"CanonicalMessage\"},\"NativeEvent\":{\"kind\":\"any\"},\"ObserveNotification\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"JsonRpcNotification\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"method\",\"required\":false,\"shape\":{\"kind\":\"literal\",\"value\":\"hooks/observe\"}},{\"wire_name\":\"params\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Event\"}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ObserveSubscription\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"content\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentSelection\"}},{\"wire_name\":\"disableable\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"union\",\"mode\":\"anyOf\",\"variants\":[{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true},{\"kind\":\"string\"}]}}},{\"wire_name\":\"filters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"paths\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"toolKinds\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"includeNative\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"mode\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"observe\"}},{\"wire_name\":\"scope\",\"required\":false,\"shape\":{\"kind\":\"enum\",\"values\":[\"managed\",\"project\",\"user\"],\"open_strings\":true}},{\"wire_name\":\"upload\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentUpload\"}}],\"forbidden_property_sets\":[[\"failurePolicy\"],[\"timeoutMs\"]],\"additional\":{\"kind\":\"allowed\"}},\"ProtocolVersion\":{\"kind\":\"literal\",\"value\":\"draft\"},\"Registration\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"hooks\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"Backend\"}}},{\"wire_name\":\"protocolVersion\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ProtocolVersion\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"RegistrationContentreceiver\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Authentication\"}},{\"wire_name\":\"maxBytes\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"timeoutMs\",\"required\":true,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"url\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ReverseDnsName\":{\"kind\":\"string\"},\"Session\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"agent\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"type\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"model\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"SessionEndEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"counters\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"completed\",\"cancelled\",\"error\",\"unknown\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"session.end\"}}],\"forbidden_property_sets\":[[\"tool\"]],\"additional\":{\"kind\":\"allowed\"}},\"SessionStartCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"inject\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"SessionStartEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"harness\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"name\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"version\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"manifest\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"StaticCapabilityManifest\"}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"permissionMode\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"resumedFrom\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"session\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"trigger\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"startup\",\"resume\",\"clear\",\"compact\",\"fork\"],\"open_strings\":true}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"session.start\"}}],\"forbidden_property_sets\":[[\"outcome\"],[\"tool\"]],\"additional\":{\"kind\":\"allowed\"}},\"StaticCapabilityManifest\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"authentication\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"bearer\",\"oauth\"],\"open_strings\":true}}},{\"wire_name\":\"contentCategories\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"correlationIdentityFields\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"events\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"capabilities\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Capabilities\"}},{\"wire_name\":\"event\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"tool.before\",\"tool.after\",\"session.start\",\"session.end\",\"config.change.before\",\"config.change.after\",\"turn.start\",\"turn.finish.before\",\"turn.end\",\"turn.progress\",\"model.request.before\",\"model.response.after\",\"model.error\",\"model.switch.before\",\"model.switch.after\",\"tool.permission.request\",\"tool.permission.resolved\",\"tool.progress\",\"tool.batch.after\",\"context.compact.before\",\"context.compact.after\",\"task.change.before\",\"task.change.after\",\"user.attention\",\"user.elicitation.request\",\"user.elicitation.result\",\"user.message.inbound\",\"user.message.outbound\",\"workspace.change.before\",\"workspace.change.after\",\"file.changed\",\"hook.failure\"],\"open_strings\":true}},{\"wire_name\":\"modes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"observe\",\"intercept\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"gaps\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"limits\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"maxContinuations\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"maxUploadBytes\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"minTimeoutMs\",\"required\":false,\"shape\":{\"kind\":\"integer\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"managedPolicy\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"disableable\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"scopes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"user\",\"project\",\"managed\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"toolPaths\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"transports\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"http\",\"stdio\",\"in_process\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[[\"identity\"]],\"additional\":{\"kind\":\"allowed\"}},\"StdioTransport\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"args\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}},{\"wire_name\":\"command\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"lifecycle\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"persistent\",\"per_event\"],\"open_strings\":true}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"stdio\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskChangeAfterEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeAfter\"},\"TaskChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TaskChangeBeforeEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeBefore\"},\"TaskWorkspaceEvent\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeBefore\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventTaskChangeAfter\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeBefore\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeAfter\"},{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventFileChanged\"}],\"discriminator\":\"type\"},\"TaskWorkspaceEventFileChanged\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"changes\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"after\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"agentCaused\",\"required\":true,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"before\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"file.changed\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventTaskChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"task\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"task.change.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventTaskChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"task\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"description\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"operation\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"create\",\"update\",\"remove\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"task.change.before\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventWorkspaceChangeAfter\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"workspace.change.after\"}},{\"wire_name\":\"workspace\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"cwd\",\"roots\",\"switch\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"reason\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TaskWorkspaceEventWorkspaceChangeBefore\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"workspace.change.before\"}},{\"wire_name\":\"workspace\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"change\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"cwd\",\"roots\",\"switch\"],\"open_strings\":true}},{\"wire_name\":\"prior\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"cwd\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"workspaceRoots\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"string\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"reason\",\"required\":false,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"TextBodyPart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text/plain\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"text\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[[\"sha256\"],[\"size\"]],\"additional\":{\"kind\":\"forbidden\"}},\"TextGapPart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"gap\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text/plain\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"body\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"TextMetadataPart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text/plain\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"metadata\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"TextOmittedPart\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"category\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"kind\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text\"}},{\"wire_name\":\"mediaType\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"text/plain\"}},{\"wire_name\":\"selection\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"omit\"}},{\"wire_name\":\"sha256\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"size\",\"required\":false,\"shape\":{\"kind\":\"integer\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}},\"TextPart\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"TextBodyPart\"},{\"kind\":\"ref\",\"name\":\"TextGapPart\"},{\"kind\":\"ref\",\"name\":\"TextMetadataPart\"},{\"kind\":\"ref\",\"name\":\"TextOmittedPart\"}]},\"TextParts\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"TextPart\"}},\"ToolAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"inject\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolAfterEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"durationMs\",\"required\":false,\"shape\":{\"kind\":\"number\"}},{\"wire_name\":\"error\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventError\"}},{\"wire_name\":\"execution\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventExecution\"}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"fileChanges\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ExecutionEventFilechange\"}}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":true,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ModelVisibleItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"outcome\",\"required\":true,\"shape\":{\"kind\":\"enum\",\"values\":[\"ok\",\"error\",\"denied\",\"cancelled\",\"timeout\"],\"open_strings\":true}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.after\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},\"ToolBatchAfterCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"flow\",\"inject\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolBatchAfterEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolBatchAfter\"},\"ToolBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"allow\",\"ask\",\"modify\",\"inject\",\"flow\",\"return\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolBeforeEvent\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"batch\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventBatch\"}},{\"wire_name\":\"call\",\"required\":true,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"forbidden\"}}},{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"tool\",\"required\":true,\"shape\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTool\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"tool.before\"}}],\"forbidden_property_sets\":[[\"durationMs\"],[\"execution\"],[\"fileChanges\"],[\"outcome\"]],\"additional\":{\"kind\":\"allowed\"}},\"ToolPermissionRequestCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"allow\",\"deny\",\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"ToolPermissionRequestEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionRequest\"},\"ToolPermissionResolvedEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolPermissionResolved\"},\"ToolProgressEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventToolProgress\"},\"TurnEndEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnEnd\"},\"TurnFinishBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\",\"continue\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TurnFinishBeforeEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnFinishBefore\"},\"TurnProgressEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnProgress\"},\"TurnStartCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"inject\",\"flow\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"flow\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"operations\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"stop\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"TurnStartEvent\":{\"kind\":\"ref\",\"name\":\"ExecutionEventTurnStart\"},\"UserAttentionEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.attention\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserAttention\"}]},\"UserElicitationRequestCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"return\",\"message\"],\"open_strings\":true}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserElicitationRequestEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.request\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationRequest\"}]},\"UserElicitationResultCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserElicitationResultEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.elicitation.result\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserElicitationResult\"}]},\"UserMessageInboundCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserMessageInboundEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.inbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageInbound\"}]},\"UserMessageOutboundCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"UserMessageOutboundEvent\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"extensions\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Extensions\"}},{\"wire_name\":\"gaps\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"path\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"reason\",\"required\":true,\"shape\":{\"kind\":\"string\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}},{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"items\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"ref\",\"name\":\"ContentItem\"}}},{\"wire_name\":\"native\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"NativeEvent\"}},{\"wire_name\":\"parentEventId\",\"required\":false,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"session\",\"required\":false,\"shape\":{\"kind\":\"ref\",\"name\":\"Session\"}},{\"wire_name\":\"source\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}},{\"wire_name\":\"time\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"turn\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"id\",\"required\":true,\"shape\":{\"kind\":\"string\"}},{\"wire_name\":\"synthesized\",\"required\":false,\"shape\":{\"kind\":\"boolean\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}},{\"wire_name\":\"type\",\"required\":true,\"shape\":{\"kind\":\"literal\",\"value\":\"user.message.outbound\"}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}},{\"kind\":\"ref\",\"name\":\"InteractionEventUserMessageOutbound\"}]},\"WireMessage\":{\"kind\":\"union\",\"mode\":\"oneOf\",\"variants\":[{\"kind\":\"ref\",\"name\":\"InterceptRequest\"},{\"kind\":\"ref\",\"name\":\"InterceptResponse\"},{\"kind\":\"ref\",\"name\":\"JsonRpcErrorResponse\"},{\"kind\":\"ref\",\"name\":\"ObserveNotification\"},{\"kind\":\"ref\",\"name\":\"CapabilitiesRequest\"},{\"kind\":\"ref\",\"name\":\"CapabilitiesResponse\"}]},\"WorkspaceChangeAfterEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeAfter\"},\"WorkspaceChangeBeforeCapabilities\":{\"kind\":\"intersection\",\"variants\":[{\"kind\":\"ref\",\"name\":\"Capabilities\"},{\"kind\":\"object\",\"properties\":[{\"wire_name\":\"effects\",\"required\":false,\"shape\":{\"kind\":\"array\",\"items\":{\"kind\":\"enum\",\"values\":[\"deny\",\"modify\",\"message\"],\"open_strings\":true}}},{\"wire_name\":\"modify\",\"required\":false,\"shape\":{\"kind\":\"object\",\"properties\":[],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}}],\"forbidden_property_sets\":[],\"additional\":{\"kind\":\"allowed\"}}]},\"WorkspaceChangeBeforeEvent\":{\"kind\":\"ref\",\"name\":\"TaskWorkspaceEventWorkspaceChangeBefore\"}}";
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]

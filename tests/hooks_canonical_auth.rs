@@ -69,8 +69,9 @@ mod runtime {
     use super::*;
     use agenthooksprotocol::{
         Attachment,
-        client::{Decision, ToolContext},
-        ergonomic_inputs::tool_before_sources::items,
+        client::Decision,
+        ergonomic_inputs::{PartInput, ToolBeforeInput},
+        generated::ToolBeforeInputOrigin,
     };
     use std::sync::Mutex;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -91,11 +92,26 @@ mod runtime {
         }
     }
     async fn dispatch(hooks: &Hooks) -> agenthooksprotocol::hooks::ToolOutcome<Value> {
-        hooks.tool_input(json!({})).context(ToolContext::new(json!({
-            "tool":{"name":"shell","kind":"shell","origin":"native"},
-            "call":{"id":"call-upload"},"path":"native",
-            "items":[{"id":"body-1","kind":"text","mediaType":"text/plain","selection":"metadata"}]
-        }))).attachment(items(0, Attachment::bytes(b"upload payload".to_vec()))).initial_state(Decision::Allow).await.unwrap()
+        hooks
+            .tool_before(
+                ToolBeforeInput::new(
+                    "call-upload".into(),
+                    "native".into(),
+                    json!({}),
+                    "shell".into(),
+                    ToolBeforeInputOrigin::Native,
+                )
+                .with_tool_kind("shell".into())
+                .with_sources()
+                .with_items(vec![PartInput::owned_attachment(
+                    "body-1",
+                    "application/octet-stream",
+                    Attachment::bytes(b"upload payload".to_vec()),
+                )]),
+            )
+            .initial_state(Decision::Allow)
+            .await
+            .unwrap()
     }
     fn configured(endpoint: String, missing_upload_token: bool) -> (Hooks, Arc<Recorded>) {
         let backend = Arc::new(Recorded::default());

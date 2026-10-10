@@ -113,20 +113,15 @@ fn upload_authorization_never_inherits_the_event_token() {
 
 #[test]
 fn check_summaries_use_modified_effective_result_not_preflight_answer() {
-    use base64::{Engine, engine::general_purpose::STANDARD};
     use serde_json::json;
     use std::io::Write;
 
     let payload = json!({"message":"Answer","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}});
     let answer =
         json!({"action":"accept","content":{"answer":"original"},"_meta":{"preserved":true}});
-    let mut uploads = vec![];
-    let mut make = |stage: &str, body: &Value| {
-        let bytes = serde_json::to_vec(body).unwrap();
-        let reference = json!({"ref":stage});
-        uploads.push(json!({"ref":stage,"bytes":STANDARD.encode(&bytes)}));
+    let make = |stage: &str, body: &Value| {
         let mut meta = json!({"server":"server","mode":"form"});
-        meta[stage] = json!({"id":format!("{stage}-item"),"kind":format!("elicitation.{stage}"),"mediaType":"application/json","selection":"body","body":reference});
+        meta[stage] = json!({"id":format!("{stage}-item"),"kind":"text","mediaType":"text/plain","selection":"body","text":serde_json::to_string(body).unwrap()});
         let mut event = json!({"id":stage,"source":"urn:test:host","time":"2026-09-15T12:00:00Z","type":format!("user.elicitation.{stage}"),"session":{"id":"session"},"elicitation":meta});
         if stage == "result" {
             event["parentEventId"] = json!("request");
@@ -142,7 +137,7 @@ fn check_summaries_use_modified_effective_result_not_preflight_answer() {
     let request = make("request", &payload);
     let result = make("result", &answer);
     let cases: Vec<Value> = ["replace", "merge"].into_iter().map(|operation| {
-        json!({"op":"apply","request":request,"result":result,"uploads":uploads,"effects":[{"type":"modify","target":"content","operation":operation,"value":{"answer":"modified"}}]})
+        json!({"op":"apply","request":request,"result":result,"effects":[{"type":"modify","target":"content","operation":operation,"value":{"answer":"modified"}}]})
     }).collect();
     let mut child = Command::new(env!("CARGO_BIN_EXE_elicitation"))
         .args(["check", "unused-schema-directory", "test-principal"])
@@ -163,7 +158,7 @@ fn check_summaries_use_modified_effective_result_not_preflight_answer() {
     let rows: Vec<Value> = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(rows.len(), 2);
     for row in rows {
-        assert_eq!(row["accepted"], true);
+        assert_eq!(row["accepted"], true, "{row}");
         assert_eq!(row["summary"]["result"]["content"]["answer"], "modified");
         assert_eq!(row["summary"]["result"]["_meta"]["preserved"], true);
         assert_eq!(row["inputUnchanged"], true);

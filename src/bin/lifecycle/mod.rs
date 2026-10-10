@@ -202,7 +202,7 @@ fn diagnostic_gap_notification(message: &Value) -> bool {
         && message["params"]["event"]["id"] == "immutable-upload-and-subscription-views:a"
         && message["params"]["event"]["items"]
             == json!([{
-                "id":"logical-item", "kind":"text", "mediaType":"text/plain",
+                "id":"logical-item", "kind":"attachment", "mediaType":"application/octet-stream",
                 "selection":"body", "gap":{"reason":"content permission denied", "path":"items.logical-item"}
             }])
 }
@@ -250,34 +250,34 @@ fn resolve_bodies(
         context.resolve_selected(&item)?;
         return Ok(());
     }
-    if let Some(items) = value["items"].as_array() {
-        for item in items {
-            context.resolve_selected(item)?;
-        }
-    }
-    let path = match s(value, "type") {
-        "turn.progress" => Some("/delta"),
-        "tool.progress" => Some("/partialOutput"),
-        "context.compact.before" => Some("/instructions"),
-        "context.compact.after" => Some("/summary"),
-        "user.elicitation.request" => Some("/elicitation/request"),
-        "user.elicitation.result" => Some("/elicitation/result"),
-        _ => None,
-    };
-    if let Some(item) = path.and_then(|path| value.pointer(path)) {
-        context.resolve_selected(item)?;
-    }
-    let paths: &[&str] = match s(value, "type") {
-        "user.attention" => &["/attention/message", "/attention/title"],
-        "user.message.inbound" => &["/message/text"],
-        "user.message.outbound" => &["/message/payload"],
-        _ => &[],
-    };
-    for path in paths {
-        if let Some(items) = value.pointer(path).and_then(Value::as_array) {
-            for item in items {
-                context.resolve_selected(item)?;
+    fn selected(value: &Value, context: &ContentContext<'_>) -> Result<()> {
+        if let Some(values) = value.as_array() {
+            for value in values {
+                selected(value, context)?;
             }
+        } else if let Some(parts) = value.get("parts") {
+            selected(parts, context)?;
+        } else if value["kind"] == "attachment" {
+            context.resolve_selected(value)?;
+        }
+        // Inline text is validated by canonical dispatch, not resolved as bytes.
+        Ok(())
+    }
+    // Visit only canonical content slots, never arbitrary tool input JSON.
+    for path in [
+        "/items",
+        "/delta",
+        "/partialOutput",
+        "/instructions",
+        "/summary",
+        "/elicitation/request",
+        "/elicitation/result",
+        "/attention/message",
+        "/attention/title",
+        "/message/messages",
+    ] {
+        if let Some(item) = value.pointer(path) {
+            selected(item, &context)?;
         }
     }
     if value["type"] == "file.changed"
@@ -2226,11 +2226,8 @@ mod lifecycle_tests {
                         }
                     },
                     "items": [{
-                        "id": "item",
-                        "kind": "text",
-                        "mediaType": "text/plain",
-                        "selection": "body",
-                        "body": descriptor
+                        "id":"item","kind":"attachment","mediaType":"application/octet-stream",
+                        "selection":"body","body":descriptor
                     }]
                 }
             }
@@ -2568,12 +2565,41 @@ mod hardening_tests {
         );
     }
     #[test]
+    fn canonical_inline_text_is_not_an_upload_reference() {
+        let mut event = request()["params"]["event"].clone();
+        event["items"] = json!([{
+            "id":"inline-part", "kind":"text", "mediaType":"text/plain",
+            "selection":"body", "text":"no binary resolver needed"
+        }]);
+        event["tool"]["input"]["opaque"] = json!({
+            "id":"native-binary", "kind":"attachment", "selection":"body",
+            "mediaType":"application/octet-stream", "body":{"ref":"native-unconfirmed"}
+        });
+        let uploads = BTreeMap::new();
+        assert!(resolve_bodies(&event, "body", &uploads).is_ok());
+        let state = server();
+        let notification = json!({"jsonrpc":"2.0", "method":"hooks/observe", "params":{
+            "protocolVersion":"draft", "event":event
+        }});
+        assert!(state.protocol(&notification).unwrap().is_null());
+        assert!(state.data.lock().unwrap().uploads.is_empty());
+        event["items"][0] = json!({
+            "id":"selected-binary", "kind":"attachment", "mediaType":"application/octet-stream",
+            "selection":"body", "body":{"ref":"unconfirmed"}
+        });
+        assert!(resolve_bodies(&event, "body", &uploads).is_err());
+        let notification = json!({"jsonrpc":"2.0", "method":"hooks/observe", "params":{
+            "protocolVersion":"draft", "event":event
+        }});
+        assert!(state.protocol(&notification).is_err());
+    }
+    #[test]
     fn exact_canonical_gap_observation_is_diagnostic_not_body_delivery() {
         let state = server();
         let mut event = request()["params"]["event"].clone();
         event["id"] = json!("immutable-upload-and-subscription-views:a");
         event["items"] = json!([{
-            "id":"logical-item", "kind":"text", "mediaType":"text/plain",
+            "id":"logical-item", "kind":"attachment", "mediaType":"application/octet-stream",
             "selection":"body", "gap":{"reason":"content permission denied", "path":"items.logical-item"}
         }]);
         let mut notification = json!({"jsonrpc":"2.0", "method":"hooks/observe", "params":{"protocolVersion":"draft", "event":event}});
@@ -2582,6 +2608,16 @@ mod hardening_tests {
         assert!(state.data.lock().unwrap().upload_receiver.is_none());
         let before = state.data.lock().unwrap().entries.len();
         notification["params"]["event"]["id"] = json!("ordinary-gap");
+        assert!(!diagnostic_gap_notification(&notification));
+        assert!(state.protocol(&notification).is_err());
+        assert_eq!(state.data.lock().unwrap().entries.len(), before);
+        notification["params"]["event"]["id"] = json!("immutable-upload-and-subscription-views:a");
+        notification["params"]["event"]["items"][0]["mediaType"] = json!("text/plain");
+        assert!(!diagnostic_gap_notification(&notification));
+        assert!(state.protocol(&notification).is_err());
+        notification["params"]["event"]["items"][0]["mediaType"] =
+            json!("application/octet-stream");
+        notification["params"]["event"]["items"][0]["body"] = json!({"ref":"unconfirmed"});
         assert!(!diagnostic_gap_notification(&notification));
         assert!(state.protocol(&notification).is_err());
         assert_eq!(state.data.lock().unwrap().entries.len(), before);
@@ -2654,7 +2690,7 @@ mod hardening_tests {
         ] {
             let mut message = request();
             message["params"]["event"]["items"] = json!([{
-                "id":"body", "kind":"message", "mediaType":"text/plain", "selection":"body", "body":reference
+                "id":"body","kind":"attachment","mediaType":"application/octet-stream","selection":"body","body":reference
             }]);
             let response = client.post(&endpoint).json(&message).send().unwrap();
             assert_eq!(response.status().as_u16(), expected_status);
@@ -2675,7 +2711,7 @@ mod hardening_tests {
             test_upload(&state, &json!({"text":"abc", "sha256":sha256(b"abc")})).unwrap();
         let mut message = request();
         message["params"]["event"]["items"] = json!([{
-            "id":"body", "kind":"message", "mediaType":"text/plain", "selection":"body", "body":reference
+            "id":"body","kind":"attachment","mediaType":"application/octet-stream","selection":"body","body":reference
         }]);
         message["params"]["event"]["tool"]["input"] = json!({"body":{"ref":"not-content"}, "nested":{"selection":"body", "gap":{"reason":"opaque user data"}}});
         // Interceptions intentionally wait for an explicit fixture release.

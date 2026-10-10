@@ -5,7 +5,8 @@ use agenthooksprotocol::{
     adapters::registered::ManagedBackend,
     body::{BodyChunkFuture, BodyError, BodyStream},
     client::{HookError, LocalFuture},
-    ergonomic_inputs::user_message_outbound_sources::message_payload,
+    ergonomic_inputs::{MessageInput, PartInput, UserMessageOutboundInput},
+    generated::{CanonicalMessageRole, UserMessageOutboundInputMessage},
     hooks::{Capabilities, EventGrant, HooksOptions},
 };
 use serde_json::{Value, json};
@@ -70,21 +71,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             options,
         )?;
         let result = hooks
-            .event(
-                json!({"type":"user.message.outbound","message":{"channel":"chat","payload":[{
-                    "id":"report", "kind":"content","category":"content","role":"assistant",
-                    "mediaType":"application/pdf","selection":"metadata"
-                }]}}),
+            .user_message_outbound(
+                UserMessageOutboundInput::new(UserMessageOutboundInputMessage::new("chat", vec![]))
+                    .with_sources()
+                    .with_message_messages(vec![MessageInput::new(
+                        "report-message",
+                        CanonicalMessageRole::Assistant,
+                        vec![PartInput::owned_attachment(
+                            "report",
+                            "application/pdf",
+                            Attachment::lazy(FileSource { path, file: None }),
+                        )],
+                    )]),
             )
-            .attachment(message_payload(
-                0,
-                Attachment::lazy(FileSource { path, file: None }),
-            ))
             .await?;
         hooks.shutdown().await?;
         drop(hooks);
         // The metadata-only audit never opened the file. The result now owns it.
-        let bytes = result.content.read("/message/payload/0").await?;
+        let bytes = result.content.read("/message/messages/0/parts/0").await?;
         println!("File ready for application delivery: {} bytes", bytes.len());
         Ok(())
     })

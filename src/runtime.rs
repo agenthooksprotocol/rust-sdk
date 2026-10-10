@@ -103,12 +103,9 @@ impl<'a, T> EventBoundary<'a, T> {
         self.reauthorization = available;
         self
     }
-    /// Bind a generic effect target to one host-selected canonical content item.
-    /// The pointer must address a direct element of the event's canonical primary
-    /// content array. Descriptor kind, category and role never select a target.
-    /// Validation and content resolution occur when this builder is awaited.
-    /// Owned targets must use eager bytes for edit negotiation; lazy attachments
-    /// remain available for selected delivery without advertising generic edits.
+    /// Retain an advanced host mapping for compatibility.
+    /// Canonical inline edits address the complete message list for their target;
+    /// this mapping does not select a part or trigger attachment reads.
     pub fn content_target(mut self, target: impl Into<String>, pointer: impl Into<String>) -> Self {
         self.content_targets.insert(target.into(), pointer.into());
         self
@@ -161,15 +158,12 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
             let mut input = serde_json::to_value(self.event).map_err(|e| error(e.to_string()))?;
             let name = input["type"].as_str().ok_or_else(|| error("missing canonical event type"))?.to_owned();
             if self.name.is_some_and(|expected| expected != name) { return Err(error("event name mismatch")); }
-            if (name.starts_with("user.elicitation.") || name.starts_with("context.compact."))
-                && let Some(attachments) = &self.attachments
-            {
-                // Specialized semantics validate selected payloads even without
-                // an interceptor; this is a real payload demand, not negotiation.
-                materialize_specialized(&input, attachments).await?;
-            }
+            let inline_attachments = InvocationAttachments::bind(&mut input, vec![],
+                crate::attachment::Budget::new(usize::MAX, usize::MAX), usize::MAX)
+                .map_err(|e| error(e.to_string()))?;
             let content: Option<&(dyn ContentAccess + Sync)> = self.attachments.as_ref().map(|a| a as &(dyn ContentAccess + Sync))
-                .or_else(|| self.content.as_ref().map(|c| c as &(dyn ContentAccess + Sync)));
+                .or_else(|| self.content.as_ref().map(|c| c as &(dyn ContentAccess + Sync)))
+                .or(Some(&inline_attachments as &(dyn ContentAccess + Sync)));
             let mut supported = supported_capabilities(&name, self.continuation_budget)?;
             if let Some(caps) = supported.as_mut() {
                 narrow_content_support(caps, &input, content, &self.content_targets)?;
@@ -202,7 +196,6 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 if name == "user.elicitation.result" && self.exchange.is_none() {
                     return Err(error("elicitation result requires original exchange"));
                 }
-                validate_selected_bodies(&input, content)?;
                 if name.starts_with("user.elicitation.") {
                     crate::elicitation::stage_boundary(&request, &[], content, self.exchange).map_err(|e| error(e.to_string()))?;
                 } else {
@@ -380,8 +373,7 @@ fn supported_capabilities(
             let target = target
                 .as_str()
                 .ok_or_else(|| error("invalid modify target"))?;
-            caps["modify"][target] =
-                json!({"replace":true,"merge":!matches!(target, "instructions" | "summary")});
+            caps["modify"][target] = json!({"replace":true,"merge":true});
         }
     }
     if has(&caps, "effects", &json!("inject")) {
@@ -452,6 +444,13 @@ fn stage(
     }
     // Check the whole grant set before performing any content staging.
     for effect in effects {
+        if effect["type"] == "inject"
+            || (effect["type"] == "return" && event["type"] == "model.request.before")
+        {
+            let candidate =
+                json!({"type":"user.message.outbound","message":{"messages":effect["value"]}});
+            validate_attachment_edits(event, &candidate)?;
+        }
         if !has(caps, "effects", &effect["type"]) {
             return Err(error("unadvertised effect"));
         }
@@ -530,52 +529,14 @@ fn stage(
     if let Some(staged) = &staged {
         event = staged["event"].clone();
     } else {
-        // Capture original byte owners before any slot is overwritten. The
-        // checkpoint owns handles, not copies or a reference-indexed archive.
-        let mut originals = std::collections::BTreeMap::new();
-        if let Some(content) = content {
-            for effect in effects.iter().filter(|effect| effect["type"] == "modify") {
-                if let Some(pointer) = effect["target"]
-                    .as_str()
-                    .and_then(|target| targets.get(target))
-                    && !originals.contains_key(pointer)
-                {
-                    let item = original
-                        .pointer(pointer)
-                        .ok_or_else(|| error("missing mapped item"))?;
-                    let bytes = content
-                        .resolve_selected(pointer, item)
-                        .map_err(|e| error(e.to_string()))?;
-                    originals.insert(pointer.clone(), bytes);
-                }
-            }
-        }
-        // Preserve per-effect serialization, validation, and allocation limits.
         for effect in effects.iter().filter(|effect| effect["type"] == "modify") {
             modify(&mut event, effect, content, targets)?;
-        }
-        if let Some(content) = content {
-            for (pointer, bytes) in originals {
-                let before = original
-                    .pointer(&pointer)
-                    .ok_or_else(|| error("missing mapped item"))?;
-                let after = event
-                    .pointer(&pointer)
-                    .ok_or_else(|| error("missing mapped item"))?;
-                if before != after
-                    && bytes
-                        == content
-                            .resolve_selected(&pointer, after)
-                            .map_err(|e| error(e.to_string()))?
-                {
-                    content
-                        .restore_original(&pointer, before)
-                        .map_err(|e| error(e.to_string()))?;
-                    *event
-                        .pointer_mut(&pointer)
-                        .ok_or_else(|| error("missing mapped item"))? = before.clone();
-                }
-            }
+            validate_attachment_edits(original, &event)?;
+            // Validate each contextual result, not only the final batch. An
+            // invalid intermediate event cannot be repaired by a later effect.
+            let mut intermediate = request.clone();
+            intermediate["params"]["event"] = event.clone();
+            validate_request(&intermediate)?;
         }
     }
 
@@ -626,19 +587,46 @@ fn stage(
     Ok((event, state, effects.iter().any(|e| e["type"] == "return")))
 }
 
+// Binary parts can move, repeat, or disappear, but effects cannot invent or
+// change their immutable contents. Application/native values remain opaque.
+fn validate_attachment_edits(original: &Value, current: &Value) -> Result<(), HookError> {
+    let originals: Vec<&Value> = crate::hooks_content::locations(original)
+        .iter()
+        .filter_map(|path| original.pointer(path))
+        .filter(|part| part["kind"] == "attachment")
+        .collect();
+    for path in crate::hooks_content::locations(current) {
+        let Some(part) = current
+            .pointer(&path)
+            .filter(|part| part["kind"] == "attachment")
+        else {
+            continue;
+        };
+        let known = originals.iter().any(|prior| {
+            ["id", "mediaType", "category", "synthesized"]
+                .iter()
+                .all(|field| prior[*field] == part[*field])
+                && (part["selection"] != "body" || prior["body"] == part["body"])
+        });
+        if !known {
+            return Err(error("effects cannot create or mutate binary attachments"));
+        }
+    }
+    Ok(())
+}
 fn change(current: &mut Value, effect: &Value) -> Result<(), HookError> {
     let replacement = &effect["value"];
     if effect["operation"] == "merge" {
-        let value = replacement
-            .as_object()
-            .ok_or_else(|| error("merge requires object"))?;
-        current
-            .as_object_mut()
-            .ok_or_else(|| error("merge target must be object"))?
-            .extend(value.clone());
+        match (current, replacement) {
+            (Value::Array(current), Value::Array(value)) => current.extend(value.clone()),
+            (Value::Object(current), Value::Object(value)) => current.extend(value.clone()),
+            _ => return Err(error("merge requires matching lists or objects")),
+        }
     } else {
-        if effect["target"] == "input" && !replacement.is_object() {
-            return Err(error("input replacement requires object"));
+        if matches!(effect["target"].as_str(), Some("input" | "workspace"))
+            && !replacement.is_object()
+        {
+            return Err(error("object target replacement requires object"));
         }
         *current = replacement.clone();
     }
@@ -647,238 +635,57 @@ fn change(current: &mut Value, effect: &Value) -> Result<(), HookError> {
 fn modify(
     event: &mut Value,
     effect: &Value,
-    content: Option<&(dyn ContentAccess + Sync)>,
-    targets: &std::collections::BTreeMap<String, String>,
+    _content: Option<&(dyn ContentAccess + Sync)>,
+    _targets: &std::collections::BTreeMap<String, String>,
 ) -> Result<(), HookError> {
     let target = effect["target"]
         .as_str()
         .ok_or_else(|| error("missing target"))?;
-    match target {
-        "input" => change(&mut event["tool"]["input"], effect),
-        "workspace" => change(&mut event["workspace"]["change"], effect),
-        "request" => change(&mut event["params"], effect),
-        "prompt" | "response" | "output" | "content" => {
-            let content = content
-                .ok_or_else(|| error("body effects require an authorized content resolver"))?;
-            let pointer = targets
-                .get(target)
-                .ok_or_else(|| error("unmapped content target"))?;
-            let item = event
-                .pointer_mut(pointer)
-                .ok_or_else(|| error("missing mapped content item"))?;
-            let bytes = content
-                .resolve_selected(pointer, item)
-                .map_err(|e| error(e.to_string()))?
-                .ok_or_else(|| error("primary body not selected"))?;
-            let json_body = is_json_media(item["mediaType"].as_str().unwrap_or(""));
-            let mut value = if json_body {
-                serde_json::from_slice(&bytes).map_err(|e| error(e.to_string()))?
-            } else {
-                Value::String(
-                    std::str::from_utf8(&bytes)
-                        .map_err(|e| error(e.to_string()))?
-                        .to_owned(),
-                )
-            };
-            let original_value = value.clone();
-            change(&mut value, effect)?;
-            if !json_body && !value.is_string() {
-                return Err(error("text replacement must be a string"));
-            }
-            if value == original_value {
-                return Ok(());
-            }
-            let new_bytes = if json_body {
-                serde_json::to_vec(&value).map_err(|e| error(e.to_string()))?
-            } else {
-                value
-                    .as_str()
-                    .ok_or_else(|| error("text replacement must be a string"))?
-                    .as_bytes()
-                    .to_vec()
-            };
-            if new_bytes.as_slice() != bytes.as_ref() {
-                let reference = content
-                    .put(pointer, &new_bytes)
-                    .map_err(|e| error(e.to_string()))?;
-                if item.get("size").is_some() {
-                    item["size"] = reference["size"].clone();
-                }
-                if item.get("sha256").is_some() {
-                    item["sha256"] = reference["sha256"].clone();
-                }
-                item["body"] = reference;
-            }
-            Ok(())
-        }
-        _ => Err(error("unsupported primary target")),
+    let pointer = match target {
+        "input" => "/tool/input",
+        "workspace" => "/workspace/change",
+        _ => content_array(event["type"].as_str().unwrap_or(""), target)
+            .ok_or_else(|| error("unsupported primary target"))?,
+    };
+    if content_array(event["type"].as_str().unwrap_or(""), target).is_some()
+        && !effect["value"].is_array()
+    {
+        return Err(error("canonical message target requires a list"));
     }
+    let current = event
+        .pointer_mut(pointer)
+        .ok_or_else(|| error("missing primary target"))?;
+    change(current, effect)
 }
 
-async fn materialize_specialized(
-    event: &Value,
-    attachments: &InvocationAttachments,
-) -> Result<(), HookError> {
-    let mut paths = Vec::new();
-    for pointer in ["/items", "/message/text", "/message/payload"] {
-        if let Some(items) = event.pointer(pointer).and_then(Value::as_array) {
-            for (index, item) in items.iter().enumerate() {
-                if item["selection"] == "body" && item.get("gap").is_none() {
-                    paths.push(format!("{pointer}/{index}"));
-                }
-            }
-        }
-    }
-    for pointer in [
-        "/instructions",
-        "/summary",
-        "/elicitation/request",
-        "/elicitation/result",
-    ] {
-        if let Some(item) = event.pointer(pointer)
-            && item["selection"] == "body"
-            && item.get("gap").is_none()
-        {
-            paths.push(pointer.to_owned());
-        }
-    }
-    for path in paths {
-        attachments
-            .materialize(&path, usize::MAX)
-            .await
-            .map_err(|e| error(e.to_string()))?;
-    }
-    Ok(())
-}
-
-fn validate_selected_bodies(
-    event: &Value,
-    content: &(dyn ContentAccess + Sync),
-) -> Result<(), HookError> {
-    for pointer in ["/items", "/message/text", "/message/payload"] {
-        if let Some(items) = event.pointer(pointer).and_then(Value::as_array) {
-            for (index, item) in items.iter().enumerate() {
-                let pointer = &format!("{pointer}/{index}");
-                content
-                    .resolve_selected(pointer, item)
-                    .map_err(|e| error(e.to_string()))?;
-            }
-        }
-    }
-    for pointer in [
-        "/instructions",
-        "/summary",
-        "/elicitation/request",
-        "/elicitation/result",
-    ] {
-        if let Some(item) = event.pointer(pointer) {
-            content
-                .resolve_selected(pointer, item)
-                .map_err(|e| error(e.to_string()))?;
-        }
-    }
-    Ok(())
-}
-
-fn is_json_media(media: &str) -> bool {
-    media == "application/json" || (media.starts_with("application/") && media.ends_with("+json"))
-}
 fn content_array(name: &str, target: &str) -> Option<&'static str> {
     match (name, target) {
         ("turn.start", "prompt")
         | ("turn.finish.before" | "model.response.after", "response")
+        | ("model.request.before", "request")
         | ("tool.after", "output") => Some("/items"),
-        ("user.message.inbound", "prompt") => Some("/message/text"),
-        ("user.message.outbound", "content") => Some("/message/payload"),
+        ("user.message.inbound", "prompt") | ("user.message.outbound", "content") => {
+            Some("/message/messages")
+        }
         _ => None,
     }
 }
-/// The schema is only a ceiling. Actual generic body operations require an
-/// explicit, structurally valid host mapping and an available supported body.
+/// Inline list edits need neither a body resolver nor a mapped attachment.
 fn narrow_content_support(
     caps: &mut Value,
     event: &Value,
-    content: Option<&(dyn ContentAccess + Sync)>,
-    targets: &std::collections::BTreeMap<String, String>,
+    _content: Option<&(dyn ContentAccess + Sync)>,
+    _targets: &std::collections::BTreeMap<String, String>,
 ) -> Result<(), HookError> {
     let name = event["type"]
         .as_str()
         .ok_or_else(|| error("missing event type"))?;
-    for (target, pointer) in targets {
-        let array = content_array(name, target)
-            .ok_or_else(|| error("invalid mapped target for boundary"))?;
-        let index = pointer
-            .strip_prefix(array)
-            .and_then(|tail| tail.strip_prefix('/'))
-            .filter(|index| !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()))
-            .ok_or_else(|| {
-                error("content mapping must address a direct canonical array element")
-            })?;
-        let parsed = index
-            .parse::<usize>()
-            .map_err(|_| error("invalid content item index"))?;
-        if parsed.to_string() != index
-            || event
-                .pointer(array)
-                .and_then(Value::as_array)
-                .and_then(|a| a.get(parsed))
-                .is_none()
+    for target in ["prompt", "request", "response", "output", "content"] {
+        if let Some(pointer) = content_array(name, target)
+            && !event.pointer(pointer).is_some_and(Value::is_array)
+            && let Some(modify) = caps["modify"].as_object_mut()
         {
-            return Err(error(
-                "content mapping points outside canonical content array",
-            ));
-        }
-    }
-    for target in ["prompt", "response", "output", "content"] {
-        if content_array(name, target).is_none() || caps["modify"].get(target).is_none() {
-            continue;
-        }
-        let mut operations = None;
-        if let (Some(content), Some(pointer)) = (content, targets.get(target)) {
-            let item = event
-                .pointer(pointer)
-                .ok_or_else(|| error("missing mapped content item"))?;
-            let media = item["mediaType"].as_str().unwrap_or("");
-            if item["selection"] == "body"
-                && item.get("gap").is_none()
-                && item.get("body").is_some()
-                && (is_json_media(media) || media.starts_with("text/"))
-            {
-                let bytes = content
-                    .resolve_selected(pointer, item)
-                    .map_err(|e| error(e.to_string()))?
-                    .ok_or_else(|| error("mapped body unavailable"))?;
-                let merge = if is_json_media(media) {
-                    serde_json::from_slice::<Value>(&bytes)
-                        .map_err(|e| error(e.to_string()))?
-                        .is_object()
-                } else {
-                    std::str::from_utf8(&bytes).map_err(|e| error(e.to_string()))?;
-                    false
-                };
-                operations = Some(merge);
-            }
-        }
-        if let Some(merge) = operations {
-            // Do not expand a caller's explicit operation narrowing.
-            if !merge {
-                caps["modify"][target]["merge"] = json!(false);
-            }
-            if caps["modify"][target]["replace"] != true && caps["modify"][target]["merge"] != true
-            {
-                caps["modify"].as_object_mut().unwrap().remove(target);
-            }
-        } else {
-            caps["modify"].as_object_mut().unwrap().remove(target);
-        }
-    }
-    if caps["modify"]
-        .as_object()
-        .is_some_and(|targets| targets.is_empty())
-    {
-        caps.as_object_mut().unwrap().remove("modify");
-        if let Some(effects) = caps["effects"].as_array_mut() {
-            effects.retain(|effect| effect != "modify");
+            modify.remove(target);
         }
     }
     Ok(())
@@ -905,20 +712,16 @@ fn narrow_specialized_support(
         } else {
             "summary"
         };
-        let available = if let (Some(content), Some(item)) = (content, event.get(target)) {
-            match content
-                .resolve_selected(&format!("/{target}"), item)
-                .map_err(|e| error(e.to_string()))?
-            {
-                Some(bytes) => {
-                    std::str::from_utf8(&bytes).map_err(|e| error(e.to_string()))?;
-                    true
-                }
-                None => false,
-            }
-        } else {
-            false
-        };
+        let available = event
+            .get(target)
+            .and_then(Value::as_array)
+            .is_some_and(|parts| {
+                parts.iter().all(|part| {
+                    part["selection"] == "body"
+                        && part.get("gap").is_none()
+                        && part["text"].is_string()
+                })
+            });
         if !available {
             remove_effect(caps, "modify");
         }
@@ -944,23 +747,12 @@ fn narrow_specialized_support(
                 remove_effect(caps, effect);
             }
         } else if !request_stage {
-            let editable = if let (Some(content), Some(item)) =
-                (content, event["elicitation"].get("result"))
-            {
-                match content
-                    .resolve_selected("/elicitation/result", item)
-                    .map_err(|e| error(e.to_string()))?
-                {
-                    Some(bytes) => {
-                        let answer: Value =
-                            serde_json::from_slice(&bytes).map_err(|e| error(e.to_string()))?;
-                        mode == "form" && answer["action"] == "accept"
-                    }
-                    None => false,
-                }
-            } else {
-                false
-            };
+            let editable = event["elicitation"]["result"]["text"]
+                .as_str()
+                .map(serde_json::from_str::<Value>)
+                .transpose()
+                .map_err(|e| error(e.to_string()))?
+                .is_some_and(|answer| mode == "form" && answer["action"] == "accept");
             if !editable {
                 remove_effect(caps, "modify");
             }
@@ -970,219 +762,135 @@ fn narrow_specialized_support(
 }
 
 #[cfg(test)]
-mod owned_content_tests {
+mod inline_tests {
     use super::*;
-    use std::sync::Arc;
 
-    fn generic_fixture(media: &str, bytes: &[u8], limit: usize) -> (Value, InvocationAttachments) {
-        let mut event = json!({"id":"outbound","source":"urn:test:runtime","type":"user.message.outbound","time":"2026-09-15T12:00:00Z","message":{"channel":"chat","payload":[{"id":"item","kind":"content","role":"assistant","mediaType":media,"selection":"body"}]}});
-        let attachments = InvocationAttachments::bind(
-            &mut event,
-            vec![crate::ergonomic_inputs::ContentSourceBinding {
-                path: vec!["message".into(), "payload".into(), "0".into()],
-                source: crate::Attachment::bytes(bytes.to_vec()),
-            }],
-            crate::attachment::Budget::new(65536, 16),
-            limit,
-        )
-        .unwrap();
-        (event, attachments)
+    fn parts(text: &str) -> Value {
+        json!([{"id":"part","kind":"text","mediaType":"text/plain","selection":"body","text":text}])
     }
-
-    fn generic_stage(
+    fn messages(text: &str) -> Value {
+        json!([{"id":"message","role":"assistant","parts":parts(text)}])
+    }
+    fn event() -> Value {
+        json!({"id":"event","source":"urn:test","time":"2026-09-15T12:00:00Z",
+            "type":"user.message.outbound","message":{"channel":"test","messages":messages("original")}})
+    }
+    fn effect(operation: &str, value: Value) -> Value {
+        json!({"type":"modify","target":"content","operation":operation,"value":value})
+    }
+    fn apply(
         event: &Value,
-        content: &InvocationAttachments,
-        effects: Value,
+        effects: &[Value],
     ) -> Result<(Value, ProtocolOutcome, bool), HookError> {
-        let request = json!({"jsonrpc":"2.0","id":"outbound","method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":{"effects":["modify"],"modify":{"content":{"replace":true,"merge":true}}}}});
-        let response = json!({"jsonrpc":"2.0","id":"outbound","result":{"protocolVersion":"draft","effects":effects}});
-        let (prior, _) =
-            native_outcome(&json!({"permission":"allow","candidate":{"value":"candidate"}}))
-                .unwrap();
-        let targets = [("content".to_owned(), "/message/payload/0".to_owned())].into();
-        stage(&request, &response, &prior, Some(content), None, &targets)
+        let caps = json!({"effects":["modify"],"modify":{"content":{"replace":true,"merge":true}}});
+        let request = json!({"jsonrpc":"2.0","id":"event","method":"hooks/intercept",
+            "params":{"protocolVersion":"draft","event":event,"capabilities":caps}});
+        let state = ProtocolOutcome {
+            decision: Decision::Allow,
+            candidate: Some(json!("candidate")),
+            stopped: false,
+            continuation_requested: false,
+            instructions: vec![],
+            messages: vec![],
+            injections: vec![],
+            approval_invalidated: false,
+            authorized: false,
+            failures: vec![],
+            responses: vec![],
+        };
+        let response = json!({"jsonrpc":"2.0","id":"event","result":{"protocolVersion":"draft","effects":effects}});
+        stage(&request, &response, &state, None, None, &Default::default())
     }
-
     #[test]
-    fn compact_json_exact_revert_restores_original_owner_and_approval() {
-        let (event, attachments) = generic_fixture("application/json", br#"{"a":1}"#, 4096);
-        let path = "/message/payload/0";
-        let original_bytes = attachments
-            .resolve_selected(path, event.pointer(path).unwrap())
-            .unwrap()
-            .unwrap();
-        let staged = attachments.fork();
-        let (next, state, _) = generic_stage(
-            &event,
-            &staged,
-            json!([
-                {"type":"modify","target":"content","operation":"merge","value":{"a":2}},
-                {"type":"modify","target":"content","operation":"merge","value":{"a":1}}
-            ]),
-        )
-        .unwrap();
-        assert_eq!(next, event);
-        assert_eq!(state.decision, Decision::Allow);
-        assert_eq!(state.candidate, Some(json!("candidate")));
-        assert!(!state.approval_invalidated);
-        let final_bytes = staged
-            .resolve_selected(path, next.pointer(path).unwrap())
-            .unwrap()
-            .unwrap();
-        assert!(Arc::ptr_eq(&original_bytes, &final_bytes));
-    }
-
-    #[test]
-    fn spaced_json_logical_revert_normalizes_bytes_and_invalidates_approval() {
-        let (event, attachments) = generic_fixture("application/json", br#"{ "a": 1 }"#, 4096);
-        let staged = attachments.fork();
-        let (next, state, _) = generic_stage(
-            &event,
-            &staged,
-            json!([
-                {"type":"modify","target":"content","operation":"merge","value":{"a":2}},
-                {"type":"modify","target":"content","operation":"merge","value":{"a":1}}
-            ]),
-        )
-        .unwrap();
-        assert_ne!(next, event);
+    fn inline_replace_needs_no_resolver_or_mapping() {
+        let original = event();
+        let (next, state, _) = apply(&original, &[effect("replace", messages("changed"))]).unwrap();
+        assert_eq!(next["message"]["messages"], messages("changed"));
+        assert_eq!(original["message"]["messages"], messages("original"));
         assert_eq!(state.decision, Decision::None);
         assert!(state.candidate.is_none());
         assert!(state.approval_invalidated);
-        assert_eq!(
-            staged
-                .resolve_selected("/message/payload/0", &next["message"]["payload"][0])
-                .unwrap()
-                .unwrap()
-                .as_ref(),
-            br#"{"a":1}"#
-        );
     }
-
-    fn assert_rejected(media: &str, bytes: &[u8], limit: usize, effects: Value) {
-        let (event, attachments) = generic_fixture(media, bytes, limit);
-        let path = "/message/payload/0";
-        let original_bytes = attachments
-            .resolve_selected(path, event.pointer(path).unwrap())
-            .unwrap()
-            .unwrap();
-        let staged = attachments.fork();
-        assert!(generic_stage(&event, &staged, effects).is_err());
-        drop(staged);
-        let final_bytes = attachments
-            .resolve_selected(path, event.pointer(path).unwrap())
-            .unwrap()
-            .unwrap();
-        assert!(Arc::ptr_eq(&original_bytes, &final_bytes));
-        assert_eq!(final_bytes.as_ref(), bytes);
-    }
-
     #[test]
-    fn invalid_intermediate_text_cannot_be_repaired_by_changed_string() {
-        assert_rejected(
-            "text/plain",
-            b"original",
-            4096,
-            json!([
-                {"type":"modify","target":"content","operation":"replace","value":{"invalid":true}},
-                {"type":"modify","target":"content","operation":"replace","value":"changed"}
-            ]),
-        );
-    }
-
-    #[test]
-    fn invalid_intermediate_text_cannot_be_repaired_by_original_string() {
-        assert_rejected(
-            "text/plain",
-            b"original",
-            4096,
-            json!([
-                {"type":"modify","target":"content","operation":"replace","value":{"invalid":true}},
-                {"type":"modify","target":"content","operation":"replace","value":"original"}
-            ]),
-        );
-    }
-
-    #[test]
-    fn invalid_intermediate_json_merge_cannot_be_repaired_by_replacement() {
-        assert_rejected(
-            "application/json",
-            br#"{"a":1}"#,
-            4096,
-            json!([
-                {"type":"modify","target":"content","operation":"replace","value":42},
-                {"type":"modify","target":"content","operation":"merge","value":{"a":2}},
-                {"type":"modify","target":"content","operation":"replace","value":{"a":1}}
-            ]),
-        );
-    }
-
-    #[test]
-    fn oversized_intermediate_text_cannot_be_repaired_by_original_string() {
-        assert_rejected(
-            "text/plain",
-            b"original",
-            8,
-            json!([
-                {"type":"modify","target":"content","operation":"replace","value":"too long for limit"},
-                {"type":"modify","target":"content","operation":"replace","value":"original"}
-            ]),
-        );
-    }
-
-    fn bind(event: &mut Value, path: &[&str], bytes: &[u8]) -> InvocationAttachments {
-        InvocationAttachments::bind(
-            event,
-            vec![crate::ergonomic_inputs::ContentSourceBinding {
-                path: path.iter().map(|part| (*part).to_owned()).collect(),
-                source: crate::Attachment::bytes(bytes.to_vec()),
-            }],
-            crate::attachment::Budget::new(65536, 16),
-            4096,
+    fn list_merge_appends_in_order_preserving_duplicates() {
+        let (next, _, _) = apply(
+            &event(),
+            &[
+                effect("merge", messages("original")),
+                effect("merge", messages("last")),
+            ],
         )
-        .unwrap()
+        .unwrap();
+        let list = next["message"]["messages"].as_array().unwrap();
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0], list[1]);
+        assert_eq!(list[2]["parts"][0]["text"], "last");
+    }
+    #[test]
+    fn exact_revert_preserves_approval_and_candidate() {
+        let original = event();
+        let (next, state, _) = apply(
+            &original,
+            &[
+                effect("replace", messages("temporary")),
+                effect("replace", messages("original")),
+            ],
+        )
+        .unwrap();
+        assert_eq!(next, original);
+        assert_eq!(state.decision, Decision::Allow);
+        assert_eq!(state.candidate, Some(json!("candidate")));
+        assert!(!state.approval_invalidated);
+    }
+    #[test]
+    fn malformed_list_effect_rolls_back_whole_response() {
+        let original = event();
+        assert!(
+            apply(
+                &original,
+                &[
+                    effect("replace", messages("leak")),
+                    effect("merge", json!({"bad":true}))
+                ]
+            )
+            .is_err()
+        );
+        assert_eq!(original, event());
+    }
+    #[test]
+    fn ordinary_content_object_cannot_be_repaired_by_a_later_list() {
+        let original = event();
+        assert!(
+            apply(
+                &original,
+                &[
+                    effect("replace", json!({"answer":"specialized only"})),
+                    effect("replace", messages("repaired")),
+                ]
+            )
+            .is_err()
+        );
+        assert_eq!(original, event());
     }
 
     #[test]
-    fn owned_compaction_replacement_uses_transactional_instruction_slot() {
-        let mut event = json!({"id":"before","source":"urn:test:owned","time":"2026-09-15T12:00:00Z","type":"context.compact.before","trigger":"manual","items":[],
-            "instructions":{"id":"instructions","kind":"instructions","role":"system","mediaType":"text/plain","selection":"body"}});
-        let attachments = bind(&mut event, &["instructions"], b"original");
-        let request = json!({"jsonrpc":"2.0","id":"before","method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":crate::compaction::capabilities("before",false).unwrap()}});
-        let staged = attachments.fork();
-        let next = crate::compaction::stage_boundary(&request, &[json!({"type":"modify","target":"instructions","operation":"replace","value":"changed"})], &staged).unwrap();
+    fn object_merge_is_shallow_and_keeps_literal_null() {
+        let mut object = json!({"nested":{"before":1},"keep":true});
+        change(
+            &mut object,
+            &json!({"operation":"merge","value":{"nested":{"after":2},"null":null}}),
+        )
+        .unwrap();
         assert_eq!(
-            attachments
-                .resolve_selected("/instructions", &event["instructions"])
-                .unwrap()
-                .unwrap()
-                .as_ref(),
-            b"original"
-        );
-        attachments.commit(staged);
-        assert_eq!(
-            attachments
-                .resolve_selected("/instructions", &next["event"]["instructions"])
-                .unwrap()
-                .unwrap()
-                .as_ref(),
-            b"changed"
+            object,
+            json!({"nested":{"after":2},"keep":true,"null":null})
         );
     }
-
     #[test]
-    fn owned_elicitation_request_resolves_original_request_slot() {
-        let payload = json!({"message":"Answer?","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}});
-        let mut event = json!({"id":"request","source":"urn:test:owned","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},"elicitation":{"server":"server","mode":"form","request":{"id":"request-item","kind":"elicitation.request","mediaType":"application/json","selection":"body"}}});
-        let attachments = bind(
-            &mut event,
-            &["elicitation", "request"],
-            &serde_json::to_vec(&payload).unwrap(),
-        );
-        let request = json!({"jsonrpc":"2.0","id":"request","method":"hooks/intercept","params":{"protocolVersion":"draft","event":event,"capabilities":{"effects":["return","deny","message"],"elicitation":{"form":{}}}}});
-        let exchange = Exchange::new(&request, &attachments).unwrap();
-        assert_eq!(exchange.original_request(), Some(&payload));
-        let next = crate::elicitation::stage_boundary(&request, &[], &attachments, None).unwrap();
-        assert_eq!(next["event"], event);
+    fn capability_negotiation_does_not_require_body_access() {
+        let mut caps =
+            json!({"effects":["modify"],"modify":{"content":{"replace":true,"merge":true}}});
+        narrow_content_support(&mut caps, &event(), None, &Default::default()).unwrap();
+        assert_eq!(caps["modify"]["content"]["merge"], true);
     }
 }

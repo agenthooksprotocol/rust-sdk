@@ -111,8 +111,11 @@ fn execute(
     // short-circuit candidate. Never reuse the preflight answer in its summary.
     if result.effective_event["type"] == "user.elicitation.result" {
         match result.effective_event["elicitation"].get("result") {
-            Some(item) => match content.resolve_selected(item)? {
-                Some(bytes) => staged["candidate"] = serde_json::from_slice(&bytes)?,
+            Some(item) => match item["text"]
+                .as_str()
+                .filter(|_| item["selection"] == "body")
+            {
+                Some(text) => staged["candidate"] = serde_json::from_str(text)?,
                 None => {
                     staged
                         .as_object_mut()
@@ -424,7 +427,11 @@ fn main() -> Result<()> {
                     execute(&message, &[], &context, None)?;
                     let payload = exchange.original_request().cloned();
                     let body = if payload.is_some() {
-                        context.resolve(&meta["request"]["body"])?.to_vec()
+                        meta["request"]["text"]
+                            .as_str()
+                            .ok_or("inline request text")?
+                            .as_bytes()
+                            .to_vec()
                     } else {
                         vec![]
                     };
@@ -443,8 +450,12 @@ fn main() -> Result<()> {
                     let request = pending.get(&key).ok_or("No pending elicitation")?;
                     let staged = execute(&message, &[], &context, Some(request))?;
                     let summary = summary(request, &staged, principal, &[]);
-                    let body = if meta["result"].get("body").is_some() {
-                        context.resolve(&meta["result"]["body"])?.to_vec()
+                    let body = if meta["result"]["selection"] == "body" {
+                        meta["result"]["text"]
+                            .as_str()
+                            .ok_or("inline result text")?
+                            .as_bytes()
+                            .to_vec()
                     } else {
                         vec![]
                     };

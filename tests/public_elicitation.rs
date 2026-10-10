@@ -4,10 +4,9 @@ use agenthooksprotocol::{
 };
 use serde_json::{Value, json};
 
-fn envelope(context: &ContentContext<'_>, stage: &str, body: &Value) -> Value {
-    let reference = context.put(&serde_json::to_vec(body).unwrap()).unwrap();
+fn envelope(_context: &ContentContext<'_>, stage: &str, body: &Value) -> Value {
     let mut meta = json!({"server":"mcp-server","mode":"form"});
-    meta[stage] = json!({"id":format!("{stage}-item"),"kind":format!("elicitation.{stage}"),"mediaType":"application/json","selection":"body","body":reference});
+    meta[stage] = json!({"id":format!("{stage}-item"),"kind":"text","mediaType":"text/plain","selection":"body","text":serde_json::to_string(body).unwrap()});
     if stage == "result" {
         meta["action"] = body["action"].clone();
     }
@@ -35,7 +34,7 @@ fn original_schema_and_envelope_are_owned_and_result_requires_snapshot() {
     };
     let mut request = envelope(&context, "request", &form());
     let exchange = Exchange::new(&request, &context).unwrap();
-    request["params"]["event"]["elicitation"]["request"]["body"] = context.put(b"{}").unwrap();
+    request["params"]["event"]["elicitation"]["request"]["text"] = json!("{}");
     assert_eq!(
         exchange.original_request().unwrap()["_meta"]["preserved"],
         true
@@ -91,15 +90,17 @@ fn stages_publish_complete_immutable_answers_and_fail_atomically() {
         Some(&exchange),
     )
     .unwrap();
-    let bytes = context
-        .resolve(&staged["event"]["elicitation"]["result"]["body"])
-        .unwrap();
-    let published: Value = serde_json::from_slice(&bytes).unwrap();
+    let published: Value = serde_json::from_str(
+        staged["event"]["elicitation"]["result"]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(published["content"]["answer"], "after");
     assert_eq!(published["_meta"]["retained"], true);
     assert_ne!(
-        staged["event"]["elicitation"]["result"]["body"],
-        result["params"]["event"]["elicitation"]["result"]["body"]
+        staged["event"]["elicitation"]["result"]["text"],
+        result["params"]["event"]["elicitation"]["result"]["text"]
     );
     assert!(
         stage_boundary(
@@ -139,7 +140,7 @@ fn metadata_and_missing_mode_grants_do_not_authorize_effects() {
         .remove("elicitation");
     let item = &mut request["params"]["event"]["elicitation"]["request"];
     item["selection"] = json!("metadata");
-    item.as_object_mut().unwrap().remove("body");
+    item.as_object_mut().unwrap().remove("text");
     assert!(
         stage_boundary(&request, &[], &context, None)
             .unwrap()
@@ -185,7 +186,7 @@ fn consuming_effects_require_explicit_mode_but_messages_do_not_require_bodies() 
     assert!(stage_boundary(&result, &[modify], &context, Some(&exchange)).is_err());
     let item = &mut request["params"]["event"]["elicitation"]["request"];
     item["selection"] = json!("metadata");
-    item.as_object_mut().unwrap().remove("body");
+    item.as_object_mut().unwrap().remove("text");
     request["params"]["capabilities"]["elicitation"] = json!({});
     let message = json!({"type":"message","text":"No body needed"});
     let staged = stage_boundary(&request, std::slice::from_ref(&message), &context, None).unwrap();
@@ -194,19 +195,17 @@ fn consuming_effects_require_explicit_mode_but_messages_do_not_require_bodies() 
 }
 
 #[test]
-fn outer_integrity_hints_are_verified_and_renewed_after_modify() {
+fn inline_payloads_are_validated_and_rewritten_after_modify() {
     let store = MemoryContentStore::new(100000, 1000000, 100);
     let context = ContentContext {
         store: &store,
         scope: AuthorizedScope::new("authorized"),
     };
     let mut request = envelope(&context, "request", &form());
-    request["params"]["event"]["elicitation"]["request"]["size"] = json!(1);
+    request["params"]["event"]["elicitation"]["request"]["text"] = json!("not JSON");
     assert!(Exchange::new(&request, &context).is_err());
-    request["params"]["event"]["elicitation"]["request"]
-        .as_object_mut()
-        .unwrap()
-        .remove("size");
+    request["params"]["event"]["elicitation"]["request"]["text"] =
+        json!(serde_json::to_string(&form()).unwrap());
     let exchange = Exchange::new(&request, &context).unwrap();
     let mut result = envelope(
         &context,
@@ -218,8 +217,10 @@ fn outer_integrity_hints_are_verified_and_renewed_after_modify() {
     let item = &staged["event"]["elicitation"]["result"];
     assert!(item.get("size").is_none());
     assert!(item.get("sha256").is_none());
-    assert!(context.resolve_selected(item).unwrap().is_some());
-    result["params"]["event"]["elicitation"]["result"]["sha256"] = json!("0".repeat(64));
+    assert!(item.get("body").is_none());
+    let published: Value = serde_json::from_str(item["text"].as_str().unwrap()).unwrap();
+    assert_eq!(published["content"]["answer"], "a much longer replacement");
+    result["params"]["event"]["elicitation"]["result"]["text"] = json!("not JSON");
     assert!(stage_boundary(&result, &[], &context, Some(&exchange)).is_err());
 }
 
@@ -285,9 +286,9 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
     );
     // Deliberately noncanonical formatting must survive semantic no-ops exactly.
     let bytes = b"{\n \"_meta\": {\"keep\":true}, \"content\": {\"answer\":\"yes\"}, \"action\":\"accept\"\n}";
-    let reference = context.put(bytes).unwrap();
+    let text = std::str::from_utf8(bytes).unwrap();
     let item = &mut result["params"]["event"]["elicitation"]["result"];
-    item["body"] = reference.clone();
+    item["text"] = json!(text);
     let before = store.puts.load(Ordering::Relaxed);
     let replace =
         json!({"type":"modify","target":"content","operation":"replace","value":{"answer":"yes"}});
@@ -302,14 +303,7 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
         let staged = stage_boundary(&result, &effects, &context, Some(&exchange)).unwrap();
         assert_eq!(staged["event"], result["params"]["event"]);
         assert_eq!(store.puts.load(Ordering::Relaxed), before);
-        assert_eq!(
-            context
-                .resolve_selected(&staged["event"]["elicitation"]["result"])
-                .unwrap()
-                .unwrap()
-                .as_ref(),
-            bytes
-        );
+        assert_eq!(staged["event"]["elicitation"]["result"]["text"], text);
 
         let mut subscription =
             Subscription::intercept("noop", FailurePolicy::Closed, Effects(effects));
@@ -332,4 +326,39 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
         assert!(!settled.outcome.approval_invalidated);
         assert_eq!(store.puts.load(Ordering::Relaxed), before);
     }
+}
+
+#[test]
+fn elicitation_content_requires_objects_even_when_a_later_effect_repairs_it() {
+    let store = MemoryContentStore::new(100000, 1000000, 100);
+    let context = ContentContext {
+        store: &store,
+        scope: AuthorizedScope::new("authorized"),
+    };
+    let request = envelope(&context, "request", &form());
+    let exchange = Exchange::new(&request, &context).unwrap();
+    let result = envelope(
+        &context,
+        "result",
+        &json!({"action":"accept","content":{"answer":"original"}}),
+    );
+    let effects = [
+        json!({"type":"modify","target":"content","operation":"replace","value":[]}),
+        json!({"type":"modify","target":"content","operation":"replace","value":{"answer":"repaired"}}),
+    ];
+    assert!(stage_boundary(&result, &effects, &context, Some(&exchange)).is_err());
+    let declined = envelope(&context, "result", &json!({"action":"decline"}));
+    assert!(stage_boundary(&declined, &effects[1..], &context, Some(&exchange)).is_err());
+    let mut ungranted_request = request.clone();
+    ungranted_request["params"]["capabilities"]["effects"] = json!(["modify"]);
+    ungranted_request["params"]["capabilities"]["modify"] = json!({"request":{"replace":true}});
+    assert!(
+        stage_boundary(
+            &ungranted_request,
+            &[json!({"type":"modify","target":"request","operation":"replace","value":[]})],
+            &context,
+            None
+        )
+        .is_err()
+    );
 }

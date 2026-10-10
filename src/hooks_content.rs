@@ -14,6 +14,9 @@ fn category(item: &Value) -> &str {
     if let Some(category) = item["category"].as_str() {
         return category;
     }
+    if item["kind"] == "text" {
+        return "text";
+    }
     if item["kind"] == "reasoning" {
         return "reasoning";
     }
@@ -36,7 +39,14 @@ pub(crate) fn locations(event: &Value) -> Vec<String> {
     let mut paths = Vec::new();
     let mut array = |path: &str| {
         if let Some(items) = event.pointer(path).and_then(Value::as_array) {
-            paths.extend((0..items.len()).map(|i| format!("{path}/{i}")));
+            for (i, item) in items.iter().enumerate() {
+                let base = format!("{path}/{i}");
+                if let Some(parts) = item["parts"].as_array() {
+                    paths.extend((0..parts.len()).map(|j| format!("{base}/parts/{j}")));
+                } else {
+                    paths.push(base);
+                }
+            }
         }
     };
     // Common `items` is canonical on built-in events only. Extension payloads
@@ -79,8 +89,7 @@ pub(crate) fn locations(event: &Value) -> Vec<String> {
         array("/items");
     }
     match event["type"].as_str().unwrap_or("") {
-        "user.message.inbound" => array("/message/text"),
-        "user.message.outbound" => array("/message/payload"),
+        "user.message.inbound" | "user.message.outbound" => array("/message/messages"),
         "user.attention" => {
             array("/attention/message");
             array("/attention/title");
@@ -96,19 +105,32 @@ pub(crate) fn locations(event: &Value) -> Vec<String> {
         "user.elicitation.result" => &["/elicitation/result"],
         _ => &[],
     };
-    paths.extend(
-        singular
-            .iter()
-            .filter(|p| event.pointer(p).is_some())
-            .map(|p| p.to_string()),
-    );
-    if event["type"] == "tool.after"
-        && let Some(changes) = event["fileChanges"].as_array()
+    for path in singular {
+        if let Some(item) = event.pointer(path) {
+            if let Some(parts) = item.as_array().or_else(|| item["parts"].as_array()) {
+                let base = if item.is_array() {
+                    path.to_string()
+                } else {
+                    format!("{path}/parts")
+                };
+                paths.extend((0..parts.len()).map(|i| format!("{base}/{i}")));
+            } else {
+                paths.push(path.to_string());
+            }
+        }
+    }
+    let changes_path = match event["type"].as_str() {
+        Some("tool.after") => Some("fileChanges"),
+        Some("file.changed") => Some("changes"),
+        _ => None,
+    };
+    if let Some(field) = changes_path
+        && let Some(changes) = event[field].as_array()
     {
         for (i, change) in changes.iter().enumerate() {
             for stage in ["before", "after"] {
                 if change.get(stage).is_some() {
-                    paths.push(format!("/fileChanges/{i}/{stage}"));
+                    paths.push(format!("/{field}/{i}/{stage}"));
                 }
             }
         }
@@ -207,6 +229,34 @@ async fn prepare_upload_credential(
     }
 }
 
+// Hold the shared cap only during the HTTP transfer, not auth/challenge work.
+#[cfg(feature = "reqwest")]
+struct LimitedHttp<'a, H> {
+    inner: &'a H,
+    limiter: &'a crate::upload_plan::UploadLimiter,
+    deadline: Instant,
+}
+#[cfg(feature = "reqwest")]
+impl<H: crate::transport::Http> crate::transport::Http for LimitedHttp<'_, H> {
+    fn send(
+        &self,
+        request: crate::transport::Request,
+    ) -> crate::client::LocalFuture<
+        '_,
+        Result<crate::transport::Response, crate::transport::TransportError>,
+    > {
+        Box::pin(async move {
+            let _permit =
+                await_upload_phase(self.deadline, async { Ok(self.limiter.acquire().await) })
+                    .await
+                    .map_err(|e| crate::transport::TransportError(e.to_string()))?;
+            remaining_upload_budget(self.deadline)
+                .map_err(|e| crate::transport::TransportError(e.to_string()))?;
+            self.inner.send(request).await
+        })
+    }
+}
+
 #[cfg(any(feature = "reqwest", test))]
 struct ChallengeHttp<'a, H> {
     inner: &'a H,
@@ -261,7 +311,12 @@ impl<H: crate::transport::Http> crate::transport::Http for ChallengeHttp<'_, H> 
 }
 
 fn selected_body(item: &Value) -> bool {
-    item["selection"] == "body" && item.get("body").is_some() && item.get("gap").is_none()
+    if let Some(parts) = item.as_array().or_else(|| item["parts"].as_array()) {
+        return parts.iter().all(selected_body);
+    }
+    item["selection"] == "body"
+        && (item.get("body").is_some() || item.get("text").is_some())
+        && item.get("gap").is_none()
 }
 
 fn remove_effect(caps: &mut Value, kind: &str) {
@@ -287,8 +342,8 @@ fn narrow_projected_grants(request: &mut Value) {
         "turn.start" => vec![("prompt", "/items", true)],
         "turn.finish.before" | "model.response.after" => vec![("response", "/items", true)],
         "tool.after" => vec![("output", "/items", true)],
-        "user.message.inbound" => vec![("prompt", "/message/text", true)],
-        "user.message.outbound" => vec![("content", "/message/payload", true)],
+        "user.message.inbound" => vec![("prompt", "/message/messages", true)],
+        "user.message.outbound" => vec![("content", "/message/messages", true)],
         "context.compact.before" => vec![("instructions", "/instructions", false)],
         "context.compact.after" => vec![("summary", "/summary", false)],
         _ => vec![],
@@ -401,8 +456,11 @@ pub(crate) fn validate_response_grants(request: &Value, response: &Value) -> Res
     Ok(())
 }
 
+pub(crate) type Receipts = std::collections::BTreeMap<String, Value>;
+
+/// Plan only registered, canonical body demands. Receipts contain no backing bytes.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn project_attachments(
+pub(crate) async fn preupload(
     request: Value,
     selection: &Value,
     upload: Option<&Value>,
@@ -410,18 +468,205 @@ pub(crate) async fn project_attachments(
     options: &BackendOptions,
     backend_id: &str,
     deadline: Instant,
-) -> Result<Value, HookError> {
-    project_inner(
-        request,
-        selection,
-        upload,
-        attachments,
-        options,
-        Some(attachments),
-        backend_id,
+    limiter: &crate::upload_plan::UploadLimiter,
+) -> Result<Receipts, HookError> {
+    crate::canonical::validate("content-selection", selection).map_err(error)?;
+    let event = request
+        .pointer("/params/event")
+        .ok_or_else(|| error("missing event"))?;
+    let mut selected = std::collections::BTreeMap::new();
+    for path in locations(event) {
+        let item = event
+            .pointer(&path)
+            .ok_or_else(|| error("missing content item"))?;
+        let mode = selection
+            .get(category(item))
+            .unwrap_or(&selection["default"]);
+        match mode.as_str() {
+            Some("metadata" | "omit") => continue,
+            Some("body") => match item["selection"].as_str() {
+                Some("metadata" | "omit") => continue,
+                Some("body") if item["kind"] == "text" && item["text"].is_string() => continue,
+                Some("body") => {}
+                _ => return Err(error("invalid content selection")),
+            },
+            _ => return Err(error("invalid registration content selection")),
+        }
+        if item.get("gap").is_some() {
+            return Err(error("selected body unavailable"));
+        }
+        let reference = item["body"]["ref"]
+            .as_str()
+            .ok_or_else(|| error("selected body unavailable"))?;
+        selected.entry(reference.to_owned()).or_insert(path);
+    }
+    if selected.is_empty() {
+        return Ok(Receipts::new());
+    }
+    let upload = upload.ok_or_else(|| error("selected bodies require an upload endpoint"))?;
+    let endpoint = upload["endpoint"]
+        .as_str()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| error("selected bodies require an upload endpoint"))?;
+    let max_bytes = upload["maxBytes"]
+        .as_u64()
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or_else(|| error("upload maxBytes is required"))?;
+    let timeout = upload["timeoutMs"]
+        .as_u64()
+        .filter(|n| *n > 0)
+        .ok_or_else(|| error("positive upload timeoutMs is required"))?;
+    let deadline = deadline.min(
+        Instant::now()
+            .checked_add(Duration::from_millis(timeout))
+            .ok_or_else(|| error("invalid upload deadline"))?,
+    );
+    let auth_context = AuthContext {
+        backend_id: backend_id.into(),
+        authentication: upload.get("auth").cloned(),
+        destination: endpoint.into(),
+        purpose: AuthPurpose::Upload,
         deadline,
-    )
-    .await
+    };
+    let (credential, attempt_id) =
+        prepare_upload_credential(upload, options, &auth_context).await?;
+    let mut bodies = Vec::new();
+    for (reference, path) in selected {
+        remaining_upload_budget(deadline)?;
+        let item = event
+            .pointer(&path)
+            .ok_or_else(|| error("missing content item"))?;
+        let bytes = selected_bytes(
+            &path,
+            item,
+            attachments,
+            Some(attachments),
+            max_bytes,
+            deadline,
+        )
+        .await?;
+        bodies.push((reference, bytes));
+    }
+    #[cfg(not(feature = "reqwest"))]
+    {
+        let _ = (endpoint, timeout, credential, bodies, attempt_id, limiter);
+        Err(error(
+            "selected body upload requires the reqwest feature, including for stdio hooks",
+        ))
+    }
+    #[cfg(feature = "reqwest")]
+    {
+        let jobs: Vec<crate::client::LocalFuture<'_, Result<(String, Value), HookError>>> = bodies
+            .into_iter()
+            .map(|(reference, bytes)| {
+                let auth_context = &auth_context;
+                let credential = credential.clone();
+                let attempt_id = attempt_id.as_deref();
+                Box::pin(async move {
+                    let remaining = remaining_upload_budget(deadline)?;
+                    let transport = crate::adapters::reqwest::ReqwestHttp::with_timeout(
+                        options.max_frame_bytes.min(8192),
+                        options.allow_loopback_http,
+                        remaining,
+                    )
+                    .map_err(error)?;
+                    let limited = LimitedHttp {
+                        inner: &transport,
+                        limiter,
+                        deadline,
+                    };
+                    let http = ChallengeHttp {
+                        inner: &limited,
+                        provider: options.auth_provider.as_deref(),
+                        context: auth_context,
+                        attempt_id,
+                    };
+                    let uploader = crate::content::Uploader::new(
+                        &http,
+                        endpoint,
+                        max_bytes,
+                        credential,
+                        options.allow_loopback_http,
+                    )
+                    .map_err(error)?;
+                    let receipt = await_upload_phase(deadline, async {
+                        uploader.upload(&bytes).await.map_err(error)
+                    })
+                    .await?;
+                    remaining_upload_budget(deadline)?;
+                    Ok((
+                        reference,
+                        serde_json::to_value(receipt.reference()).map_err(error)?,
+                    ))
+                })
+                    as crate::client::LocalFuture<'_, Result<(String, Value), HookError>>
+            })
+            .collect();
+        crate::upload_plan::run_bounded(jobs, limiter.capacity())
+            .await
+            .into_iter()
+            .collect()
+    }
+}
+
+/// Project a current view by owner reference, without reads or fallback uploads.
+pub(crate) fn project_receipts(
+    mut request: Value,
+    selection: &Value,
+    receipts: &Receipts,
+) -> Result<Value, HookError> {
+    crate::canonical::validate("content-selection", selection).map_err(error)?;
+    let event = request
+        .pointer_mut("/params/event")
+        .ok_or_else(|| error("missing event"))?;
+    for path in locations(event) {
+        let item = event
+            .pointer_mut(&path)
+            .ok_or_else(|| error("missing content item"))?;
+        let mode = selection
+            .get(category(item))
+            .unwrap_or(&selection["default"]);
+        match mode.as_str() {
+            Some("metadata" | "omit") => {
+                let object = item
+                    .as_object_mut()
+                    .ok_or_else(|| error("invalid content item"))?;
+                for field in ["body", "text", "gap"] {
+                    object.remove(field);
+                }
+                object.insert("selection".into(), mode.clone());
+            }
+            Some("body") => {
+                match item["selection"].as_str() {
+                    Some("metadata" | "omit") => continue,
+                    Some("body") if item["kind"] == "text" && item["text"].is_string() => continue,
+                    Some("body") => {}
+                    _ => return Err(error("invalid content selection")),
+                }
+                if item.get("gap").is_some() {
+                    return Err(error("selected body unavailable"));
+                }
+                let reference = item["body"]["ref"]
+                    .as_str()
+                    .ok_or_else(|| error("selected body unavailable"))?;
+                let receipt = receipts
+                    .get(reference)
+                    .ok_or_else(|| error("selected body has no confirmed upload receipt"))?
+                    .clone();
+                let object = item
+                    .as_object_mut()
+                    .ok_or_else(|| error("invalid content item"))?;
+                for field in ["size", "sha256"] {
+                    object.remove(field);
+                }
+                object.insert("body".into(), receipt);
+            }
+            _ => return Err(error("invalid registration content selection")),
+        }
+    }
+    narrow_projected_grants(&mut request);
+    reject_deferred(&request)?;
+    Ok(request)
 }
 
 #[cfg(test)]
@@ -445,6 +690,7 @@ pub(crate) async fn project(
     .await
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 async fn project_inner(
     mut request: Value,
@@ -475,6 +721,7 @@ async fn project_inner(
                     .as_object_mut()
                     .ok_or_else(|| error("invalid content item"))?;
                 object.remove("body");
+                object.remove("text");
                 object.remove("gap");
                 object.insert("selection".into(), mode.clone());
                 if let Some(metadata) = attachments.and_then(|owners| owners.metadata(&path))
@@ -487,6 +734,7 @@ async fn project_inner(
                 // Selection is not authorization: already-reduced views cannot be escalated.
                 match item["selection"].as_str() {
                     Some("metadata" | "omit") => continue,
+                    Some("body") if item["kind"] == "text" && item["text"].is_string() => {}
                     Some("body") => selected.push(path),
                     _ => return Err(error("invalid content selection")),
                 }
@@ -625,10 +873,17 @@ async fn selected_bytes(
 }
 
 fn reject_deferred(request: &Value) -> Result<(), HookError> {
-    if crate::attachment::contains_local(request) {
-        return Err(error(
-            "deferred body handle outside a selected content location",
-        ));
+    let event = &request["params"]["event"];
+    // Opaque application values and native snapshots are not content authorities.
+    // Inspect only the schema-owned attachment reference locations.
+    for path in locations(event) {
+        if let Some(reference) = event
+            .pointer(&path)
+            .and_then(|item| item["body"]["ref"].as_str())
+            && (reference.starts_with("ahp-attachment:") || reference == "ahp:host-pending")
+        {
+            return Err(error("deferred body handle in a selected content location"));
+        }
     }
     Ok(())
 }
@@ -639,6 +894,69 @@ mod tests {
     use crate::content::{AuthorizedScope, ContentReference, ContentStore, UploadError};
     use serde_json::json;
     use std::{collections::BTreeMap, sync::Arc};
+
+    #[test]
+    fn receipts_follow_owner_after_reordering_and_removal() {
+        let a = json!({"kind":"attachment","selection":"body","body":{"ref":"ahp-attachment:a"},"size":1,"sha256":"old"});
+        let b = json!({"kind":"attachment","selection":"body","body":{"ref":"ahp-attachment:b"}});
+        let receipts = Receipts::from([
+            ("ahp-attachment:a".into(), json!({"ref":"receiver-a"})),
+            ("ahp-attachment:b".into(), json!({"ref":"receiver-b"})),
+        ]);
+        let selection = json!({"default":"body"});
+        let request = json!({"params":{"event":{"type":"turn.start","items":[b,a]}}});
+        let projected = project_receipts(request, &selection, &receipts).unwrap();
+        assert_eq!(
+            projected["params"]["event"]["items"][0]["body"]["ref"],
+            "receiver-b"
+        );
+        assert_eq!(
+            projected["params"]["event"]["items"][1]["body"]["ref"],
+            "receiver-a"
+        );
+        assert!(
+            projected["params"]["event"]["items"][1]
+                .get("size")
+                .is_none()
+        );
+        let request = json!({"params":{"event":{"type":"turn.start","items":[{"kind":"attachment","selection":"body","body":{"ref":"ahp-attachment:b"}}]}}});
+        assert_eq!(
+            project_receipts(request, &selection, &receipts).unwrap()["params"]["event"]["items"]
+                [0]["body"]["ref"],
+            "receiver-b"
+        );
+    }
+
+    #[test]
+    fn receipt_projection_is_fail_closed_but_inline_and_reduced_need_no_receipts() {
+        let request = json!({"params":{"event":{"type":"turn.start","items":[
+            {"kind":"text","selection":"body","text":"inline"},
+            {"kind":"attachment","selection":"metadata","size":7}
+        ]}}});
+        let projected =
+            project_receipts(request, &json!({"default":"body"}), &Receipts::new()).unwrap();
+        assert_eq!(projected["params"]["event"]["items"][0]["text"], "inline");
+        assert_eq!(
+            projected["params"]["event"]["items"][1]["selection"],
+            "metadata"
+        );
+        let request = json!({"params":{"event":{"type":"turn.start","items":[{"kind":"attachment","selection":"body","body":{"ref":"ahp-attachment:missing"}}]}}});
+        assert!(
+            project_receipts(
+                request.clone(),
+                &json!({"default":"body"}),
+                &Receipts::new()
+            )
+            .is_err()
+        );
+        let projected =
+            project_receipts(request, &json!({"default":"omit"}), &Receipts::new()).unwrap();
+        assert!(
+            projected["params"]["event"]["items"][0]
+                .get("body")
+                .is_none()
+        );
+    }
 
     struct NoReads;
     impl ContentStore for NoReads {
@@ -663,7 +981,7 @@ mod tests {
         }
     }
     fn item() -> Value {
-        json!({"id":"one","kind":"text","mediaType":"text/plain","role":"assistant",
+        json!({"id":"one","kind":"attachment","mediaType":"application/octet-stream",
             "selection":"body","body":{"ref":"host-only"}})
     }
     fn context() -> ContentContext<'static> {
@@ -855,18 +1173,17 @@ mod tests {
     }
 
     #[test]
-    fn misplaced_deferred_handles_cannot_escape_in_arbitrary_json() {
-        let request = json!({"params":{"event":{"type":"tool.before","input":{"nested":{"ref":"ahp-attachment:0"}}}}});
-        assert!(
-            futures::executor::block_on(project(
-                request,
-                &json!({"default":"metadata"}),
-                None,
-                &context(),
-                &options(),
-            ))
-            .is_err()
-        );
+    fn opaque_reference_strings_are_not_content_sources() {
+        let request = json!({"params":{"event":{"type":"tool.before","tool":{"input":{"nested":{"ref":"ahp-attachment:0"}}}, "native":{"value":{"ref":"ahp:host-pending"}}}}});
+        let result = futures::executor::block_on(project(
+            request.clone(),
+            &json!({"default":"metadata"}),
+            None,
+            &context(),
+            &options(),
+        ))
+        .unwrap();
+        assert_eq!(result["params"]["event"], request["params"]["event"]);
     }
 
     #[tokio::test]
@@ -988,16 +1305,16 @@ mod tests {
         for (kind, path) in [
             ("turn.progress", "/delta"),
             ("tool.progress", "/partialOutput"),
-            ("context.compact.before", "/instructions"),
-            ("context.compact.after", "/summary"),
+            ("context.compact.before", "/instructions/0"),
+            ("context.compact.after", "/summary/0"),
             ("user.elicitation.request", "/elicitation/request"),
             ("user.elicitation.result", "/elicitation/result"),
-            ("user.message.inbound", "/message/text/0"),
-            ("user.message.outbound", "/message/payload/0"),
+            ("user.message.inbound", "/message/messages/0/parts/0"),
+            ("user.message.outbound", "/message/messages/0/parts/0"),
             ("user.attention", "/attention/title/0"),
         ] {
-            let mut event = json!({"type":kind,"delta":item(),"partialOutput":item(),"instructions":item(),"summary":item(),
-                "elicitation":{"request":item(),"result":item()},"message":{"text":[item()],"payload":[item()]},
+            let mut event = json!({"type":kind,"delta":item(),"partialOutput":item(),"instructions":[item()],"summary":[item()],
+                "elicitation":{"request":item(),"result":item()},"message":{"messages":[{"id":"message", "role":"assistant", "parts":[item()]}]},
                 "attention":{"title":[item()],"message":[item()]},"tool":{"input":item()}});
             let original = event.clone();
             let result = futures::executor::block_on(project(
@@ -1013,6 +1330,32 @@ mod tests {
             assert_eq!(event["tool"], original["tool"]);
         }
     }
+    #[test]
+    fn selected_inline_text_needs_no_upload_or_attachment_resolver() {
+        let event = json!({"type":"user.message.outbound", "message":{"channel":"chat", "messages":[{
+            "id":"message", "role":"assistant", "parts":[{
+                "id":"text", "kind":"text", "mediaType":"text/plain", "selection":"body", "text":"hello"
+            }]
+        }]}, "native":{"items":[item()]}, "extensions":{"com.example.body":item()}});
+        let result = futures::executor::block_on(project(
+            json!({"params":{"event":event.clone()}}),
+            &json!({"default":"body"}),
+            None,
+            &context(),
+            &options(),
+        ))
+        .unwrap();
+        assert_eq!(result["params"]["event"], event);
+        assert_eq!(locations(&event), ["/message/messages/0/parts/0"]);
+    }
+
+    #[test]
+    fn file_snapshot_slots_are_schema_owned_not_reference_scans() {
+        let event = json!({"type":"file.changed", "changes":[{"before":item(), "after":item()}],
+            "native":{"changes":[{"before":item()}]}});
+        assert_eq!(locations(&event), ["/changes/0/before", "/changes/0/after"]);
+    }
+
     #[test]
     fn missing_upload_and_missing_body_fail_closed() {
         let request = json!({"params":{"event":{"type":"tool.after","items":[item()]}}});
@@ -1128,7 +1471,7 @@ mod tests {
             "capabilities":{"effects":["modify","message"],"modify":{"output":{"replace":true,"merge":true}}}
         }});
         let reply = response(
-            json!({"type":"modify","target":"output","operation":"replace","value":"changed"}),
+            json!({"type":"modify","target":"output","operation":"replace","value":[{"id":"message", "role":"assistant", "parts":[{"id":"text","kind":"text","mediaType":"text/plain","selection":"body","text":"changed"}]}]}),
         );
         assert!(validate_response_grants(&original, &reply).is_ok());
         for mode in ["metadata", "omit"] {

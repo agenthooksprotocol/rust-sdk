@@ -1,13 +1,17 @@
-//! Canonical hooks/intercept and preuploaded bodies; no scheduling wire method.
+//! Canonical hooks/intercept with inline text; no scheduling wire method.
 use agenthooksprotocol::{
     client::{Hook, HookError, LocalFuture},
     content::{
         AuthorizedScope, ContentContext, ContentReference, ContentStore, ContentUploadReceipt,
-        MemoryContentStore, UploadAuthorizer, UploadCredential, UploadError, UploadReceiver,
-        Uploader,
+        MemoryContentStore, UploadAuthorizer, UploadError, UploadReceiver,
     },
     interop::Schemas,
-    transport::{Http, Request as HttpRequest, Response as HttpResponse, TransportError},
+    transport::{Request as HttpRequest, Response as HttpResponse},
+};
+#[cfg(test)]
+use agenthooksprotocol::{
+    content::{UploadCredential, Uploader},
+    transport::{Http, TransportError},
 };
 use serde_json::{Value, json};
 use std::{
@@ -58,12 +62,6 @@ fn receive(request: &Value, sub: &str, config: &Value, store: &str, schemas: &Sc
     let process = || -> Result<Value> {
         schemas.validate("intercept-request", request)?;
         let event = &request["params"]["event"];
-        let mut items = event["items"].as_array().cloned().unwrap_or_default();
-        for key in ["instructions", "summary"] {
-            if let Some(item) = event.get(key) {
-                items.push(item.clone());
-            }
-        }
         let storage = FixtureContentStore {
             root: store,
             subscription: sub,
@@ -73,25 +71,25 @@ fn receive(request: &Value, sub: &str, config: &Value, store: &str, schemas: &Sc
             scope: AuthorizedScope::new(sub),
         };
         let mut bodies = json!({});
-        for item in items {
-            if let Some(raw) = content.resolve_selected(&item)? {
-                bodies[item["id"].as_str().ok_or("item id")?] = json!(std::str::from_utf8(&raw)?);
+        let mut selected = event.clone();
+        project_selected_items(&mut selected, |part| {
+            if let Some(text) = part["text"].as_str() {
+                bodies[part["id"].as_str().ok_or("part id")?] = json!(text);
             }
-        }
+            Ok(())
+        })?;
         let action = &config[sub];
         if action.is_null() {
             return Err("subscription".into());
         }
         let effects = if action["kind"] == "append" {
             let target = action["target"].as_str().ok_or("target")?;
-            let body = bodies[event[target]["id"].as_str().ok_or("item")?]
-                .as_str()
-                .ok_or("body")?;
+            let body = agenthooksprotocol::compaction::selected_text(&event[target], &content)?;
+            let text = format!("{}{}", body, action["suffix"].as_str().ok_or("suffix")?);
             json!([{
-                "type": "modify",
-                "target": target,
-                "operation": "replace",
-                "value": format!("{}{}", body, action["suffix"].as_str().ok_or("suffix")?)
+                "type":"modify", "target":target, "operation":"replace",
+                "value":[{"id":event[target][0]["id"].as_str().unwrap_or(target),
+                    "kind":"text","mediaType":"text/plain","selection":"body","text":text}]
             }])
         } else {
             action["effects"].clone()
@@ -150,7 +148,9 @@ fn unique_headers<'a>(
     }
     Ok(map)
 }
+#[cfg(test)]
 struct BlockingUploadHttp<'a>(&'a reqwest::blocking::Client);
+#[cfg(test)]
 impl Http for BlockingUploadHttp<'_> {
     fn send(
         &self,
@@ -233,14 +233,15 @@ fn mirror_successful_upload<A: UploadAuthorizer>(
     file.write_all(&bytes)?;
     Ok(())
 }
+#[cfg(test)]
 async fn item(
     client: &reqwest::blocking::Client,
     plan: &Value,
     sub: &str,
     id: &str,
-    kind: &str,
+    _kind: &str,
     text: &str,
-    role: &str,
+    _role: &str,
 ) -> Result<Value> {
     // Only the harness base endpoint is shorthand. Explicit upload URLs remain exact.
     let endpoint = match plan["uploadEndpoint"].as_str() {
@@ -257,9 +258,8 @@ async fn item(
     let descriptor = uploader.upload(text.as_bytes()).await?.reference();
     Ok(json!({
         "id": id,
-        "kind": kind,
-        "mediaType": "text/plain",
-        "role": role,
+        "kind": "attachment",
+        "mediaType": "application/octet-stream",
         "selection": "body",
         "body": descriptor
     }))
@@ -272,13 +272,17 @@ fn project_selected_items(
     mut project: impl FnMut(&mut Value) -> Result<()>,
 ) -> Result<()> {
     if let Some(items) = event.get_mut("items").and_then(Value::as_array_mut) {
-        for selected in items {
-            project(selected)?;
+        for message in items {
+            for part in message["parts"].as_array_mut().ok_or("message parts")? {
+                project(part)?;
+            }
         }
     }
     for key in ["instructions", "summary"] {
-        if let Some(selected) = event.get_mut(key) {
-            project(selected)?;
+        if let Some(parts) = event.get_mut(key).and_then(Value::as_array_mut) {
+            for part in parts {
+                project(part)?;
+            }
         }
     }
     Ok(())
@@ -287,39 +291,13 @@ async fn exchange(
     client: &reqwest::blocking::Client,
     plan: &Value,
     sub: &str,
-    mut request: Value,
+    request: Value,
     store: &MemoryContentStore,
     schemas: &Schemas,
     trace: &Mutex<Vec<Value>>,
 ) -> Result<Value> {
-    let content = fixture::fixture_content(store);
-    // Translate only body descriptors into the receiver's upload allocation
-    // domain. All event identities, state and original correlations are retained.
-    let mut selected_items = Vec::new();
-    project_selected_items(&mut request["params"]["event"], |selected| {
-        selected_items.push(selected.clone());
-        Ok(())
-    })?;
-    for selected in &mut selected_items {
-        if let Some(bytes) = content.resolve_selected(selected)? {
-            let uploaded = item(
-                client,
-                plan,
-                sub,
-                selected["id"].as_str().ok_or("item id")?,
-                selected["kind"].as_str().ok_or("item kind")?,
-                std::str::from_utf8(&bytes)?,
-                selected["role"].as_str().unwrap_or("system"),
-            )
-            .await?;
-            selected["body"] = uploaded["body"].clone();
-        }
-    }
-    let mut projected = selected_items.into_iter();
-    project_selected_items(&mut request["params"]["event"], |selected| {
-        *selected = projected.next().ok_or("projection item missing")?;
-        Ok(())
-    })?;
+    // Text remains inline across both transports; compaction never uploads it.
+    let _ = store;
     schemas.validate("intercept-request", &request)?;
     let response: Value = if plan["transport"] == "http" {
         client
@@ -423,8 +401,7 @@ fn main() -> Result<()> {
                     })
                     .collect()
             };
-            let input =
-                json!({"instructions":"base","name":name,"itemId":format!("{name}:summary")});
+            let input = json!({"instructions":[{"id":"instructions","kind":"text","mediaType":"text/plain","selection":"body","text":"base"}],"name":name,"itemId":format!("{name}:summary")});
             let result = fixture::run_public_fixture(
                 &input,
                 subscriptions("before")?,
@@ -433,8 +410,10 @@ fn main() -> Result<()> {
             )?;
             let mut downstream = vec![];
             if result["applied"] == true {
-                downstream
-                    .push(result["bodies"][result["summary"]["ref"].as_str().unwrap()].clone());
+                downstream.push(json!(agenthooksprotocol::compaction::selected_text(
+                    &result["summary"],
+                    &fixture::fixture_content(&store),
+                )?));
             }
             out.push(json!({
                 "name": name,
@@ -625,19 +604,19 @@ mod projection_tests {
 
     #[test]
     fn after_projection_preserves_absent_items_and_original_correlations() {
-        let mut event = json!({"id":"after","type":"context.compact.after","parentEventId":"before","summary":{"id":"summary","selection":"body","body":{"ref":"local"}},"removed":[{"id":"context"}],"execution":{"status":"executed"}});
+        let mut event = json!({"id":"after","type":"context.compact.after","parentEventId":"before","summary":[{"id":"summary","kind":"text","mediaType":"text/plain","selection":"body","text":"local"}],"removed":[{"id":"context"}],"execution":{"status":"executed"}});
         let original = event.clone();
         let mut projected = Vec::new();
         project_selected_items(&mut event, |item| {
             projected.push(item["id"].clone());
-            item["body"]["ref"] = json!("receiver-allocation");
+            item["text"] = json!("inline-projection");
             Ok(())
         })
         .unwrap();
         assert_eq!(projected, vec![json!("summary")]);
         assert!(!event.as_object().unwrap().contains_key("items"));
         assert!(!event.as_object().unwrap().contains_key("instructions"));
-        assert_eq!(event["summary"]["body"]["ref"], "receiver-allocation");
+        assert_eq!(event["summary"][0]["text"], "inline-projection");
         for key in ["id", "type", "parentEventId", "removed", "execution"] {
             assert_eq!(event[key], original[key]);
         }
@@ -648,7 +627,7 @@ mod projection_tests {
         let mut empty = json!({"items":[]});
         project_selected_items(&mut empty, |_| panic!("no selected items")).unwrap();
         assert_eq!(empty, json!({"items":[]}));
-        let mut before = json!({"items":[{"id":"context"}],"instructions":{"id":"instructions"}});
+        let mut before = json!({"items":[{"id":"message","role":"user","parts":[{"id":"context","kind":"text","mediaType":"text/plain","selection":"body","text":"context"}]}],"instructions":[{"id":"instructions","kind":"text","mediaType":"text/plain","selection":"body","text":"instructions"}]});
         let original = before.clone();
         let mut projected = Vec::new();
         project_selected_items(&mut before, |item| {

@@ -4,7 +4,7 @@ use agenthooksprotocol::compaction::{
 use serde_json::{Value, json};
 use std::cell::RefCell;
 fn modify(target: &str, value: &str) -> Value {
-    json!({"type":"modify","target":target,"operation":"replace","value":value})
+    json!({"type":"modify","target":target,"operation":"replace","value":[{"id":"edit","kind":"text","mediaType":"text/plain","selection":"body","text":value}]})
 }
 #[test]
 fn callbacks_see_effective_inputs_and_results() {
