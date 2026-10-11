@@ -722,6 +722,24 @@ impl Hooks {
             next_id: AtomicU64::new(0),
         })
     }
+    /// Static subscription interest for a configured canonical event name.
+    /// Includes interception and observation routes eligible under host grants.
+    /// Payload-dependent filters are not evaluated, so true is not permission
+    /// or a guarantee of delivery. This lookup performs no input preparation,
+    /// transport, authentication, uploads, or mutation.
+    pub fn subscribes(&self, event: &str) -> bool {
+        let Some(grant) = self.options.capabilities.get(event) else {
+            return false;
+        };
+        self.routes.iter().any(|route| {
+            route.events.iter().any(|selector| matches(selector, event))
+                && match route.mode {
+                    Mode::Intercept(_) => grant.intercept.is_some(),
+                    Mode::Observe => grant.observe,
+                }
+        })
+    }
+
     pub fn event<T: Serialize>(&self, event: T) -> EventBoundary<'_, T> {
         EventBoundary {
             hooks: self,

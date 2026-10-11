@@ -120,6 +120,7 @@ pub fn boundary<'a>(hooks:&'a Hooks,input:ToolBeforeInput<JsonValue>)->ToolBound
 }
 pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.outcome.settled_candidate }
 pub fn input(outcome:ToolOutcome<JsonValue,String>)->JsonValue { outcome.input }
+pub fn subscribes(hooks:&Hooks,event:&str)->bool { hooks.subscribes(event) }
 pub fn contract()->Contract<JsonValue> {Contract::new()}
 #[cfg(feature="typed-form")]
 pub fn form() {

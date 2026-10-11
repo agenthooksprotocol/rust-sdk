@@ -34,6 +34,23 @@ canonical event; `tool_before` preserves the application argument type in
 `result.input`. Capability vocabulary is available
 as `capability::{Event, EffectType, ModifyTarget}` with canonical wire spellings.
 
+Use `hooks.subscribes("tool.before")` before expensive input preparation when
+only subscribed consumers need that input. This synchronous lookup includes
+eligible interception and observe-only routes, using registration's exact, `*`,
+and dotted-prefix selectors. It returns `false` for unknown or unconfigured event
+names and for configured events with no eligible matching route. Payload-dependent
+filters are not evaluated: a matching filtered route remains potentially interested.
+The lookup performs no input preparation, transport, authentication, uploads, or
+mutation. It reports static interest, not permission or guaranteed delivery.
+
+```rust,ignore
+if hooks.subscribes("tool.before") {
+    let input = prepare_tool_facts();
+    let outcome = hooks.tool_before(input).await?;
+    // Apply host policy to the settlement before executing the tool.
+}
+```
+
 Enable `reqwest` for registered HTTP and `tokio-process` for registered stdio.
 Default features are empty. Construction and unpolled boundaries perform no
 transport I/O. The host supplies an executor; the SDK creates no executor or
