@@ -8,6 +8,115 @@ use agenthooksprotocol::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+#[test]
+fn facade_compaction_host_contract_rejects_repaired_intermediate_atomically() {
+    use agenthooksprotocol::{
+        Hooks,
+        adapters::registered::ManagedBackend,
+        client::{HookError, LocalFuture},
+        contracts::Contract,
+        hooks::{Capabilities, EventGrant, HooksOptions},
+    };
+    use std::{collections::BTreeMap, sync::Mutex, time::Duration};
+
+    struct Replies {
+        effects: Vec<Value>,
+        requests: Arc<Mutex<Vec<Value>>>,
+    }
+    impl ManagedBackend for Replies {
+        fn call(&self, request: Value, _: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
+            Box::pin(async move {
+                let mut requests = self.requests.lock().unwrap();
+                let effects = self.effects[requests.len()].clone();
+                requests.push(request.clone());
+                Ok(json!({"jsonrpc":"2.0","id":request["id"],
+                    "result":{"protocolVersion":"draft","effects":effects}}))
+            })
+        }
+        fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    futures::executor::block_on(async {
+        for after in [false, true] {
+            let store = store();
+            let content = ContentContext {
+                store: &store,
+                scope: AuthorizedScope::new("scope"),
+            };
+            let request = request(&content, after);
+            let event = request["params"]["event"].clone();
+            let name = event["type"].as_str().unwrap().to_owned();
+            let target = if after { "summary" } else { "instructions" };
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let subscriptions: Vec<_> = (0..3)
+                .map(|_| {
+                    json!({"events":[name],"mode":"intercept",
+                    "timeoutMs":1000,"failurePolicy":"fail-open","content":{"default":"body"}})
+                })
+                .collect();
+            let hooks = Hooks::new(
+                json!({"protocolVersion":"draft","hooks":[{"id":"org.example.compaction",
+                    "transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},
+                    "subscriptions":subscriptions}]}),
+                HooksOptions::new(
+                    "urn:test:compaction",
+                    BTreeMap::from([(
+                        name.clone(),
+                        EventGrant::intercept(
+                            Capabilities::from_value(request["params"]["capabilities"].clone())
+                                .unwrap(),
+                        ),
+                    )]),
+                )
+                .with_backend(
+                    "org.example.compaction",
+                    Arc::new(Replies {
+                        effects: vec![
+                            json!([modify(target, "accepted")]),
+                            json!([modify(target, "invalid"), modify(target, "repaired")]),
+                            json!([]),
+                        ],
+                        requests: requests.clone(),
+                    }),
+                ),
+            )
+            .unwrap();
+            let outcome = hooks
+                .event(event)
+                .host_contract(
+                    format!("/{target}"),
+                    Contract::<Value>::validated(|value| {
+                        if value[0]["text"] == "invalid" {
+                            Err("host compaction text constraint".into())
+                        } else {
+                            Ok(())
+                        }
+                    }),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                outcome.outcome.failures.len(),
+                1,
+                "{name}: repaired response must fail"
+            );
+            let requests = requests.lock().unwrap().clone();
+            assert_eq!(requests.len(), 3, "{name}: fail-open must continue");
+            assert_eq!(requests[1]["params"]["event"][target], parts("accepted"));
+            assert_eq!(
+                requests[2]["params"]["event"][target],
+                parts("accepted"),
+                "{name}: later interceptor must see earlier accepted state"
+            );
+            assert_eq!(outcome.effective_event[target], parts("accepted"));
+            assert_eq!(outcome.event.unwrap()[target], parts("accepted"));
+            hooks.shutdown().await.unwrap();
+        }
+    });
+}
+
 fn request(content: &ContentContext<'_>, after: bool) -> Value {
     let boundary = if after { "after" } else { "before" };
     let target = if after { "summary" } else { "instructions" };
@@ -359,12 +468,12 @@ fn public_runtime_no_op_preserves_approval_and_candidate_at_both_boundaries() {
                     .event(original.clone())
                     .capabilities(request["params"]["capabilities"].clone())
                     .initial_state(Decision::Allow)
-                    .initial_candidate(json!({"value":"cached"}))
+                    .initial_candidate(json!({"value":parts("cached")}))
                     .await
             })
             .unwrap();
             assert_eq!(result.effective_event, original);
-            assert_eq!(result.outcome.candidate, Some(json!("cached")));
+            assert_eq!(result.outcome.candidate, Some(parts("cached")));
             assert_eq!(result.outcome.decision, Decision::Allow);
             assert!(result.outcome.authorized);
             assert!(!result.outcome.approval_invalidated);

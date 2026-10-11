@@ -329,17 +329,17 @@ fn generic_effect_grants_cover_operations_and_elicitation() {
         ),
     ];
     for (caps, effect) in cases {
-        let request = json!({"params":{"capabilities":caps}});
-        let response = json!({"result":{"effects":[effect]}});
+        let request = json!({"params":{"event":{"type":"tool.after"},"capabilities":caps}});
+        let response = json!({"jsonrpc":"2.0","id":"grant","result":{"protocolVersion":"draft","effects":[effect]}});
         assert!(validate_effect_capabilities(&request, &response).is_err());
     }
-    let response = json!({"result":{"effects":[{"type":"return","value":{"action":"decline"}}]}});
+    let response = json!({"jsonrpc":"2.0","id":"grant","result":{"protocolVersion":"draft","effects":[{"type":"return","value":{"action":"decline"}}]}});
     let mut request = json!({"params":{"event":{"type":"user.elicitation.request","elicitation":{"mode":"form"}},"capabilities":{"effects":["return"],"elicitation":{"url":{}}}}});
     assert!(validate_effect_capabilities(&request, &response).is_err());
     request["params"]["capabilities"]["elicitation"]["form"] = json!({});
     assert!(validate_effect_capabilities(&request, &response).is_ok());
-    let request = json!({"params":{"capabilities":{"effects":["modify"],"modify":{"output":{"replace":true}}}}});
-    let response = json!({"result":{"effects":[{"type":"modify","target":"output","operation":"replace","value":{"ok":true}}]}});
+    let request = json!({"params":{"event":{"type":"tool.after"},"capabilities":{"effects":["modify"],"modify":{"output":{"replace":true}}}}});
+    let response = json!({"jsonrpc":"2.0","id":"grant","result":{"protocolVersion":"draft","effects":[{"type":"modify","target":"output","operation":"replace","value":[]}]}});
     assert!(validate_effect_capabilities(&request, &response).is_ok());
 }
 
@@ -347,12 +347,12 @@ fn generic_effect_grants_cover_operations_and_elicitation() {
 fn continuation_instructions_coalesce_without_mutating_effects() {
     use agenthooksprotocol::server::validate_effect_capabilities;
     use serde_json::json;
-    let response = json!({"result":{"effects":[
+    let response = json!({"jsonrpc":"2.0","id":"grant","result":{"protocolVersion":"draft","effects":[
         {"type":"flow","operation":"continue","instruction":"first"},
         {"type":"flow","operation":"continue","instruction":"second"}
     ]}});
     let original = response.clone();
-    let mut request = json!({"params":{"capabilities":{"effects":["flow"],"flow":{
+    let mut request = json!({"params":{"event":{"type":"turn.finish.before"},"capabilities":{"effects":["flow"],"flow":{
         "operations":["continue"],"remainingContinuations":1,"continuationCount":0,"maxContinuations":1
     }}}});
     assert!(validate_effect_capabilities(&request, &response).is_ok());
@@ -374,8 +374,8 @@ fn continuation_instructions_coalesce_without_mutating_effects() {
 fn continuation_budgets_accept_integral_decimal_and_exponent_numbers() {
     use agenthooksprotocol::server::validate_effect_capabilities;
     use serde_json::{Value, json};
-    let response = json!({"result":{"effects":[{"type":"flow","operation":"continue"}]}});
-    let mut request: Value = serde_json::from_str(r#"{"params":{"capabilities":{"effects":["flow"],"flow":{"operations":["continue"],"remainingContinuations":1.0,"continuationCount":0e0,"maxContinuations":1e0}}}}"#).unwrap();
+    let response = json!({"jsonrpc":"2.0","id":"grant","result":{"protocolVersion":"draft","effects":[{"type":"flow","operation":"continue"}]}});
+    let mut request: Value = serde_json::from_str(r#"{"params":{"event":{"type":"turn.finish.before"},"capabilities":{"effects":["flow"],"flow":{"operations":["continue"],"remainingContinuations":1.0,"continuationCount":0e0,"maxContinuations":1e0}}}}"#).unwrap();
     assert!(validate_effect_capabilities(&request, &response).is_ok());
     request["params"]["capabilities"]["flow"]["remainingContinuations"] = json!(0.0);
     assert!(validate_effect_capabilities(&request, &response).is_err());

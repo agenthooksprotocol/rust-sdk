@@ -97,25 +97,16 @@ impl<T: Http + Send + Sync> Hook for HttpHook<T> {
                 return Err(protocol_error("response correlation mismatch"));
             }
             crate::client::check_rpc_error(&value, &request["id"])?;
-            let valid = if method == "hooks/intercept" {
-                g::parse_intercept_response_value(value.clone())
+            if method != "hooks/intercept" {
+                if g::parse_capabilities_response_value(value.clone())
                     .into_value()
-                    .is_some()
-            } else {
-                g::parse_capabilities_response_value(value.clone())
-                    .into_value()
-                    .is_some()
-            };
-            if !valid {
-                return Err(protocol_error("invalid protocol response"));
+                    .is_none()
+                {
+                    return Err(protocol_error("invalid protocol response"));
+                }
+                crate::canonical::validate("capabilities-response", &value)
+                    .map_err(|_| protocol_error("invalid protocol message"))?;
             }
-            let schema = if method == "hooks/intercept" {
-                "intercept-response"
-            } else {
-                "capabilities-response"
-            };
-            crate::canonical::validate(schema, &value)
-                .map_err(|_| protocol_error("invalid protocol message"))?;
             if method == "hooks/intercept" {
                 crate::server::validate_effect_capabilities(&request, &value)
                     .map_err(|_| protocol_error("invalid protocol message"))?;

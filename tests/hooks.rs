@@ -16,11 +16,19 @@ use std::{
     time::Duration,
 };
 
-#[derive(Default)]
 struct Backend {
     messages: Mutex<Vec<Value>>,
     effects: Mutex<Value>,
     closed: Cell<usize>,
+}
+impl Default for Backend {
+    fn default() -> Self {
+        Self {
+            messages: Mutex::default(),
+            effects: Mutex::new(json!([])),
+            closed: Cell::default(),
+        }
+    }
 }
 impl ManagedBackend for Backend {
     fn call(&self, request: Value, _: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
@@ -60,9 +68,7 @@ fn context() -> ToolContext {
 
 #[test]
 fn generated_tool_input_preserves_application_type_and_host_facts() {
-    use agenthooksprotocol::{
-        ergonomic_inputs::ToolBeforeInput, generated::ToolBeforeInputOrigin, state,
-    };
+    use agenthooksprotocol::{generated::ToolBeforeInputOrigin, inputs::ToolBeforeInput, state};
     let backend = Arc::new(Backend::default());
     *backend.effects.lock().unwrap() = json!([]);
     let hooks = Hooks::new(registration(false), options(backend.clone(), false)).unwrap();
@@ -110,8 +116,8 @@ impl Drop for UnusedSource {
 #[test]
 fn generated_named_source_is_closed_unused_without_reads_and_capacity_is_reusable() {
     use agenthooksprotocol::{
-        ergonomic_inputs::{PartInput, ToolBeforeInput},
         generated::ToolBeforeInputOrigin,
+        inputs::{PartInput, ToolBeforeInput},
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
     let backend = Arc::new(Backend::default());

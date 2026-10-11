@@ -139,7 +139,7 @@ pub struct Client {
     pub(crate) subscriptions: Vec<Subscription>,
 }
 impl Client {
-    crate::ahp_event_boundary_methods!();
+    crate::generated::ahp_event_boundary_methods!();
     /// Defer a complete canonical event boundary until awaited.
     pub fn event<T: Serialize + DeserializeOwned>(
         &self,
@@ -199,6 +199,7 @@ impl Client {
             reauthorization: true,
             context: None,
             progress: BoundaryProgress::default(),
+            admission: Default::default(),
         }
     }
 }
@@ -208,6 +209,7 @@ pub fn capabilities() -> Value {
 }
 #[must_use = "a boundary does nothing until awaited"]
 pub struct ToolBefore<'a, T> {
+    admission: crate::contracts::Admission,
     client: &'a Client,
     input: T,
     initial: Decision,
@@ -221,6 +223,10 @@ pub struct ToolBefore<'a, T> {
     progress: BoundaryProgress,
 }
 impl<T> ToolBefore<'_, T> {
+    pub(crate) fn admission(mut self, admission: crate::contracts::Admission) -> Self {
+        self.admission = admission;
+        self
+    }
     /// Obtain cancellation-safe evidence before consuming this builder in `.await`.
     /// Reading progress never serializes input or starts interception.
     pub fn progress(&self) -> BoundaryProgress {
@@ -528,6 +534,7 @@ impl Observation<'_> {
     }
 }
 pub struct BoundaryResult<'a, T> {
+    pub(crate) candidate_descriptor: Value,
     pub outcome: ProtocolOutcome,
     pub effective_input: Value,
     /// Freshly decoded after protocol acceptance; failure never rolls back effects.
@@ -561,32 +568,53 @@ pub(crate) fn delivery_diagnostics(state: &ProtocolOutcome) -> Vec<DeliveryDiagn
 }
 
 pub(crate) fn native_outcome(native: &Value) -> Result<(ProtocolOutcome, Value), HookError> {
-    let decision = match native["permission"].as_str() {
-        Some("none") => Decision::None,
-        Some("allow") => Decision::Allow,
-        Some("ask") => Decision::Ask,
-        Some("deny") => Decision::Deny,
-        _ => return Err(error("invalid native permission")),
+    use crate::generated as g;
+    let typed: g::InterceptRequestParamsState =
+        serde_json::from_value(native.clone()).map_err(crate::protocol::failure)?;
+    let decision = match typed.permission {
+        g::InterceptRequestParamsStatePermission::None => Decision::None,
+        g::InterceptRequestParamsStatePermission::Allow => Decision::Allow,
+        g::InterceptRequestParamsStatePermission::Ask => Decision::Ask,
+        g::InterceptRequestParamsStatePermission::Deny => Decision::Deny,
+        g::InterceptRequestParamsStatePermission::Unknown(_) => {
+            return Err(error("invalid native permission"));
+        }
     };
-    let candidate = native
-        .get("candidate")
-        .cloned()
-        .ok_or_else(|| error("native state requires candidate"))?;
+    let candidate_value = match &typed.candidate {
+        g::InterceptRequestParamsStateCandidate::Null(()) => None,
+        g::InterceptRequestParamsStateCandidate::ValueObject(candidate) => {
+            Some(candidate.value.clone())
+        }
+    };
+    let candidate = crate::protocol::value(&typed.candidate)?;
+    let stopped = matches!(
+        typed.flow,
+        g::Presence::Present(g::InterceptRequestParamsStateFlow::Stop)
+    );
+    let continuation_requested = matches!(
+        typed.flow,
+        g::Presence::Present(g::InterceptRequestParamsStateFlow::Continue)
+    );
+    let instructions = match typed.instructions {
+        g::Presence::Missing => vec![],
+        g::Presence::Present(values) => values,
+    };
+    let injections = match typed.injections {
+        g::Presence::Missing => vec![],
+        g::Presence::Present(values) => values
+            .iter()
+            .map(crate::protocol::value)
+            .collect::<Result<_, _>>()?,
+    };
     Ok((
         ProtocolOutcome {
             decision,
-            stopped: native["flow"] == "stop",
-            continuation_requested: native["flow"] == "continue",
-            instructions: serde_json::from_value(
-                native.get("instructions").cloned().unwrap_or(json!([])),
-            )
-            .map_err(|_| error("invalid native instructions"))?,
-            candidate: candidate.get("value").cloned(),
+            stopped,
+            continuation_requested,
+            instructions,
+            candidate: candidate_value,
             messages: vec![],
-            injections: serde_json::from_value(
-                native.get("injections").cloned().unwrap_or(json!([])),
-            )
-            .map_err(|_| error("invalid native injections"))?,
+            injections,
             approval_invalidated: false,
             authorized: false,
             failures: vec![],
@@ -597,21 +625,35 @@ pub(crate) fn native_outcome(native: &Value) -> Result<(ProtocolOutcome, Value),
 }
 
 pub(crate) fn snapshot_value(native: &Value, state: &ProtocolOutcome, candidate: &Value) -> Value {
-    let mut snapshot = native.clone();
-    snapshot["permission"] = json!(state.decision);
-    snapshot["candidate"] = candidate.clone();
+    use crate::generated as g;
+    let mut snapshot: g::InterceptRequestParamsState =
+        serde_json::from_value(native.clone()).expect("validated native state");
+    snapshot.permission = match state.decision {
+        Decision::None => g::InterceptRequestParamsStatePermission::None,
+        Decision::Allow => g::InterceptRequestParamsStatePermission::Allow,
+        Decision::Ask => g::InterceptRequestParamsStatePermission::Ask,
+        Decision::Deny => g::InterceptRequestParamsStatePermission::Deny,
+    };
+    snapshot.candidate =
+        serde_json::from_value(candidate.clone()).expect("validated candidate descriptor");
     if state.stopped {
-        snapshot["flow"] = json!("stop");
+        snapshot.flow = g::Presence::Present(g::InterceptRequestParamsStateFlow::Stop);
     } else if state.continuation_requested {
-        snapshot["flow"] = json!("continue");
+        snapshot.flow = g::Presence::Present(g::InterceptRequestParamsStateFlow::Continue);
     }
-    if !state.instructions.is_empty() || native.get("instructions").is_some() {
-        snapshot["instructions"] = json!(state.instructions);
+    if !state.instructions.is_empty() || !snapshot.instructions.is_missing() {
+        snapshot.instructions = g::Presence::Present(state.instructions.clone());
     }
-    if !state.injections.is_empty() || native.get("injections").is_some() {
-        snapshot["injections"] = json!(state.injections);
+    if !state.injections.is_empty() || !snapshot.injections.is_missing() {
+        snapshot.injections = g::Presence::Present(
+            state
+                .injections
+                .iter()
+                .map(|effect| serde_json::from_value(effect.clone()).expect("validated injection"))
+                .collect(),
+        );
     }
-    snapshot
+    serde_json::to_value(snapshot).expect("serializable typed state")
 }
 
 pub(crate) fn error(message: impl Into<String>) -> HookError {
@@ -664,97 +706,72 @@ fn stage(
     request: &Value,
     response: &Value,
     prior: &ProtocolOutcome,
+    admission: &crate::contracts::Admission,
 ) -> Result<(Value, ProtocolOutcome, bool), HookError> {
+    use crate::protocol::Kind;
     check_rpc_error(response, &request["id"])?;
     crate::canonical::validate("intercept-response", response).map_err(HookError)?;
-    if let crate::generated::ParseResult::Failure { diagnostics, .. } =
-        crate::generated::parse_intercept_response_value(response.clone())
-    {
-        return Err(error(format!("invalid response: {diagnostics:?}")));
-    }
     if response["id"] != request["id"] {
         return Err(error("response correlation mismatch"));
     }
-    let effects = response["result"]["effects"]
-        .as_array()
-        .ok_or_else(|| error("missing effects"))?;
-    let caps = &request["params"]["capabilities"];
-    let original = &request["params"]["event"]["tool"]["input"];
-    let mut input = original.clone();
+    let mut typed_request: crate::generated::InterceptRequest =
+        serde_json::from_value(request.clone()).map_err(crate::protocol::failure)?;
+    let typed_response = crate::protocol::parse("tool.before", response)?;
+    crate::server::validate_effect_capabilities(request, response).map_err(error)?;
+    let effects = crate::protocol::effects(&typed_response)?;
+    let original = match typed_request.params.event.as_ref() {
+        crate::generated::Event::ToolBefore(event) => crate::protocol::value(&event.tool.input)?,
+        _ => return Err(error("not a tool.before request")),
+    };
     let mut state = prior.clone();
-    for effect in effects {
-        let kind = effect["type"]
-            .as_str()
-            .ok_or_else(|| error("missing effect type"))?;
-        if !has(caps, "effects", &effect["type"]) {
-            return Err(error("unadvertised effect"));
-        }
-        match kind {
-            "modify" => {
-                let op = effect["operation"].as_str().unwrap_or("");
-                if effect["target"] != "input"
-                    || !matches!(op, "replace" | "merge")
-                    || caps["modify"]["input"][op] != true
-                {
-                    return Err(error("unsupported input modification"));
-                }
-                let value = effect["value"]
-                    .as_object()
-                    .ok_or_else(|| error("input modification requires object"))?;
-                if op == "replace" {
-                    input = effect["value"].clone();
-                } else {
-                    input
-                        .as_object_mut()
-                        .ok_or_else(|| error("input must be object"))?
-                        .extend(value.clone());
-                }
+    for effect in &effects {
+        match &effect.kind {
+            Kind::Modify {
+                target,
+                operation,
+                value,
+            } => {
+                crate::protocol::apply(&mut typed_request.params.event, target, *operation, value)?;
+                admission.event(&crate::protocol::value(&typed_request.params.event)?)?;
             }
-            "flow"
-                if effect["operation"] == "stop"
-                    && has(&caps["flow"], "operations", &effect["operation"]) => {}
-            "inject"
-                if effect["target"] == "context"
-                    && effect["operation"] == "append"
-                    && caps["inject"]["context"]["append"] == true
-                    && has(
-                        &caps["inject"]["context"],
-                        "deliverAt",
-                        &effect["deliverAt"],
-                    ) => {}
-            "deny" | "allow" | "ask" | "return" | "message" => {}
-            _ => return Err(error("unsupported effect operation")),
+            Kind::ReturnTool(value) => admission.returned(&value.value)?,
+            Kind::Unknown => return Err(error("unsupported effect")),
+            _ => {}
         }
     }
-    let mut effective_request = request.clone();
-    effective_request["params"]["event"]["tool"]["input"] = input.clone();
-    validate_request(&effective_request)?;
-    if &input != original {
+    let input = match typed_request.params.event.as_ref() {
+        crate::generated::Event::ToolBefore(event) => crate::protocol::value(&event.tool.input)?,
+        _ => unreachable!(),
+    };
+    validate_request(&crate::protocol::value(&typed_request)?)?;
+    if input != original {
         state.candidate = None;
         if state.decision == Decision::Allow {
             state.decision = Decision::None;
             state.approval_invalidated = true;
         }
     }
-    // All modifications precede binding this response's return or permission.
-    for effect in effects {
-        match effect["type"].as_str().unwrap_or("") {
-            "deny" => state.decision = Decision::Deny,
-            "ask" if state.decision != Decision::Deny => state.decision = Decision::Ask,
-            "allow" if !matches!(state.decision, Decision::Deny | Decision::Ask) => {
+    let mut replaced_candidate = false;
+    for effect in &effects {
+        match &effect.kind {
+            Kind::Deny => state.decision = Decision::Deny,
+            Kind::Ask if state.decision != Decision::Deny => state.decision = Decision::Ask,
+            Kind::Allow if !matches!(state.decision, Decision::Deny | Decision::Ask) => {
                 state.decision = Decision::Allow
             }
-            "return" => state.candidate = Some(effect["value"].clone()),
-            "message" => state.messages.push(effect.clone()),
-            "inject" => state.injections.push(effect.clone()),
-            "flow" => state.stopped = true,
+            Kind::ReturnTool(value) => {
+                state.candidate = Some(value.value.clone());
+                replaced_candidate = true;
+            }
+            Kind::Message(message) => state.messages.push(crate::protocol::value(message)?),
+            Kind::Inject(injection) => state.injections.push(crate::protocol::value(injection)?),
+            Kind::Stop => state.stopped = true,
             _ => {}
         }
     }
     if matches!(state.decision, Decision::Deny | Decision::Ask) || state.stopped {
         state.candidate = None;
     }
-    let replaced_candidate = effects.iter().any(|effect| effect["type"] == "return");
     Ok((input, state, replaced_candidate))
 }
 impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<'a, T> {
@@ -791,6 +808,8 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
             // Validate the full native descriptor even if initial denial skips all hooks.
             if state_present { request["params"]["state"] = snapshot_value(&native, &state, &candidate_descriptor); }
             validate_request(&request)?;
+            self.admission.event(&request["params"]["event"])?;
+            self.admission.candidate(&candidate_descriptor)?;
             if state.decision == Decision::Deny { state.candidate = None; candidate_descriptor = Value::Null; }
             self.progress.publish(&state, &input);
             let mut called = vec![false; self.client.subscriptions.len()];
@@ -829,7 +848,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
                 self.progress.0.lock().expect("progress lock poisoned").waker = None;
                 if self.progress.interrupted() { return Err(error("boundary interrupted")); }
                 let raw_response = response.as_ref().ok().cloned();
-                let accepted = response.and_then(|response| stage(&request, &response, &state).map_err(|e| e.classify_if_unset(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)));
+                let accepted = response.and_then(|response| stage(&request, &response, &state, &self.admission).map_err(|e| e.classify_if_unset(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)));
                 // Check the original monotonic budget after full parsing/staging,
                 // immediately before atomic publication. Never salvage a late deny.
                 let accepted = if started.elapsed() >= subscription.timeout {
@@ -874,6 +893,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
             if !self.gates_passed {
                 state.decision = Decision::Deny;
                 state.candidate = None;
+                candidate_descriptor = Value::Null;
             }
             state.authorized =
                 state.decision == Decision::Allow && !state.stopped && self.gates_passed;
@@ -883,6 +903,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
             self.progress.publish(&state, &input);
             let decoded = serde_json::from_value(input.clone()).map_err(InputDecodeError);
             Ok(BoundaryResult {
+                candidate_descriptor,
                 diagnostics: delivery_diagnostics(&state),
                 outcome: state,
                 effective_input: input,

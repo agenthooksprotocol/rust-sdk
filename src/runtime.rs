@@ -13,6 +13,7 @@ use std::{future::IntoFuture, task::Poll, time::Instant};
 
 #[must_use = "a boundary does nothing until awaited"]
 pub struct EventBoundary<'a, T> {
+    admission: crate::contracts::Admission,
     client: &'a Client,
     name: Option<&'static str>,
     event: T,
@@ -31,8 +32,13 @@ pub struct EventBoundary<'a, T> {
     content_targets: std::collections::BTreeMap<String, String>,
 }
 impl<'a, T> EventBoundary<'a, T> {
+    pub(crate) fn admission(mut self, admission: crate::contracts::Admission) -> Self {
+        self.admission = admission;
+        self
+    }
     pub(crate) fn new(client: &'a Client, name: Option<&'static str>, event: T) -> Self {
         Self {
+            admission: Default::default(),
             client,
             name,
             event,
@@ -188,6 +194,8 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
             if interceptable { validate_request(&request)?; } else {
                 crate::canonical::validate("observe-notification", &json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":input}})).map_err(HookError)?;
             }
+            self.admission.event(&request["params"]["event"])?;
+            self.admission.candidate(&candidate_descriptor)?;
             // Specialized boundaries require their verification context even with
             // no subscriptions, no effects, or an initially denied/allowed path.
             // Metadata/omit descriptors remain no-read views inside the stages.
@@ -250,7 +258,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 let raw_response = response.as_ref().ok().cloned();
                 let staged_attachments = self.attachments.as_ref().map(InvocationAttachments::fork);
                 let stage_content = staged_attachments.as_ref().map(|a| a as &(dyn ContentAccess + Sync)).or(content);
-                let accepted = response.and_then(|response| stage(&request, &response, &state, stage_content, self.exchange, &self.content_targets).map_err(|e| e.classify_if_unset(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)));
+                let accepted = response.and_then(|response| stage(&request, &response, &state, stage_content, self.exchange, &self.content_targets, &self.admission).map_err(|e| e.classify_if_unset(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)));
                 // Check the original monotonic budget after full parsing/staging,
                 // immediately before atomic publication. Never salvage a late deny.
                 let accepted = if started.elapsed() >= subscription.timeout {
@@ -411,115 +419,51 @@ fn stage(
     prior: &ProtocolOutcome,
     content: Option<&(dyn ContentAccess + Sync)>,
     exchange: Option<&Exchange>,
-    targets: &std::collections::BTreeMap<String, String>,
+    _targets: &std::collections::BTreeMap<String, String>,
+    admission: &crate::contracts::Admission,
 ) -> Result<(Value, ProtocolOutcome, bool), HookError> {
+    use crate::protocol::Kind;
     crate::client::check_rpc_error(response, &request["id"])?;
     crate::canonical::validate("intercept-response", response).map_err(HookError)?;
-    if let crate::generated::ParseResult::Failure { diagnostics, .. } =
-        crate::generated::parse_intercept_response_value(response.clone())
-    {
-        return Err(error(format!("invalid response: {diagnostics:?}")));
-    }
     if response["id"] != request["id"] {
         return Err(error("response correlation mismatch"));
     }
-    let effects = response["result"]["effects"]
-        .as_array()
-        .ok_or_else(|| error("missing effects"))?;
-    let caps = &request["params"]["capabilities"];
-    let event = &request["params"]["event"];
-    if event["type"]
+    let mut typed_request: crate::generated::InterceptRequest =
+        serde_json::from_value(request.clone()).map_err(crate::protocol::failure)?;
+    let name = request["params"]["event"]["type"]
         .as_str()
-        .is_some_and(|name| name.starts_with("user.elicitation."))
-        && effects
-            .iter()
-            .any(|effect| matches!(effect["type"].as_str(), Some("deny" | "return" | "modify")))
-    {
-        let mode = event["elicitation"]["mode"]
-            .as_str()
-            .ok_or_else(|| error("missing elicitation mode"))?;
-        if !caps["elicitation"].get(mode).is_some_and(Value::is_object) {
-            return Err(error("elicitation mode not granted"));
+        .ok_or_else(|| error("missing originating event type"))?;
+    let typed_response = crate::protocol::parse(name, response)?;
+    crate::server::validate_effect_capabilities(request, response).map_err(error)?;
+    let effects = crate::protocol::effects(&typed_response)?;
+    let original = typed_request.params.event.as_ref().clone();
+    for effect in &effects {
+        if let Some(value) = crate::protocol::returned(&effect.kind)? {
+            admission.returned(&value)?;
+        }
+        match &effect.kind {
+            Kind::Inject(effect) => validate_message_attachments(&original, &effect.value)?,
+            Kind::ReturnMessages(effect) => validate_message_attachments(&original, &effect.value)?,
+            Kind::Unknown => return Err(error("unsupported effect")),
+            _ => {}
         }
     }
-    // Check the whole grant set before performing any content staging.
-    for effect in effects {
-        if effect["type"] == "inject"
-            || (effect["type"] == "return" && event["type"] == "model.request.before")
-        {
-            let candidate =
-                json!({"type":"user.message.outbound","message":{"messages":effect["value"]}});
-            validate_attachment_edits(event, &candidate)?;
-        }
-        if !has(caps, "effects", &effect["type"]) {
-            return Err(error("unadvertised effect"));
-        }
-        match effect["type"].as_str().unwrap_or("") {
-            "modify" => {
-                let target = effect["target"].as_str().unwrap_or("");
-                let operation = effect["operation"].as_str().unwrap_or("");
-                if caps["modify"][target][operation] != true {
-                    return Err(error("unadvertised modification"));
-                }
-            }
-            "flow" => {
-                if !has(&caps["flow"], "operations", &effect["operation"]) {
-                    return Err(error("unadvertised flow operation"));
-                }
-                if effect["operation"] == "continue" && !prior.continuation_requested {
-                    let remaining = caps["flow"]["remainingContinuations"].as_u64().unwrap_or(0);
-                    let count = caps["flow"]["continuationCount"]
-                        .as_u64()
-                        .unwrap_or(u64::MAX);
-                    let maximum = caps["flow"]["maxContinuations"]
-                        .as_u64()
-                        .unwrap_or(u64::MAX);
-                    if remaining == 0 || count >= maximum {
-                        return Err(error("continuation allowance exhausted"));
-                    }
-                }
-            }
-            "inject" => {
-                if effect["target"] != "context"
-                    || effect["operation"] != "append"
-                    || caps["inject"]["context"]["append"] != true
-                    || !has(
-                        &caps["inject"]["context"],
-                        "deliverAt",
-                        &effect["deliverAt"],
-                    )
-                {
-                    return Err(error("unadvertised injection"));
-                }
-            }
-            "deny" | "allow" | "ask" | "return" | "message" => {}
-            _ => return Err(error("unsupported effect")),
-        }
-    }
-    let original = &request["params"]["event"];
-    let name = original["type"]
-        .as_str()
-        .ok_or_else(|| error("missing event type"))?;
-    let mut event = original.clone();
-    let mut state = prior.clone();
     let specialized = name.starts_with("user.elicitation.") || name.starts_with("context.compact.");
     let staged = if specialized {
         let content =
             content.ok_or_else(|| error("body effects require an authorized content resolver"))?;
+        let effects: Vec<_> = effects
+            .iter()
+            .filter(|effect| !matches!(effect.kind, Kind::Message(_)))
+            .map(|effect| effect.wire.clone())
+            .collect();
         Some(
             if name.starts_with("user.elicitation.") {
-                crate::elicitation::stage_boundary(
-                    request,
-                    &effects
-                        .iter()
-                        .filter(|effect| effect["type"] != "message")
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                    content,
-                    exchange,
+                crate::elicitation::stage_boundary_admitted(
+                    request, &effects, content, exchange, admission,
                 )
             } else {
-                crate::compaction::stage_boundary(request, effects, content)
+                crate::compaction::stage_boundary_admitted(request, &effects, content, admission)
             }
             .map_err(|e| error(e.to_string()))?,
         )
@@ -527,52 +471,69 @@ fn stage(
         None
     };
     if let Some(staged) = &staged {
-        event = staged["event"].clone();
+        if let Some(candidate) = staged.get("candidate") {
+            admission.returned(candidate)?;
+        }
+        *typed_request.params.event =
+            serde_json::from_value(staged["event"].clone()).map_err(crate::protocol::failure)?;
+        admission.event(&crate::protocol::value(&typed_request.params.event)?)?;
     } else {
-        for effect in effects.iter().filter(|effect| effect["type"] == "modify") {
-            modify(&mut event, effect, content, targets)?;
-            validate_attachment_edits(original, &event)?;
-            // Validate each contextual result, not only the final batch. An
-            // invalid intermediate event cannot be repaired by a later effect.
-            let mut intermediate = request.clone();
-            intermediate["params"]["event"] = event.clone();
-            validate_request(&intermediate)?;
+        for effect in &effects {
+            if let Kind::Modify {
+                target,
+                operation,
+                value,
+            } = &effect.kind
+            {
+                crate::protocol::apply(&mut typed_request.params.event, target, *operation, value)?;
+                validate_attachment_edits(&original, &typed_request.params.event)?;
+                admission.event(&crate::protocol::value(&typed_request.params.event)?)?;
+                validate_request(&crate::protocol::value(&typed_request)?)?;
+            }
         }
     }
-
-    let mut effective = request.clone();
-    effective["params"]["event"] = event.clone();
-    validate_request(&effective)?;
-    if &event != original {
+    let mut state = prior.clone();
+    if *typed_request.params.event != original {
         state.candidate = None;
         if state.decision == Decision::Allow {
             state.decision = Decision::None;
             state.approval_invalidated = true;
         }
     }
-    for effect in effects {
-        match effect["type"].as_str().unwrap_or("") {
-            "deny" => state.decision = Decision::Deny,
-            "ask" if state.decision != Decision::Deny => state.decision = Decision::Ask,
-            "allow" if !matches!(state.decision, Decision::Deny | Decision::Ask) => {
+    let mut replaced = false;
+    for effect in &effects {
+        if let Some(mut value) = crate::protocol::returned(&effect.kind)? {
+            if let Some(candidate) = staged.as_ref().and_then(|staged| staged.get("candidate")) {
+                value = match &effect.kind {
+                    Kind::ReturnText(_) => crate::protocol::value(
+                        &serde_json::from_value::<crate::generated::TextParts>(candidate.clone())
+                            .map_err(crate::protocol::failure)?,
+                    )?,
+                    Kind::ReturnForm(_) => crate::protocol::value(
+                        &serde_json::from_value::<crate::generated::McpElicitationElicitResult>(
+                            candidate.clone(),
+                        )
+                        .map_err(crate::protocol::failure)?,
+                    )?,
+                    _ => value,
+                };
+            }
+            state.candidate = Some(value);
+            replaced = true;
+        }
+        match &effect.kind {
+            Kind::Deny => state.decision = Decision::Deny,
+            Kind::Ask if state.decision != Decision::Deny => state.decision = Decision::Ask,
+            Kind::Allow if !matches!(state.decision, Decision::Deny | Decision::Ask) => {
                 state.decision = Decision::Allow
             }
-            "return" => {
-                state.candidate = Some(
-                    staged
-                        .as_ref()
-                        .and_then(|s| s.get("candidate"))
-                        .unwrap_or(&effect["value"])
-                        .clone(),
-                )
-            }
-            "message" => state.messages.push(effect.clone()),
-            "inject" => state.injections.push(effect.clone()),
-            "flow" if effect["operation"] == "stop" => state.stopped = true,
-            "flow" => {
+            Kind::Message(message) => state.messages.push(crate::protocol::value(message)?),
+            Kind::Inject(injection) => state.injections.push(crate::protocol::value(injection)?),
+            Kind::Stop => state.stopped = true,
+            Kind::Continue(effect) => {
                 state.continuation_requested = true;
-                if let Some(instruction) = effect["instruction"].as_str() {
-                    state.instructions.push(instruction.to_owned());
+                if let crate::generated::Presence::Present(instruction) = &effect.instruction {
+                    state.instructions.push(instruction.clone());
                 }
             }
             _ => {}
@@ -584,81 +545,97 @@ fn stage(
     if matches!(state.decision, Decision::Deny | Decision::Ask) || state.stopped {
         state.candidate = None;
     }
-    Ok((event, state, effects.iter().any(|e| e["type"] == "return")))
+    Ok((
+        crate::protocol::value(&typed_request.params.event)?,
+        state,
+        replaced,
+    ))
 }
 
-// Binary parts can move, repeat, or disappear, but effects cannot invent or
-// change their immutable contents. Application/native values remain opaque.
-fn validate_attachment_edits(original: &Value, current: &Value) -> Result<(), HookError> {
-    let originals: Vec<&Value> = crate::hooks_content::locations(original)
+fn validate_message_attachments(
+    original: &crate::generated::Event,
+    messages: &crate::generated::CanonicalMessages,
+) -> Result<(), HookError> {
+    let parts: Vec<_> = messages
+        .0
         .iter()
-        .filter_map(|path| original.pointer(path))
-        .filter(|part| part["kind"] == "attachment")
+        .flat_map(|message| message.parts.iter().map(|part| part.as_ref()))
         .collect();
-    for path in crate::hooks_content::locations(current) {
-        let Some(part) = current
-            .pointer(&path)
-            .filter(|part| part["kind"] == "attachment")
-        else {
-            continue;
-        };
-        let known = originals.iter().any(|prior| {
-            ["id", "mediaType", "category", "synthesized"]
-                .iter()
-                .all(|field| prior[*field] == part[*field])
-                && (part["selection"] != "body" || prior["body"] == part["body"])
-        });
-        if !known {
+    validate_parts(&crate::protocol::parts(original), &parts)
+}
+fn validate_attachment_edits(
+    original: &crate::generated::Event,
+    next: &crate::generated::Event,
+) -> Result<(), HookError> {
+    validate_parts(
+        &crate::protocol::parts(original),
+        &crate::protocol::parts(next),
+    )
+}
+fn validate_parts(
+    originals: &[&crate::generated::ContentItem],
+    parts: &[&crate::generated::ContentItem],
+) -> Result<(), HookError> {
+    use crate::generated::{ContentItem, ContentReference, Presence};
+    struct Identity<'a> {
+        id: &'a str,
+        media: &'a str,
+        category: &'a Presence<String>,
+        synthesized: &'a Presence<bool>,
+        body: Option<&'a ContentReference>,
+    }
+    fn identity(part: &ContentItem) -> Option<Identity<'_>> {
+        match part {
+            ContentItem::AttachmentBodyPart(part) => Some(Identity {
+                id: &part.id,
+                media: &part.media_type,
+                category: &part.category,
+                synthesized: &part.synthesized,
+                body: Some(&part.body),
+            }),
+            ContentItem::AttachmentGapPart(part) => Some(Identity {
+                id: &part.id,
+                media: &part.media_type,
+                category: &part.category,
+                synthesized: &part.synthesized,
+                body: None,
+            }),
+            ContentItem::AttachmentMetadata(part) => Some(Identity {
+                id: &part.id,
+                media: &part.media_type,
+                category: &part.category,
+                synthesized: &part.synthesized,
+                body: None,
+            }),
+            ContentItem::AttachmentOmit(part) => Some(Identity {
+                id: &part.id,
+                media: &part.media_type,
+                category: &part.category,
+                synthesized: &part.synthesized,
+                body: None,
+            }),
+            _ => None,
+        }
+    }
+    for part in parts.iter().filter_map(|part| identity(part)) {
+        if !originals
+            .iter()
+            .filter_map(|part| identity(part))
+            .any(|prior| {
+                prior.id == part.id
+                    && prior.media == part.media
+                    && prior.category == part.category
+                    && prior.synthesized == part.synthesized
+                    && (part.body.is_none() || prior.body == part.body)
+            })
+        {
             return Err(error("effects cannot create or mutate binary attachments"));
         }
     }
     Ok(())
 }
-fn change(current: &mut Value, effect: &Value) -> Result<(), HookError> {
-    let replacement = &effect["value"];
-    if effect["operation"] == "merge" {
-        match (current, replacement) {
-            (Value::Array(current), Value::Array(value)) => current.extend(value.clone()),
-            (Value::Object(current), Value::Object(value)) => current.extend(value.clone()),
-            _ => return Err(error("merge requires matching lists or objects")),
-        }
-    } else {
-        if matches!(effect["target"].as_str(), Some("input" | "workspace"))
-            && !replacement.is_object()
-        {
-            return Err(error("object target replacement requires object"));
-        }
-        *current = replacement.clone();
-    }
-    Ok(())
-}
-fn modify(
-    event: &mut Value,
-    effect: &Value,
-    _content: Option<&(dyn ContentAccess + Sync)>,
-    _targets: &std::collections::BTreeMap<String, String>,
-) -> Result<(), HookError> {
-    let target = effect["target"]
-        .as_str()
-        .ok_or_else(|| error("missing target"))?;
-    let pointer = match target {
-        "input" => "/tool/input",
-        "workspace" => "/workspace/change",
-        _ => content_array(event["type"].as_str().unwrap_or(""), target)
-            .ok_or_else(|| error("unsupported primary target"))?,
-    };
-    if content_array(event["type"].as_str().unwrap_or(""), target).is_some()
-        && !effect["value"].is_array()
-    {
-        return Err(error("canonical message target requires a list"));
-    }
-    let current = event
-        .pointer_mut(pointer)
-        .ok_or_else(|| error("missing primary target"))?;
-    change(current, effect)
-}
 
-fn content_array(name: &str, target: &str) -> Option<&'static str> {
+pub(crate) fn content_array(name: &str, target: &str) -> Option<&'static str> {
     match (name, target) {
         ("turn.start", "prompt")
         | ("turn.finish.before" | "model.response.after", "response")
@@ -799,7 +776,15 @@ mod inline_tests {
             responses: vec![],
         };
         let response = json!({"jsonrpc":"2.0","id":"event","result":{"protocolVersion":"draft","effects":effects}});
-        stage(&request, &response, &state, None, None, &Default::default())
+        stage(
+            &request,
+            &response,
+            &state,
+            None,
+            None,
+            &Default::default(),
+            &Default::default(),
+        )
     }
     #[test]
     fn inline_replace_needs_no_resolver_or_mapping() {
@@ -875,14 +860,22 @@ mod inline_tests {
 
     #[test]
     fn object_merge_is_shallow_and_keeps_literal_null() {
-        let mut object = json!({"nested":{"before":1},"keep":true});
-        change(
-            &mut object,
-            &json!({"operation":"merge","value":{"nested":{"after":2},"null":null}}),
+        use crate::generated as g;
+        let mut event:g::Event=serde_json::from_value(json!({"id":"event","source":"urn:test:typed","time":"2026-09-15T12:00:00Z","type":"tool.before",
+            "path":"native","call":{"id":"call"},"tool":{"name":"test","origin":"native","input":{"nested":{"before":1},"keep":true}}})).unwrap();
+        let patch = std::collections::BTreeMap::from([
+            ("nested".into(), json!({"after":2})),
+            ("null".into(), Value::Null),
+        ]);
+        crate::protocol::apply(
+            &mut event,
+            "input",
+            crate::protocol::Operation::Merge,
+            &crate::protocol::Payload::Opaque(&patch),
         )
         .unwrap();
         assert_eq!(
-            object,
+            crate::protocol::value(&event).unwrap()["tool"]["input"],
             json!({"nested":{"after":2},"keep":true,"null":null})
         );
     }

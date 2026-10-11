@@ -423,7 +423,7 @@ impl InvocationAttachments {
     }
     pub(crate) fn bind(
         event: &mut Value,
-        bindings: Vec<crate::ergonomic_inputs::ContentSourceBinding<Attachment>>,
+        bindings: Vec<crate::inputs::__support::ContentSourceBinding<Attachment>>,
         budget: Arc<Budget>,
         limit: usize,
     ) -> Result<Self, BodyError> {

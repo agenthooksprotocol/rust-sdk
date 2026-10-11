@@ -16,8 +16,8 @@ use agenthooksprotocol::{
     EventType, Registration, ToolBeforeInputOrigin,
     capability::{self, ModifyOperation},
     client::Decision,
-    ergonomic_inputs::ToolBeforeInput,
     hooks::{Hooks, HooksOptions},
+    inputs::ToolBeforeInput,
     state,
 };
 use serde::{Deserialize, Serialize};

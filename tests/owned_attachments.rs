@@ -1,9 +1,9 @@
 use agenthooksprotocol::{
     Attachment, Hooks,
     body::{BodyChunkFuture, BodyStream},
-    ergonomic_inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
     generated::CanonicalMessageRole,
     hooks::{Capabilities, EventGrant, HooksOptions},
+    inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
 };
 use futures::executor::block_on;
 use serde_json::{Value, json};
@@ -286,7 +286,7 @@ fn no_match_typed_input_is_not_mutated_and_sources_remain_unread() {
         )
         .with_backend("org.example.attachments", Arc::new(UnreachableBackend));
         let hooks = Hooks::new(config, options).unwrap();
-        let input: agenthooksprotocol::ergonomic_inputs::UserMessageOutboundInput =
+        let input: agenthooksprotocol::inputs::UserMessageOutboundInput =
             serde_json::from_value(event()).unwrap();
         let original = serde_json::to_value(&input).unwrap();
         let (attachment, reads, drops) = source();

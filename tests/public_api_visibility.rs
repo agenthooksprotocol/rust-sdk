@@ -1,0 +1,181 @@
+//! Compile consumers outside the crate to check its actual public boundary.
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    time::{SystemTime, UNIX_EPOCH},
+};
+struct Consumer {
+    dir: PathBuf,
+    deps: PathBuf,
+    library: PathBuf,
+}
+impl Consumer {
+    fn new() -> Self {
+        let deps = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let library = library(&deps, "agenthooksprotocol");
+        let dir = std::env::temp_dir().join(format!(
+            "ahp-consumer-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&dir).unwrap();
+        Self { dir, deps, library }
+    }
+    fn compile(&self, name: &str, source: &str) -> std::process::Output {
+        let input = self.dir.join(format!("{name}.rs"));
+        fs::write(&input, source).unwrap();
+        let mut command = Command::new("rustc");
+        command.args([
+            "--edition=2024",
+            "--crate-type=lib",
+            "--emit=metadata",
+            "--crate-name",
+            name,
+        ]);
+        command
+            .arg(&input)
+            .arg("--out-dir")
+            .arg(&self.dir)
+            .arg("-L")
+            .arg(format!("dependency={}", self.deps.display()))
+            .arg("--extern")
+            .arg(format!("agenthooksprotocol={}", self.library.display()));
+        #[cfg(feature = "typed-form")]
+        {
+            command.arg("--cfg").arg("feature=\"typed-form\"");
+            for name in ["serde", "schemars"] {
+                command
+                    .arg("--extern")
+                    .arg(format!("{name}={}", library(&self.deps, name).display()));
+            }
+        }
+        command.output().unwrap()
+    }
+}
+impl Drop for Consumer {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.dir);
+    }
+}
+fn library(deps: &Path, name: &str) -> PathBuf {
+    fs::read_dir(deps)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(&format!("lib{name}-"))
+                && path.extension().is_some_and(|ext| ext == "rlib")
+        })
+        .filter(|path| {
+            if name != "agenthooksprotocol" {
+                return true;
+            }
+            // Other feature gates and examples can leave newer libraries here.
+            // Select this test's feature set, not the most recent arbitrary build.
+            let stem = path.file_stem().unwrap().to_string_lossy();
+            let fingerprint = deps
+                .parent()
+                .unwrap()
+                .join(".fingerprint")
+                .join(stem.trim_start_matches("lib"))
+                .join("lib-agenthooksprotocol.json");
+            let Ok(bytes) = fs::read(fingerprint) else {
+                return false;
+            };
+            let metadata: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            let features: Vec<String> =
+                serde_json::from_str(metadata["features"].as_str().unwrap()).unwrap();
+            [
+                ("default", cfg!(feature = "default")),
+                ("typed-form", cfg!(feature = "typed-form")),
+                ("reqwest", cfg!(feature = "reqwest")),
+                ("axum", cfg!(feature = "axum")),
+                ("tokio-process", cfg!(feature = "tokio-process")),
+                ("interop", cfg!(feature = "interop")),
+            ]
+            .into_iter()
+            .all(|(feature, enabled)| features.iter().any(|actual| actual == feature) == enabled)
+        })
+        .max_by_key(|path| fs::metadata(path).unwrap().modified().unwrap())
+        .unwrap_or_else(|| panic!("missing external consumer library {name}"))
+}
+#[test]
+fn domain_facade_compiles_from_an_external_consumer() {
+    let consumer = Consumer::new();
+    let output=consumer.compile("public_consumer",r#"
+use agenthooksprotocol::{Hooks, inputs::ToolBeforeInput, generated::{Candidate,JsonValue}, hooks::{ToolBoundary,ToolOutcome}, contracts::Contract};
+pub fn boundary<'a>(hooks:&'a Hooks,input:ToolBeforeInput<JsonValue>)->ToolBoundary<'a,JsonValue,String> {
+    hooks.tool_before(input).result_type::<String>()
+}
+pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.candidate }
+pub fn contract()->Contract<JsonValue> {Contract::new()}
+#[cfg(feature="typed-form")]
+pub fn form() {
+    #[derive(serde::Serialize,serde::Deserialize,schemars::JsonSchema)] struct Answer {count:u64}
+    let form=agenthooksprotocol::form::Form::<Answer>::new().unwrap();
+    let result:agenthooksprotocol::generated::ElicitResult<Answer>=form.accept(&Answer {count:1}).unwrap();
+    let _=form.decode(&result).unwrap();
+    let _=form.result_contract();
+}
+"#);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+#[test]
+fn assembly_and_provisional_helpers_are_not_public_consumer_apis() {
+    let consumer = Consumer::new();
+    for (name, source, diagnostic) in [
+        (
+            "assembly_macro",
+            "agenthooksprotocol::ahp_hooks_boundary_methods!(inventory);",
+            "ahp_hooks_boundary_methods",
+        ),
+        (
+            "projection_helper",
+            "use agenthooksprotocol::inputs::ProjectHostInput;",
+            "ProjectHostInput",
+        ),
+        (
+            "source_binding",
+            "use agenthooksprotocol::inputs::ContentSourceBinding;",
+            "ContentSourceBinding",
+        ),
+        (
+            "implementation_namespace",
+            "use agenthooksprotocol::ergonomic_inputs;",
+            "ergonomic_inputs",
+        ),
+        (
+            "provisional_result",
+            "use agenthooksprotocol::hooks::DeclaredToolOutcome;",
+            "DeclaredToolOutcome",
+        ),
+        (
+            "internal_dispatch",
+            r#"fn dispatch(hooks:&agenthooksprotocol::Hooks,input:agenthooksprotocol::inputs::ToolBeforeInput<agenthooksprotocol::generated::JsonValue>) { let _=hooks.host_input_for("tool.before",input); }"#,
+            "host_input_for",
+        ),
+    ] {
+        let output = consumer.compile(name, source);
+        let errors = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "unexpected public helper {name}");
+        assert!(
+            errors.contains(diagnostic),
+            "unexpected failure for {name}: {errors}"
+        );
+    }
+}

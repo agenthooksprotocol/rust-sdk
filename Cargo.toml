@@ -10,6 +10,8 @@ repository = "https://github.com/agenthooksprotocol/rust-sdk"
 
 [features]
 default = []
+# Single-declaration typed MCP elicitation forms.
+typed-form = ["dep:schemars"]
 reqwest = ["dep:reqwest", "dep:tokio"]
 axum = ["dep:axum"]
 tokio-process = ["dep:tokio"]
@@ -24,6 +26,7 @@ url = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 jsonschema = { version = "0.33", default-features = false }
+schemars = { version = "1", optional = true }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false, optional = true }
 tiny_http = { version = "0.12", features = ["ssl-rustls"], optional = true }
 jsonwebtoken = { version = "9", optional = true }
@@ -88,3 +91,7 @@ incremental = false
 [[example]]
 name = "registered_hooks"
 required-features = ["reqwest", "tokio-process"]
+
+[[example]]
+name = "form_answers"
+required-features = ["typed-form"]

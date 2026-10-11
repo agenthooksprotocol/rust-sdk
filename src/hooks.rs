@@ -369,50 +369,44 @@ fn restore_effect_attachment_refs(
     receipts: &crate::hooks_content::Receipts,
     response: &mut Value,
 ) -> Result<(), HookError> {
-    let originals: Vec<&Value> = crate::hooks_content::locations(original)
-        .iter()
-        .filter_map(|path| original.pointer(path))
-        .filter(|part| part["kind"] == "attachment")
+    let original_event: generated::Event = serde_json::from_value(original.clone()).map_err(err)?;
+    let originals: Vec<_> = crate::protocol::parts(&original_event)
+        .into_iter()
+        .filter_map(|part| {
+            if let generated::ContentItem::AttachmentBodyPart(part) = part {
+                Some(part.as_ref())
+            } else {
+                None
+            }
+        })
         .collect();
-    let Some(effects) = response["result"]["effects"].as_array_mut() else {
-        return Ok(());
-    };
-    for effect in effects {
-        let canonical = matches!(effect["type"].as_str(), Some("modify" | "inject"))
-            || (effect["type"] == "return" && original["type"] == "model.request.before");
-        if !canonical {
-            continue;
-        }
-        let Some(messages) = effect["value"].as_array_mut() else {
-            continue;
-        };
-        for message in messages {
-            let Some(parts) = message["parts"].as_array_mut() else {
-                continue;
-            };
-            for part in parts {
-                if part["kind"] != "attachment" || part["selection"] != "body" {
+    let mut typed = crate::protocol::parse(original["type"].as_str().unwrap_or(""), response)?;
+    crate::protocol::visit_messages_mut(&mut typed, |messages| {
+        for message in &mut messages.0 {
+            for part in &mut message.parts {
+                let generated::ContentItem::AttachmentBodyPart(part) = part.as_mut() else {
                     continue;
-                }
+                };
+                let receipt_body = crate::protocol::value(&part.body)?;
                 let prior = originals
                     .iter()
                     .find(|prior| {
-                        ["id", "mediaType", "category", "synthesized"]
-                            .iter()
-                            .all(|field| prior[*field] == part[*field])
-                            && prior["body"]["ref"]
-                                .as_str()
-                                .and_then(|key| receipts.get(key))
-                                == Some(&part["body"])
+                        prior.id == part.id
+                            && prior.media_type == part.media_type
+                            && prior.category == part.category
+                            && prior.synthesized == part.synthesized
+                            && receipts.get(&prior.body.ref_) == Some(&receipt_body)
                     })
                     .ok_or_else(|| {
                         err("effect references an unconfirmed or unknown binary attachment")
                             .classified(generated::DeliveryDiagnosticCode::ProtocolRejection)
                     })?;
-                part["body"] = prior["body"].clone();
+                part.body = prior.body.clone();
             }
         }
-    }
+        Ok(())
+    })?;
+    *response = crate::protocol::response_value(&typed)?;
     Ok(())
 }
 fn err(value: impl std::fmt::Display) -> HookError {
@@ -750,7 +744,9 @@ impl Hooks {
     }
     /// Generated named methods defer consuming host projection until await.
     #[doc(hidden)]
-    pub fn host_input_for<T: generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>>(
+    pub(crate) fn host_input_for<
+        T: generated::inputs::__support::ProjectHostInput<crate::Attachment>,
+    >(
         &self,
         name: &'static str,
         input: T,
@@ -768,6 +764,8 @@ impl Hooks {
         input: impl Into<ToolHostInput<T>>,
     ) -> ToolBoundary<'_, T> {
         ToolBoundary {
+            result: None,
+            provenance: None,
             hooks: self,
             input: input.into().0,
             context: json!({}),
@@ -776,7 +774,7 @@ impl Hooks {
     }
     /// Return the complete canonical event for typed tool facts and owned parts.
     pub fn tool_before_event<
-        I: generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>,
+        I: generated::inputs::__support::ProjectHostInput<crate::Attachment>,
     >(
         &self,
         input: I,
@@ -786,6 +784,8 @@ impl Hooks {
     /// Advanced application-input API; provide canonical context with `.context(...)`.
     pub fn tool_input<T: Serialize + DeserializeOwned>(&self, input: T) -> ToolBoundary<'_, T> {
         ToolBoundary {
+            result: None,
+            provenance: None,
             hooks: self,
             input: ToolInput::Raw(input),
             context: json!({}),
@@ -1139,6 +1139,7 @@ impl Hooks {
 
 #[derive(Default)]
 struct Settings<'a> {
+    admission: crate::contracts::Admission,
     snapshot: Option<Value>,
     deadline: Option<Instant>,
     budget: Option<LocalFuture<'a, ()>>,
@@ -1151,10 +1152,28 @@ struct Settings<'a> {
     continuation: Option<(u64, u64, u64)>,
     exchange: Option<&'a Exchange>,
     targets: BTreeMap<String, String>,
-    sources: Vec<generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>>,
+    sources: Vec<generated::inputs::__support::ContentSourceBinding<crate::Attachment>>,
 }
 macro_rules! settings_methods {
     () => {
+        /// Declare a caller-owned field codec at an event JSON pointer. Missing
+        /// optional fields remain absent; present values are validated in staging.
+        pub fn host_contract<HostT>(
+            mut self,
+            pointer: impl Into<String>,
+            contract: crate::contracts::Contract<HostT>,
+        ) -> Self {
+            self.settings.admission.field(pointer.into(), contract);
+            self
+        }
+        /// Validate every returned candidate before response publication.
+        pub fn return_contract<ResultT>(
+            mut self,
+            contract: crate::contracts::Contract<ResultT>,
+        ) -> Self {
+            self.settings.admission.result(contract);
+            self
+        }
         pub fn initial_snapshot(mut self, snapshot: impl Serialize) -> Result<Self, HookError> {
             self.settings.snapshot = Some(serde_json::to_value(snapshot).map_err(err)?);
             self.settings.initial = None;
@@ -1230,8 +1249,8 @@ impl<'a, T> InputBoundary<'a, T> {
         self
     }
 }
-impl<'a, T: generated::ergonomic_inputs::ProjectHostInput<crate::Attachment> + Send + 'a> IntoFuture
-    for InputBoundary<'a, T>
+impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + Send + 'a>
+    IntoFuture for InputBoundary<'a, T>
 {
     type Output = Result<EventOutcome<Value>, HookError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
@@ -1342,7 +1361,8 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 let mut boundary = client
                     .event(event)
                     .capabilities(caps.0)
-                    .attachments(content.clone());
+                    .attachments(content.clone())
+                    .admission(self.settings.admission);
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;
                 }
@@ -1422,22 +1442,17 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
 /// Consuming typed host facts accepted by `Hooks::tool_before`.
 #[doc(hidden)]
 pub struct ToolHostInput<T>(ToolInput<T>);
-impl<T> From<generated::ergonomic_inputs::ToolBeforeInput<T>> for ToolHostInput<T> {
-    fn from(input: generated::ergonomic_inputs::ToolBeforeInput<T>) -> Self {
+impl<T> From<generated::inputs::ToolBeforeInput<T>> for ToolHostInput<T> {
+    fn from(input: generated::inputs::ToolBeforeInput<T>) -> Self {
         Self(ToolInput::Host(Box::new(input)))
     }
 }
-impl<T>
-    From<
-        generated::ergonomic_inputs::HostInput<
-            generated::ergonomic_inputs::ToolBeforeInput<T>,
-            crate::Attachment,
-        >,
-    > for ToolHostInput<T>
+impl<T> From<generated::inputs::HostInput<generated::inputs::ToolBeforeInput<T>, crate::Attachment>>
+    for ToolHostInput<T>
 {
     fn from(
-        input: generated::ergonomic_inputs::HostInput<
-            generated::ergonomic_inputs::ToolBeforeInput<T>,
+        input: generated::inputs::HostInput<
+            generated::inputs::ToolBeforeInput<T>,
             crate::Attachment,
         >,
     ) -> Self {
@@ -1446,31 +1461,29 @@ impl<T>
 }
 enum ToolInput<T> {
     Owned(
-        Box<
-            generated::ergonomic_inputs::HostInput<
-                generated::ergonomic_inputs::ToolBeforeInput<T>,
-                crate::Attachment,
-            >,
-        >,
+        Box<generated::inputs::HostInput<generated::inputs::ToolBeforeInput<T>, crate::Attachment>>,
     ),
-    Host(Box<generated::ergonomic_inputs::ToolBeforeInput<T>>),
+    Host(Box<generated::inputs::ToolBeforeInput<T>>),
     Raw(T),
 }
 #[must_use]
-pub struct ToolBoundary<'a, T> {
+pub struct ToolBoundary<'a, T, R = Value, P = Value> {
+    result: Option<crate::contracts::Contract<R>>,
+    provenance: Option<crate::contracts::Contract<P>>,
     hooks: &'a Hooks,
     input: ToolInput<T>,
     context: Value,
     settings: Settings<'a>,
 }
-impl<'a, T> ToolBoundary<'a, T> {
+impl<'a, T, R, P> ToolBoundary<'a, T, R, P> {
     settings_methods!();
     pub fn context(mut self, context: ToolContext) -> Self {
         self.context = context.event;
         self
     }
 }
-pub struct ToolOutcome<T> {
+pub struct ToolOutcome<T, R = Value, P = Value> {
+    pub candidate: Option<generated::Candidate<R, P>>,
     /// Schema-owned returned payloads. Opaque application input, candidates, and
     /// effect values do not confer ownership of reference-shaped data.
     pub content: OwnedContent,
@@ -1479,7 +1492,7 @@ pub struct ToolOutcome<T> {
     pub effective_input: Value,
     pub input: Result<T, InputDecodeError>,
 }
-impl<T> ToolOutcome<T> {
+impl<T, R, P> ToolOutcome<T, R, P> {
     pub fn permission(&self) -> Decision {
         self.outcome.permission()
     }
@@ -1496,8 +1509,13 @@ fn narrow(caps: Option<Capabilities>, granted: Capabilities) -> Result<Capabilit
         Ok(granted)
     }
 }
-impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundary<'a, T> {
-    type Output = Result<ToolOutcome<T>, HookError>;
+impl<'a, T, R, P> IntoFuture for ToolBoundary<'a, T, R, P>
+where
+    T: Serialize + DeserializeOwned + Send + 'a,
+    R: Serialize + DeserializeOwned + Send + 'a,
+    P: Serialize + DeserializeOwned + Send + 'a,
+{
+    type Output = Result<ToolOutcome<T, R, P>, HookError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(mut self) -> Self::IntoFuture {
         let budget = self.settings.budget.take();
@@ -1511,11 +1529,11 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                 let (input, mut context) = match self.input {
                     ToolInput::Host(host) => {
                         let host = *host;
-                        let context = host.to_event_value().map_err(err)?;
+                        let context =
+                            generated::inputs::__support::project_event(&host).map_err(err)?;
                         (host.input, context)
                     }
                     ToolInput::Owned(host) => {
-                        use generated::ergonomic_inputs::ProjectHostInput;
                         let (context, sources) = (*host).into_host_event().map_err(err)?;
                         self.settings.sources.extend(sources);
                         let input = serde_json::from_value(context["tool"]["input"].clone())
@@ -1546,7 +1564,10 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                 let client =
                     self.hooks
                         .client(&context, &name, self.settings.deadline, &content, &uploads);
-                let mut boundary = client.tool_before(input).capabilities(caps.0);
+                let mut boundary = client
+                    .tool_before(input)
+                    .capabilities(caps.0)
+                    .admission(self.settings.admission);
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;
                 }
@@ -1569,6 +1590,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                 }
                 let crate::client::BoundaryResult {
                     outcome,
+                    candidate_descriptor,
                     effective_input,
                     input,
                     observations,
@@ -1603,7 +1625,13 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
+                let candidate = if candidate_descriptor.is_null() {
+                    None
+                } else {
+                    Some(serde_json::from_value(candidate_descriptor).map_err(err)?)
+                };
                 Ok(ToolOutcome {
+                    candidate,
                     content: retained,
                     outcome,
                     diagnostics,
@@ -1616,33 +1644,36 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBoundar
 }
 
 // Both the named methods and their inventory are generated from the schema catalogue.
-pub const NAMED_BOUNDARIES: &[&str] = crate::ahp_hooks_boundary_methods!(inventory);
-impl<T: Serialize> generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>
-    for generated::ergonomic_inputs::ToolBeforeInput<T>
+pub const NAMED_BOUNDARIES: &[&str] = crate::generated::ahp_hooks_boundary_methods!(inventory);
+impl<T: Serialize> generated::inputs::__support::ProjectHostInput<crate::Attachment>
+    for generated::inputs::ToolBeforeInput<T>
 {
     fn into_host_event(
         self,
     ) -> Result<
         (
             Value,
-            Vec<generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>>,
+            Vec<generated::inputs::__support::ContentSourceBinding<crate::Attachment>>,
         ),
         serde_json::Error,
     > {
-        Ok((self.to_event_value()?, Vec::new()))
+        Ok((
+            generated::inputs::__support::project_event(&self)?,
+            Vec::new(),
+        ))
     }
 }
 // Named methods accept either canonical generated facts or direct owned host inputs.
 macro_rules! host_methods {
     ($(($method:ident, $input:ident, $name:literal)),* $(,)?) => {
-        $(impl generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>
-            for generated::ergonomic_inputs::$input {
-            fn into_host_event(self) -> Result<(Value, Vec<generated::ergonomic_inputs::ContentSourceBinding<crate::Attachment>>), serde_json::Error> {
-                Ok((self.to_event_value()?, Vec::new()))
+        $(impl generated::inputs::__support::ProjectHostInput<crate::Attachment>
+            for generated::inputs::$input {
+            fn into_host_event(self) -> Result<(Value, Vec<generated::inputs::__support::ContentSourceBinding<crate::Attachment>>), serde_json::Error> {
+                Ok((generated::inputs::__support::project_event(&self)?, Vec::new()))
             }
         })*
         impl Hooks {
-            $(pub fn $method<I: generated::ergonomic_inputs::ProjectHostInput<crate::Attachment>>(&self, input: I) -> InputBoundary<'_, I> {
+            $(pub fn $method<I: generated::inputs::__support::ProjectHostInput<crate::Attachment>>(&self, input: I) -> InputBoundary<'_, I> {
                 self.host_input_for($name, input)
             })*
         }
@@ -1732,4 +1763,58 @@ fn bounded<'a, T: Send + 'a>(
         }
         result
     }))
+}
+
+impl<'a, A: Serialize + DeserializeOwned, R, P> ToolBoundary<'a, A, R, P> {
+    /// Declare argument decoding and optional host invariants before publication.
+    pub fn arguments_contract(mut self, contract: crate::contracts::Contract<A>) -> Self {
+        self.settings
+            .admission
+            .field("/tool/input".into(), contract);
+        self
+    }
+    pub fn declare_arguments(self) -> Self {
+        self.arguments_contract(crate::contracts::Contract::new())
+    }
+    /// Declare the tool's result type, independently of its argument type.
+    pub fn result_type<Next: Serialize + DeserializeOwned>(self) -> ToolBoundary<'a, A, Next, P> {
+        self.result_contract(crate::contracts::Contract::new())
+    }
+    pub fn result_contract<Next: Serialize + DeserializeOwned>(
+        mut self,
+        contract: crate::contracts::Contract<Next>,
+    ) -> ToolBoundary<'a, A, Next, P> {
+        self.settings
+            .admission
+            .field_default("/tool/input".into(), crate::contracts::Contract::<A>::new());
+        self.settings.admission.result(contract.clone());
+        ToolBoundary {
+            hooks: self.hooks,
+            input: self.input,
+            context: self.context,
+            settings: self.settings,
+            result: Some(contract),
+            provenance: self.provenance,
+        }
+    }
+    /// Optional caller-owned provenance remains associated only with its candidate.
+    pub fn provenance_type<Next: Serialize + DeserializeOwned>(
+        self,
+    ) -> ToolBoundary<'a, A, R, Next> {
+        self.provenance_contract(crate::contracts::Contract::new())
+    }
+    pub fn provenance_contract<Next: Serialize + DeserializeOwned>(
+        mut self,
+        contract: crate::contracts::Contract<Next>,
+    ) -> ToolBoundary<'a, A, R, Next> {
+        self.settings.admission.provenance(contract.clone());
+        ToolBoundary {
+            hooks: self.hooks,
+            input: self.input,
+            context: self.context,
+            settings: self.settings,
+            result: self.result,
+            provenance: Some(contract),
+        }
+    }
 }

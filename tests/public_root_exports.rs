@@ -11,7 +11,7 @@ fn root_models_and_codecs_are_the_generated_api() {
     let _: fn(&str) -> generated::ParseResult<Registration> = parse_registration;
     let _: fn(&Registration) -> Result<String, serde_json::Error> = encode_registration;
     assert_eq!(
-        agenthooksprotocol::boundary::ALL_BOUNDARIES.len(),
+        agenthooksprotocol::generated::boundary::ALL_BOUNDARIES.len(),
         generated::boundary::ALL_BOUNDARIES.len(),
     );
 }

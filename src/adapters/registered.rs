@@ -286,15 +286,10 @@ fn validate_response(request: &Value, body: &[u8]) -> Result<Value, HookError> {
     }
     crate::client::check_rpc_error(&value, &request["id"])?;
     let intercept = request["method"] == "hooks/intercept";
-    crate::canonical::validate(
-        if intercept {
-            "intercept-response"
-        } else {
-            "capabilities-response"
-        },
-        &value,
-    )
-    .map_err(|_| error("invalid protocol response"))?;
+    if !intercept {
+        crate::canonical::validate("capabilities-response", &value)
+            .map_err(|_| error("invalid protocol response"))?;
+    }
     if intercept {
         crate::server::validate_effect_capabilities(request, &value)
             .map_err(|_| error("unsupported response effects"))?;
