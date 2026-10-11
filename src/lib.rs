@@ -31,7 +31,7 @@ pub mod client;
 
 // Models, codecs, and semantic aliases come from the canonical generated API.
 // Explicit handwritten modules take precedence over glob-imported aliases.
-pub use generated::*;
+pub use generated::public_exports::*;
 /// Canonical effect models and shared-metadata ergonomic constructors.
 pub mod effect {
     pub use crate::generated::effect::*;
@@ -52,3 +52,9 @@ mod upload_plan;
 /// Invocation-owned binary attachment sources.
 pub mod attachment;
 pub use attachment::Attachment;
+
+pub mod contracts;
+#[cfg(feature = "typed-form")]
+pub mod form;
+
+mod protocol;

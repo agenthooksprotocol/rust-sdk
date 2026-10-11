@@ -1,6 +1,6 @@
 # Agent Hooks Protocol SDK for Rust
 
-The active draft also provides MCP-aligned elicitation, operation-owned short-circuit
+The draft provides MCP-aligned elicitation, operation-owned short-circuit
 observations, and before/after compaction controls. See the shared
 [boundary API guide](https://github.com/agenthooksprotocol/agent-hooks-protocol/blob/main/docs/accepted-boundary-apis.md)
 for entrypoints, upload binding, trusted-host obligations, and test scope.
@@ -15,7 +15,7 @@ Install from [crates.io](https://crates.io/crates/agenthooksprotocol):
 
 ```toml
 [dependencies]
-agenthooksprotocol = "0.1"
+agenthooksprotocol = "0.4"
 ```
 
 ## Registration-driven hooks
@@ -25,7 +25,7 @@ explicit per-event `EventGrant` authority. Registration selects routes; it does
 not grant effects or observation permission. `tool_before(ToolBeforeInput<T>)`
 accepts flattened typed host facts and preserves the application argument type.
 `tool_input(T).context(...)` and `event(...)` retain advanced canonical paths.
-All 32 named event methods accept their generated `ergonomic_inputs::*Input`
+All 32 named event methods accept their generated `inputs::*Input`
 with projection deferred until await. `tool_before_event(ToolBeforeInput<T>)`
 returns the complete effective event; the primary `tool_before` instead preserves
 the application argument type in `result.input`. Capability vocabulary is available
@@ -72,12 +72,80 @@ incomplete interception. Bounded transport cleanup/reaping can outlast expiry.
 
 Typed decoding occurs after settlement: `result.input` is a fresh
 `Result<T, InputDecodeError>`, not an unchecked cast. A decoding error does not roll
-back accepted effects. The host still owns application validation and execution.
+back accepted effects. Use an argument contract to validate edits before they are
+committed and forwarded to later interceptors. The host still owns execution policy.
 `result.diagnostics` carries generated cause codes separately from delivery stage,
 backend/subscription attribution, failure policy, and synthetic-denial evidence;
 backend messages, bodies, and credentials are excluded. Canonical protocol denial
 is not a delivery failure. Accepted raw responses remain in
 `result.outcome.responses` for advanced consumers.
+
+### Application contracts
+
+`Hooks::tool_before(inputs::ToolBeforeInput<A>)` returns a lazy
+`ToolBoundary<A, R = serde_json::Value, P = serde_json::Value>`. Arguments,
+returned values, and candidate provenance have independent types. Awaiting yields
+`ToolOutcome<A, R, P>` with `input: Result<A, InputDecodeError>` and
+`candidate: Option<generated::Candidate<R, P>>`. Use the generated candidate's
+`value` and `provenance` members directly; `Presence` distinguishes omitted
+provenance from a supplied value. A present candidate with a null value is not
+an absent candidate.
+
+```rust,ignore
+use agenthooksprotocol::contracts::Contract;
+
+let result = hooks.tool_before(input)
+    .arguments_contract(Contract::<Arguments>::validated(|args| {
+        if args.count <= 100 { Ok(()) } else { Err("count exceeds limit".into()) }
+    }))
+    .result_type::<ToolResult>()
+    .provenance_type::<Provenance>()
+    .await?;
+let candidate = result.candidate;
+```
+
+`Contract::new()` checks decoding and data preservation;
+`Contract::validated(...)` adds application invariants from the same Rust type.
+Decoding rejects supplied fields that serialization would drop or change. Use
+closed structs to reject unknown members or flattened extension maps to preserve
+them. Contracts evaluate complete proposed values, including merged arguments,
+before atomic effect admission. Invalid edits or returned candidates reject the
+compound response according to the configured failure policy. Partial merge
+patches need not independently deserialize as the full argument type.
+
+`.arguments_type()`, `.result_type::<R>()`, and `.provenance_type::<P>()` install
+structural contracts. Use `.result_contract(...)` or `.provenance_contract(...)`
+for additional invariants. Canonical settings such as `.capabilities(...)`,
+`.initial_state(...)`, `.initial_candidate(...)`, `.initial_snapshot(...)`,
+`.budget(...)`, and `.cancel_when(...)` compose on the same boundary.
+
+See [`examples/tool_contracts.rs`](examples/tool_contracts.rs) for a complete
+consumer example with a registered mock backend, distinct argument/result types,
+and explicit host grants:
+
+```sh
+cargo run --no-default-features --example tool_contracts
+```
+
+### Typed elicitation forms
+
+Run `cargo run --example form_answers --features typed-form` for a complete
+answer-type example.
+
+Enable `typed-form` and derive `Serialize`, `Deserialize`, and
+`schemars::JsonSchema` (schemars 1.2.2) on one answer type `T`.
+`form::Form::<T>::new()` derives and validates the restricted MCP form schema.
+`request(message)` creates generated form request parameters; `accept(&answer)`
+validates an answer and constructs an accepted result; `decode(&result)` returns
+`form::FormAnswer<T>`, preserving decline and cancel as separate outcomes.
+`result_contract()` binds answer validation to hook admission with generated
+`ElicitResult<T>`, so an invalid accepted answer cannot reach a later interceptor.
+
+Forms support flat objects with strings, numbers, booleans, string enums, and
+arrays of string enums. Unsupported schema shapes fail during construction;
+nullable fields, nested objects, and arbitrary arrays are not approximated.
+URL elicitation has no answer content; use `form::decode_url_result` to validate
+its action separately.
 
 ### Run both transports locally
 
@@ -214,7 +282,7 @@ carry inline strings and attachments carry immutable binary bodies.
 
 ```rust,ignore
 use agenthooksprotocol::{Attachment, CanonicalMessageRole};
-use agenthooksprotocol::ergonomic_inputs::{MessageInput, PartInput};
+use agenthooksprotocol::inputs::{MessageInput, PartInput};
 
 let result = hooks.user_message_outbound(
     input.with_sources().with_message_messages(vec![MessageInput::from_parts(
@@ -227,6 +295,7 @@ let result = hooks.user_message_outbound(
 ).await?;
 hooks.shutdown().await?;
 let bytes = result.content.read("/message/messages/0/parts/1").await?; // Arc<[u8]>
+drop(result.content); // release the returned content owner when finished
 ```
 
 Messages and parts preserve supplied identities; convenience constructors mark
@@ -238,7 +307,9 @@ Projection and serialization happen when the hook is awaited. Projection does
 not open an attachment. A lazy source is read at most once, only for selected
 body delivery or an explicit result read. Metadata-only and unmatched hooks do
 not read it. The result owns unread sources and effective materialized bytes
-independently of Hooks. Dropping its last owner releases unopened sources.
+independently of Hooks. Callers must release returned content owners when finished:
+drop the content owner and its clones to close unopened sources. Hooks shutdown
+does not close returned content owners.
 Concurrent first reads join one poll-driven materialization and share its
 immutable result or terminal error. Cancelling one reader leaves other active
 readers intact. Cancelling the last active reader is terminal and releases the
@@ -364,6 +435,7 @@ intentional: the runtime-neutral core does not install a global timer or executo
 | `reqwest` | `adapters::reqwest::ReqwestHttp` | Caller-owned runtime compatible with Reqwest; redirects disabled, bounded response capture |
 | `axum` | `adapters::axum` server convenience | Caller-owned Axum runtime; delegates to the same core handler |
 | `tokio-process` | `adapters::process::Process` persistent child transport | Explicit caller-owned Tokio runtime; subprocess deadlines, retirement, kill/reap |
+| `typed-form` | `form::Form<T>` and restricted MCP answer validation | Runtime-neutral schema derivation and validation |
 | `interop` | Executable test hosts | Test-only blocking HTTP/process fixtures; not a default core dependency |
 
 `transport::{Request, Response, Http}` do not expose Reqwest or Axum types.

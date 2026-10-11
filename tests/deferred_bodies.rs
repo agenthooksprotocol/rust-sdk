@@ -4,9 +4,9 @@ use agenthooksprotocol::{
     adapters::registered::ManagedBackend,
     body::{BodyChunkFuture, BodyError, BodyStream},
     client::{HookError, LocalFuture},
-    ergonomic_inputs::{HostInput, PartInput, ToolBeforeInput},
     generated::ToolBeforeInputOrigin,
     hooks::{Capabilities, EventGrant, HooksOptions},
+    inputs::{HostInput, PartInput, ToolBeforeInput},
 };
 use futures::{executor::block_on, task::noop_waker};
 use serde_json::{Value, json};

@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(matches!(effect, Effect::Deny(_)));
     let response = InterceptResponse::new(
         JsonRpcResponseId::from(JsonRpcId::from("evt_example".to_owned())),
-        InterceptResponseResult::new(vec![Box::new(effect)]),
+        InterceptResponseResult::new().with_effects(vec![Box::new(effect)]),
     );
     // Constructors supply jsonrpc, effect type, and protocolVersion literals.
     let encoded = encode_intercept_response(&response)?;

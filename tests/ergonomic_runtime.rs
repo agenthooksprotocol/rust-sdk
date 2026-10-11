@@ -154,7 +154,10 @@ fn generated_effect_helpers_return_canonical_effects() {
         json!({"type":"deny","reason":"reason"})
     );
     assert_eq!(
-        serde_json::to_value(effect::modify_input::replace(json!({"x":2}))).unwrap(),
+        serde_json::to_value(effect::modify_input::replace(
+            serde_json::from_value(json!({"x":2})).unwrap()
+        ))
+        .unwrap(),
         json!({"type":"modify","target":"input","operation":"replace","value":{"x":2}})
     );
     assert_eq!(
@@ -224,9 +227,9 @@ fn generated_state_candidate_distinguishes_null_from_absence() {
 fn generated_named_tool_event_is_lazy_and_accepts_serialize_only_arguments() {
     use agenthooksprotocol::{
         DeliveryDiagnosticCode, Hooks, Permission,
-        ergonomic_inputs::ToolBeforeInput,
         generated::ToolBeforeInputOrigin,
         hooks::{Capabilities, EventGrant, HooksOptions},
+        inputs::ToolBeforeInput,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
     // Intentionally no Deserialize implementation: full-event projection only

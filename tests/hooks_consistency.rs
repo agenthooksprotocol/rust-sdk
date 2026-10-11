@@ -52,7 +52,7 @@ fn options(backend: Arc<Backend>) -> HooksOptions {
     )
     .with_backend("org.example.test", backend)
 }
-fn facts() -> agenthooksprotocol::ergonomic_inputs::SessionStartInput {
+fn facts() -> agenthooksprotocol::inputs::SessionStartInput {
     serde_json::from_value(canonical_facts()).unwrap()
 }
 fn canonical_facts() -> Value {

@@ -153,11 +153,18 @@ pub fn apply(request: &Value, response: &Value, schemas: &Schemas) -> Result<Val
     {
         return Err("unsupported boundary".into());
     }
-    let effects = response["result"]["effects"]
-        .as_array()
-        .ok_or("missing effects")?;
+    // Decode the original envelope: omitted effects are a typed neutral batch,
+    // while an explicit null remains invalid. Never repair the wire response.
+    let decoded: crate::generated::InterceptResponse = serde_json::from_value(response.clone())?;
+    let effects: Vec<Value> = match decoded.result.effects {
+        crate::generated::Presence::Missing => Vec::default(),
+        crate::generated::Presence::Present(effects) => effects
+            .iter()
+            .map(serde_json::to_value)
+            .collect::<std::result::Result<_, _>>()?,
+    };
     let caps = &p["capabilities"];
-    for e in effects {
+    for e in &effects {
         let kind = e["type"].as_str().ok_or("missing effect type")?;
         if !caps["effects"]
             .as_array()
@@ -190,7 +197,7 @@ pub fn apply(request: &Value, response: &Value, schemas: &Schemas) -> Result<Val
             return Err("unsupported modification".into());
         }
     }
-    for e in effects {
+    for e in &effects {
         if e["type"] == "flow" {
             if !["stop", "continue"].contains(&e["operation"].as_str().unwrap_or("")) {
                 return Err("unsupported flow operation".into());
@@ -260,7 +267,7 @@ pub fn apply(request: &Value, response: &Value, schemas: &Schemas) -> Result<Val
         .as_array()
         .cloned()
         .unwrap_or_default();
-    for e in effects {
+    for e in &effects {
         match e["type"].as_str().unwrap() {
             "deny" => decision = "deny",
             "ask" if decision != "deny" => decision = "ask",
@@ -315,4 +322,41 @@ pub fn apply(request: &Value, response: &Value, schemas: &Schemas) -> Result<Val
         actual["injections"] = json!(injections);
     }
     Ok(actual)
+}
+
+#[cfg(test)]
+mod omitted_effects_tests {
+    use super::*;
+    #[test]
+    fn omitted_effects_are_neutral_preserving_incoming_state_but_null_is_invalid() {
+        let schemas = Schemas::bundled().unwrap();
+        for permission in ["none", "ask", "deny"] {
+            let request = json!({"jsonrpc":"2.0","id":"omitted","method":"hooks/intercept",
+                "params":{"protocolVersion":"draft","event":{"id":"omitted","source":"urn:test:interop",
+                    "type":"tool.before","time":"2026-09-01T00:00:00Z","call":{"id":"call"},"path":"native",
+                    "tool":{"name":"task","origin":"native","input":{"task":1}}},
+                    "capabilities":capabilities(),"state":{"permission":permission,"candidate":null}}});
+            let omitted =
+                json!({"jsonrpc":"2.0","id":"omitted","result":{"protocolVersion":"draft"}});
+            let mut empty = omitted.clone();
+            empty["result"]["effects"] = json!([]);
+            let original = omitted.clone();
+            let actual = apply(&request, &omitted, &schemas).unwrap();
+            assert_eq!(actual, apply(&request, &empty, &schemas).unwrap());
+            assert_eq!(
+                actual["decision"],
+                if permission == "none" {
+                    "allow"
+                } else {
+                    permission
+                }
+            );
+            assert_eq!(actual["executed"], permission == "none");
+            assert_eq!(actual["input"], json!({"task":1}));
+            assert_eq!(omitted, original);
+            let mut null = omitted;
+            null["result"]["effects"] = Value::Null;
+            assert!(apply(&request, &null, &schemas).is_err());
+        }
+    }
 }

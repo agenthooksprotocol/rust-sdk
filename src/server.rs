@@ -212,9 +212,7 @@ impl<H: Handler, A: Authenticator> Server<H, A> {
             return failure(500, "response serialization failed");
         };
         let valid = match method {
-            "hooks/intercept" => g::parse_intercept_response_value(value.clone())
-                .into_value()
-                .is_some(),
+            "hooks/intercept" => contextual_response(&raw, &value).is_ok(),
             _ => g::parse_capabilities_response_value(value.clone())
                 .into_value()
                 .is_some(),
@@ -224,7 +222,9 @@ impl<H: Handler, A: Authenticator> Server<H, A> {
         } else {
             "capabilities-response"
         };
-        if !valid || crate::canonical::validate(schema, &value).is_err() || value["id"] != raw["id"]
+        if !valid
+            || (method != "hooks/intercept" && crate::canonical::validate(schema, &value).is_err())
+            || value["id"] != raw["id"]
         {
             return failure(500, "invalid or uncorrelated response");
         }
@@ -235,6 +235,36 @@ impl<H: Handler, A: Authenticator> Server<H, A> {
     }
 }
 
+/// Parse contextually and retain canonical checks without inspecting unknown effects.
+pub(crate) fn contextual_response(
+    request: &serde_json::Value,
+    response: &serde_json::Value,
+) -> Result<g::ContextualResponse, String> {
+    let event_type = request["params"]["event"]["type"]
+        .as_str()
+        .ok_or("missing originating event type")?;
+    crate::canonical::validate("intercept-response", response)?;
+    crate::protocol::parse(event_type, response).map_err(|e| e.to_string())
+}
+
+pub(crate) fn authority_name(kind: &crate::protocol::Kind<'_>) -> Option<&'static str> {
+    use crate::protocol::Kind;
+    Some(match kind {
+        Kind::Deny => "deny",
+        Kind::Allow => "allow",
+        Kind::Ask => "ask",
+        Kind::Modify { .. } => "modify",
+        Kind::Message(_) => "message",
+        Kind::Inject(_) => "inject",
+        Kind::ReturnTool(_)
+        | Kind::ReturnMessages(_)
+        | Kind::ReturnText(_)
+        | Kind::ReturnForm(_) => "return",
+        Kind::Stop | Kind::Continue(_) => "flow",
+        Kind::Unknown => return None,
+    })
+}
+
 /// Check effect grants independently of event-specific application or tool execution.
 /// Call after canonical message validation. Unknown effects never grant authority.
 /// This does not resolve selected elicitation bodies or apply their semantic effects.
@@ -242,16 +272,20 @@ pub fn validate_effect_capabilities(
     request: &serde_json::Value,
     response: &serde_json::Value,
 ) -> Result<(), String> {
+    use crate::protocol::{Kind, Operation};
     use serde_json::Value;
-    fn contains(array: &Value, value: &Value) -> bool {
-        array.as_array().is_some_and(|items| items.contains(value))
+    fn contains(array: &Value, value: &str) -> bool {
+        array
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item.as_str() == Some(value)))
     }
     let caps = &request["params"]["capabilities"];
-    let effects = response["result"]["effects"]
-        .as_array()
-        .ok_or("missing effects")?;
+    let typed = contextual_response(request, response)?;
+    let effects = crate::protocol::effects(&typed).map_err(|e| e.to_string())?;
     let event = &request["params"]["event"];
-    if !effects.is_empty()
+    if effects
+        .iter()
+        .any(|effect| !matches!(effect.kind, Kind::Unknown))
         && matches!(
             event["type"].as_str(),
             Some("user.elicitation.request" | "user.elicitation.result")
@@ -282,62 +316,69 @@ pub fn validate_effect_capabilities(
         Ok(number as u64)
     }
     let continuation_already_pending = request["params"]["state"]["flow"] == "continue";
-    for effect in effects {
-        if !contains(&caps["effects"], &effect["type"]) {
+    for effect in &effects {
+        let name = authority_name(&effect.kind).ok_or("unknown effect")?;
+        if !contains(&caps["effects"], name) {
             return Err("unadvertised effect".into());
         }
-        match effect["type"].as_str().ok_or("missing effect type")? {
-            "modify" => {
-                let target = effect["target"].as_str().ok_or("missing modify target")?;
-                let operation = effect["operation"]
-                    .as_str()
-                    .ok_or("missing modify operation")?;
-                if !matches!(operation, "replace" | "merge")
-                    || caps["modify"][target][operation] != true
-                {
+        match &effect.kind {
+            Kind::Modify {
+                target, operation, ..
+            } => {
+                let operation = match operation {
+                    Operation::Replace => "replace",
+                    Operation::Merge => "merge",
+                };
+                if caps["modify"][*target][operation] != true {
                     return Err("unadvertised modification".into());
                 }
             }
-            "flow" => {
-                if !contains(&caps["flow"]["operations"], &effect["operation"]) {
+            Kind::Stop | Kind::Continue(_) => {
+                let operation = if matches!(effect.kind, Kind::Continue(_)) {
+                    "continue"
+                } else {
+                    "stop"
+                };
+                if !contains(&caps["flow"]["operations"], operation) {
                     return Err("unadvertised flow operation".into());
                 }
-                match effect["operation"].as_str() {
-                    Some("stop") => {}
-                    Some("continue") => {
-                        let remaining = budget(&caps["flow"]["remainingContinuations"])?;
-                        let count = budget(&caps["flow"]["continuationCount"])?;
-                        let max = caps["flow"]
-                            .get("maxContinuations")
-                            .map(budget)
-                            .transpose()?;
-                        // Instructions coalesce into one follow-up step; an earlier
-                        // interceptor may already have reserved that allowance.
-                        if !continuation_already_pending
-                            && (remaining == 0 || max.is_some_and(|max| count >= max))
-                        {
-                            return Err("continuation budget exhausted".into());
-                        }
+                if matches!(effect.kind, Kind::Continue(_)) {
+                    let remaining = budget(&caps["flow"]["remainingContinuations"])?;
+                    let count = budget(&caps["flow"]["continuationCount"])?;
+                    let max = caps["flow"]
+                        .get("maxContinuations")
+                        .map(budget)
+                        .transpose()?;
+                    // Coalesce continuation requests into one reserved follow-up.
+                    if !continuation_already_pending
+                        && (remaining == 0 || max.is_some_and(|max| count >= max))
+                    {
+                        return Err("continuation budget exhausted".into());
                     }
-                    _ => return Err("unknown flow operation".into()),
                 }
             }
-            "inject" => {
-                if effect["target"] != "context"
-                    || effect["operation"] != "append"
-                    || caps["inject"]["context"]["append"] != true
+            Kind::Inject(injection) => {
+                if caps["inject"]["context"]["append"] != true
                     || !contains(
                         &caps["inject"]["context"]["deliverAt"],
-                        &effect["deliverAt"],
+                        injection.deliver_at.as_str(),
                     )
                 {
                     return Err("unadvertised context injection".into());
                 }
             }
-            "allow" | "ask" | "deny" | "return" | "message" => {}
-            _ => return Err("unknown effect".into()),
+            Kind::Deny
+            | Kind::Allow
+            | Kind::Ask
+            | Kind::Message(_)
+            | Kind::ReturnTool(_)
+            | Kind::ReturnMessages(_)
+            | Kind::ReturnText(_)
+            | Kind::ReturnForm(_)
+            | Kind::Unknown => {}
         }
     }
+
     Ok(())
 }
 
@@ -365,4 +406,74 @@ fn resolve_event_content(
         }
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod contextual_response_tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    fn request() -> Value {
+        json!({"params":{"event":{"type":"tool.before"},"capabilities":{
+            "effects":["deny","modify"],"modify":{"input":{"replace":true}}
+        }}})
+    }
+
+    fn reply(effects: Value) -> Value {
+        json!({"jsonrpc":"2.0","id":"rpc","result":{
+            "protocolVersion":"draft","effects":effects
+        }})
+    }
+
+    #[test]
+    fn absent_effects_are_empty_but_null_is_invalid() {
+        let mut response = reply(json!([]));
+        response["result"]
+            .as_object_mut()
+            .unwrap()
+            .remove("effects");
+        assert!(validate_effect_capabilities(&request(), &response).is_ok());
+        assert!(response["result"].get("effects").is_none());
+        assert!(validate_effect_capabilities(&request(), &reply(Value::Null)).is_err());
+    }
+
+    #[test]
+    fn unknown_effects_are_preserved_by_codec_but_rejected_by_canonical_boundary() {
+        let response = reply(json!([{
+            "type":"vendor.future", "effects":[{"type":"deny"}],
+            "target":"input", "operation":"replace", "value":{"type":"modify"}
+        }]));
+        let original = response.clone();
+        let typed = crate::protocol::parse("tool.before", &response).unwrap();
+        assert!(
+            crate::protocol::effects(&typed)
+                .unwrap()
+                .iter()
+                .all(|effect| matches!(effect.kind, crate::protocol::Kind::Unknown))
+        );
+        assert!(contextual_response(&request(), &response).is_err());
+        assert!(validate_effect_capabilities(&request(), &response).is_err());
+        assert_eq!(response, original);
+
+        let mut extras = reply(json!([]));
+        extras["result"]["extensions"] = json!({"vendor.future":{"type":"deny"}});
+        extras["result"]["vendor.future"] = json!({"effects":[{"type":"modify"}]});
+        let original = extras.clone();
+        assert!(validate_effect_capabilities(&request(), &extras).is_ok());
+        assert_eq!(extras, original);
+    }
+
+    #[test]
+    fn known_effects_require_contextual_shape_and_actual_grants() {
+        let effect = json!({"type":"modify","target":"input","operation":"replace","value":{}});
+        assert!(validate_effect_capabilities(&request(), &reply(json!([effect]))).is_ok());
+        let mut ungranted = request();
+        ungranted["params"]["capabilities"]["modify"]["input"]["replace"] = json!(false);
+        assert!(validate_effect_capabilities(&ungranted, &reply(json!([effect]))).is_err());
+        let wrong_target =
+            json!({"type":"modify","target":"output","operation":"replace","value":{}});
+        assert!(contextual_response(&request(), &reply(json!([wrong_target]))).is_err());
+        let malformed = json!({"type":"modify","target":"input","operation":"replace"});
+        assert!(contextual_response(&request(), &reply(json!([malformed]))).is_err());
+    }
 }

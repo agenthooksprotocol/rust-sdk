@@ -3,9 +3,9 @@ use agenthooksprotocol::{
     Attachment, Hooks,
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
-    ergonomic_inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
     generated::CanonicalMessageRole,
     hooks::{Capabilities, EventGrant, HooksOptions},
+    inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
 };
 use serde_json::{Value, json};
 use std::{

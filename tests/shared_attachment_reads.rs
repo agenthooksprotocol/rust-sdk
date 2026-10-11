@@ -1,9 +1,9 @@
 use agenthooksprotocol::{
     Attachment, Hooks,
     body::{BodyChunkFuture, BodyError, BodyStream},
-    ergonomic_inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
     generated::CanonicalMessageRole,
     hooks::{Capabilities, EventGrant, HooksOptions},
+    inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
 };
 use futures::executor::block_on;
 use serde_json::{Value, json};

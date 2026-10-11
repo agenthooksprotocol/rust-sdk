@@ -6,9 +6,9 @@ use agenthooksprotocol::{
     body::{BodyChunkFuture, BodyStream},
     client::{HookError, LocalFuture},
     content::{AuthorizedScope, UploadReceiver},
-    ergonomic_inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
     generated::CanonicalMessageRole,
     hooks::{Capabilities, EventGrant, HooksOptions},
+    inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
     transport::Request,
 };
 use serde_json::{Value, json};

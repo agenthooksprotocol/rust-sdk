@@ -1,11 +1,11 @@
 {
   "sourceRepository": "agenthooksprotocol/agent-hooks-protocol",
-  "sourceCommit": "8f91ac41c335cb29bdb40be205c46ab8b893e035",
+  "sourceCommit": "79a66018c0abcee7343525f65a6d4041494c24b8",
   "schemaRevision": "draft",
   "protocolVersion": "draft",
   "generatorVersion": "0.1.0",
   "language": "rust",
-  "schemaManifestSha256": "e4690b48c58d4197edc64642b03d46f8cc92d3ef0bc02fcec136a7fdaa9d0318",
+  "schemaManifestSha256": "ebb53945e52876c2a5af974db50c4a12f8217cfd5ee9c56be6dd64d5cbfe19cd",
   "documents": [
     {
       "path": "schema/draft/capabilities-request.schema.json",
@@ -25,7 +25,7 @@
     },
     {
       "path": "schema/draft/common.schema.json",
-      "sha256": "a17b92db32a7145cd548aa8c0c2794518a09864ba1149eeaa663bd1f3ef411b5"
+      "sha256": "9c4167616d7d8415481937b91a9f99a2ae37c075bab7519df6d8e98b9edd51c5"
     },
     {
       "path": "schema/draft/content-item.schema.json",
@@ -53,7 +53,7 @@
     },
     {
       "path": "schema/draft/effect.schema.json",
-      "sha256": "f04fd180950397496b69a252063a0fda9a03149ebd9e98b60a34b7563bd3f599"
+      "sha256": "dbc274e6c2ae2abe10091a867b2a69a060b33fcec4bb301dd466cd0cd79afe08"
     },
     {
       "path": "schema/draft/event.schema.json",
@@ -73,19 +73,19 @@
     },
     {
       "path": "schema/draft/intercept-deny-response.schema.json",
-      "sha256": "74f024322660b73e370ad086bde82edf0f94bbe7c440592de4ea083e292bcbf6"
+      "sha256": "92aacbc522c77315c668871bbb93e04b962da6c9105746a760f2b7da53825b91"
     },
     {
       "path": "schema/draft/intercept-no-effect-response.schema.json",
-      "sha256": "65429ed03e5580fbd906331f57d60042c18f97eb43d1103140ed9e7101642c16"
+      "sha256": "425dbbdd3759c5cbd025a2b2fea90ec180bc37b2eef1ba681c247d666df3f6bf"
     },
     {
       "path": "schema/draft/intercept-request.schema.json",
-      "sha256": "179c6afd7092bcb1fa91522e6fbe6f63aa28d5dfbef35c9aa661304028ba48c9"
+      "sha256": "4fb4f82b4dee14247be29933e2202744f4e383498abb0e9b8b4e1f6b34c1a45b"
     },
     {
       "path": "schema/draft/intercept-response.schema.json",
-      "sha256": "9b71855630e8f5194631395ba907696dea3cd232884aaea783bfe9341711404f"
+      "sha256": "9956fb19ad628bb8e94476e16f228b52fac6c7a966a70733c3f92a29d6d7b09b"
     },
     {
       "path": "schema/draft/json-rpc-message.schema.json",
@@ -93,7 +93,7 @@
     },
     {
       "path": "schema/draft/mcp-elicitation.schema.json",
-      "sha256": "52473b9e5dda9c514081319c9543d03a6ac85997a8fa98355b00502819f99e69"
+      "sha256": "48e36003e36fe577ae475b7a1f7c21a5aa5fd6bfda334bfa78941579ea218029"
     },
     {
       "path": "schema/draft/observe-notification.schema.json",
@@ -117,7 +117,7 @@
     },
     {
       "path": "schema/draft/task-workspace-event.schema.json",
-      "sha256": "9570f22e0e21094cad75091d3170fa56cd5695c6ed621ea65232d4dae70de106"
+      "sha256": "9252e94a60ba9a545c7a4a02aa57371af7bb4f4f09719efd191a789bf169dd53"
     },
     {
       "path": "schema/draft/tool-after.schema.json",

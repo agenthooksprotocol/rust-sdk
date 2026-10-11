@@ -70,8 +70,8 @@ mod runtime {
     use agenthooksprotocol::{
         Attachment,
         client::Decision,
-        ergonomic_inputs::{PartInput, ToolBeforeInput},
         generated::ToolBeforeInputOrigin,
+        inputs::{PartInput, ToolBeforeInput},
     };
     use std::sync::Mutex;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};

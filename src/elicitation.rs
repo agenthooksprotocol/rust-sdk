@@ -424,6 +424,14 @@ fn public_validate(name: &str, value: &Value) -> Result<()> {
     Ok(())
 }
 
+// Reducer commands are constructed exclusively from contextual generated effects.
+enum ElicitationEdit {
+    Return(Box<crate::generated::McpElicitationElicitResult>),
+    Deny,
+    Modify(bool, Box<crate::generated::FormAnswers>),
+    Message(Box<crate::generated::MessageEffect>),
+}
+
 /// Atomically stage a boundary. `candidate` is absent, not null, when no answer
 /// is selected. Changed complete JSON is serialized into the inline result text.
 pub fn stage_boundary(
@@ -432,8 +440,77 @@ pub fn stage_boundary(
     content: &dyn crate::content::ContentAccess,
     original: Option<&Exchange>,
 ) -> Result<Value> {
+    stage_boundary_admitted(
+        request,
+        effects,
+        content,
+        original,
+        &crate::contracts::Admission::default(),
+    )
+}
+
+pub(crate) fn stage_boundary_admitted(
+    request: &Value,
+    effects: &[Value],
+    content: &dyn crate::content::ContentAccess,
+    original: Option<&Exchange>,
+    admission: &crate::contracts::Admission,
+) -> Result<Value> {
+    use crate::generated::*;
     public_validate("intercept-request", request)?;
-    let mut event = request["params"]["event"].clone();
+    let mut typed: InterceptRequest = serde_json::from_value(request.clone())?;
+    let event_type = match typed.params.event.as_ref() {
+        Event::UserElicitationRequest(_) => "user.elicitation.request",
+        Event::UserElicitationResult(_) => "user.elicitation.result",
+        _ => return Err("Invalid request boundary".into()),
+    };
+    let response = json!({"jsonrpc":"2.0","id":request["id"],
+        "result":{"protocolVersion":"draft","effects":effects}});
+    public_validate("intercept-response", &response)?;
+    let parsed = match response_for_request(event_type, &serde_json::to_string(&response)?) {
+        ParseResult::Success { value, .. } => value,
+        ParseResult::Failure { diagnostics, .. } => {
+            return Err(format!("Invalid elicitation response: {diagnostics:?}").into());
+        }
+    };
+    let mut edits = Vec::new();
+    match parsed {
+        ContextualResponse::UserElicitationRequest(r) => {
+            if let Presence::Present(effects) = r.result.effects {
+                for effect in effects {
+                    edits.push(match *effect {
+                        UserElicitationRequestEffect::Return(e) => ElicitationEdit::Return(e.value),
+                        UserElicitationRequestEffect::Deny(_) => ElicitationEdit::Deny,
+                        UserElicitationRequestEffect::Message(e) => ElicitationEdit::Message(e),
+                        UserElicitationRequestEffect::Unknown(_) => {
+                            return Err("Effect not permitted at elicitation boundary".into());
+                        }
+                    });
+                }
+            }
+        }
+        ContextualResponse::UserElicitationResult(r) => {
+            if let Presence::Present(effects) = r.result.effects {
+                for effect in effects {
+                    edits.push(match *effect {
+                        UserElicitationResultEffect::ModifyContent(e) => ElicitationEdit::Modify(
+                            matches!(
+                                e.operation,
+                                UserElicitationResultModifyEffectOperation::Merge(_)
+                            ),
+                            e.value,
+                        ),
+                        UserElicitationResultEffect::Message(e) => ElicitationEdit::Message(e),
+                        UserElicitationResultEffect::Unknown(_) => {
+                            return Err("Effect not permitted at elicitation boundary".into());
+                        }
+                    });
+                }
+            }
+        }
+        _ => return Err("Invalid elicitation response".into()),
+    }
+    let event = request["params"]["event"].clone();
     if request["id"] != event["id"] {
         return Err("Request/event ID mismatch".into());
     }
@@ -455,96 +532,207 @@ pub fn stage_boundary(
         &owned
     };
     let payload = exchange.request.as_ref();
-    let mut answer = if result_stage {
+    let selected_answer = if result_stage {
         read_public_selected(&event["elicitation"], "result", content)?
     } else {
         None
     };
-    if let (Some(payload), Some(answer)) = (payload, answer.as_ref()) {
+    if let (Some(payload), Some(answer)) = (payload, selected_answer.as_ref()) {
         validate_answer(payload, answer, &public_validate)?;
     }
-    let caps = &request["params"]["capabilities"];
+    let mut answer: Option<McpElicitationElicitResult> =
+        selected_answer.map(serde_json::from_value).transpose()?;
+    let caps = &typed.params.capabilities;
     let mut denied = false;
     let mut terminal = false;
     let mut messages = Vec::new();
     // Compare final semantic state, not the occurrence of modify effects. This
     // preserves the original exact bytes, hints and reference for no-op batches.
     let original_answer = answer.clone();
-    for effect in effects {
-        public_validate("effect", effect)?;
-        let kind = effect["type"].as_str().ok_or("Effect type")?;
-        if !caps["effects"]
-            .as_array()
-            .is_some_and(|a| a.contains(&json!(kind)))
-        {
+    for edit in edits {
+        let kind = match &edit {
+            ElicitationEdit::Modify(..) => {
+                InterceptRequestParamsCapabilitiesEffectsItemKnown::Modify
+            }
+            ElicitationEdit::Return(_) => {
+                InterceptRequestParamsCapabilitiesEffectsItemKnown::Return
+            }
+            ElicitationEdit::Deny => InterceptRequestParamsCapabilitiesEffectsItemKnown::Deny,
+            ElicitationEdit::Message(_) => {
+                InterceptRequestParamsCapabilitiesEffectsItemKnown::Message
+            }
+        };
+        if !caps.effects.iter().any(|grant| matches!(grant, InterceptRequestParamsCapabilitiesEffectsItem::Known(known) if *known == kind)) {
             return Err("Effect not granted".into());
         }
-        if kind == "message" {
-            messages.push(effect.clone());
+        if let ElicitationEdit::Message(message) = edit {
+            messages.push(message);
             continue;
         }
-        validate_mode(
-            event["elicitation"]["mode"].as_str().ok_or("Mode")?,
-            caps.get("elicitation"),
-            "ahp",
-        )?;
+        let form_mode = match typed.params.event.as_ref() {
+            Event::UserElicitationRequest(event) => matches!(
+                event.elicitation.mode,
+                UserElicitationRequestEventElicitationMode::Form
+            ),
+            Event::UserElicitationResult(event) => matches!(
+                event.elicitation.mode,
+                UserElicitationResultEventElicitationMode::Form
+            ),
+            _ => unreachable!(),
+        };
+        let registered = match &caps.elicitation {
+            Presence::Present(grant) => {
+                if form_mode {
+                    matches!(grant.form, Presence::Present(_))
+                } else {
+                    matches!(grant.url, Presence::Present(_))
+                }
+            }
+            Presence::Missing => false,
+        };
+        if !registered {
+            return Err("Mode not registered".into());
+        }
         payload.ok_or("Effects require original selected request")?;
-        if !result_stage && ["return", "deny"].contains(&kind) {
-            if terminal {
-                return Err("Conflicting terminal effects".into());
+        match edit {
+            ElicitationEdit::Return(value) => {
+                if terminal {
+                    return Err("Conflicting terminal effects".into());
+                }
+                terminal = true;
+                answer = Some(*value);
             }
-            terminal = true;
-            denied = kind == "deny";
-            answer = Some(if denied {
-                json!({"action":"decline"})
-            } else {
-                effect["value"].clone()
-            });
-        } else if result_stage && kind == "modify" {
-            let op = effect["operation"].as_str().ok_or("Modify operation")?;
-            if effect["target"] != "content"
-                || !["replace", "merge"].contains(&op)
-                || caps["modify"]["content"][op] != true
-            {
-                return Err("Modify not granted".into());
+            ElicitationEdit::Deny => {
+                if terminal {
+                    return Err("Conflicting terminal effects".into());
+                }
+                terminal = true;
+                denied = true;
+                answer = Some(McpElicitationElicitResult::new(
+                    McpElicitationElicitResultAction::Decline,
+                ));
             }
-            let answer = answer.as_mut().ok_or("Modify requires selected result")?;
-            if event["elicitation"]["mode"] != "form"
-                || answer["action"] != "accept"
-                || !effect["value"].is_object()
-            {
-                return Err("Content modification requires an accepted form answer object".into());
-            }
-            if op == "replace" {
-                answer["content"] = effect["value"].clone();
-            } else {
-                let patch = effect["value"].as_object().ok_or("Merge object")?;
-                if !patch.is_empty() {
-                    if answer.get("content").is_none() {
-                        answer["content"] = json!({});
+            ElicitationEdit::Modify(merge, patch) => {
+                let granted = match &caps.modify {
+                    Presence::Present(modify) => match &modify.content {
+                        Presence::Present(grant) => {
+                            if merge {
+                                grant.merge
+                            } else {
+                                grant.replace
+                            }
+                        }
+                        Presence::Missing => false,
+                    },
+                    Presence::Missing => false,
+                };
+                if !granted {
+                    return Err("Modify not granted".into());
+                }
+                let answer = answer.as_mut().ok_or("Modify requires selected result")?;
+                if !form_mode || answer.action != McpElicitationElicitResultAction::Accept {
+                    return Err(
+                        "Content modification requires an accepted form answer object".into(),
+                    );
+                }
+                if !merge {
+                    answer.content = Presence::Present(patch);
+                } else if !patch.0.is_empty() {
+                    if matches!(answer.content, Presence::Missing) {
+                        answer.content = Presence::Present(Box::new(FormAnswers::new(
+                            std::collections::BTreeMap::new(),
+                        )));
                     }
-                    let map = answer["content"].as_object_mut().ok_or("Content object")?;
-                    for (k, v) in patch {
-                        map.insert(k.clone(), v.clone());
+                    if let Presence::Present(content) = &mut answer.content {
+                        content.0.extend(patch.0);
                     }
                 }
             }
-        } else {
-            return Err("Effect not permitted at elicitation boundary".into());
+            ElicitationEdit::Message(_) => unreachable!(),
         }
+        // Keep publication atomic, but admit every intermediate complete answer.
+        // Validate a temporary event so no-op batches retain original exact bytes.
+        let mut intermediate = typed.clone();
+        if let Some(answer) = answer.as_ref() {
+            let value = serde_json::to_value(answer)?;
+            if let Some(payload) = payload {
+                validate_answer(payload, &value, &public_validate)?;
+            }
+            admission.returned(&value)?;
+            if original_answer.as_ref() != Some(answer)
+                && result_stage
+                && let Event::UserElicitationResult(event) = intermediate.params.event.as_mut()
+            {
+                match &mut event.elicitation.result {
+                    Presence::Present(part) => match part.as_mut() {
+                        TextPart::TextBodyPart(body) => body.text = serde_json::to_string(answer)?,
+                        _ => return Err("Modify requires selected result".into()),
+                    },
+                    Presence::Missing => return Err("Modify requires selected result".into()),
+                }
+            }
+        }
+        public_validate("intercept-request", &serde_json::to_value(&intermediate)?)?;
+        admission.event(&serde_json::to_value(&intermediate.params.event)?)?;
     }
     if let Some(answer) = answer.as_ref() {
         if let Some(payload) = payload {
-            validate_answer(payload, answer, &public_validate)?;
+            validate_answer(payload, &serde_json::to_value(answer)?, &public_validate)?;
         }
-        if original_answer.as_ref() != Some(answer) && result_stage {
-            event["elicitation"]["result"]["text"] = json!(serde_json::to_string(answer)?);
+        if original_answer.as_ref() != Some(answer)
+            && result_stage
+            && let Event::UserElicitationResult(event) = typed.params.event.as_mut()
+        {
+            match &mut event.elicitation.result {
+                Presence::Present(part) => match part.as_mut() {
+                    TextPart::TextBodyPart(body) => body.text = serde_json::to_string(answer)?,
+                    _ => return Err("Modify requires selected result".into()),
+                },
+                Presence::Missing => return Err("Modify requires selected result".into()),
+            }
         }
     }
+    let event = serde_json::to_value(&typed.params.event)?;
     let mut staged =
         json!({"event":event,"denied":denied,"messages":messages,"externalCompletion":false});
     if let Some(answer) = answer {
-        staged["candidate"] = answer;
+        staged["candidate"] = serde_json::to_value(answer)?;
     }
     Ok(staged)
+}
+
+#[cfg(test)]
+mod typed_boundary_tests {
+    use super::*;
+    use crate::content::{AuthorizedScope, ContentContext, MemoryContentStore};
+
+    #[test]
+    fn request_boundary_rejects_result_only_and_unknown_effects_atomically() {
+        let store = MemoryContentStore::new(4096, 65536, 100);
+        let content = ContentContext {
+            store: &store,
+            scope: AuthorizedScope::new("scope"),
+        };
+        let request = json!({"jsonrpc":"2.0","id":"request","method":"hooks/intercept",
+            "params":{"protocolVersion":"draft","capabilities":{"effects":["message","modify","future.effect"],"elicitation":{"form":{}}},
+                "event":{"id":"request","source":"urn:test:host","time":"2026-09-15T12:00:00Z",
+                    "type":"user.elicitation.request","elicitation":{"server":"mcp","mode":"form"}}}});
+        let original = request.clone();
+        for invalid in [
+            json!({"type":"modify","target":"content","operation":"replace","value":{"answer":"wrong boundary"}}),
+            json!({"type":"return","value":[{"kind":"text"}]}),
+            json!({"type":"future.effect"}),
+        ] {
+            assert!(
+                stage_boundary(
+                    &request,
+                    &[json!({"type":"message","text":"pending"}), invalid],
+                    &content,
+                    None
+                )
+                .is_err()
+            );
+            assert_eq!(request, original);
+        }
+    }
 }

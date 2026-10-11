@@ -395,64 +395,80 @@ fn narrow_projected_grants(request: &mut Value) {
 /// Validate only the actual wire grants. Core runtime still owns correlation,
 /// specialized body validation, staging and applying the effect batch exactly once.
 pub(crate) fn validate_response_grants(request: &Value, response: &Value) -> Result<(), HookError> {
-    crate::canonical::validate("intercept-response", response).map_err(error)?;
+    use crate::protocol::{Kind, Operation};
+    let typed = crate::server::contextual_response(request, response).map_err(error)?;
+    let effects = crate::protocol::effects(&typed).map_err(error)?;
     let caps = &request["params"]["capabilities"];
     let event = &request["params"]["event"];
-    let effects = response["result"]["effects"]
-        .as_array()
-        .ok_or_else(|| error("missing effects"))?;
-    let advertised = |object: &Value, key: &str, value: &Value| {
+    let advertised = |object: &Value, key: &str, value: &str| {
         object[key]
             .as_array()
-            .is_some_and(|values| values.contains(value))
+            .is_some_and(|values| values.iter().any(|item| item.as_str() == Some(value)))
     };
-    for effect in effects {
-        if !advertised(caps, "effects", &effect["type"]) {
+    for effect in &effects {
+        let name = crate::server::authority_name(&effect.kind)
+            .ok_or_else(|| error("unsupported effect"))?;
+        if !advertised(caps, "effects", name) {
             return Err(error("unadvertised effect in projected request"));
         }
-        let kind = effect["type"].as_str().unwrap_or("");
         if event["type"]
             .as_str()
             .is_some_and(|name| name.starts_with("user.elicitation."))
-            && matches!(kind, "deny" | "return" | "modify")
+            && matches!(
+                effect.kind,
+                Kind::Deny | Kind::ReturnForm(_) | Kind::Modify { .. }
+            )
         {
             let mode = event["elicitation"]["mode"].as_str().unwrap_or("");
             if !caps["elicitation"][mode].is_object() {
                 return Err(error("elicitation mode not granted in projected request"));
             }
         }
-        match kind {
-            "modify" => {
-                let target = effect["target"].as_str().unwrap_or("");
-                let operation = effect["operation"].as_str().unwrap_or("");
-                if !matches!(operation, "replace" | "merge")
-                    || caps["modify"][target][operation] != true
-                {
+        match &effect.kind {
+            Kind::Modify {
+                target, operation, ..
+            } => {
+                let operation = match operation {
+                    Operation::Replace => "replace",
+                    Operation::Merge => "merge",
+                };
+                if caps["modify"][*target][operation] != true {
                     return Err(error("unadvertised modification in projected request"));
                 }
             }
-            "flow" => {
-                if !advertised(&caps["flow"], "operations", &effect["operation"]) {
+            Kind::Stop | Kind::Continue(_) => {
+                let operation = if matches!(effect.kind, Kind::Continue(_)) {
+                    "continue"
+                } else {
+                    "stop"
+                };
+                if !advertised(&caps["flow"], "operations", operation) {
                     return Err(error("unadvertised flow operation in projected request"));
                 }
             }
-            "inject" => {
-                if effect["target"] != "context"
-                    || effect["operation"] != "append"
-                    || caps["inject"]["context"]["append"] != true
+            Kind::Inject(injection) => {
+                if caps["inject"]["context"]["append"] != true
                     || !advertised(
                         &caps["inject"]["context"],
                         "deliverAt",
-                        &effect["deliverAt"],
+                        injection.deliver_at.as_str(),
                     )
                 {
                     return Err(error("unadvertised injection in projected request"));
                 }
             }
-            "deny" | "allow" | "ask" | "return" | "message" => {}
-            _ => return Err(error("unsupported effect")),
+            Kind::Deny
+            | Kind::Allow
+            | Kind::Ask
+            | Kind::Message(_)
+            | Kind::ReturnTool(_)
+            | Kind::ReturnMessages(_)
+            | Kind::ReturnText(_)
+            | Kind::ReturnForm(_)
+            | Kind::Unknown => {}
         }
     }
+
     Ok(())
 }
 
@@ -1227,7 +1243,7 @@ mod tests {
             let mut event = json!({"type":"tool.after", "items":[item()]});
             let content = InvocationAttachments::bind(
                 &mut event,
-                vec![crate::ergonomic_inputs::ContentSourceBinding {
+                vec![crate::inputs::__support::ContentSourceBinding {
                     path: vec!["items".into(), "0".into()],
                     source: attachment,
                 }],
@@ -1577,7 +1593,7 @@ mod tests {
 
     #[test]
     fn unknown_effects_are_rejected_even_if_advertised() {
-        let request = json!({"params":{"capabilities":{"effects":["com.example.unknown"]}}});
+        let request = json!({"params":{"event":{"type":"tool.before"},"capabilities":{"effects":["com.example.unknown"]}}});
         assert!(
             validate_response_grants(&request, &response(json!({"type":"com.example.unknown"})))
                 .is_err()

@@ -5,9 +5,9 @@ use agenthooksprotocol::{
     adapters::registered::ManagedBackend,
     body::{BodyChunkFuture, BodyError, BodyStream},
     client::{HookError, LocalFuture},
-    ergonomic_inputs::{MessageInput, PartInput, UserMessageOutboundInput},
     generated::{CanonicalMessageRole, UserMessageOutboundInputMessage},
     hooks::{Capabilities, EventGrant, HooksOptions},
+    inputs::{MessageInput, PartInput, UserMessageOutboundInput},
 };
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, io::Read, path::PathBuf, sync::Arc, time::Duration};

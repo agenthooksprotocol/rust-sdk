@@ -258,6 +258,7 @@ fn settled_reducer_probe(id: &str) -> bool {
         id,
         "incoming-deny-survives-allow-return"
             | "empty-preserves-incoming-deny"
+            | "omitted-effects-preserves-incoming-deny"
             | "prior-accepted-stop-empty"
             | "prior-accepted-stop-allow"
             | "prior-accepted-stop-return"
@@ -502,7 +503,7 @@ fn client(c: &Value) -> Result<bool> {
                 }
                 return Ok(result);
             }
-            // Only the five exact already-settled reducer probes acquire outside the SDK.
+            // Only the exact already-settled reducer probes acquire outside the SDK.
             let response = if let Some(peer) = peer.lock().unwrap().as_mut() {
                 peer.call(&s["request"])?
             } else {
@@ -660,6 +661,7 @@ fn raw_adversary(id: &str) -> bool {
             | "wrong-protocol-version"
             | "missing-effects-array"
             | "non-array-effects"
+            | "null-effects-array"
             | "null-result-envelope"
             | "unadvertised-flow-rejects-message"
             | "unadvertised-flow-operation"
@@ -1151,6 +1153,58 @@ fn main() {
 mod tests {
     use super::*;
     #[test]
+    fn null_effects_negative_fixture_preserves_invalid_wire_for_client_validation() {
+        let schemas = Schemas::bundled().unwrap();
+        let request = json!({"jsonrpc":"2.0","id":"null-effects-array","method":"hooks/intercept",
+            "params":{"protocolVersion":"draft","event":{"id":"null-effects-array","source":"urn:test:interop",
+                "type":"tool.before","time":"2026-09-01T00:00:00Z","call":{"id":"call"},"path":"native",
+                "tool":{"name":"task","origin":"native","input":{"task":1}}},"capabilities":interop::capabilities()}});
+        let response = json!({"jsonrpc":"2.0","id":"null-effects-array","result":{"protocolVersion":"draft","effects":null}});
+        let cases = vec![
+            json!({"id":"null-effects-array","request":request,"response":response,"expectError":true}),
+        ];
+        let receipts = Mutex::new(Vec::new());
+        let barriers = (Mutex::new(Vec::new()), Condvar::new());
+        let actual = reply(
+            &request,
+            &cases,
+            &schemas,
+            &receipts,
+            &barriers,
+            (
+                &json!({"auth":{"mode":"bearer","token":"TEST-only"}}),
+                "Bearer TEST-only",
+            ),
+        )
+        .unwrap();
+        assert_eq!(actual, response);
+        assert!(
+            actual["result"]
+                .as_object()
+                .unwrap()
+                .contains_key("effects")
+        );
+        assert!(schemas.validate("intercept-response", &actual).is_err());
+        assert!(interop::apply(&request, &actual, &schemas).is_err());
+        // A general expectError marker cannot authorize malformed application replies.
+        let mut ordinary_request = request.clone();
+        ordinary_request["id"] = json!("ordinary-invalid");
+        ordinary_request["params"]["event"]["id"] = json!("ordinary-invalid");
+        let mut ordinary_response = response;
+        ordinary_response["id"] = json!("ordinary-invalid");
+        let ordinary =
+            vec![json!({"id":"ordinary-invalid","response":ordinary_response,"expectError":true})];
+        let actual = reply(
+            &ordinary_request,
+            &ordinary,
+            &schemas,
+            &receipts,
+            &barriers,
+            (&json!({"auth":{"mode":"none"}}), ""),
+        );
+        assert!(actual.is_err());
+    }
+    #[test]
     fn settled_reducer_bypass_is_exactly_named_not_state_selected() {
         let mut request = json!({"id":"arbitrary", "params":{
             "event":{"type":"tool.before"},"state":{"flow":"stop","permission":"deny"}}});
@@ -1158,6 +1212,7 @@ mod tests {
         for id in [
             "incoming-deny-survives-allow-return",
             "empty-preserves-incoming-deny",
+            "omitted-effects-preserves-incoming-deny",
             "prior-accepted-stop-empty",
             "prior-accepted-stop-allow",
             "prior-accepted-stop-return",

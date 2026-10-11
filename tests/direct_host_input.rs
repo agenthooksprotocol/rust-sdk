@@ -1,7 +1,7 @@
 use agenthooksprotocol::{
     Attachment, Hooks, ToolBeforeInputOrigin,
-    ergonomic_inputs::{PartInput, ToolBeforeInput},
     hooks::{Capabilities, EventGrant, HooksOptions},
+    inputs::{PartInput, ToolBeforeInput},
 };
 use agenthooksprotocol::{
     adapters::registered::ManagedBackend,
