@@ -4,8 +4,9 @@ use crate::{
     adapters::registered::{self, BackendOptions, ManagedBackend},
     attachment::{Budget, InvocationAttachments},
     client::{
-        Client, Decision, DeliveryDiagnostic, DeliveryStage, FailurePolicy, Hook, HookError,
-        InputDecodeError, LocalFuture, Mode, ProtocolOutcome, Subscription, ToolContext,
+        Client, ConsumerProtocolOutcome, Decision, DeliveryDiagnostic, DeliveryStage,
+        FailurePolicy, Hook, HookError, InputDecodeError, LocalFuture, Mode, Subscription,
+        ToolContext,
     },
     content::OwnedContent,
     elicitation::Exchange,
@@ -1252,7 +1253,7 @@ impl<'a, T> InputBoundary<'a, T> {
 impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + Send + 'a>
     IntoFuture for InputBoundary<'a, T>
 {
-    type Output = Result<EventOutcome<Value>, HookError>;
+    type Output = Result<EventOutcome<generated::Event>, HookError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(mut self) -> Self::IntoFuture {
         let budget = self.settings.budget.take();
@@ -1268,13 +1269,21 @@ impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + 
                 }
                 let (event, sources) = self.input.into_host_event().map_err(err)?;
                 self.settings.sources.extend(sources);
-                EventBoundary {
+                let result = EventBoundary {
                     hooks: self.hooks,
                     event,
                     name: Some(self.name),
                     settings: self.settings,
                 }
-                .await
+                .await?;
+                Ok(EventOutcome {
+                    event: Ok(result.settled_event.clone()),
+                    settled_event: result.settled_event,
+                    effective_event: result.effective_event,
+                    content: result.content,
+                    diagnostics: result.diagnostics,
+                    outcome: result.outcome,
+                })
             }),
         )
     }
@@ -1309,8 +1318,11 @@ pub struct EventOutcome<T> {
     /// Payloads in schema-owned event slots and explicitly declared content targets.
     pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
-    pub outcome: ProtocolOutcome,
+    pub outcome: ConsumerProtocolOutcome,
+    /// Lossless JSON view retained for compatibility and raw pointer access.
     pub effective_event: Value,
+    /// Complete schema-owned effective event, decoded before returning settlement.
+    pub settled_event: generated::Event,
     pub event: Result<T, InputDecodeError>,
 }
 impl<T> EventOutcome<T> {
@@ -1396,9 +1408,15 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     outcome,
                     effective_event,
                     event: _,
+                    candidate_descriptor,
                     observations,
                     mut diagnostics,
                 } = result;
+                let outcome =
+                    ConsumerProtocolOutcome::decode(outcome.clone(), &name, &candidate_descriptor)
+                        .map_err(|error| {
+                            error.with_settlement(&outcome, &effective_event, &candidate_descriptor)
+                        })?;
                 for diagnostic in &mut diagnostics {
                     diagnostic.backend_id = self
                         .hooks
@@ -1407,6 +1425,16 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                         .find(|route| route.id == diagnostic.subscription_id)
                         .map(|route| route.backend_id.clone());
                 }
+                let settled_event = serde_json::from_value::<generated::Event>(
+                    effective_event.clone(),
+                )
+                .map_err(|error| {
+                    err(error).with_settlement(
+                        outcome.raw(),
+                        &effective_event,
+                        &candidate_descriptor,
+                    )
+                })?;
                 let (observations, preparation_diagnostics) = self
                     .hooks
                     .prepare_observations(
@@ -1426,13 +1454,21 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let event =
-                    serde_json::from_value(effective_event.clone()).map_err(InputDecodeError);
+                let event = Ok(serde_json::from_value(effective_event.clone()).map_err(
+                    |error| {
+                        err(error).with_settlement(
+                            outcome.raw(),
+                            &effective_event,
+                            &candidate_descriptor,
+                        )
+                    },
+                )?);
                 Ok(EventOutcome {
                     content: retained,
                     outcome,
                     diagnostics,
                     effective_event,
+                    settled_event,
                     event,
                 })
             }),
@@ -1488,7 +1524,7 @@ pub struct ToolOutcome<T, R = Value, P = Value> {
     /// effect values do not confer ownership of reference-shaped data.
     pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
-    pub outcome: ProtocolOutcome,
+    pub outcome: ConsumerProtocolOutcome,
     pub effective_input: Value,
     pub input: Result<T, InputDecodeError>,
 }
@@ -1596,6 +1632,21 @@ where
                     observations,
                     mut diagnostics,
                 } = result;
+                let outcome = ConsumerProtocolOutcome::decode(
+                    outcome.clone(),
+                    "tool.before",
+                    &candidate_descriptor,
+                )
+                .map_err(|error| {
+                    error.with_settlement(&outcome, &effective_input, &candidate_descriptor)
+                })?;
+                let input = Ok(input.map_err(|error| {
+                    err(error).with_settlement(
+                        outcome.raw(),
+                        &effective_input,
+                        &candidate_descriptor,
+                    )
+                })?);
                 for diagnostic in &mut diagnostics {
                     diagnostic.backend_id = self
                         .hooks
@@ -1628,7 +1679,15 @@ where
                 let candidate = if candidate_descriptor.is_null() {
                     None
                 } else {
-                    Some(serde_json::from_value(candidate_descriptor).map_err(err)?)
+                    Some(
+                        serde_json::from_value(candidate_descriptor.clone()).map_err(|error| {
+                            err(error).with_settlement(
+                                outcome.raw(),
+                                &effective_input,
+                                &candidate_descriptor,
+                            )
+                        })?,
+                    )
                 };
                 Ok(ToolOutcome {
                     candidate,

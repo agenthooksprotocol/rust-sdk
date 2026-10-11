@@ -288,12 +288,19 @@ fn generated_named_tool_event_is_lazy_and_accepts_serialize_only_arguments() {
     assert_eq!(serializations.load(Ordering::SeqCst), 1);
     assert_eq!(calls.lock().unwrap().len(), 1);
     assert_eq!(result.permission(), Permission::Allow);
-    let event = result.event.unwrap();
-    assert_eq!(event["tool"]["input"], json!({"count":1}));
-    assert_eq!(event["path"], "explicit-path");
-    assert_eq!(event["tool"]["origin"], "native");
-    assert_eq!(event["type"], "tool.before");
-    assert_eq!(event["source"], "urn:lazy");
+    let agenthooksprotocol::Event::ToolBefore(event) = result.event.unwrap() else {
+        panic!("typed tool event")
+    };
+    assert_eq!(
+        serde_json::to_value(&event.tool.input).unwrap(),
+        json!({"count":1})
+    );
+    assert_eq!(event.path, "explicit-path");
+    assert_eq!(
+        event.tool.origin,
+        agenthooksprotocol::generated::ExecutionEventToolOrigin::Native
+    );
+    assert_eq!(event.source, "urn:lazy");
     block_on(hooks.shutdown()).unwrap();
 }
 
