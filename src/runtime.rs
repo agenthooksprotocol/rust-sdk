@@ -133,11 +133,29 @@ impl<'a, T> EventBoundary<'a, T> {
 pub struct EventResult<'a, T> {
     pub outcome: ProtocolOutcome,
     pub effective_event: Value,
+    /// Complete settled candidate descriptor; null means absent, not a supplied null value.
+    pub candidate_descriptor: Value,
     pub event: Result<T, InputDecodeError>,
     pub observations: Vec<Observation<'a>>,
     pub diagnostics: Vec<DeliveryDiagnostic>,
 }
 impl<T> EventResult<'_, T> {
+    /// Typed view of the complete effective event; the reducer itself stays raw.
+    pub fn settled_event(&self) -> Result<crate::generated::Event, HookError> {
+        serde_json::from_value(self.effective_event.clone()).map_err(crate::protocol::failure)
+    }
+    /// Decode schema-owned settlement data with this boundary's event context.
+    pub fn typed_outcome(&self) -> Result<crate::client::ConsumerProtocolOutcome, HookError> {
+        let name = self.effective_event["type"]
+            .as_str()
+            .ok_or_else(|| error("missing event type"))?;
+        crate::client::ConsumerProtocolOutcome::decode(
+            self.outcome.clone(),
+            name,
+            &self.candidate_descriptor,
+        )
+    }
+
     pub fn permission(&self) -> Decision {
         self.outcome.permission()
     }
@@ -318,6 +336,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 diagnostics: delivery_diagnostics(&state),
                 outcome: state,
                 effective_event: input,
+                candidate_descriptor,
                 event: decoded,
                 observations,
             })

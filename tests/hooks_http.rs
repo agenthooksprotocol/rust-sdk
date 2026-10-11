@@ -158,10 +158,12 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
         .initial_state(Decision::Allow)
         .await
         .unwrap();
-    assert_eq!(
-        cached.outcome.supplied_result(),
-        Some(&json!({"cached":true}))
-    );
+    let Some(agenthooksprotocol::client::SettledCandidate::Opaque(value)) =
+        cached.outcome.supplied_result()
+    else {
+        panic!("opaque tool result")
+    };
+    assert_eq!(value, &json!({"cached":true}));
     assert!(!cached.outcome.can_execute());
     let denied = hooks
         .tool_input(Input {

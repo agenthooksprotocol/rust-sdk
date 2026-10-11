@@ -18,6 +18,7 @@ pub type LocalFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub struct HookError {
     message: String,
     code: Option<crate::generated::DeliveryDiagnosticCode>,
+    accepted_settlement: Option<Value>,
 }
 /// Compatibility constructor for an unclassified transport failure.
 #[allow(non_snake_case)]
@@ -25,9 +26,31 @@ pub fn HookError(message: String) -> HookError {
     HookError {
         message,
         code: None,
+        accepted_settlement: None,
     }
 }
 impl HookError {
+    /// Raw canonical evidence retained when the consumer cannot decode an accepted settlement.
+    /// This is not execution authorization and does not roll back accepted protocol effects.
+    pub fn accepted_settlement(&self) -> Option<&Value> {
+        self.accepted_settlement.as_ref()
+    }
+    pub(crate) fn with_settlement(
+        mut self,
+        outcome: &ProtocolOutcome,
+        effective: &Value,
+        candidate: &Value,
+    ) -> Self {
+        self.accepted_settlement = Some(json!({
+            "effectiveValue": effective, "permission": outcome.decision,
+            "candidate": candidate, "messages": outcome.messages,
+            "injections": outcome.injections, "responses": outcome.responses,
+            "stopped": outcome.stopped, "continuationRequested": outcome.continuation_requested,
+            "instructions": outcome.instructions, "approvalInvalidated": outcome.approval_invalidated
+        }));
+        self.classified(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)
+    }
+
     pub fn classified(mut self, code: crate::generated::DeliveryDiagnosticCode) -> Self {
         self.code = Some(code);
         self
@@ -347,6 +370,111 @@ impl ProtocolOutcome {
         }
     }
 }
+/// Schema-owned settlement data for the high-level consumer facade.
+/// The raw reducer outcome remains available explicitly through `raw()`.
+#[derive(Debug, Clone)]
+pub struct ConsumerProtocolOutcome {
+    pub messages: Vec<crate::generated::MessageEffect>,
+    pub injections: Vec<crate::generated::InjectEffect>,
+    pub responses: Vec<crate::generated::InterceptResponse>,
+    pub settled_candidate: Option<crate::generated::Candidate<SettledCandidate>>,
+    raw: ProtocolOutcome,
+}
+
+/// Returned values whose ownership is determined by the originating event.
+/// Tool/application results remain opaque; use a declared contract or typed tool boundary.
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum SettledCandidate {
+    Summary(crate::generated::TextParts),
+    Messages(crate::generated::CanonicalMessages),
+    Elicitation(crate::generated::McpElicitationElicitResult),
+    Opaque(Value),
+}
+
+impl ConsumerProtocolOutcome {
+    pub fn raw(&self) -> &ProtocolOutcome {
+        &self.raw
+    }
+    pub fn candidate(&self) -> Option<&SettledCandidate> {
+        self.settled_candidate
+            .as_ref()
+            .map(|candidate| &candidate.value)
+    }
+    /// Decode a caller-owned candidate and provenance without erasing its envelope.
+    /// Use a boundary contract to validate these types atomically before acceptance.
+    pub fn candidate_as<R: DeserializeOwned, P: DeserializeOwned>(
+        &self,
+    ) -> Result<Option<crate::generated::Candidate<R, P>>, HookError> {
+        self.settled_candidate
+            .as_ref()
+            .map(|candidate| {
+                let value = serde_json::to_value(candidate).map_err(crate::protocol::failure)?;
+                serde_json::from_value(value).map_err(crate::protocol::failure)
+            })
+            .transpose()
+    }
+    pub fn supplied_result(&self) -> Option<&SettledCandidate> {
+        if self.authorized && !self.stopped {
+            self.candidate()
+        } else {
+            None
+        }
+    }
+    pub(crate) fn decode(
+        raw: ProtocolOutcome,
+        event_type: &str,
+        descriptor: &Value,
+    ) -> Result<Self, HookError> {
+        fn decode<T: DeserializeOwned>(value: &Value) -> Result<T, HookError> {
+            serde_json::from_value(value.clone()).map_err(crate::protocol::failure)
+        }
+        let messages = raw.messages.iter().map(decode).collect::<Result<_, _>>()?;
+        let injections = raw
+            .injections
+            .iter()
+            .map(decode)
+            .collect::<Result<_, _>>()?;
+        let responses = raw.responses.iter().map(decode).collect::<Result<_, _>>()?;
+        let value = raw
+            .candidate
+            .as_ref()
+            .map(|value| -> Result<_, HookError> {
+                Ok(match event_type {
+                    "context.compact.before" => SettledCandidate::Summary(decode(value)?),
+                    "model.request.before" => SettledCandidate::Messages(decode(value)?),
+                    "user.elicitation.request" => SettledCandidate::Elicitation(decode(value)?),
+                    _ => SettledCandidate::Opaque(value.clone()),
+                })
+            })
+            .transpose()?;
+        let settled_candidate = match value {
+            None => None,
+            Some(value) => {
+                let descriptor: crate::generated::Candidate<Value> = decode(descriptor)?;
+                Some(crate::generated::Candidate {
+                    value,
+                    provenance: descriptor.provenance,
+                    additional_properties: descriptor.additional_properties,
+                })
+            }
+        };
+        Ok(Self {
+            messages,
+            injections,
+            responses,
+            settled_candidate,
+            raw,
+        })
+    }
+}
+impl std::ops::Deref for ConsumerProtocolOutcome {
+    type Target = ProtocolOutcome;
+    fn deref(&self) -> &Self::Target {
+        &self.raw
+    }
+}
+
 /// Lifecycle of local evidence, not a wire disposition or execution receipt.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum BoundaryStatus {
@@ -537,12 +665,34 @@ pub struct BoundaryResult<'a, T> {
     pub(crate) candidate_descriptor: Value,
     pub outcome: ProtocolOutcome,
     pub effective_input: Value,
+    /// Complete effective event from the settled request, including opaque host facts.
+    pub effective_event: Value,
     /// Freshly decoded after protocol acceptance; failure never rolls back effects.
     pub input: Result<T, InputDecodeError>,
     pub observations: Vec<Observation<'a>>,
     pub diagnostics: Vec<DeliveryDiagnostic>,
 }
 impl<T> BoundaryResult<'_, T> {
+    /// Decode the complete settled event without reconstructing it from input.
+    pub fn settled_event(&self) -> Result<crate::generated::Event, HookError> {
+        serde_json::from_value(self.effective_event.clone()).map_err(|error| {
+            crate::protocol::failure(error).with_settlement(
+                &self.outcome,
+                &self.effective_event,
+                &self.candidate_descriptor,
+            )
+        })
+    }
+
+    /// Decode schema-owned messages, complete injections and accepted responses.
+    pub fn typed_outcome(&self) -> Result<ConsumerProtocolOutcome, HookError> {
+        ConsumerProtocolOutcome::decode(
+            self.outcome.clone(),
+            "tool.before",
+            &self.candidate_descriptor,
+        )
+    }
+
     pub fn permission(&self) -> Decision {
         self.outcome.permission()
     }
@@ -907,6 +1057,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
                 diagnostics: delivery_diagnostics(&state),
                 outcome: state,
                 effective_input: input,
+                effective_event: request["params"]["event"].clone(),
                 input: decoded,
                 observations,
             })
@@ -943,5 +1094,113 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod consumer_outcome_tests {
+    use super::*;
+    use crate::generated::{
+        Candidate, CanonicalMessages, InjectEffect, InterceptResponse, MessageEffect, Presence,
+    };
+
+    fn outcome(candidate: Value) -> (ProtocolOutcome, Value) {
+        native_outcome(&json!({"permission":"allow", "candidate":candidate})).unwrap()
+    }
+
+    #[test]
+    fn typed_settlement_preserves_complete_envelopes_and_opaque_nested_extras() {
+        let messages = json!([{"id":"msg", "role":"assistant", "parts":[{"id":"part", "kind":"text", "mediaType":"text/plain", "selection":"body", "text":"ok", "vendor":{"opaque":[null,42]}}], "vendor":{"data":true}}]);
+        let descriptor =
+            json!({"value":messages,"provenance":{"vendor":[null,1]},"extra":{"keep":true}});
+        let (mut raw, candidate) = outcome(descriptor.clone());
+        raw.authorized = true;
+        raw.messages.push(json!({"type":"message","text":"notice"}));
+        let injection = json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":messages});
+        raw.injections.push(injection.clone());
+        let response = json!({"jsonrpc":"2.0","id":"accepted","result":{"protocolVersion":"draft","effects":[injection.clone()],"extensions":{"vendor":{"opaque":[null,1]}}},"vendor":{"envelope":true}});
+        raw.responses.push(response.clone());
+        let typed =
+            ConsumerProtocolOutcome::decode(raw, "model.request.before", &candidate).unwrap();
+        let _: &Vec<MessageEffect> = &typed.messages;
+        let _: &Vec<InjectEffect> = &typed.injections;
+        let _: &Vec<InterceptResponse> = &typed.responses;
+        assert_eq!(typed.messages[0].text, "notice");
+        assert_eq!(
+            serde_json::to_value(&typed.injections[0]).unwrap(),
+            injection
+        );
+        assert_eq!(serde_json::to_value(&typed.responses[0]).unwrap(), response);
+        let candidate: &Candidate<SettledCandidate> = typed.settled_candidate.as_ref().unwrap();
+        assert_eq!(serde_json::to_value(candidate).unwrap(), descriptor);
+        assert_eq!(
+            candidate.provenance,
+            Presence::Present(descriptor["provenance"].clone())
+        );
+        assert_eq!(
+            candidate.additional_properties["extra"],
+            descriptor["extra"]
+        );
+        let SettledCandidate::Messages(value) = typed.supplied_result().unwrap() else {
+            panic!("messages must remain typed")
+        };
+        let _: &CanonicalMessages = value;
+        assert_eq!(serde_json::to_value(value).unwrap(), messages);
+    }
+
+    #[test]
+    fn absence_and_supplied_null_remain_distinct_and_invalid_owned_candidates_fail() {
+        let (raw, candidate) = outcome(Value::Null);
+        assert!(
+            ConsumerProtocolOutcome::decode(raw, "tool.before", &candidate)
+                .unwrap()
+                .candidate()
+                .is_none()
+        );
+        let (raw, candidate) = outcome(json!({"value":null}));
+        let typed =
+            ConsumerProtocolOutcome::decode(raw.clone(), "tool.before", &candidate).unwrap();
+        let decoded: Option<Candidate<Option<String>, Value>> = typed.candidate_as().unwrap();
+        assert_eq!(decoded.unwrap().value, None);
+        assert!(matches!(
+            ConsumerProtocolOutcome::decode(raw.clone(), "tool.before", &candidate)
+                .unwrap()
+                .candidate(),
+            Some(SettledCandidate::Opaque(Value::Null))
+        ));
+        assert!(ConsumerProtocolOutcome::decode(raw, "model.request.before", &candidate).is_err());
+        let (mut raw, candidate) = outcome(Value::Null);
+        raw.messages.push(json!({"type":"message", "text":42}));
+        assert!(ConsumerProtocolOutcome::decode(raw, "tool.before", &candidate).is_err());
+    }
+
+    #[test]
+    fn summary_candidate_uses_text_parts_without_erasing_open_part_extras() {
+        let value = json!([{"id":"summary", "kind":"text", "mediaType":"text/plain", "selection":"body", "text":"summary", "vendor":{"opaque":[null,1]}}]);
+        let descriptor =
+            json!({"value":value,"provenance":{"vendor":"source"},"vendor":{"extra":1}});
+        let (raw, candidate) = outcome(descriptor.clone());
+        let typed =
+            ConsumerProtocolOutcome::decode(raw, "context.compact.before", &candidate).unwrap();
+        let SettledCandidate::Summary(parts) = typed.candidate().unwrap() else {
+            panic!("summary must be text parts")
+        };
+        let _: &crate::generated::TextParts = parts;
+        assert_eq!(
+            serde_json::to_value(typed.settled_candidate.as_ref().unwrap()).unwrap(),
+            descriptor
+        );
+    }
+
+    #[test]
+    fn elicitation_retains_action_meta_and_open_answer_payload() {
+        let value = json!({"action":"accept","content":{"anything":"opaque","flags":["one","two"]},"_meta":{"vendor":{"keep":1}}});
+        let (raw, candidate) = outcome(json!({"value":value}));
+        let typed =
+            ConsumerProtocolOutcome::decode(raw, "user.elicitation.request", &candidate).unwrap();
+        let SettledCandidate::Elicitation(answer) = typed.candidate().unwrap() else {
+            panic!("complete form answer")
+        };
+        assert_eq!(serde_json::to_value(answer).unwrap(), value);
     }
 }

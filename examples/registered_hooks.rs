@@ -106,7 +106,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if result.outcome.is_denied() {
         println!("Denied: do not execute the tool or consume a supplied result.");
     } else if let Some(value) = result.outcome.supplied_result() {
-        println!("Hook supplied a result; do not execute the tool: {value}");
+        println!("Hook supplied a result; do not execute the tool: {value:?}");
     } else if result.outcome.can_execute() {
         // Re-deserialization occurs after the effective protocol input settles.
         // A typed decode failure must not fall back to the original input.

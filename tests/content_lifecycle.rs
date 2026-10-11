@@ -1256,8 +1256,14 @@ fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
     );
     assert_eq!(result.effective_input, opaque);
     assert_eq!(result.outcome.candidate, Some(opaque));
-    assert_eq!(result.outcome.messages, vec![message]);
-    assert_eq!(result.outcome.injections, vec![injection]);
+    assert_eq!(
+        serde_json::to_value(&result.outcome.messages).unwrap(),
+        json!([message])
+    );
+    assert_eq!(
+        serde_json::to_value(&result.outcome.injections).unwrap(),
+        json!([injection])
+    );
     assert!(!result.outcome.responses.is_empty());
     for path in [
         "/message/messages/0/parts/0",

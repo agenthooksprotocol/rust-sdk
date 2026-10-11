@@ -194,7 +194,10 @@ fn ordinary_json_registration_typed_modification_return_deny_and_shutdown() {
     assert!(backend.messages.lock().unwrap().is_empty());
     let result = block_on(lazy).unwrap();
     assert_eq!(result.input.unwrap().command, "new");
-    assert_eq!(result.outcome.candidate(), Some(&json!({"cached":true})));
+    assert_eq!(
+        result.outcome.raw().candidate(),
+        Some(&json!({"cached":true}))
+    );
     assert_eq!(backend.messages.lock().unwrap().len(), 2);
     let first = backend.messages.lock().unwrap()[0].clone();
     assert_eq!(first["params"]["event"]["source"], "urn:example:host");
@@ -283,7 +286,7 @@ fn named_facade_inventory_matches_the_generated_canonical_inventory() {
 #[test]
 fn decoding_failure_does_not_undo_settled_effects() {
     let backend = Arc::new(Backend::default());
-    *backend.effects.lock().unwrap() = json!([{"type":"modify","target":"input","operation":"merge","value":{"timeout_ms":"not an integer"}}]);
+    *backend.effects.lock().unwrap() = json!([{"type":"modify","target":"input","operation":"merge","value":{"timeout_ms":"not an integer"}},{"type":"allow"}]);
     let hooks = Hooks::new(registration(false), options(backend, false)).unwrap();
     let result = block_on(
         hooks
@@ -291,10 +294,12 @@ fn decoding_failure_does_not_undo_settled_effects() {
             .context(context())
             .initial_state(Decision::Allow),
     )
-    .unwrap();
-    assert!(result.input.is_err());
-    assert_eq!(result.effective_input["timeout_ms"], "not an integer");
-    assert!(!result.outcome.is_denied());
+    .err()
+    .expect("typed input decode must fail closed");
+    let settlement = result.accepted_settlement().unwrap();
+    assert_eq!(settlement["effectiveValue"]["timeout_ms"], "not an integer");
+    assert_eq!(settlement["permission"], "allow");
+    assert_eq!(settlement["responses"].as_array().unwrap().len(), 1);
 }
 #[test]
 fn registration_filters_and_configured_source_are_enforced() {
