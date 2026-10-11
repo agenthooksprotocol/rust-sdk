@@ -22,10 +22,7 @@ fn authentication_and_network_policy_fail_closed() {
     );
     // An absent authentication binding permits anonymous construction when HTTP is enabled.
     assert_eq!(unconfigured.is_ok(), cfg!(feature = "reqwest"));
-    let anonymous = BackendOptions {
-        allow_anonymous_http: true,
-        ..options
-    };
+    let anonymous = BackendOptions { ..options };
     for url in [
         "http://example.com",
         "http://127.0.0.1",
@@ -44,7 +41,6 @@ fn http_feature_is_explicit() {
     let err = from_registration(
         &json!({"transport":{"type":"http","url":"https://example.com"}}),
         &BackendOptions {
-            allow_anonymous_http: true,
             ..Default::default()
         },
     )

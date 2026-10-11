@@ -15,7 +15,7 @@
 use agenthooksprotocol::{
     EventType, Registration, ToolBeforeInputOrigin,
     capability::{self, ModifyOperation},
-    client::Decision,
+    client::Permission,
     hooks::{Hooks, HooksOptions},
     inputs::ToolBeforeInput,
     state,
@@ -89,7 +89,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .with_tool_kind("shell".into()),
         )
         // Native policy already decided for this exact occurrence; not execution.
-        .initial_snapshot(state::initial(Decision::Allow))?;
+        .initial_snapshot(state::initial(Permission::Allow))?;
     // Dispatch is lazy. Event identity/time are generated and source is bound
     // to the explicit host authority when this boundary is awaited.
     let result = pending.await;
@@ -110,7 +110,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else if result.outcome.can_execute() {
         // Re-deserialization occurs after the effective protocol input settles.
         // A typed decode failure must not fall back to the original input.
-        let effective = result.input?;
+        let effective = result.input;
         println!("Authorized effective input: {effective:?}");
         println!("The host would execute this input here; this example does not.");
     } else {

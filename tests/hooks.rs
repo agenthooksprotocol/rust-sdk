@@ -1,7 +1,7 @@
 use agenthooksprotocol::{
     Hooks,
     adapters::registered::ManagedBackend,
-    client::{Decision, HookError, LocalFuture, ToolContext},
+    client::{HookError, LocalFuture, Permission, ToolContext},
     hooks::{Capabilities, EventGrant, HooksOptions, NAMED_BOUNDARIES},
 };
 use std::future::IntoFuture;
@@ -83,12 +83,12 @@ fn generated_tool_input_preserves_application_type_and_host_facts() {
     let result = block_on(
         hooks
             .tool_before(proposal)
-            .initial_snapshot(state::initial(Decision::Allow))
+            .initial_snapshot(state::initial(Permission::Allow))
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(result.permission(), Decision::Allow);
-    assert_eq!(result.input.unwrap(), input());
+    assert_eq!(result.permission(), Permission::Allow);
+    assert_eq!(result.input, input());
     let messages = backend.messages.lock().unwrap();
     let event = &messages[0]["params"]["event"];
     assert_eq!(event["path"], "adapter");
@@ -190,14 +190,11 @@ fn ordinary_json_registration_typed_modification_return_deny_and_shutdown() {
     let lazy = hooks
         .tool_input(input())
         .context(context())
-        .initial_state(Decision::Allow);
+        .initial_state(Permission::Allow);
     assert!(backend.messages.lock().unwrap().is_empty());
     let result = block_on(lazy).unwrap();
-    assert_eq!(result.input.unwrap().command, "new");
-    assert_eq!(
-        result.outcome.raw().candidate(),
-        Some(&json!({"cached":true}))
-    );
+    assert_eq!(result.input.command, "new");
+    assert_eq!(result.outcome.candidate(), Some(&json!({"cached":true})));
     assert_eq!(backend.messages.lock().unwrap().len(), 2);
     let first = backend.messages.lock().unwrap()[0].clone();
     assert_eq!(first["params"]["event"]["source"], "urn:example:host");
@@ -217,7 +214,7 @@ fn ordinary_json_registration_typed_modification_return_deny_and_shutdown() {
         hooks
             .tool_input(input())
             .context(context())
-            .initial_state(Decision::Allow),
+            .initial_state(Permission::Allow),
     )
     .unwrap();
     assert!(denied.outcome.is_denied());
@@ -292,7 +289,7 @@ fn decoding_failure_does_not_undo_settled_effects() {
         hooks
             .tool_input(input())
             .context(context())
-            .initial_state(Decision::Allow),
+            .initial_state(Permission::Allow),
     )
     .err()
     .expect("typed input decode must fail closed");
@@ -412,7 +409,7 @@ fn concurrent_shutdown_waiter_retries_failed_backend() {
     assert!(poll_once(second.as_mut()).is_pending());
     assert_eq!(backend.attempts.get(), 1);
     failure
-        .send(Err(HookError("controlled failure".into())))
+        .send(Err(HookError::new("controlled failure")))
         .unwrap();
     assert!(matches!(
         poll_once(first.as_mut()),
@@ -432,7 +429,7 @@ fn failed_backend_shutdown_can_be_retried() {
     let backend = Arc::new(ControlledBackend::default());
     backend
         .next_shutdown()
-        .send(Err(HookError("controlled failure".into())))
+        .send(Err(HookError::new("controlled failure")))
         .unwrap();
     let hooks = Hooks::new(registration(false), options(backend.clone(), false)).unwrap();
     let error = block_on(hooks.shutdown()).unwrap_err();
@@ -572,7 +569,7 @@ fn full_native_snapshot_and_permission_are_preserved_by_primary_harness() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(result.permission(), Decision::Allow);
+    assert_eq!(result.permission(), Permission::Allow);
     assert_eq!(result.outcome.instructions, ["native context"]);
     assert_eq!(
         backend.messages.lock().unwrap()[0]["params"]["state"],
@@ -591,7 +588,7 @@ fn diagnostics_attribute_backend_without_exposing_transport_details() {
         }
         fn call(&self, _: Value, _: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
             Box::pin(async {
-                Err(HookError("secret transport response".into())
+                Err(HookError::new("secret transport response")
                     .classified(agenthooksprotocol::generated::DeliveryDiagnosticCode::Transport))
             })
         }
@@ -601,7 +598,7 @@ fn diagnostics_attribute_backend_without_exposing_transport_details() {
         hooks
             .tool_input(input())
             .context(context())
-            .initial_state(Decision::Allow),
+            .initial_state(Permission::Allow),
     )
     .unwrap();
     assert!(!result.outcome.can_execute());
@@ -646,7 +643,7 @@ fn signals_raised_during_final_delivery_poll_never_return_permission() {
         let boundary = hooks
             .tool_input(input())
             .context(context())
-            .initial_state(Decision::Allow);
+            .initial_state(Permission::Allow);
         let boundary = if budget {
             boundary.budget(signal)
         } else {
@@ -701,10 +698,10 @@ fn route_response_rejections_and_remote_errors_have_distinct_sanitized_codes() {
             hooks
                 .tool_input(input())
                 .context(context())
-                .initial_state(Decision::Allow),
+                .initial_state(Permission::Allow),
         )
         .unwrap();
-        assert_eq!(result.permission(), Decision::Deny);
+        assert_eq!(result.permission(), Permission::Deny);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].code, expected);
         assert!(result.diagnostics[0].synthetic_denial);

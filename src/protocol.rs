@@ -38,7 +38,7 @@ pub(crate) struct Effect<'a> {
     pub wire: Value,
 }
 pub(crate) fn failure(error: impl std::fmt::Display) -> HookError {
-    HookError(error.to_string())
+    HookError::new(error.to_string())
 }
 pub(crate) fn value(value: &impl Serialize) -> Result<Value, HookError> {
     serde_json::to_value(value).map_err(failure)

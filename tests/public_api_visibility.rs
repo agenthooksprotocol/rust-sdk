@@ -118,7 +118,8 @@ use agenthooksprotocol::{Hooks, inputs::ToolBeforeInput, generated::{Candidate,J
 pub fn boundary<'a>(hooks:&'a Hooks,input:ToolBeforeInput<JsonValue>)->ToolBoundary<'a,JsonValue,String> {
     hooks.tool_before(input).result_type::<String>()
 }
-pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.candidate }
+pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.outcome.settled_candidate }
+pub fn input(outcome:ToolOutcome<JsonValue,String>)->JsonValue { outcome.input }
 pub fn contract()->Contract<JsonValue> {Contract::new()}
 #[cfg(feature="typed-form")]
 pub fn form() {
@@ -139,6 +140,61 @@ pub fn form() {
 fn assembly_and_provisional_helpers_are_not_public_consumer_apis() {
     let consumer = Consumer::new();
     for (name, source, diagnostic) in [
+        (
+            "decision_alias",
+            "use agenthooksprotocol::client::Decision;",
+            "Decision",
+        ),
+        (
+            "consumer_wrapper",
+            "use agenthooksprotocol::client::ConsumerProtocolOutcome;",
+            "ConsumerProtocolOutcome",
+        ),
+        (
+            "error_function",
+            "fn old_error() { let _ = agenthooksprotocol::client::HookError(String::new()); }",
+            "HookError",
+        ),
+        (
+            "raw_outcome",
+            "fn raw(o: agenthooksprotocol::client::ProtocolOutcome) { let _ = o.raw(); }",
+            "raw",
+        ),
+        (
+            "duplicate_event",
+            "fn duplicate(o: agenthooksprotocol::hooks::EventOutcome) { let _ = o.effective_event; }",
+            "effective_event",
+        ),
+        (
+            "duplicate_settled_event",
+            "fn duplicate(o: agenthooksprotocol::hooks::EventOutcome) { let _ = o.settled_event; }",
+            "settled_event",
+        ),
+        (
+            "runtime_raw_event",
+            "fn duplicate(o: agenthooksprotocol::runtime::EventResult<'_, serde_json::Value>) { let _ = o.effective_event; }",
+            "effective_event",
+        ),
+        (
+            "client_raw_input",
+            "fn duplicate(o: agenthooksprotocol::client::BoundaryResult<'_, serde_json::Value>) { let _ = o.effective_input; }",
+            "effective_input",
+        ),
+        (
+            "consumer_typed_wrapper",
+            "fn wrapper(o: agenthooksprotocol::runtime::EventResult<'_, serde_json::Value>) { let _ = o.typed_outcome(); }",
+            "typed_outcome",
+        ),
+        (
+            "duplicate_candidate",
+            "fn duplicate(o: agenthooksprotocol::hooks::ToolOutcome<serde_json::Value>) { let _ = o.candidate; }",
+            "candidate",
+        ),
+        (
+            "legacy_compaction",
+            "use agenthooksprotocol::compaction::run_compaction;",
+            "run_compaction",
+        ),
         (
             "assembly_macro",
             "agenthooksprotocol::ahp_hooks_boundary_methods!(inventory);",

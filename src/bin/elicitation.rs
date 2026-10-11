@@ -109,8 +109,9 @@ fn execute(
     }
     // A result-stage modify changes the effective event body, not the runtime's
     // short-circuit candidate. Never reuse the preflight answer in its summary.
-    if result.effective_event["type"] == "user.elicitation.result" {
-        match result.effective_event["elicitation"].get("result") {
+    let event = serde_json::to_value(&result.event)?;
+    if event["type"] == "user.elicitation.result" {
+        match event["elicitation"].get("result") {
             Some(item) => match item["text"]
                 .as_str()
                 .filter(|_| item["selection"] == "body")
@@ -131,13 +132,13 @@ fn execute(
             }
         }
     }
-    staged["event"] = result.effective_event;
+    staged["event"] = event;
     staged["messages"] = json!(result.outcome.messages);
     staged["denied"] = json!(result.outcome.is_denied());
     if result.outcome.is_denied() {
         staged["candidate"] = json!({"action":"decline"});
-    } else if let Some(candidate) = result.outcome.candidate {
-        staged["candidate"] = candidate;
+    } else if let Some(candidate) = result.outcome.candidate() {
+        staged["candidate"] = serde_json::to_value(candidate)?;
     }
     Ok(staged)
 }

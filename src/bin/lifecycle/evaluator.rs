@@ -2,7 +2,7 @@
 //! Arbitrary lifecycle inputs are never projected through the synthetic `task` tool.
 use super::*;
 use agenthooksprotocol::client::{
-    BoundaryResult, Client, Decision, FailurePolicy, Hook, HookError, LocalFuture, Subscription,
+    BoundaryResult, Client, FailurePolicy, Hook, HookError, LocalFuture, Permission, Subscription,
     ToolContext,
 };
 
@@ -21,21 +21,17 @@ pub(super) fn sdk_client(request: &Value, hook: impl Hook + 'static) -> Client {
 
 pub(super) struct Evaluated {
     pub state: Value,
-    pub permission: Decision,
+    pub permission: Permission,
 }
 
 pub(super) async fn evaluate(client: &Client, request: &Value) -> Result<Evaluated> {
-    let decision = match s(&request["params"]["state"], "permission") {
-        "deny" => Decision::Deny,
-        "ask" => Decision::Ask,
-        "allow" => Decision::Allow,
-        _ => Decision::None,
-    };
-    let result = client
+    let mut boundary = client
         .tool_before(request["params"]["event"]["tool"]["input"].clone())
-        .initial_state(decision)
-        .capabilities(request["params"]["capabilities"].clone())
-        .await?;
+        .capabilities(request["params"]["capabilities"].clone());
+    if let Some(snapshot) = request["params"].get("state") {
+        boundary = boundary.initial_snapshot(snapshot)?;
+    }
+    let result = boundary.await?;
     let permission = result.outcome.decision;
     Ok(Evaluated {
         state: report(result)?,
@@ -48,19 +44,16 @@ fn report(result: BoundaryResult<'_, Value>) -> Result<Value> {
         return Err(failure.error.to_string().into());
     }
     let outcome = &result.outcome;
-    let denied = matches!(outcome.decision, Decision::Deny | Decision::Ask);
-    let candidate = outcome
-        .candidate
-        .as_ref()
-        .filter(|_| !denied && !outcome.stopped);
+    let denied = matches!(outcome.decision, Permission::Deny | Permission::Ask);
+    let candidate = outcome.candidate().filter(|_| !denied && !outcome.stopped);
     // Fixture host policy grants ordinary permission (and reauthorizes changed
     // input) when the SDK leaves permission undecided. This is not an SDK default.
     let decision = match outcome.decision {
-        Decision::None | Decision::Allow => "allow",
-        Decision::Ask => "ask",
-        Decision::Deny => "deny",
+        Permission::None | Permission::Allow => "allow",
+        Permission::Ask => "ask",
+        Permission::Deny => "deny",
     };
-    let mut state = json!({"decision":decision,"executed":false,"input":result.effective_input,"messages":outcome.messages.iter().map(|m| m["text"].clone()).collect::<Vec<_>>()});
+    let mut state = json!({"decision":decision,"executed":false,"input":serde_json::to_value(&result.event)?["tool"]["input"],"messages":outcome.messages.iter().map(|m| json!(m.text)).collect::<Vec<_>>()});
     if outcome.stopped {
         state["flow"] = json!("stop");
     }
@@ -68,7 +61,7 @@ fn report(result: BoundaryResult<'_, Value>) -> Result<Value> {
         state["injections"] = json!(outcome.injections);
     }
     if let Some(candidate) = candidate {
-        state["result"] = candidate.clone();
+        state["result"] = serde_json::to_value(candidate)?;
     }
     // Decode and application validation are a separate host gate. A refusal must
     // not masquerade as protocol rollback or claim execution happened.
@@ -101,6 +94,45 @@ pub(super) fn apply(request: &Value, response: &Value, schemas: &Schemas) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_null_candidate_and_stop_never_authorize_execution() {
+        let schemas = Schemas::bundled().unwrap();
+        let request = json!({
+            "jsonrpc":"2.0", "id":"native", "method":"hooks/intercept",
+            "params": {
+                "protocolVersion":"draft",
+                "event": {
+                    "id":"native", "source":"urn:rust:test", "type":"tool.before",
+                    "time":"2026-09-01T00:00:00Z", "path":"native",
+                    "call":{"id":"call"},
+                    "tool":{"origin":"native", "name":"task", "input":{}}
+                },
+                "capabilities":interop::capabilities(),
+                "state": {
+                    "permission":"allow",
+                    "candidate":{"value":null,"provenance":{"cache":true}},
+                    "flow":"stop"
+                }
+            }
+        });
+        let neutral = json!({"jsonrpc":"2.0","id":"native","result":{"protocolVersion":"draft","effects":[]}});
+        let report = apply(&request, &neutral, &schemas).unwrap();
+        assert_eq!(report["executed"], false);
+        assert_eq!(report["flow"], "stop");
+        assert!(report.get("result").is_none());
+
+        // Without stop, a present null candidate is still a supplied result,
+        // not an absent candidate authorizing ordinary host execution.
+        let mut request = request;
+        request["params"]["state"]
+            .as_object_mut()
+            .unwrap()
+            .remove("flow");
+        let report = apply(&request, &neutral, &schemas).unwrap();
+        assert_eq!(report["executed"], false);
+        assert_eq!(report.get("result"), Some(&Value::Null));
+    }
+
     #[test]
     fn sdk_preserves_merge_replace_and_invalidation() {
         let schemas = Schemas::bundled().unwrap();
@@ -166,7 +198,7 @@ mod tests {
         let actual = apply(&request, &response, &schemas).unwrap();
         let client = sdk_client(&request, AcquiredResponse(response.clone()));
         let evaluated = futures::executor::block_on(evaluate(&client, &request)).unwrap();
-        assert_eq!(evaluated.permission, Decision::None);
+        assert_eq!(evaluated.permission, Permission::None);
         assert_eq!(evaluated.state["decision"], "allow");
         assert_eq!(
             actual["input"],

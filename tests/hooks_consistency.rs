@@ -68,12 +68,18 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
     let result = pool
         .run_until(hooks.session_start(facts()).into_future())
         .unwrap();
-    let _: &agenthooksprotocol::hooks::EventOutcome<agenthooksprotocol::Event> = &result;
-    let _: &agenthooksprotocol::Event = &result.settled_event;
-    let event: agenthooksprotocol::Event = result.event.as_ref().unwrap().clone();
+    let _: &agenthooksprotocol::hooks::EventOutcome = &result;
+    let _: &agenthooksprotocol::Event = &result.event;
+    let event: agenthooksprotocol::Event = result.event.clone();
     assert!(matches!(event, agenthooksprotocol::Event::SessionStart(_)));
-    assert_eq!(result.effective_event["type"], "session.start");
-    assert_eq!(result.effective_event["manifest"], hooks.manifest());
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["type"],
+        "session.start"
+    );
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["manifest"],
+        hooks.manifest()
+    );
     assert!(
         backend.calls.lock().unwrap().len() == 1,
         "the operation delivered its observation before completion"
@@ -87,22 +93,21 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
     let settled = pool
         .run_until(hooks.event_for("session.start", same.clone()).into_future())
         .unwrap();
-    assert_eq!(
-        serde_json::to_value(&settled.settled_event).unwrap(),
-        settled.effective_event
-    );
     // The structural Event codec preserves open revision extras without changing
     // the strict canonical wire validator used by Hooks.
-    let mut future_revision = settled.effective_event.clone();
+    let mut future_revision = serde_json::to_value(&settled.event).unwrap().clone();
     future_revision["vendor"] = json!({"opaque":[null,{"kind":"caller-owned"}]});
     future_revision["session"]["vendor"] = json!({"nested":true});
     let decoded: agenthooksprotocol::Event =
         serde_json::from_value(future_revision.clone()).unwrap();
     assert_eq!(serde_json::to_value(decoded).unwrap(), future_revision);
-    let mut malformed = settled.effective_event.clone();
+    let mut malformed = serde_json::to_value(&settled.event).unwrap().clone();
     malformed["harness"]["name"] = json!(42);
     assert!(serde_json::from_value::<agenthooksprotocol::Event>(malformed).is_err());
-    assert_eq!(settled.effective_event["extensions"], same["extensions"]);
+    assert_eq!(
+        serde_json::to_value(&settled.event).unwrap()["extensions"],
+        same["extensions"]
+    );
     assert!(
         pool.run_until(hooks.event_for("session.start", same).into_future())
             .is_ok()
@@ -141,7 +146,10 @@ fn full_manifest_is_preserved_in_session_start() {
     let result = pool
         .run_until(hooks.session_start(facts()).into_future())
         .unwrap();
-    assert_eq!(result.effective_event["manifest"], manifest);
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["manifest"],
+        manifest
+    );
     pool.run_until(hooks.shutdown()).unwrap();
 }
 

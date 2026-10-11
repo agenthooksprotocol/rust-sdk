@@ -1175,14 +1175,14 @@ impl agenthooksprotocol::client::Hook for LiveHook {
             })()
             .map_err(|e| e.to_string());
             let _ = self.acquired.send(exchange.clone());
-            let response = exchange.map_err(agenthooksprotocol::client::HookError)?;
+            let response = exchange.map_err(agenthooksprotocol::client::HookError::new)?;
             self.accept
                 .lock()
                 .unwrap()
                 .recv_timeout(TIMEOUT)
                 .map_err(|_| {
-                    agenthooksprotocol::client::HookError(
-                        "occurrence cancelled before acceptance".into(),
+                    agenthooksprotocol::client::HookError::new(
+                        "occurrence cancelled before acceptance",
                     )
                 })?;
             Ok(response)

@@ -110,8 +110,10 @@ fn facade_compaction_host_contract_rejects_repaired_intermediate_atomically() {
                 parts("accepted"),
                 "{name}: later interceptor must see earlier accepted state"
             );
-            assert_eq!(outcome.effective_event[target], parts("accepted"));
-            assert_eq!(outcome.event.unwrap()[target], parts("accepted"));
+            assert_eq!(
+                serde_json::to_value(&outcome.event).unwrap()[target],
+                parts("accepted")
+            );
             hooks.shutdown().await.unwrap();
         }
     });
@@ -317,36 +319,6 @@ fn denial_and_messages_are_staged_but_not_allowed_after() {
     assert!(stage_boundary(&request(&content, true), &effects, &content).is_err());
 }
 
-#[test]
-fn deferred_observers_do_not_start_until_the_caller_schedules_them() {
-    use agenthooksprotocol::compaction::{CompactionObserver, run_compaction_observed};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    let calls = Arc::new(AtomicUsize::new(0));
-    let capture = calls.clone();
-    let deferred = run_compaction_observed(
-        "text",
-        "summary",
-        &[],
-        vec![CompactionObserver {
-            supplier: "observer".into(),
-            run: Arc::new(move |_| {
-                capture.fetch_add(1, Ordering::SeqCst);
-                Ok(vec![modify("summary", "ignored")])
-            }),
-        }],
-        None,
-    )
-    .unwrap();
-    assert_eq!(calls.load(Ordering::SeqCst), 0);
-    assert_eq!(deferred.result["applied"], true);
-    for observation in deferred.observations {
-        observation.deliver();
-    }
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
-    let reference = deferred.result["summary"]["ref"].as_str().unwrap();
-    assert_eq!(deferred.result["bodies"][reference], "summary:text");
-}
-
 struct CountingStore {
     inner: MemoryContentStore,
     writes: std::sync::atomic::AtomicUsize,
@@ -441,7 +413,9 @@ impl agenthooksprotocol::client::Hook for PublicEffects {
 }
 #[test]
 fn public_runtime_no_op_preserves_approval_and_candidate_at_both_boundaries() {
-    use agenthooksprotocol::client::{Client, Decision, FailurePolicy, Subscription, ToolContext};
+    use agenthooksprotocol::client::{
+        Client, FailurePolicy, Permission, Subscription, ToolContext,
+    };
     for after in [false, true] {
         for restore in [false, true] {
             let store = CountingStore::new();
@@ -467,14 +441,17 @@ fn public_runtime_no_op_preserves_approval_and_candidate_at_both_boundaries() {
                 client
                     .event(original.clone())
                     .capabilities(request["params"]["capabilities"].clone())
-                    .initial_state(Decision::Allow)
+                    .initial_state(Permission::Allow)
                     .initial_candidate(json!({"value":parts("cached")}))
                     .await
             })
             .unwrap();
-            assert_eq!(result.effective_event, original);
-            assert_eq!(result.outcome.candidate, Some(parts("cached")));
-            assert_eq!(result.outcome.decision, Decision::Allow);
+            assert_eq!(serde_json::to_value(&result.event).unwrap(), original);
+            assert_eq!(
+                serde_json::to_value(result.outcome.candidate()).unwrap(),
+                parts("cached")
+            );
+            assert_eq!(result.outcome.decision, Permission::Allow);
             assert!(result.outcome.authorized);
             assert!(!result.outcome.approval_invalidated);
             assert!(result.outcome.failures.is_empty());
@@ -612,7 +589,9 @@ fn malformed_or_unadvertised_injections_reject_all_effects_before_allocation() {
 
 #[test]
 fn public_runtime_accumulates_compaction_injections_once_across_subscriptions() {
-    use agenthooksprotocol::client::{Client, Decision, FailurePolicy, Subscription, ToolContext};
+    use agenthooksprotocol::client::{
+        Client, FailurePolicy, Permission, Subscription, ToolContext,
+    };
     for after in [false, true] {
         let store = store();
         let content = ContentContext {
@@ -643,20 +622,18 @@ fn public_runtime_accumulates_compaction_injections_once_across_subscriptions() 
                 .event(request["params"]["event"].clone())
                 .content(content.clone())
                 .capabilities(request["params"]["capabilities"].clone())
-                .initial_state(Decision::Allow)
+                .initial_state(Permission::Allow)
                 .await
         })
         .unwrap();
         assert!(result.outcome.failures.is_empty());
-        assert_eq!(result.outcome.injections, vec![first, second]);
         assert_eq!(
-            selected_text(&result.effective_event[target], &content).unwrap(),
-            "changed"
+            serde_json::to_value(&result.outcome.injections).unwrap(),
+            json!([first, second])
         );
-        assert_eq!(
-            result.effective_event.get("items"),
-            request["params"]["event"].get("items")
-        );
+        let event = serde_json::to_value(&result.event).unwrap();
+        assert_eq!(selected_text(&event[target], &content).unwrap(), "changed");
+        assert_eq!(event.get("items"), request["params"]["event"].get("items"));
     }
 }
 

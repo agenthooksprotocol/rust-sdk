@@ -48,7 +48,7 @@ impl<T: Serialize + DeserializeOwned> Contract<T> {
     }
 }
 fn failure(error: impl std::fmt::Display) -> HookError {
-    HookError(error.to_string())
+    HookError::new(error.to_string())
 }
 // Additional/defaulted decoded fields are allowed, but no supplied field may
 // disappear or change meaning. Flattened opaque bags satisfy this requirement.

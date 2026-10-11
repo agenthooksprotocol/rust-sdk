@@ -4,9 +4,8 @@ use crate::{
     adapters::registered::{self, BackendOptions, ManagedBackend},
     attachment::{Budget, InvocationAttachments},
     client::{
-        Client, ConsumerProtocolOutcome, Decision, DeliveryDiagnostic, DeliveryStage,
-        FailurePolicy, Hook, HookError, InputDecodeError, LocalFuture, Mode, Subscription,
-        ToolContext,
+        Client, DeliveryDiagnostic, DeliveryStage, FailurePolicy, Hook, HookError, LocalFuture,
+        Mode, Permission, ProtocolOutcome, Subscription, ToolContext,
     },
     content::OwnedContent,
     elicitation::Exchange,
@@ -42,7 +41,7 @@ impl Capabilities {
     /// runs here and event-specific validation runs in Hooks::new.
     pub fn from_value(value: impl Serialize) -> Result<Self, HookError> {
         let value = serde_json::to_value(value).map_err(err)?;
-        crate::canonical::validate("capabilities", &value).map_err(HookError)?;
+        crate::canonical::validate("capabilities", &value).map_err(HookError::new)?;
         Ok(Self(value))
     }
     fn effect(mut self, name: &str) -> Self {
@@ -229,7 +228,7 @@ impl HooksOptions {
         manifest: generated::StaticCapabilityManifest,
     ) -> Result<Self, HookError> {
         let manifest = serde_json::to_value(manifest).map_err(err)?;
-        crate::canonical::validate("capabilities-response", &json!({"jsonrpc":"2.0","id":"manifest","result":{"protocolVersion":"draft","manifest":manifest}})).map_err(HookError)?;
+        crate::canonical::validate("capabilities-response", &json!({"jsonrpc":"2.0","id":"manifest","result":{"protocolVersion":"draft","manifest":manifest}})).map_err(HookError::new)?;
         let mut grants = BTreeMap::new();
         for entry in manifest["events"]
             .as_array()
@@ -411,7 +410,7 @@ fn restore_effect_attachment_refs(
     Ok(())
 }
 fn err(value: impl std::fmt::Display) -> HookError {
-    HookError(value.to_string())
+    HookError::new(value.to_string())
 }
 fn matches(pattern: &str, name: &str) -> bool {
     pattern == name
@@ -617,7 +616,7 @@ impl Hooks {
             return Err(err("Hooks bounds must be positive"));
         }
         let registration = serde_json::to_value(registration).map_err(err)?;
-        crate::canonical::validate("registration", &registration).map_err(HookError)?;
+        crate::canonical::validate("registration", &registration).map_err(HookError::new)?;
         for (name, grant) in &options.capabilities {
             let descriptor = generated::boundary::ALL_BOUNDARIES
                 .iter()
@@ -627,7 +626,7 @@ impl Hooks {
                 let schema = descriptor
                     .capability_schema
                     .ok_or_else(|| err(format!("{name} is observation-only")))?;
-                crate::canonical::validate(schema, &caps.0).map_err(HookError)?;
+                crate::canonical::validate(schema, &caps.0).map_err(HookError::new)?;
             }
         }
         let mut ids = BTreeSet::new();
@@ -723,7 +722,7 @@ impl Hooks {
             next_id: AtomicU64::new(0),
         })
     }
-    pub fn event<T: Serialize + DeserializeOwned>(&self, event: T) -> EventBoundary<'_, T> {
+    pub fn event<T: Serialize>(&self, event: T) -> EventBoundary<'_, T> {
         EventBoundary {
             hooks: self,
             event,
@@ -731,11 +730,7 @@ impl Hooks {
             settings: Settings::default(),
         }
     }
-    pub fn event_for<T: Serialize + DeserializeOwned>(
-        &self,
-        name: &'static str,
-        event: T,
-    ) -> EventBoundary<'_, T> {
+    pub fn event_for<T: Serialize>(&self, name: &'static str, event: T) -> EventBoundary<'_, T> {
         EventBoundary {
             hooks: self,
             event,
@@ -1028,7 +1023,7 @@ impl Hooks {
                 match crate::canonical::validate("observe-notification", &observation.notification)
                 {
                     Ok(()) => hook.call(observation.notification).await,
-                    Err(e) => Err(HookError(e)
+                    Err(e) => Err(HookError::new(e)
                         .classified(generated::DeliveryDiagnosticCode::ProtocolRejection)),
                 };
             match result {
@@ -1145,7 +1140,7 @@ struct Settings<'a> {
     deadline: Option<Instant>,
     budget: Option<LocalFuture<'a, ()>>,
     cancellation: Option<LocalFuture<'a, ()>>,
-    initial: Option<Decision>,
+    initial: Option<Permission>,
     candidate: Option<Value>,
     capabilities: Option<Capabilities>,
     gates: Option<bool>,
@@ -1203,7 +1198,7 @@ macro_rules! settings_methods {
             self.settings.cancellation = Some(Box::pin(signal));
             self
         }
-        pub fn initial_state(mut self, decision: Decision) -> Self {
+        pub fn initial_state(mut self, decision: Permission) -> Self {
             self.settings.initial = Some(decision);
             self
         }
@@ -1253,7 +1248,7 @@ impl<'a, T> InputBoundary<'a, T> {
 impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + Send + 'a>
     IntoFuture for InputBoundary<'a, T>
 {
-    type Output = Result<EventOutcome<generated::Event>, HookError>;
+    type Output = Result<EventOutcome, HookError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(mut self) -> Self::IntoFuture {
         let budget = self.settings.budget.take();
@@ -1277,9 +1272,7 @@ impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + 
                 }
                 .await?;
                 Ok(EventOutcome {
-                    event: Ok(result.settled_event.clone()),
-                    settled_event: result.settled_event,
-                    effective_event: result.effective_event,
+                    event: result.event,
                     content: result.content,
                     diagnostics: result.diagnostics,
                     outcome: result.outcome,
@@ -1314,24 +1307,21 @@ impl<'a, T> EventBoundary<'a, T> {
         self
     }
 }
-pub struct EventOutcome<T> {
+pub struct EventOutcome {
     /// Payloads in schema-owned event slots and explicitly declared content targets.
     pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
-    pub outcome: ConsumerProtocolOutcome,
-    /// Lossless JSON view retained for compatibility and raw pointer access.
-    pub effective_event: Value,
-    /// Complete schema-owned effective event, decoded before returning settlement.
-    pub settled_event: generated::Event,
-    pub event: Result<T, InputDecodeError>,
+    pub outcome: ProtocolOutcome,
+    /// Complete schema-owned effective event, retaining unknown fields losslessly.
+    pub event: generated::Event,
 }
-impl<T> EventOutcome<T> {
-    pub fn permission(&self) -> Decision {
+impl EventOutcome {
+    pub fn permission(&self) -> Permission {
         self.outcome.permission()
     }
 }
-impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBoundary<'a, T> {
-    type Output = Result<EventOutcome<T>, HookError>;
+impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
+    type Output = Result<EventOutcome, HookError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(mut self) -> Self::IntoFuture {
         let budget = self.settings.budget.take();
@@ -1407,16 +1397,11 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 let crate::runtime::EventResult {
                     outcome,
                     effective_event,
-                    event: _,
-                    candidate_descriptor,
+                    event,
                     observations,
                     mut diagnostics,
+                    ..
                 } = result;
-                let outcome =
-                    ConsumerProtocolOutcome::decode(outcome.clone(), &name, &candidate_descriptor)
-                        .map_err(|error| {
-                            error.with_settlement(&outcome, &effective_event, &candidate_descriptor)
-                        })?;
                 for diagnostic in &mut diagnostics {
                     diagnostic.backend_id = self
                         .hooks
@@ -1425,16 +1410,6 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                         .find(|route| route.id == diagnostic.subscription_id)
                         .map(|route| route.backend_id.clone());
                 }
-                let settled_event = serde_json::from_value::<generated::Event>(
-                    effective_event.clone(),
-                )
-                .map_err(|error| {
-                    err(error).with_settlement(
-                        outcome.raw(),
-                        &effective_event,
-                        &candidate_descriptor,
-                    )
-                })?;
                 let (observations, preparation_diagnostics) = self
                     .hooks
                     .prepare_observations(
@@ -1454,21 +1429,10 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let event = Ok(serde_json::from_value(effective_event.clone()).map_err(
-                    |error| {
-                        err(error).with_settlement(
-                            outcome.raw(),
-                            &effective_event,
-                            &candidate_descriptor,
-                        )
-                    },
-                )?);
                 Ok(EventOutcome {
                     content: retained,
                     outcome,
                     diagnostics,
-                    effective_event,
-                    settled_event,
                     event,
                 })
             }),
@@ -1519,19 +1483,17 @@ impl<'a, T, R, P> ToolBoundary<'a, T, R, P> {
     }
 }
 pub struct ToolOutcome<T, R = Value, P = Value> {
-    pub candidate: Option<generated::Candidate<R, P>>,
     /// Schema-owned returned payloads. Opaque application input, candidates, and
     /// effect values do not confer ownership of reference-shaped data.
     pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
-    pub outcome: ConsumerProtocolOutcome,
-    pub effective_input: Value,
+    pub outcome: ProtocolOutcome<R, P>,
     /// Complete schema-owned settled event, retaining opaque host event facts.
-    pub settled_event: generated::Event,
-    pub input: Result<T, InputDecodeError>,
+    pub event: generated::Event,
+    pub input: T,
 }
 impl<T, R, P> ToolOutcome<T, R, P> {
-    pub fn permission(&self) -> Decision {
+    pub fn permission(&self) -> Permission {
         self.outcome.permission()
     }
 }
@@ -1628,38 +1590,22 @@ where
                 }
                 let crate::client::BoundaryResult {
                     outcome,
+                    raw_outcome,
                     candidate_descriptor,
                     effective_input,
-                    effective_event,
+                    event,
                     input,
                     observations,
                     mut diagnostics,
+                    ..
                 } = result;
-                let outcome = ConsumerProtocolOutcome::decode(
-                    outcome.clone(),
-                    "tool.before",
-                    &candidate_descriptor,
-                )
-                .map_err(|error| {
-                    error.with_settlement(&outcome, &effective_input, &candidate_descriptor)
-                })?;
-                let settled_event = serde_json::from_value::<generated::Event>(
-                    effective_event.clone(),
-                )
-                .map_err(|error| {
+                let input = input.map_err(|error| {
                     err(error).with_settlement(
-                        outcome.raw(),
-                        &effective_event,
-                        &candidate_descriptor,
-                    )
-                })?;
-                let input = Ok(input.map_err(|error| {
-                    err(error).with_settlement(
-                        outcome.raw(),
+                        &raw_outcome,
                         &effective_input,
                         &candidate_descriptor,
                     )
-                })?);
+                })?;
                 for diagnostic in &mut diagnostics {
                     diagnostic.backend_id = self
                         .hooks
@@ -1689,26 +1635,14 @@ where
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let candidate = if candidate_descriptor.is_null() {
-                    None
-                } else {
-                    Some(
-                        serde_json::from_value(candidate_descriptor.clone()).map_err(|error| {
-                            err(error).with_settlement(
-                                outcome.raw(),
-                                &effective_input,
-                                &candidate_descriptor,
-                            )
-                        })?,
-                    )
-                };
+                let outcome = outcome.retype::<R, P>().map_err(|error| {
+                    error.with_settlement(&raw_outcome, &effective_input, &candidate_descriptor)
+                })?;
                 Ok(ToolOutcome {
-                    candidate,
                     content: retained,
                     outcome,
                     diagnostics,
-                    effective_input,
-                    settled_event,
+                    event,
                     input,
                 })
             }),
@@ -1780,6 +1714,29 @@ host_methods! {
     (user_message_outbound, UserMessageOutboundInput, "user.message.outbound"),
     (workspace_change_after, WorkspaceChangeAfterInput, "workspace.change.after"),
     (workspace_change_before, WorkspaceChangeBeforeInput, "workspace.change.before"),
+}
+
+// Tool facts retain caller-owned arguments while the event envelope is SDK-owned.
+macro_rules! generic_host_methods {
+    ($(($method:ident, $input:ident, $name:literal)),* $(,)?) => {
+        $(impl<T: Serialize> generated::inputs::__support::ProjectHostInput<crate::Attachment>
+            for generated::inputs::$input<T> {
+            fn into_host_event(self) -> Result<(Value, Vec<generated::inputs::__support::ContentSourceBinding<crate::Attachment>>), serde_json::Error> {
+                Ok((generated::inputs::__support::project_event(&self)?, Vec::new()))
+            }
+        })*
+        impl Hooks {
+            $(pub fn $method<I: generated::inputs::__support::ProjectHostInput<crate::Attachment>>(&self, input: I) -> InputBoundary<'_, I> {
+                self.host_input_for($name, input)
+            })*
+        }
+    };
+}
+generic_host_methods! {
+    (tool_after, ToolAfterInput, "tool.after"),
+    (tool_permission_request, ToolPermissionRequestInput, "tool.permission.request"),
+    (tool_permission_resolved, ToolPermissionResolvedInput, "tool.permission.resolved"),
+    (tool_progress, ToolProgressInput, "tool.progress"),
 }
 
 fn bounded<'a, T: Send + 'a>(

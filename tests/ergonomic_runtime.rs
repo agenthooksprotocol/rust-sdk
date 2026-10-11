@@ -1,5 +1,5 @@
 use agenthooksprotocol::client::{
-    Client, Decision, FailurePolicy, Hook, HookError, LocalFuture, Subscription, ToolContext,
+    Client, FailurePolicy, Hook, HookError, LocalFuture, Permission, Subscription, ToolContext,
 };
 use futures::executor::block_on;
 use serde_json::{Value, json};
@@ -59,11 +59,22 @@ fn complete_native_snapshot_reaches_each_subscription_without_loss() {
             .await
             .unwrap()
     });
-    assert_eq!(result.permission(), Decision::Allow);
-    assert_eq!(result.outcome.candidate(), Some(&Value::Null));
+    assert_eq!(result.permission(), Permission::Allow);
+    assert_eq!(
+        result
+            .outcome
+            .candidate_as::<Value, Value>()
+            .unwrap()
+            .as_ref()
+            .map(|c| &c.value),
+        Some(&Value::Null)
+    );
     assert_eq!(result.outcome.instructions, ["retain native context"]);
     assert_eq!(result.outcome.responses.len(), 2);
-    assert_eq!(result.outcome.responses[0]["result"]["effects"], json!([]));
+    assert_eq!(
+        serde_json::to_value(&result.outcome.responses[0]).unwrap()["result"]["effects"],
+        json!([])
+    );
     let calls = calls.lock().unwrap();
     assert_eq!(calls.len(), 2);
     for call in calls.iter() {
@@ -81,7 +92,7 @@ fn native_stop_does_not_authorize_execution() {
             .await
             .unwrap()
     });
-    assert_eq!(result.permission(), Decision::Allow);
+    assert_eq!(result.permission(), Permission::Allow);
     assert!(result.outcome.stopped);
     assert!(!result.outcome.can_execute());
 }
@@ -197,7 +208,7 @@ fn diagnostics_distinguish_remote_rpc_from_malformed_envelopes_without_leaking_d
             Reply(response),
         ));
         let result = block_on(async { client.tool_before(json!({})).await.unwrap() });
-        assert_eq!(result.permission(), Decision::Deny);
+        assert_eq!(result.permission(), Permission::Deny);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].code, code);
         assert!(result.diagnostics[0].synthetic_denial);
@@ -288,7 +299,7 @@ fn generated_named_tool_event_is_lazy_and_accepts_serialize_only_arguments() {
     assert_eq!(serializations.load(Ordering::SeqCst), 1);
     assert_eq!(calls.lock().unwrap().len(), 1);
     assert_eq!(result.permission(), Permission::Allow);
-    let agenthooksprotocol::Event::ToolBefore(event) = result.event.unwrap() else {
+    let agenthooksprotocol::Event::ToolBefore(event) = result.event else {
         panic!("typed tool event")
     };
     assert_eq!(

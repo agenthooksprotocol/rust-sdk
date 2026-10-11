@@ -81,8 +81,8 @@ fn omitted_and_empty_effects_are_neutral_through_registered_backend() {
                 "{:?}",
                 outcome.outcome.failures
             );
-            assert_eq!(outcome.input.unwrap(), Arguments { count: u64::MAX });
-            assert!(outcome.outcome.candidate.is_none());
+            assert_eq!(outcome.input, Arguments { count: u64::MAX });
+            assert!(outcome.outcome.settled_candidate.is_none());
             assert!(outcome.outcome.messages.is_empty());
             assert!(outcome.outcome.injections.is_empty());
             hooks.shutdown().await.unwrap();
@@ -123,9 +123,19 @@ fn compaction_inline_instructions_and_summary_edits_do_not_insert_parts() {
                 "{:?}",
                 outcome.outcome.failures
             );
-            assert_eq!(outcome.effective_event[target], replacement);
-            assert!(outcome.effective_event[target][0].get("parts").is_none());
-            assert_eq!(outcome.effective_event["unknown"], original["unknown"]);
+            assert_eq!(
+                serde_json::to_value(&outcome.event).unwrap()[target],
+                replacement
+            );
+            assert!(
+                serde_json::to_value(&outcome.event).unwrap()[target][0]
+                    .get("parts")
+                    .is_none()
+            );
+            assert_eq!(
+                serde_json::to_value(&outcome.event).unwrap()["unknown"],
+                original["unknown"]
+            );
             assert_eq!(original[target][0]["text"], "original");
             hooks.shutdown().await.unwrap();
         }
@@ -169,10 +179,26 @@ fn known_messages_model_return_and_opaque_workspace_forward_unknown_bags() {
                 "{name}: {:?}",
                 outcome.outcome.failures
             );
-            assert_eq!(outcome.effective_event.pointer(pointer).unwrap(), &expected);
-            assert_eq!(outcome.effective_event["unknown"], original["unknown"]);
+            assert_eq!(
+                serde_json::to_value(&outcome.event)
+                    .unwrap()
+                    .pointer(pointer)
+                    .unwrap(),
+                &expected
+            );
+            assert_eq!(
+                serde_json::to_value(&outcome.event).unwrap()["unknown"],
+                original["unknown"]
+            );
             if name == "model.request.before" {
-                assert_eq!(outcome.outcome.candidate, Some(messages("candidate")));
+                assert_eq!(
+                    outcome
+                        .outcome
+                        .candidate_as::<Value, Value>()
+                        .unwrap()
+                        .map(|c| c.value),
+                    Some(messages("candidate"))
+                );
             }
             hooks.shutdown().await.unwrap();
         }
@@ -196,7 +222,7 @@ fn invalid_response_rolls_back_all_edits() {
         );
         let outcome = hooks.event(original.clone()).await.unwrap();
         assert_eq!(outcome.outcome.failures.len(), 1);
-        assert_eq!(outcome.effective_event, original);
+        assert_eq!(serde_json::to_value(&outcome.event).unwrap(), original);
         hooks.shutdown().await.unwrap();
     });
 }
@@ -222,8 +248,15 @@ fn elicitation_result_candidate_preserves_opaque_metadata() {
             "{:?}",
             outcome.outcome.failures
         );
-        assert_eq!(outcome.outcome.candidate, Some(candidate));
-        assert_eq!(outcome.effective_event, original);
+        assert_eq!(
+            outcome
+                .outcome
+                .candidate_as::<Value, Value>()
+                .unwrap()
+                .map(|c| c.value),
+            Some(candidate)
+        );
+        assert_eq!(serde_json::to_value(&outcome.event).unwrap(), original);
         hooks.shutdown().await.unwrap();
     });
 }
@@ -260,8 +293,11 @@ fn session_counters_are_lossless_unbounded_and_nonnegative_in_full_sdk_decoding(
         let hooks = hooks(name, json!({"effects":[]}), result(json!([])));
         let outcome = hooks.event(original.clone()).await.unwrap();
         assert!(outcome.outcome.failures.is_empty());
-        assert_eq!(outcome.effective_event["session"]["counters"], raw);
-        assert_eq!(outcome.event.unwrap(), original);
+        assert_eq!(
+            serde_json::to_value(&outcome.event).unwrap()["session"]["counters"],
+            raw
+        );
+        assert_eq!(serde_json::to_value(&outcome.event).unwrap(), original);
         hooks.shutdown().await.unwrap();
     });
 }

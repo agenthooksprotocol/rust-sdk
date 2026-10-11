@@ -297,9 +297,9 @@ fn declared_form_answers_are_admitted_atomically_through_public_hooks() {
             .await
             .unwrap();
         assert_eq!(outcome.outcome.failures.len(), 1);
-        assert!(outcome.outcome.candidate.is_none());
+        assert!(outcome.outcome.settled_candidate.is_none());
         assert!(outcome.outcome.messages.is_empty());
-        assert_eq!(outcome.effective_event, event);
+        assert_eq!(serde_json::to_value(&outcome.event).unwrap(), event);
         assert_eq!(requests.lock().unwrap().len(), 2);
 
         let contract: agenthooksprotocol::contracts::Contract<
@@ -315,8 +315,8 @@ fn declared_form_answers_are_admitted_atomically_through_public_hooks() {
             "{:?}",
             valid.outcome.failures
         );
-        let candidate = valid.outcome.candidate.as_ref().unwrap();
-        let result = contract.decode(candidate).unwrap();
+        let candidate = serde_json::to_value(valid.outcome.candidate().unwrap()).unwrap();
+        let result = contract.decode(&candidate).unwrap();
         let FormAnswer::Accepted(answer) = form.decode(&result).unwrap() else {
             panic!("expected accepted answer")
         };
@@ -439,7 +439,7 @@ fn modified_form_answer_contract_rejects_dropped_fields_before_later_interceptor
             .await
             .unwrap();
         assert_eq!(outcome.outcome.failures.len(), 1);
-        assert_eq!(outcome.effective_event, event);
+        assert_eq!(serde_json::to_value(&outcome.event).unwrap(), event);
         let requests = requests.lock().unwrap();
         assert_eq!(requests.len(), 2);
         let next: serde_json::Value = serde_json::from_str(
@@ -539,7 +539,10 @@ fn invalid_intermediate_form_answer_cannot_be_repaired_later_in_same_response() 
                 json!({"action":"accept","content":{"count":3}})
                     .to_string()
                     .into();
-            assert_eq!(outcome.effective_event, retained_event);
+            assert_eq!(
+                serde_json::to_value(&outcome.event).unwrap(),
+                retained_event
+            );
             let requests = requests.lock().unwrap();
             assert_eq!(requests.len(), 3);
             let next: serde_json::Value = serde_json::from_str(

@@ -48,8 +48,8 @@ fn full_event_is_lazy_and_requires_no_client_tool_context() {
     drop(boundary);
     assert!(calls.lock().unwrap().is_empty());
     let result = block_on(async { c.event(event()).await.unwrap() });
-    assert_eq!(result.outcome.decision, Decision::Allow);
-    assert_eq!(result.event.unwrap(), event());
+    assert_eq!(result.outcome.decision, Permission::Allow);
+    assert_eq!(result.decoded_event.unwrap(), event());
 }
 #[test]
 fn invalid_initial_event_and_name_fail_without_hooks() {
@@ -73,9 +73,19 @@ fn serial_full_event_modification_is_atomic() {
         .with_subscription(subscription("bad", json!([{"type":"deny","reason":"no"},{"type":"modify","target":"workspace","operation":"replace","value":{}}]), &calls))
         .with_subscription(subscription("last", json!([{"type":"allow"}]), &calls));
     let result = block_on(async { c.event(event()).await.unwrap() });
-    assert_eq!(result.effective_event["tool"]["input"]["count"], 2);
-    assert_eq!(result.outcome.decision, Decision::Allow);
-    assert_eq!(result.outcome.candidate, Some(Value::Null));
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["tool"]["input"]["count"],
+        2
+    );
+    assert_eq!(result.outcome.decision, Permission::Allow);
+    assert_eq!(
+        result
+            .outcome
+            .candidate_as::<Value, Value>()
+            .unwrap()
+            .map(|c| c.value),
+        Some(Value::Null)
+    );
     assert_eq!(result.outcome.failures.len(), 1);
     assert_eq!(
         calls.lock().unwrap()[2]["params"]["state"]["candidate"],
@@ -120,9 +130,12 @@ fn full_event_decode_failure_does_not_rollback_protocol_commit() {
     let c = client().with_subscription(subscription("mutate", json!([{"type":"modify","target":"input","operation":"replace","value":{"count":"changed"}},{"type":"allow"}]), &calls));
     let typed: TypedEvent = serde_json::from_value(event()).unwrap();
     let result = block_on(async { c.event(typed).await.unwrap() });
-    assert!(result.event.is_err());
-    assert_eq!(result.effective_event["tool"]["input"]["count"], "changed");
-    assert_eq!(result.outcome.decision, Decision::Allow);
+    assert!(result.decoded_event.is_err());
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["tool"]["input"]["count"],
+        "changed"
+    );
+    assert_eq!(result.outcome.decision, Permission::Allow);
 }
 #[test]
 fn cancellation_keeps_accepted_evidence_without_authorization() {
@@ -167,8 +180,8 @@ fn missing_content_resolver_rejects_whole_body_response() {
     ));
     let e = json!({"id":"turn","source":"https://example.test/runtime","type":"turn.start","time":"2026-08-24T08:51:14Z","turn":{"id":"t"},"trigger":"user","items":[]});
     let result = block_on(async { c.turn_start_event(e.clone()).await.unwrap() });
-    assert_eq!(result.effective_event, e);
-    assert_eq!(result.outcome.decision, Decision::None);
+    assert_eq!(serde_json::to_value(&result.event).unwrap(), e);
+    assert_eq!(result.outcome.decision, Permission::None);
     assert_eq!(result.outcome.failures.len(), 1);
 }
 
@@ -234,7 +247,7 @@ fn specialized_inline_boundaries_do_not_require_content_resolver() {
     ] {
         let result = block_on(async {
             c.event(specialized_event(name))
-                .initial_state(Decision::Allow)
+                .initial_state(Permission::Allow)
                 .await
         });
         assert!(result.is_ok(), "{name}: {:?}", result.as_ref().err());
@@ -260,7 +273,7 @@ fn elicitation_result_requires_exchange_even_without_selected_body() {
     let result = block_on(async {
         c.event(specialized_event("user.elicitation.result"))
             .content(content)
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .await
     });
     let error = match result {
@@ -404,7 +417,7 @@ fn inline_content_list_replacement_preserves_siblings_and_metadata() {
     );
     let mut expected = original;
     expected["message"]["messages"][0]["parts"][1]["text"] = json!("changed");
-    assert_eq!(result.effective_event, expected);
+    assert_eq!(serde_json::to_value(&result.event).unwrap(), expected);
     assert_eq!(
         content
             .resolve_selected(&sibling)
@@ -432,15 +445,22 @@ fn restored_inline_list_keeps_original_approval_and_candidate() {
     ]), &calls));
     let result = block_on(async {
         c.event(original.clone())
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .initial_candidate(json!({"value":"candidate","provenance":{"source":"native"}}))
             .await
             .unwrap()
     });
     assert!(result.outcome.failures.is_empty());
-    assert_eq!(result.effective_event, original);
-    assert_eq!(result.outcome.decision, Decision::Allow);
-    assert_eq!(result.outcome.candidate, Some(json!("candidate")));
+    assert_eq!(serde_json::to_value(&result.event).unwrap(), original);
+    assert_eq!(result.outcome.decision, Permission::Allow);
+    assert_eq!(
+        result
+            .outcome
+            .candidate_as::<Value, Value>()
+            .unwrap()
+            .map(|c| c.value),
+        Some(json!("candidate"))
+    );
     assert!(!result.outcome.approval_invalidated);
 }
 #[test]
@@ -469,7 +489,7 @@ fn content_list_edits_reject_legacy_and_nested_part_values_atomically() {
         let result = block_on(async { c.event(original.clone()).await.unwrap() });
         assert_eq!(result.outcome.failures.len(), 1);
         assert!(result.outcome.messages.is_empty());
-        assert_eq!(result.effective_event, original);
+        assert_eq!(serde_json::to_value(&result.event).unwrap(), original);
     }
 }
 

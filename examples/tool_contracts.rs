@@ -93,9 +93,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hooks.shutdown().await?;
         let outcome = operation?;
         println!("permission: {:?}", outcome.permission());
-        let arguments = outcome.input?;
+        let arguments = outcome.input;
         assert_eq!(arguments.count, 2);
-        if let Some(candidate) = outcome.candidate {
+        if let Some(candidate) = outcome.outcome.settled_candidate {
             assert_eq!(candidate.value.total, 20);
             println!("candidate: {:?}", candidate.value);
         }

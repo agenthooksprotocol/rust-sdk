@@ -712,7 +712,7 @@ async fn fail_closed_upload_is_applied_at_its_route_after_earlier_interception()
     assert_eq!(earlier.requests.lock().unwrap().len(), 1);
     assert!(failing.requests.lock().unwrap().is_empty());
     assert_eq!(
-        result.effective_event["message"]["messages"][0]["parts"][0]["text"],
+        serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"][0]["text"],
         "earlier interceptor ran"
     );
     assert_eq!(result.diagnostics.len(), 1);

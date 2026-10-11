@@ -1,7 +1,7 @@
 //! `cargo run --example typed_boundary --no-default-features`
 //! A real lazy typed SDK boundary on a non-Tokio executor. Execution is userland.
 use agenthooksprotocol::client::{
-    Client, Decision, FailurePolicy, Hook, HookError, LocalFuture, Subscription, ToolContext,
+    Client, FailurePolicy, Hook, HookError, LocalFuture, Permission, Subscription, ToolContext,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .tool_before(Input {
                 command: "echo original".into(),
             })
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .capabilities(
                 json!({"effects":["modify","allow"], "modify":{"input":{"replace":true,"merge":false}}}),
             )
@@ -50,7 +50,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     // Protocol outcome is already settled. A decoding or host-policy rejection
     // must not turn it into a rejected protocol response or undo effects.
-    println!("effective input: {}", result.effective_input);
+    println!(
+        "effective input: {}",
+        serde_json::to_value(&result.event)?["tool"]["input"]
+    );
     if result.outcome.can_execute() {
         match result.input {
             Ok(input) if input.command.starts_with("echo ") => {

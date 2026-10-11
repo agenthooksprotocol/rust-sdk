@@ -1,7 +1,7 @@
 #![cfg(feature = "reqwest")]
 
 use agenthooksprotocol::{
-    client::{Decision, ToolContext},
+    client::{Permission, ToolContext},
     generated::Registration,
     hooks::{Capabilities, EventGrant, Hooks, HooksOptions},
 };
@@ -136,7 +136,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
             timeout_ms: 100,
         })
         .context(context())
-        .initial_state(Decision::Allow);
+        .initial_state(Permission::Allow);
     assert!(requests.lock().unwrap().is_empty());
     let modified = lazy.await.unwrap();
     assert!(
@@ -145,7 +145,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
         modified.outcome.failures
     );
     assert!(modified.outcome.can_execute());
-    let effective = modified.input.unwrap();
+    let effective = modified.input;
     assert_eq!(effective.command, "safe");
     assert_eq!(effective.timeout_ms, 25);
     let cached = hooks
@@ -155,13 +155,11 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
         })
         .capabilities(Capabilities::none().allow().return_value())
         .context(context())
-        .initial_state(Decision::Allow)
+        .initial_state(Permission::Allow)
         .await
         .unwrap();
-    let Some(agenthooksprotocol::client::SettledCandidate::Opaque(value)) =
-        cached.outcome.supplied_result()
-    else {
-        panic!("opaque tool result")
+    let Some(value) = cached.outcome.supplied_result() else {
+        panic!("missing caller-owned tool result")
     };
     assert_eq!(value, &json!({"cached":true}));
     assert!(!cached.outcome.can_execute());
@@ -171,7 +169,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
             timeout_ms: 100,
         })
         .context(context())
-        .initial_state(Decision::Allow)
+        .initial_state(Permission::Allow)
         .await
         .unwrap();
     assert!(denied.outcome.is_denied());

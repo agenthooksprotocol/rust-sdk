@@ -336,7 +336,7 @@ impl ManagedBackend for Backend {
             if self.pending {
                 std::future::pending::<()>().await;
             }
-            Err(HookError("intentional backend failure".into()))
+            Err(HookError::new("intentional backend failure"))
         })
     }
     fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
@@ -765,7 +765,7 @@ mod chained_replacements {
         assert!(result.outcome.is_denied());
         drop(hooks);
         assert_eq!(
-            result.effective_event["message"]["messages"][0]["parts"][0]["text"]
+            serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"][0]["text"]
                 .as_str()
                 .unwrap()
                 .as_bytes(),
@@ -794,7 +794,8 @@ mod chained_replacements {
                 result.outcome.failures
             );
             assert_eq!(
-                result.effective_event["message"]["messages"][0]["parts"][0]["text"]
+                serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"][0]
+                    ["text"]
                     .as_str()
                     .unwrap()
                     .as_bytes(),
@@ -808,13 +809,17 @@ mod chained_replacements {
                     .await
                     .is_err()
             );
-            assert_eq!(result.effective_event["native"]["opaque"], original);
+            assert_eq!(
+                serde_json::to_value(&result.event).unwrap()["native"]["opaque"],
+                original
+            );
             outcomes.push(result);
         }
         drop(hooks);
         for result in outcomes {
             assert_eq!(
-                result.effective_event["message"]["messages"][0]["parts"][0]["text"]
+                serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"][0]
+                    ["text"]
                     .as_str()
                     .unwrap()
                     .as_bytes(),
@@ -956,7 +961,7 @@ mod chained_replacements {
                     assert!(outcome.outcome.failures.is_empty());
                     assert!(outcome.diagnostics.is_empty());
                     assert_eq!(
-                        outcome.effective_event["message"]["messages"][0]["parts"][0]["text"]
+                        serde_json::to_value(&outcome.event).unwrap()["message"]["messages"][0]["parts"][0]["text"]
                             .as_str()
                             .unwrap()
                             .as_bytes(),
@@ -1041,7 +1046,9 @@ fn foreign_reference_does_not_grant_attachment_read_authority() {
             .into_future(),
     )
     .unwrap();
-    let copied = owner.effective_event["message"]["messages"][0]["parts"][0]["body"].clone();
+    let copied = serde_json::to_value(&owner.event).unwrap()["message"]["messages"][0]["parts"][0]
+        ["body"]
+        .clone();
     let foreign = futures::executor::block_on(second.event(event(copied)).into_future()).unwrap();
     assert!(
         futures::executor::block_on(foreign.content.read("/message/messages/0/parts/0")).is_err()
@@ -1187,7 +1194,10 @@ fn native_reference_collisions_do_not_grant_reads_but_message_slots_survive() {
             .into_future(),
     )
     .unwrap();
-    assert_eq!(result.effective_event["native"], input["native"]);
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["native"],
+        input["native"]
+    );
     for path in [
         "/native/opaque",
         "/native/fake_event/message/messages/0/parts/0",
@@ -1254,8 +1264,8 @@ fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
         "{:?}",
         result.outcome.failures
     );
-    assert_eq!(result.effective_input, opaque);
-    assert_eq!(result.outcome.candidate, Some(opaque));
+    assert_eq!(serde_json::to_value(&result.input).unwrap(), opaque);
+    assert_eq!(result.outcome.candidate(), Some(&opaque));
     assert_eq!(
         serde_json::to_value(&result.outcome.messages).unwrap(),
         json!([message])

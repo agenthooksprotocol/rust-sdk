@@ -57,7 +57,7 @@ fn primary_typed_tool_hook_owns_direct_binary_parts() {
             PartInput::owned(Attachment::bytes(vec![0, 255]), "application/octet-stream"),
         ]);
         let result = hooks.tool_before(input).await.unwrap();
-        assert_eq!(result.input.unwrap(), Arguments { count: 7 });
+        assert_eq!(result.input, Arguments { count: 7 });
         hooks.shutdown().await.unwrap();
         assert_eq!(&*result.content.read("/items/1").await.unwrap(), &[0, 255]);
     });

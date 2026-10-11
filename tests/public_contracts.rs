@@ -114,7 +114,7 @@ fn partial_merge_preserves_omission_null_and_replaces_nested_whole() {
             .await
             .unwrap();
         assert!(outcome.outcome.failures.is_empty());
-        let accepted = outcome.input.unwrap();
+        let accepted = outcome.input;
         assert_eq!(accepted.count, 2);
         assert_eq!(accepted.nullable, None);
         assert_eq!(
@@ -126,7 +126,7 @@ fn partial_merge_preserves_omission_null_and_replaces_nested_whole() {
             "not-a-grant"
         );
         assert_eq!(
-            outcome.candidate.unwrap().value,
+            outcome.outcome.settled_candidate.unwrap().value,
             ResultValue {
                 answer: "done".into()
             }
@@ -163,8 +163,11 @@ fn invalid_later_response_publishes_none_and_prior_accepted_state_survives() {
                 .await
                 .unwrap();
             assert_eq!(outcome.outcome.failures.len(), 1);
-            assert_eq!(outcome.input.unwrap().count, 2);
-            assert_eq!(outcome.candidate.unwrap().value.answer, "prior");
+            assert_eq!(outcome.input.count, 2);
+            assert_eq!(
+                outcome.outcome.settled_candidate.unwrap().value.answer,
+                "prior"
+            );
             let requests = requests.lock().unwrap();
             assert_eq!(requests[2]["params"]["event"]["tool"]["input"]["count"], 2);
             assert_eq!(
@@ -188,7 +191,7 @@ fn invalid_intermediate_value_cannot_be_repaired_later_in_same_response() {
             .await
             .unwrap();
         assert_eq!(outcome.outcome.failures.len(), 1);
-        assert_eq!(outcome.input.unwrap().count, 1);
+        assert_eq!(outcome.input.count, 1);
         assert_eq!(
             requests.lock().unwrap()[1]["params"]["event"]["tool"]["input"]["count"],
             1
@@ -252,8 +255,8 @@ fn candidate_null_presence_and_provenance_replacement_are_distinct() {
                 .await
                 .unwrap();
             assert!(outcome.outcome.failures.is_empty());
-            assert_eq!(outcome.candidate.is_some(), present);
-            if let Some(candidate) = outcome.candidate {
+            assert_eq!(outcome.outcome.settled_candidate.is_some(), present);
+            if let Some(candidate) = outcome.outcome.settled_candidate {
                 assert_eq!(candidate.value, None);
                 assert_eq!(!candidate.provenance.is_missing(), provenance);
             }
@@ -349,22 +352,25 @@ fn specialized_typed_tool_retains_complete_settled_event_and_opaque_extensions()
             .unwrap();
         let _: &agenthooksprotocol::hooks::ToolOutcome<Arguments, ResultValue, Provenance> =
             &outcome;
-        let _: &agenthooksprotocol::Event = &outcome.settled_event;
+        let _: &agenthooksprotocol::Event = &outcome.event;
         assert!(outcome.outcome.failures.is_empty());
         let mut expected = requests.lock().unwrap()[0]["params"]["event"].clone();
         expected["tool"]["input"]["count"] = json!(2);
         // Private native facts are retained locally but withheld from this backend.
         expected["native"] = native.clone();
-        let settled = serde_json::to_value(&outcome.settled_event).unwrap();
+        let settled = serde_json::to_value(&outcome.event).unwrap();
         assert_eq!(settled, expected);
         assert_eq!(settled["id"], "original-tool-event");
         assert_eq!(settled["extensions"], opaque);
         assert_eq!(settled["native"], native);
-        assert_eq!(settled["tool"]["input"], outcome.effective_input);
-        assert_eq!(outcome.input.unwrap().count, 2);
+        assert_eq!(
+            settled["tool"]["input"],
+            serde_json::to_value(&outcome.input).unwrap()
+        );
+        assert_eq!(outcome.input.count, 2);
         // A modification invalidates the initial candidate; a subsequent occurrence
         // still preserves the typed result/provenance generics and event facts.
-        assert!(outcome.candidate.is_none());
+        assert!(outcome.outcome.settled_candidate.is_none());
         let mut proposal = input(args());
         proposal.extensions = Some(Box::new(serde_json::from_value(opaque.clone()).unwrap()));
         let (hooks, _) = self::hooks(vec![json!([])]);
@@ -377,7 +383,7 @@ fn specialized_typed_tool_retains_complete_settled_event_and_opaque_extensions()
             )
             .await
             .unwrap();
-        let candidate = returned.candidate.unwrap();
+        let candidate = returned.outcome.settled_candidate.unwrap();
         assert_eq!(
             candidate.value,
             ResultValue {
@@ -391,7 +397,7 @@ fn specialized_typed_tool_retains_complete_settled_event_and_opaque_extensions()
             })
         );
         assert_eq!(
-            serde_json::to_value(&returned.settled_event).unwrap()["extensions"],
+            serde_json::to_value(&returned.event).unwrap()["extensions"],
             opaque
         );
     });

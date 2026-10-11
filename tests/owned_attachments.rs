@@ -107,7 +107,8 @@ fn mixed_inline_text_and_binary_parts_keep_distinct_ownership() {
         )]);
         let result = hooks.user_message_outbound(input).await.unwrap();
         assert_eq!(reads.load(Ordering::SeqCst), 0);
-        let parts = &result.effective_event["message"]["messages"][0]["parts"];
+        let parts =
+            &serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"];
         assert_eq!(parts[0]["kind"], "text");
         assert_eq!(parts[0]["text"], "Binary caption");
         assert!(parts[0].get("body").is_none());
@@ -465,7 +466,8 @@ fn forbidden_integrity_metadata_rejects_unopened_owned_sources() {
             .await
             .unwrap();
         assert_eq!(reads.load(Ordering::SeqCst), 0);
-        let part = &result.effective_event["message"]["messages"][0]["parts"][0];
+        let part =
+            &serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"][0];
         assert!(part.get("size").is_none());
         assert!(part.get("sha256").is_none());
         let first = result
@@ -527,14 +529,17 @@ fn inline_instructions_and_elicitation_exchange_outlive_hooks() {
             hooks.shutdown().await.unwrap();
             drop(hooks);
             assert_eq!(
-                result.effective_event.pointer(path).unwrap()["text"]
+                serde_json::to_value(&result.event)
+                    .unwrap()
+                    .pointer(path)
+                    .unwrap()["text"]
                     .as_str()
                     .unwrap()
                     .as_bytes(),
                 text.as_bytes()
             );
             if name == "user.elicitation.request" {
-                let envelope = json!({"jsonrpc":"2.0", "id":result.effective_event["id"], "method":"hooks/intercept", "params":{"protocolVersion":"draft", "event":result.effective_event, "capabilities":{"effects":["return","deny","message"], "elicitation":{"form":{}}}}});
+                let envelope = json!({"jsonrpc":"2.0", "id":serde_json::to_value(&result.event).unwrap()["id"], "method":"hooks/intercept", "params":{"protocolVersion":"draft", "event":serde_json::to_value(&result.event).unwrap(), "capabilities":{"effects":["return","deny","message"], "elicitation":{"form":{}}}}});
                 let exchange =
                     agenthooksprotocol::elicitation::Exchange::new(&envelope, &result.content)
                         .unwrap();

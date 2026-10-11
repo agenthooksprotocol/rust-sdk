@@ -1,5 +1,5 @@
 use agenthooksprotocol::client::{
-    Client, Decision, FailurePolicy, Hook, HookError, LocalFuture, Subscription, ToolContext,
+    Client, FailurePolicy, Hook, HookError, LocalFuture, Permission, Subscription, ToolContext,
 };
 use agenthooksprotocol::interop::{self, Result, Schemas};
 use agenthooksprotocol::server::{
@@ -245,7 +245,7 @@ impl Hook for CoreHook {
             });
             response.map_err(|error| {
                 self.acquisition_failed.store(true, Ordering::Relaxed);
-                HookError(error.to_string())
+                HookError::new(error.to_string())
             })
         })
     }
@@ -277,10 +277,10 @@ fn settle_core(request: &Value, hook: CoreHook) -> Result<Value> {
     let client = Client::new(ToolContext::new(request["params"]["event"].clone()))
         .with_subscription(Subscription::intercept("core", FailurePolicy::Closed, hook));
     let permission = match string(&request["params"]["state"], "permission") {
-        "allow" => Decision::Allow,
-        "deny" => Decision::Deny,
-        "ask" => Decision::Ask,
-        _ => Decision::None,
+        "allow" => Permission::Allow,
+        "deny" => Permission::Deny,
+        "ask" => Permission::Ask,
+        _ => Permission::None,
     };
     let settled = futures::executor::block_on(async {
         let boundary = client
@@ -308,20 +308,17 @@ fn settle_core(request: &Value, hook: CoreHook) -> Result<Value> {
         return Err(failure.error.to_string().into());
     }
     let outcome = &settled.outcome;
-    let denied = matches!(outcome.decision, Decision::Deny | Decision::Ask);
-    let candidate = outcome
-        .candidate
-        .as_ref()
-        .filter(|_| !denied && !outcome.stopped);
+    let denied = matches!(outcome.decision, Permission::Deny | Permission::Ask);
+    let candidate = outcome.candidate().filter(|_| !denied && !outcome.stopped);
     // Synthetic host grants undecided permission, including reauthorization.
     let decision = match outcome.decision {
-        Decision::Deny => "deny",
-        Decision::Ask => "ask",
+        Permission::Deny => "deny",
+        Permission::Ask => "ask",
         _ => "allow",
     };
     let mut actual = json!({"decision":decision,"executed":false,
-        "input":settled.effective_input,
-        "messages":outcome.messages.iter().map(|m| m["text"].clone()).collect::<Vec<_>>()});
+        "input":serde_json::to_value(&settled.event)?["tool"]["input"],
+        "messages":outcome.messages.iter().map(|m| json!(m.text)).collect::<Vec<_>>()});
     if outcome.stopped {
         actual["flow"] = json!("stop");
     }
@@ -329,7 +326,7 @@ fn settle_core(request: &Value, hook: CoreHook) -> Result<Value> {
         actual["injections"] = json!(outcome.injections);
     }
     if let Some(candidate) = candidate {
-        actual["result"] = candidate.clone();
+        actual["result"] = serde_json::to_value(candidate)?;
     }
     // Business-schema refusal occurs AFTER protocol settlement and preserves
     // accepted input/messages. It is never an atomic protocol rejection.
@@ -363,10 +360,10 @@ fn settle_event(request: &Value, transport: CoreHook) -> Result<Value> {
         };
         let boundary = if request["params"].get("state").is_some() {
             let decision = match string(&request["params"]["state"], "permission") {
-                "allow" => Decision::Allow,
-                "deny" => Decision::Deny,
-                "ask" => Decision::Ask,
-                _ => Decision::None,
+                "allow" => Permission::Allow,
+                "deny" => Permission::Deny,
+                "ask" => Permission::Ask,
+                _ => Permission::None,
             };
             boundary.initial_state(decision)
         } else {
@@ -386,18 +383,18 @@ fn settle_event(request: &Value, transport: CoreHook) -> Result<Value> {
     }
     let outcome = &settled.outcome;
     let decision = match outcome.decision {
-        Decision::Deny => "deny",
-        Decision::Ask => "ask",
+        Permission::Deny => "deny",
+        Permission::Ask => "ask",
         _ => "allow",
     };
     let mut actual = json!({"decision":decision,"executed":false,
-        "input":settled.effective_event["tool"]["input"],
-        "messages":outcome.messages.iter().map(|m| m["text"].clone()).collect::<Vec<_>>()});
+        "input":serde_json::to_value(&settled.event)?["tool"]["input"],
+        "messages":outcome.messages.iter().map(|m| json!(m.text)).collect::<Vec<_>>()});
     if !outcome.stopped
-        && !matches!(outcome.decision, Decision::Deny | Decision::Ask)
-        && let Some(candidate) = &outcome.candidate
+        && !matches!(outcome.decision, Permission::Deny | Permission::Ask)
+        && let Some(candidate) = outcome.candidate()
     {
-        actual["result"] = candidate.clone();
+        actual["result"] = serde_json::to_value(candidate)?;
     }
     if !outcome.injections.is_empty() {
         actual["injections"] = json!(outcome.injections);

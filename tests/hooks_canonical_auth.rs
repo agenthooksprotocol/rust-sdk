@@ -69,7 +69,7 @@ mod runtime {
     use super::*;
     use agenthooksprotocol::{
         Attachment,
-        client::Decision,
+        client::Permission,
         generated::ToolBeforeInputOrigin,
         inputs::{PartInput, ToolBeforeInput},
     };
@@ -109,7 +109,7 @@ mod runtime {
                     Attachment::bytes(b"upload payload".to_vec()),
                 )]),
             )
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .await
             .unwrap()
     }
