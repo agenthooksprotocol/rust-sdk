@@ -1526,6 +1526,8 @@ pub struct ToolOutcome<T, R = Value, P = Value> {
     pub diagnostics: Vec<DeliveryDiagnostic>,
     pub outcome: ConsumerProtocolOutcome,
     pub effective_input: Value,
+    /// Complete schema-owned settled event, retaining opaque host event facts.
+    pub settled_event: generated::Event,
     pub input: Result<T, InputDecodeError>,
 }
 impl<T, R, P> ToolOutcome<T, R, P> {
@@ -1628,6 +1630,7 @@ where
                     outcome,
                     candidate_descriptor,
                     effective_input,
+                    effective_event,
                     input,
                     observations,
                     mut diagnostics,
@@ -1639,6 +1642,16 @@ where
                 )
                 .map_err(|error| {
                     error.with_settlement(&outcome, &effective_input, &candidate_descriptor)
+                })?;
+                let settled_event = serde_json::from_value::<generated::Event>(
+                    effective_event.clone(),
+                )
+                .map_err(|error| {
+                    err(error).with_settlement(
+                        outcome.raw(),
+                        &effective_event,
+                        &candidate_descriptor,
+                    )
                 })?;
                 let input = Ok(input.map_err(|error| {
                     err(error).with_settlement(
@@ -1695,6 +1708,7 @@ where
                     outcome,
                     diagnostics,
                     effective_input,
+                    settled_event,
                     input,
                 })
             }),

@@ -665,12 +665,25 @@ pub struct BoundaryResult<'a, T> {
     pub(crate) candidate_descriptor: Value,
     pub outcome: ProtocolOutcome,
     pub effective_input: Value,
+    /// Complete effective event from the settled request, including opaque host facts.
+    pub effective_event: Value,
     /// Freshly decoded after protocol acceptance; failure never rolls back effects.
     pub input: Result<T, InputDecodeError>,
     pub observations: Vec<Observation<'a>>,
     pub diagnostics: Vec<DeliveryDiagnostic>,
 }
 impl<T> BoundaryResult<'_, T> {
+    /// Decode the complete settled event without reconstructing it from input.
+    pub fn settled_event(&self) -> Result<crate::generated::Event, HookError> {
+        serde_json::from_value(self.effective_event.clone()).map_err(|error| {
+            crate::protocol::failure(error).with_settlement(
+                &self.outcome,
+                &self.effective_event,
+                &self.candidate_descriptor,
+            )
+        })
+    }
+
     /// Decode schema-owned messages, complete injections and accepted responses.
     pub fn typed_outcome(&self) -> Result<ConsumerProtocolOutcome, HookError> {
         ConsumerProtocolOutcome::decode(
@@ -1044,6 +1057,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
                 diagnostics: delivery_diagnostics(&state),
                 outcome: state,
                 effective_input: input,
+                effective_event: request["params"]["event"].clone(),
                 input: decoded,
                 observations,
             })

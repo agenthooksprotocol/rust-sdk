@@ -326,3 +326,73 @@ fn host_owned_native_codec_is_opt_in_and_retains_opaque_extra_bags() {
         assert!(requests.lock().unwrap().is_empty());
     });
 }
+
+#[test]
+fn specialized_typed_tool_retains_complete_settled_event_and_opaque_extensions() {
+    futures::executor::block_on(async {
+        let (hooks, requests) = hooks(vec![json!([merge(json!({"count":2}))]), json!([])]);
+        let opaque = json!({"org.example.event":{"nested":{"opaque":[null,{"kind":"caller-defined","parts":[1,2]}]}}});
+        let native = json!({"vendor":{"opaque":[null,42],"ref":"not-an-attachment"}});
+        let mut proposal = input(args());
+        proposal.id = Some("original-tool-event".into());
+        proposal.extensions = Some(Box::new(serde_json::from_value(opaque.clone()).unwrap()));
+        proposal.native = Some(Box::new(native.clone()));
+        let outcome = hooks
+            .tool_before(proposal)
+            .arguments_contract(contract())
+            .result_type::<ResultValue>()
+            .provenance_type::<Provenance>()
+            .initial_candidate(
+                json!({"value":{"answer":"cached"},"provenance":{"source":"native"}}),
+            )
+            .await
+            .unwrap();
+        let _: &agenthooksprotocol::hooks::ToolOutcome<Arguments, ResultValue, Provenance> =
+            &outcome;
+        let _: &agenthooksprotocol::Event = &outcome.settled_event;
+        assert!(outcome.outcome.failures.is_empty());
+        let mut expected = requests.lock().unwrap()[0]["params"]["event"].clone();
+        expected["tool"]["input"]["count"] = json!(2);
+        // Private native facts are retained locally but withheld from this backend.
+        expected["native"] = native.clone();
+        let settled = serde_json::to_value(&outcome.settled_event).unwrap();
+        assert_eq!(settled, expected);
+        assert_eq!(settled["id"], "original-tool-event");
+        assert_eq!(settled["extensions"], opaque);
+        assert_eq!(settled["native"], native);
+        assert_eq!(settled["tool"]["input"], outcome.effective_input);
+        assert_eq!(outcome.input.unwrap().count, 2);
+        // A modification invalidates the initial candidate; a subsequent occurrence
+        // still preserves the typed result/provenance generics and event facts.
+        assert!(outcome.candidate.is_none());
+        let mut proposal = input(args());
+        proposal.extensions = Some(Box::new(serde_json::from_value(opaque.clone()).unwrap()));
+        let (hooks, _) = self::hooks(vec![json!([])]);
+        let returned = hooks
+            .tool_before(proposal)
+            .result_type::<ResultValue>()
+            .provenance_type::<Provenance>()
+            .initial_candidate(
+                json!({"value":{"answer":"cached"},"provenance":{"source":"native"}}),
+            )
+            .await
+            .unwrap();
+        let candidate = returned.candidate.unwrap();
+        assert_eq!(
+            candidate.value,
+            ResultValue {
+                answer: "cached".into()
+            }
+        );
+        assert_eq!(
+            candidate.provenance,
+            agenthooksprotocol::Presence::Present(Provenance {
+                source: "native".into()
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&returned.settled_event).unwrap()["extensions"],
+            opaque
+        );
+    });
+}

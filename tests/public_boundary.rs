@@ -637,3 +637,23 @@ fn omitted_native_state_differs_from_explicit_none_until_first_acceptance() {
         );
     }
 }
+
+#[test]
+fn low_level_tool_result_retains_settled_request_event_not_just_effective_input() {
+    let calls = Arc::new(Mutex::new(vec![]));
+    let mut event = context().event;
+    event["extensions"] = json!({"org.example.event":{"opaque":[null,{"nested":true}]}});
+    event["native"] = json!({"caller":{"ref":"opaque","parts":[1,2]}});
+    let client = Client::new(ToolContext::new(event.clone())).with_subscription(hook(
+        "modify",
+        json!([replace(json!({"count":2}))]),
+        FailurePolicy::Closed,
+        &calls,
+    ));
+    let result = block_on(async { client.tool_before(Input { count: 1 }).await.unwrap() });
+    event["tool"]["input"] = json!({"count":2});
+    assert_eq!(result.effective_event, event);
+    let settled: agenthooksprotocol::Event = result.settled_event().unwrap();
+    assert_eq!(serde_json::to_value(settled).unwrap(), event);
+    assert_eq!(result.input.unwrap(), Input { count: 2 });
+}
