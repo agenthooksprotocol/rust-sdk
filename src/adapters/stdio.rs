@@ -1,6 +1,6 @@
 //! Bounded JSON-lines framing only; does not launch or supervise subprocesses.
 use crate::{
-    server::{Authenticator, Handler, Server},
+    server::{Authenticator, Server},
     transport::{Request, Response},
 };
 use std::{
@@ -38,8 +38,8 @@ pub fn read_frame(reader: &mut impl BufRead, max_bytes: usize) -> io::Result<Opt
     }
 }
 /// Credentials must come from trusted transport configuration, never message fields.
-pub async fn dispatch<H: Handler, A: Authenticator>(
-    server: &Server<H, A>,
+pub async fn dispatch<A: Authenticator>(
+    server: &Server<A>,
     frame: Vec<u8>,
     authorization: Option<String>,
 ) -> Response {

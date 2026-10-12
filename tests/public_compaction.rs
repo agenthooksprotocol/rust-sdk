@@ -1,4 +1,5 @@
 use agenthooksprotocol::{
+    capability,
     compaction::{capabilities, selected_text, stage_boundary},
     content::{
         AuthorizedScope, ContentContext, ContentReference, ContentStore, MemoryContentStore,
@@ -15,9 +16,9 @@ fn facade_compaction_host_contract_rejects_repaired_intermediate_atomically() {
         adapters::registered::ManagedBackend,
         client::{HookError, LocalFuture},
         contracts::Contract,
-        hooks::{Capabilities, EventGrant, HooksOptions},
+        hooks::HooksOptions,
     };
-    use std::{collections::BTreeMap, sync::Mutex, time::Duration};
+    use std::{sync::Mutex, time::Duration};
 
     struct Replies {
         effects: Vec<Value>,
@@ -62,13 +63,23 @@ fn facade_compaction_host_contract_rejects_repaired_intermediate_atomically() {
                     "subscriptions":subscriptions}]}),
                 HooksOptions::new(
                     "urn:test:compaction",
-                    BTreeMap::from([(
-                        name.clone(),
-                        EventGrant::intercept(
-                            Capabilities::from_value(request["params"]["capabilities"].clone())
-                                .unwrap(),
-                        ),
-                    )]),
+                    if after {
+                        capability::HostCapabilities {
+                            context_compact_after: Some(
+                                capability::context_compact_after()
+                                    .modify_summary(capability::Modify::ReplaceAndMerge),
+                            ),
+                            ..Default::default()
+                        }
+                    } else {
+                        capability::HostCapabilities {
+                            context_compact_before: Some(
+                                capability::context_compact_before()
+                                    .modify_instructions(capability::Modify::ReplaceAndMerge),
+                            ),
+                            ..Default::default()
+                        }
+                    },
                 )
                 .with_backend(
                     "org.example.compaction",

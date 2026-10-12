@@ -36056,433 +36056,2555 @@ pub mod responses {
     }
 }
 
-/// Immutable declarations only; boundary admission and per-call narrowing are runtime-owned.
 pub mod capability {
-    use super::Capabilities;
     use serde::Serialize;
-    use serde_json::{Value, json};
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Error(pub String);
-    impl std::fmt::Display for Error {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(&self.0)
-        }
-    }
-    impl std::error::Error for Error {}
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-    #[serde(rename_all = "lowercase")]
-    pub enum Mode {
-        Intercept,
-        Observe,
-    }
-    #[derive(Debug, Clone, Serialize)]
-    pub struct Declaration {
-        pub modes: Vec<Mode>,
+    use std::collections::{BTreeMap, BTreeSet};
+    #[derive(Clone, Copy, Debug)]
+    pub struct Observe;
+    #[derive(Clone, Debug, Serialize)]
+    pub struct WireDeclaration {
+        modes: Vec<&'static str>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub capabilities: Option<Capabilities>,
+        capabilities: Option<WireCapabilities>,
     }
-    #[derive(Debug, Clone)]
-    pub struct Builder {
-        value: Value,
+    #[derive(Clone, Debug, Default, Serialize)]
+    struct WireCapabilities {
+        effects: BTreeSet<String>,
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        modify: BTreeMap<String, BTreeMap<String, bool>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        flow: Option<WireFlow>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        inject: Option<WireInject>,
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        elicitation: BTreeMap<String, BTreeMap<String, bool>>,
     }
-    /// Deliberately advertises BOTH intercept and observe, unlike raw manifests.
-    pub fn intercept() -> Builder {
-        Builder {
-            value: json!({"effects": []}),
-        }
+    #[derive(Clone, Debug, Serialize)]
+    struct WireFlow {
+        operations: Vec<String>,
+        #[serde(
+            rename = "remainingContinuations",
+            skip_serializing_if = "Option::is_none"
+        )]
+        remaining: Option<u64>,
+        #[serde(rename = "continuationCount", skip_serializing_if = "Option::is_none")]
+        count: Option<u64>,
+        #[serde(rename = "maxContinuations", skip_serializing_if = "Option::is_none")]
+        max: Option<u64>,
     }
-    pub fn observe() -> Declaration {
-        Declaration {
-            modes: vec![Mode::Observe],
-            capabilities: None,
-        }
+    #[derive(Clone, Debug, Serialize)]
+    struct WireInject {
+        context: WireContext,
     }
-    fn merge(a: &mut Value, b: Value) {
-        match (a, b) {
-            (Value::Object(a), Value::Object(b)) => {
-                for (k, v) in b {
-                    merge(a.entry(k).or_insert(Value::Null), v);
+    #[derive(Clone, Debug, Serialize)]
+    struct WireContext {
+        append: bool,
+        #[serde(rename = "deliverAt")]
+        deliver_at: Vec<String>,
+    }
+    #[derive(Clone, Debug, Default)]
+    struct State {
+        observe: bool,
+        grants: WireCapabilities,
+    }
+    impl State {
+        fn add_flow(&mut self, mut grant: WireFlow) {
+            if let Some(old) = &self.grants.flow {
+                for operation in &old.operations {
+                    if !grant.operations.contains(operation) {
+                        grant.operations.push(operation.clone());
+                    }
                 }
+                grant.remaining = grant.remaining.or(old.remaining);
+                grant.count = grant.count.or(old.count);
+                grant.max = grant.max.or(old.max);
             }
-            (Value::Array(a), Value::Array(b)) => {
-                for v in b {
-                    if !a.contains(&v) {
-                        a.push(v);
+            grant
+                .operations
+                .sort_by_key(|op| if op == "stop" { 0 } else { 1 });
+            self.grants.effects.insert("flow".into());
+            self.grants.flow = Some(grant);
+        }
+        fn add_inject(&mut self, mut delivery: Vec<String>) {
+            if let Some(old) = &self.grants.inject {
+                for mode in &old.context.deliver_at {
+                    if !delivery.contains(mode) {
+                        delivery.push(mode.clone());
                     }
                 }
             }
-            (Value::Bool(a), Value::Bool(b)) => *a |= b,
-            (a, b) => *a = b,
+            delivery.sort_by_key(|mode| if mode == "now" { 0 } else { 1 });
+            self.grants.effects.insert("inject".into());
+            self.grants.inject = Some(WireInject {
+                context: WireContext {
+                    append: true,
+                    deliver_at: delivery,
+                },
+            });
         }
-    }
-    impl Serialize for Builder {
-        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-            self.build()
-                .map_err(serde::ser::Error::custom)?
-                .serialize(serializer)
-        }
-    }
-    pub use super::EffectId as EffectType;
-    pub use super::EventType as Event;
-    #[derive(
-        Debug,
-        Clone,
-        Copy,
-        PartialEq,
-        Eq,
-        PartialOrd,
-        Ord,
-        Hash,
-        serde::Serialize,
-        serde::Deserialize,
-    )]
-    pub enum ModifyTarget {
-        #[serde(rename = "content")]
-        Content,
-        #[serde(rename = "input")]
-        Input,
-        #[serde(rename = "instructions")]
-        Instructions,
-        #[serde(rename = "output")]
-        Output,
-        #[serde(rename = "prompt")]
-        Prompt,
-        #[serde(rename = "request")]
-        Request,
-        #[serde(rename = "response")]
-        Response,
-        #[serde(rename = "summary")]
-        Summary,
-        #[serde(rename = "workspace")]
-        Workspace,
-    }
-    impl ModifyTarget {
-        pub fn as_str(self) -> &'static str {
-            match self {
-                Self::Content => "content",
-                Self::Input => "input",
-                Self::Instructions => "instructions",
-                Self::Output => "output",
-                Self::Prompt => "prompt",
-                Self::Request => "request",
-                Self::Response => "response",
-                Self::Summary => "summary",
-                Self::Workspace => "workspace",
+        fn wire(&self) -> WireDeclaration {
+            let intercept = !self.grants.effects.is_empty() || !self.grants.elicitation.is_empty();
+            let mut modes = Vec::new();
+            if intercept {
+                modes.push("intercept");
+            }
+            if self.observe {
+                modes.push("observe");
+            }
+            WireDeclaration {
+                modes,
+                capabilities: intercept.then(|| self.grants.clone()),
             }
         }
     }
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ModifyOperation {
-        Merge,
-        Replace,
-    }
-    impl ModifyOperation {
-        fn wire(self) -> &'static str {
-            match self {
-                Self::Merge => "merge",
-                Self::Replace => "replace",
-            }
-        }
-    }
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum FlowOperation {
-        Continue,
+    #[derive(Clone, Copy, Debug)]
+    pub enum ModelRequestBeforeFlow {
         Stop,
     }
-    impl FlowOperation {
-        fn wire(self) -> &'static str {
+    impl ModelRequestBeforeFlow {
+        fn wire(self) -> WireFlow {
             match self {
-                Self::Continue => "continue",
-                Self::Stop => "stop",
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
             }
         }
     }
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum Delivery {
-        NextTurn,
+    #[derive(Clone, Copy, Debug)]
+    pub enum ModelResponseAfterFlow {
+        Stop,
+    }
+    impl ModelResponseAfterFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum ModelSwitchBeforeFlow {
+        Stop,
+    }
+    impl ModelSwitchBeforeFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum Flow {
+        Stop,
+        Continue {
+            remaining_continuations: u64,
+            continuation_count: u64,
+            max_continuations: Option<u64>,
+        },
+        StopAndContinue {
+            remaining_continuations: u64,
+            continuation_count: u64,
+            max_continuations: Option<u64>,
+        },
+    }
+    impl Flow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+                Self::Continue {
+                    remaining_continuations,
+                    continuation_count,
+                    max_continuations,
+                } => WireFlow {
+                    operations: vec!["continue".into()],
+                    remaining: Some(remaining_continuations),
+                    count: Some(continuation_count),
+                    max: max_continuations,
+                },
+                Self::StopAndContinue {
+                    remaining_continuations,
+                    continuation_count,
+                    max_continuations,
+                } => WireFlow {
+                    operations: vec!["stop".into(), "continue".into()],
+                    remaining: Some(remaining_continuations),
+                    count: Some(continuation_count),
+                    max: max_continuations,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum ToolBatchAfterFlow {
+        Stop,
+    }
+    impl ToolBatchAfterFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum ToolBeforeFlow {
+        Stop,
+    }
+    impl ToolBeforeFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum ToolPermissionRequestFlow {
+        Stop,
+    }
+    impl ToolPermissionRequestFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum TurnStartFlow {
+        Stop,
+    }
+    impl TurnStartFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum InjectContext {
         Now,
+        NextTurn,
+        NowAndNextTurn,
     }
-    impl Delivery {
-        fn wire(self) -> &'static str {
+    impl InjectContext {
+        fn wire(self) -> Vec<String> {
             match self {
-                Self::NextTurn => "next_turn",
-                Self::Now => "now",
+                Self::Now => vec!["now".into()],
+                Self::NextTurn => vec!["next_turn".into()],
+                Self::NowAndNextTurn => vec!["now".into(), "next_turn".into()],
             }
         }
     }
-    impl Builder {
-        pub fn allow(&self) -> Self {
-            self.add(Some("allow"), serde_json::json!({}))
-        }
-        pub fn ask(&self) -> Self {
-            self.add(Some("ask"), serde_json::json!({}))
-        }
-        pub fn deny(&self) -> Self {
-            self.add(Some("deny"), serde_json::json!({}))
-        }
-        pub fn message(&self) -> Self {
-            self.add(Some("message"), serde_json::json!({}))
-        }
-        pub fn r#return(&self) -> Self {
-            self.add(Some("return"), serde_json::json!({}))
-        }
-        pub fn modify_content(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"content": grant}}),
-            ))
-        }
-        pub fn modify_input(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"input": grant}}),
-            ))
-        }
-        pub fn modify_instructions(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"instructions": grant}}),
-            ))
-        }
-        pub fn modify_output(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"output": grant}}),
-            ))
-        }
-        pub fn modify_prompt(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"prompt": grant}}),
-            ))
-        }
-        pub fn modify_request(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"request": grant}}),
-            ))
-        }
-        pub fn modify_response(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"response": grant}}),
-            ))
-        }
-        pub fn modify_summary(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"summary": grant}}),
-            ))
-        }
-        pub fn modify_workspace(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"workspace": grant}}),
-            ))
-        }
-        pub fn elicitation_form(&self) -> Self {
-            self.add(None, serde_json::json!({"elicitation": {"form": {}}}))
-        }
-        pub fn elicitation_url(&self) -> Self {
-            self.add(None, serde_json::json!({"elicitation": {"url": {}}}))
-        }
-
-        fn add(&self, effect: Option<&str>, grant: Value) -> Self {
-            let mut next = self.clone();
-            merge(&mut next.value, grant);
-            if let Some(effect) = effect {
-                merge(&mut next.value, json!({"effects": [effect]}));
-            }
-            next
-        }
-        pub fn build(&self) -> Result<Declaration, Error> {
-            let effects = self
-                .value
-                .get("effects")
-                .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            let modes = self
-                .value
-                .get("elicitation")
-                .and_then(Value::as_object)
-                .map_or(0, |v| v.len());
-            if effects == 0 && modes == 0 {
-                return Err(Error("empty interception declaration".into()));
-            }
-            let capabilities = serde_json::from_value(self.value.clone())
-                .map_err(|e| Error(format!("invalid capability declaration: {e}")))?;
-            Ok(Declaration {
-                modes: vec![Mode::Intercept, Mode::Observe],
-                capabilities: Some(capabilities),
-            })
-        }
-        pub fn flow(
-            &self,
-            operations: impl IntoIterator<Item = FlowOperation>,
-            counts: ContinuationCounts,
-        ) -> Result<Self, Error> {
-            let operations: Vec<_> = operations.into_iter().map(FlowOperation::wire).collect();
-            if operations.is_empty() {
-                return Err(Error("nonempty flow operations required".into()));
-            }
-            if operations.contains(&"continue")
-                && (counts.remaining_continuations.is_none() || counts.continuation_count.is_none())
-            {
-                return Err(Error("continue requires counts".into()));
-            }
-            let mut flow = json!({"operations": []});
-            for operation in operations {
-                merge(&mut flow, json!({"operations": [operation]}));
-            }
-            for (key, value) in [
-                ("remainingContinuations", counts.remaining_continuations),
-                ("continuationCount", counts.continuation_count),
-                ("maxContinuations", counts.max_continuations),
-            ] {
-                if let Some(value) = value {
-                    if value > 9_007_199_254_740_991 {
-                        return Err(Error(
-                            "continuation count exceeds safe integer range".into(),
-                        ));
-                    }
-                    flow[key] = json!(value);
+    #[derive(Clone, Copy, Debug)]
+    pub enum Modify {
+        Replace,
+        Merge,
+        ReplaceAndMerge,
+    }
+    impl Modify {
+        fn wire(self) -> BTreeMap<String, bool> {
+            match self {
+                Self::Replace => {
+                    BTreeMap::from([("replace".into(), true), ("merge".into(), false)])
+                }
+                Self::Merge => BTreeMap::from([("replace".into(), false), ("merge".into(), true)]),
+                Self::ReplaceAndMerge => {
+                    BTreeMap::from([("replace".into(), true), ("merge".into(), true)])
                 }
             }
-            Ok(self.add(Some("flow"), json!({"flow":flow})))
-        }
-        pub fn inject_context(
-            &self,
-            deliver_at: impl IntoIterator<Item = Delivery>,
-        ) -> Result<Self, Error> {
-            let mut values = Vec::new();
-            for value in deliver_at {
-                let value = value.wire();
-                if !values.contains(&value) {
-                    values.push(value);
-                }
-            }
-            if values.is_empty() {
-                return Err(Error("nonempty delivery operations required".into()));
-            }
-            Ok(self.add(
-                Some("inject"),
-                json!({"inject":{"context":{"append":true,"deliverAt":values}}}),
-            ))
         }
     }
-    #[derive(Debug, Clone, Copy, Default)]
-    pub struct ContinuationCounts {
-        pub remaining_continuations: Option<u64>,
-        pub continuation_count: Option<u64>,
-        pub max_continuations: Option<u64>,
+    #[derive(Clone, Debug, Default)]
+    pub struct HostCapabilities {
+        pub config_change_after: Option<Observe>,
+        pub config_change_before: Option<ConfigChangeBefore>,
+        pub context_compact_after: Option<ContextCompactAfter>,
+        pub context_compact_before: Option<ContextCompactBefore>,
+        pub file_changed: Option<Observe>,
+        pub hook_failure: Option<Observe>,
+        pub model_error: Option<Observe>,
+        pub model_request_before: Option<ModelRequestBefore>,
+        pub model_response_after: Option<ModelResponseAfter>,
+        pub model_switch_after: Option<Observe>,
+        pub model_switch_before: Option<ModelSwitchBefore>,
+        pub session_end: Option<Observe>,
+        pub session_start: Option<SessionStart>,
+        pub task_change_after: Option<Observe>,
+        pub task_change_before: Option<TaskChangeBefore>,
+        pub tool_after: Option<ToolAfter>,
+        pub tool_batch_after: Option<ToolBatchAfter>,
+        pub tool_before: Option<ToolBefore>,
+        pub tool_permission_request: Option<ToolPermissionRequest>,
+        pub tool_permission_resolved: Option<Observe>,
+        pub tool_progress: Option<Observe>,
+        pub turn_end: Option<Observe>,
+        pub turn_finish_before: Option<TurnFinishBefore>,
+        pub turn_progress: Option<Observe>,
+        pub turn_start: Option<TurnStart>,
+        pub user_attention: Option<Observe>,
+        pub user_elicitation_request: Option<UserElicitationRequest>,
+        pub user_elicitation_result: Option<UserElicitationResult>,
+        pub user_message_inbound: Option<UserMessageInbound>,
+        pub user_message_outbound: Option<UserMessageOutbound>,
+        pub workspace_change_after: Option<Observe>,
+        pub workspace_change_before: Option<WorkspaceChangeBefore>,
+    }
+    impl HostCapabilities {
+        pub fn to_wire(&self) -> BTreeMap<String, WireDeclaration> {
+            let mut wire = BTreeMap::new();
+            if let Some(_declaration) = &self.config_change_after {
+                wire.insert(
+                    "config.change.after".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.config_change_before {
+                wire.insert("config.change.before".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.context_compact_after {
+                wire.insert("context.compact.after".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.context_compact_before {
+                wire.insert("context.compact.before".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.file_changed {
+                wire.insert(
+                    "file.changed".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.hook_failure {
+                wire.insert(
+                    "hook.failure".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.model_error {
+                wire.insert(
+                    "model.error".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.model_request_before {
+                wire.insert("model.request.before".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.model_response_after {
+                wire.insert("model.response.after".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.model_switch_after {
+                wire.insert(
+                    "model.switch.after".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.model_switch_before {
+                wire.insert("model.switch.before".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.session_end {
+                wire.insert(
+                    "session.end".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.session_start {
+                wire.insert("session.start".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.task_change_after {
+                wire.insert(
+                    "task.change.after".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.task_change_before {
+                wire.insert("task.change.before".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_after {
+                wire.insert("tool.after".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_batch_after {
+                wire.insert("tool.batch.after".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_before {
+                wire.insert("tool.before".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_permission_request {
+                wire.insert("tool.permission.request".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_permission_resolved {
+                wire.insert(
+                    "tool.permission.resolved".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.tool_progress {
+                wire.insert(
+                    "tool.progress".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.turn_end {
+                wire.insert(
+                    "turn.end".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.turn_finish_before {
+                wire.insert("turn.finish.before".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.turn_progress {
+                wire.insert(
+                    "turn.progress".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.turn_start {
+                wire.insert("turn.start".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.user_attention {
+                wire.insert(
+                    "user.attention".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.user_elicitation_request {
+                wire.insert("user.elicitation.request".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.user_elicitation_result {
+                wire.insert("user.elicitation.result".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.user_message_inbound {
+                wire.insert("user.message.inbound".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.user_message_outbound {
+                wire.insert("user.message.outbound".into(), _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.workspace_change_after {
+                wire.insert(
+                    "workspace.change.after".into(),
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.workspace_change_before {
+                wire.insert("workspace.change.before".into(), _declaration.0.wire());
+            }
+            wire
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ConfigChangeBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ConfigChangeBeforeInitial(());
+    pub fn config_change_before() -> ConfigChangeBeforeInitial {
+        ConfigChangeBeforeInitial(())
+    }
+    impl Serialize for ConfigChangeBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ConfigChangeBeforeInitial {
+        pub fn observe(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ConfigChangeBefore(state)
+        }
+        pub fn deny(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ConfigChangeBefore(state)
+        }
+        pub fn message(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ConfigChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ConfigChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ConfigChangeBefore(state)
+        }
+    }
+    impl ConfigChangeBefore {
+        pub fn observe(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ConfigChangeBefore(state)
+        }
+        pub fn deny(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ConfigChangeBefore(state)
+        }
+        pub fn message(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ConfigChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ConfigChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ConfigChangeBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ContextCompactAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ContextCompactAfterInitial(());
+    pub fn context_compact_after() -> ContextCompactAfterInitial {
+        ContextCompactAfterInitial(())
+    }
+    impl Serialize for ContextCompactAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ContextCompactAfterInitial {
+        pub fn observe(&self) -> ContextCompactAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ContextCompactAfter(state)
+        }
+        pub fn message(&self) -> ContextCompactAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ContextCompactAfter(state)
+        }
+        pub fn modify_summary(&self, grant: Modify) -> ContextCompactAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("summary".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ContextCompactAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ContextCompactAfter {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ContextCompactAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ContextCompactAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ContextCompactAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ContextCompactAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ContextCompactAfter(state)
+        }
+    }
+    impl ContextCompactAfter {
+        pub fn observe(&self) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ContextCompactAfter(state)
+        }
+        pub fn message(&self) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ContextCompactAfter(state)
+        }
+        pub fn modify_summary(&self, grant: Modify) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("summary".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ContextCompactAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ContextCompactAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ContextCompactAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ContextCompactAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ContextCompactBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ContextCompactBeforeInitial(());
+    pub fn context_compact_before() -> ContextCompactBeforeInitial {
+        ContextCompactBeforeInitial(())
+    }
+    impl Serialize for ContextCompactBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ContextCompactBeforeInitial {
+        pub fn observe(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ContextCompactBefore(state)
+        }
+        pub fn deny(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ContextCompactBefore(state)
+        }
+        pub fn message(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ContextCompactBefore(state)
+        }
+        pub fn return_result(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("return".into());
+            ContextCompactBefore(state)
+        }
+        pub fn modify_instructions(&self, grant: Modify) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("instructions".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ContextCompactBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ContextCompactBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ContextCompactBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ContextCompactBefore(state)
+        }
+    }
+    impl ContextCompactBefore {
+        pub fn observe(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ContextCompactBefore(state)
+        }
+        pub fn deny(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ContextCompactBefore(state)
+        }
+        pub fn message(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ContextCompactBefore(state)
+        }
+        pub fn return_result(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("return".into());
+            ContextCompactBefore(state)
+        }
+        pub fn modify_instructions(&self, grant: Modify) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("instructions".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ContextCompactBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ContextCompactBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ContextCompactBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ContextCompactBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ModelRequestBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ModelRequestBeforeInitial(());
+    pub fn model_request_before() -> ModelRequestBeforeInitial {
+        ModelRequestBeforeInitial(())
+    }
+    impl Serialize for ModelRequestBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ModelRequestBeforeInitial {
+        pub fn observe(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ModelRequestBefore(state)
+        }
+        pub fn deny(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ModelRequestBefore(state)
+        }
+        pub fn message(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ModelRequestBefore(state)
+        }
+        pub fn return_result(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("return".into());
+            ModelRequestBefore(state)
+        }
+        pub fn modify_request(&self, grant: Modify) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("request".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ModelRequestBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ModelRequestBefore(state)
+        }
+        pub fn flow(&self, grant: ModelRequestBeforeFlow) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ModelRequestBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelRequestBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelRequestBefore(state)
+        }
+    }
+    impl ModelRequestBefore {
+        pub fn observe(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ModelRequestBefore(state)
+        }
+        pub fn deny(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ModelRequestBefore(state)
+        }
+        pub fn message(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ModelRequestBefore(state)
+        }
+        pub fn return_result(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("return".into());
+            ModelRequestBefore(state)
+        }
+        pub fn modify_request(&self, grant: Modify) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("request".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ModelRequestBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ModelRequestBefore(state)
+        }
+        pub fn flow(&self, grant: ModelRequestBeforeFlow) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ModelRequestBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelRequestBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelRequestBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ModelResponseAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ModelResponseAfterInitial(());
+    pub fn model_response_after() -> ModelResponseAfterInitial {
+        ModelResponseAfterInitial(())
+    }
+    impl Serialize for ModelResponseAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ModelResponseAfterInitial {
+        pub fn observe(&self) -> ModelResponseAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ModelResponseAfter(state)
+        }
+        pub fn message(&self) -> ModelResponseAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ModelResponseAfter(state)
+        }
+        pub fn modify_response(&self, grant: Modify) -> ModelResponseAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("response".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ModelResponseAfter(state)
+        }
+        pub fn flow(&self, grant: ModelResponseAfterFlow) -> ModelResponseAfter {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ModelResponseAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ModelResponseAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelResponseAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ModelResponseAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelResponseAfter(state)
+        }
+    }
+    impl ModelResponseAfter {
+        pub fn observe(&self) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ModelResponseAfter(state)
+        }
+        pub fn message(&self) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ModelResponseAfter(state)
+        }
+        pub fn modify_response(&self, grant: Modify) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("response".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ModelResponseAfter(state)
+        }
+        pub fn flow(&self, grant: ModelResponseAfterFlow) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ModelResponseAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelResponseAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelResponseAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ModelSwitchBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ModelSwitchBeforeInitial(());
+    pub fn model_switch_before() -> ModelSwitchBeforeInitial {
+        ModelSwitchBeforeInitial(())
+    }
+    impl Serialize for ModelSwitchBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ModelSwitchBeforeInitial {
+        pub fn observe(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ModelSwitchBefore(state)
+        }
+        pub fn deny(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ModelSwitchBefore(state)
+        }
+        pub fn message(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ModelSwitchBefore(state)
+        }
+        pub fn flow(&self, grant: ModelSwitchBeforeFlow) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ModelSwitchBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelSwitchBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelSwitchBefore(state)
+        }
+    }
+    impl ModelSwitchBefore {
+        pub fn observe(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ModelSwitchBefore(state)
+        }
+        pub fn deny(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ModelSwitchBefore(state)
+        }
+        pub fn message(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ModelSwitchBefore(state)
+        }
+        pub fn flow(&self, grant: ModelSwitchBeforeFlow) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ModelSwitchBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelSwitchBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelSwitchBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct SessionStart(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct SessionStartInitial(());
+    pub fn session_start() -> SessionStartInitial {
+        SessionStartInitial(())
+    }
+    impl Serialize for SessionStart {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl SessionStartInitial {
+        pub fn observe(&self) -> SessionStart {
+            let mut state = State::default();
+            state.observe = true;
+            SessionStart(state)
+        }
+        pub fn message(&self) -> SessionStart {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            SessionStart(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> SessionStart {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            SessionStart(state)
+        }
+        pub fn elicitation_form(&self) -> SessionStart {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            SessionStart(state)
+        }
+        pub fn elicitation_url(&self) -> SessionStart {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            SessionStart(state)
+        }
+    }
+    impl SessionStart {
+        pub fn observe(&self) -> SessionStart {
+            let mut state = self.0.clone();
+            state.observe = true;
+            SessionStart(state)
+        }
+        pub fn message(&self) -> SessionStart {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            SessionStart(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> SessionStart {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            SessionStart(state)
+        }
+        pub fn elicitation_form(&self) -> SessionStart {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            SessionStart(state)
+        }
+        pub fn elicitation_url(&self) -> SessionStart {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            SessionStart(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TaskChangeBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TaskChangeBeforeInitial(());
+    pub fn task_change_before() -> TaskChangeBeforeInitial {
+        TaskChangeBeforeInitial(())
+    }
+    impl Serialize for TaskChangeBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TaskChangeBeforeInitial {
+        pub fn observe(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state.observe = true;
+            TaskChangeBefore(state)
+        }
+        pub fn deny(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            TaskChangeBefore(state)
+        }
+        pub fn message(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            TaskChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TaskChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TaskChangeBefore(state)
+        }
+    }
+    impl TaskChangeBefore {
+        pub fn observe(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TaskChangeBefore(state)
+        }
+        pub fn deny(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            TaskChangeBefore(state)
+        }
+        pub fn message(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            TaskChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TaskChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TaskChangeBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolAfterInitial(());
+    pub fn tool_after() -> ToolAfterInitial {
+        ToolAfterInitial(())
+    }
+    impl Serialize for ToolAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolAfterInitial {
+        pub fn observe(&self) -> ToolAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ToolAfter(state)
+        }
+        pub fn message(&self) -> ToolAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ToolAfter(state)
+        }
+        pub fn modify_output(&self, grant: Modify) -> ToolAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("output".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolAfter {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ToolAfter(state)
+        }
+        pub fn flow(&self, grant: Flow) -> ToolAfter {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ToolAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ToolAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ToolAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolAfter(state)
+        }
+    }
+    impl ToolAfter {
+        pub fn observe(&self) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolAfter(state)
+        }
+        pub fn message(&self) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ToolAfter(state)
+        }
+        pub fn modify_output(&self, grant: Modify) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("output".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ToolAfter(state)
+        }
+        pub fn flow(&self, grant: Flow) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ToolAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ToolAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ToolAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolBatchAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolBatchAfterInitial(());
+    pub fn tool_batch_after() -> ToolBatchAfterInitial {
+        ToolBatchAfterInitial(())
+    }
+    impl Serialize for ToolBatchAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolBatchAfterInitial {
+        pub fn observe(&self) -> ToolBatchAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ToolBatchAfter(state)
+        }
+        pub fn message(&self) -> ToolBatchAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ToolBatchAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolBatchAfter {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ToolBatchAfter(state)
+        }
+        pub fn flow(&self, grant: ToolBatchAfterFlow) -> ToolBatchAfter {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ToolBatchAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ToolBatchAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolBatchAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ToolBatchAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolBatchAfter(state)
+        }
+    }
+    impl ToolBatchAfter {
+        pub fn observe(&self) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolBatchAfter(state)
+        }
+        pub fn message(&self) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ToolBatchAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ToolBatchAfter(state)
+        }
+        pub fn flow(&self, grant: ToolBatchAfterFlow) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ToolBatchAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolBatchAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolBatchAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolBeforeInitial(());
+    pub fn tool_before() -> ToolBeforeInitial {
+        ToolBeforeInitial(())
+    }
+    impl Serialize for ToolBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolBeforeInitial {
+        pub fn observe(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ToolBefore(state)
+        }
+        pub fn allow(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("allow".into());
+            ToolBefore(state)
+        }
+        pub fn ask(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("ask".into());
+            ToolBefore(state)
+        }
+        pub fn deny(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ToolBefore(state)
+        }
+        pub fn message(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ToolBefore(state)
+        }
+        pub fn return_result(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("return".into());
+            ToolBefore(state)
+        }
+        pub fn modify_input(&self, grant: Modify) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("input".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolBefore {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ToolBefore(state)
+        }
+        pub fn flow(&self, grant: ToolBeforeFlow) -> ToolBefore {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ToolBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ToolBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ToolBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolBefore(state)
+        }
+    }
+    impl ToolBefore {
+        pub fn observe(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolBefore(state)
+        }
+        pub fn allow(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("allow".into());
+            ToolBefore(state)
+        }
+        pub fn ask(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("ask".into());
+            ToolBefore(state)
+        }
+        pub fn deny(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ToolBefore(state)
+        }
+        pub fn message(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ToolBefore(state)
+        }
+        pub fn return_result(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("return".into());
+            ToolBefore(state)
+        }
+        pub fn modify_input(&self, grant: Modify) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("input".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ToolBefore(state)
+        }
+        pub fn flow(&self, grant: ToolBeforeFlow) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ToolBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolPermissionRequest(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolPermissionRequestInitial(());
+    pub fn tool_permission_request() -> ToolPermissionRequestInitial {
+        ToolPermissionRequestInitial(())
+    }
+    impl Serialize for ToolPermissionRequest {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolPermissionRequestInitial {
+        pub fn observe(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.observe = true;
+            ToolPermissionRequest(state)
+        }
+        pub fn allow(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("allow".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn deny(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn message(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn modify_input(&self, grant: Modify) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("input".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolPermissionRequest(state)
+        }
+        pub fn flow(&self, grant: ToolPermissionRequestFlow) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ToolPermissionRequest(state)
+        }
+        pub fn elicitation_form(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolPermissionRequest(state)
+        }
+        pub fn elicitation_url(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolPermissionRequest(state)
+        }
+    }
+    impl ToolPermissionRequest {
+        pub fn observe(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolPermissionRequest(state)
+        }
+        pub fn allow(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("allow".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn deny(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn message(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn modify_input(&self, grant: Modify) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("input".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolPermissionRequest(state)
+        }
+        pub fn flow(&self, grant: ToolPermissionRequestFlow) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ToolPermissionRequest(state)
+        }
+        pub fn elicitation_form(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolPermissionRequest(state)
+        }
+        pub fn elicitation_url(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolPermissionRequest(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TurnFinishBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TurnFinishBeforeInitial(());
+    pub fn turn_finish_before() -> TurnFinishBeforeInitial {
+        TurnFinishBeforeInitial(())
+    }
+    impl Serialize for TurnFinishBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TurnFinishBeforeInitial {
+        pub fn observe(&self) -> TurnFinishBefore {
+            let mut state = State::default();
+            state.observe = true;
+            TurnFinishBefore(state)
+        }
+        pub fn message(&self) -> TurnFinishBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            TurnFinishBefore(state)
+        }
+        pub fn modify_response(&self, grant: Modify) -> TurnFinishBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("response".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            TurnFinishBefore(state)
+        }
+        pub fn flow(&self, grant: Flow) -> TurnFinishBefore {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            TurnFinishBefore(state)
+        }
+        pub fn elicitation_form(&self) -> TurnFinishBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TurnFinishBefore(state)
+        }
+        pub fn elicitation_url(&self) -> TurnFinishBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TurnFinishBefore(state)
+        }
+    }
+    impl TurnFinishBefore {
+        pub fn observe(&self) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TurnFinishBefore(state)
+        }
+        pub fn message(&self) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            TurnFinishBefore(state)
+        }
+        pub fn modify_response(&self, grant: Modify) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("response".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            TurnFinishBefore(state)
+        }
+        pub fn flow(&self, grant: Flow) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            TurnFinishBefore(state)
+        }
+        pub fn elicitation_form(&self) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TurnFinishBefore(state)
+        }
+        pub fn elicitation_url(&self) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TurnFinishBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TurnStart(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TurnStartInitial(());
+    pub fn turn_start() -> TurnStartInitial {
+        TurnStartInitial(())
+    }
+    impl Serialize for TurnStart {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TurnStartInitial {
+        pub fn observe(&self) -> TurnStart {
+            let mut state = State::default();
+            state.observe = true;
+            TurnStart(state)
+        }
+        pub fn deny(&self) -> TurnStart {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            TurnStart(state)
+        }
+        pub fn message(&self) -> TurnStart {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            TurnStart(state)
+        }
+        pub fn modify_prompt(&self, grant: Modify) -> TurnStart {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("prompt".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            TurnStart(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> TurnStart {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            TurnStart(state)
+        }
+        pub fn flow(&self, grant: TurnStartFlow) -> TurnStart {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            TurnStart(state)
+        }
+        pub fn elicitation_form(&self) -> TurnStart {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TurnStart(state)
+        }
+        pub fn elicitation_url(&self) -> TurnStart {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TurnStart(state)
+        }
+    }
+    impl TurnStart {
+        pub fn observe(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TurnStart(state)
+        }
+        pub fn deny(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            TurnStart(state)
+        }
+        pub fn message(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            TurnStart(state)
+        }
+        pub fn modify_prompt(&self, grant: Modify) -> TurnStart {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("prompt".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            TurnStart(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> TurnStart {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            TurnStart(state)
+        }
+        pub fn flow(&self, grant: TurnStartFlow) -> TurnStart {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            TurnStart(state)
+        }
+        pub fn elicitation_form(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TurnStart(state)
+        }
+        pub fn elicitation_url(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TurnStart(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserElicitationRequest(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserElicitationRequestInitial(());
+    pub fn user_elicitation_request() -> UserElicitationRequestInitial {
+        UserElicitationRequestInitial(())
+    }
+    impl Serialize for UserElicitationRequest {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserElicitationRequestInitial {
+        pub fn observe(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state.observe = true;
+            UserElicitationRequest(state)
+        }
+        pub fn deny(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            UserElicitationRequest(state)
+        }
+        pub fn message(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            UserElicitationRequest(state)
+        }
+        pub fn return_result(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("return".into());
+            UserElicitationRequest(state)
+        }
+        pub fn elicitation_form(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserElicitationRequest(state)
+        }
+        pub fn elicitation_url(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserElicitationRequest(state)
+        }
+    }
+    impl UserElicitationRequest {
+        pub fn observe(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserElicitationRequest(state)
+        }
+        pub fn deny(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            UserElicitationRequest(state)
+        }
+        pub fn message(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            UserElicitationRequest(state)
+        }
+        pub fn return_result(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("return".into());
+            UserElicitationRequest(state)
+        }
+        pub fn elicitation_form(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserElicitationRequest(state)
+        }
+        pub fn elicitation_url(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserElicitationRequest(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserElicitationResult(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserElicitationResultInitial(());
+    pub fn user_elicitation_result() -> UserElicitationResultInitial {
+        UserElicitationResultInitial(())
+    }
+    impl Serialize for UserElicitationResult {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserElicitationResultInitial {
+        pub fn observe(&self) -> UserElicitationResult {
+            let mut state = State::default();
+            state.observe = true;
+            UserElicitationResult(state)
+        }
+        pub fn message(&self) -> UserElicitationResult {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            UserElicitationResult(state)
+        }
+        pub fn modify_content(&self, grant: Modify) -> UserElicitationResult {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("content".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserElicitationResult(state)
+        }
+        pub fn elicitation_form(&self) -> UserElicitationResult {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserElicitationResult(state)
+        }
+        pub fn elicitation_url(&self) -> UserElicitationResult {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserElicitationResult(state)
+        }
+    }
+    impl UserElicitationResult {
+        pub fn observe(&self) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserElicitationResult(state)
+        }
+        pub fn message(&self) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            UserElicitationResult(state)
+        }
+        pub fn modify_content(&self, grant: Modify) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("content".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserElicitationResult(state)
+        }
+        pub fn elicitation_form(&self) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserElicitationResult(state)
+        }
+        pub fn elicitation_url(&self) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserElicitationResult(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserMessageInbound(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserMessageInboundInitial(());
+    pub fn user_message_inbound() -> UserMessageInboundInitial {
+        UserMessageInboundInitial(())
+    }
+    impl Serialize for UserMessageInbound {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserMessageInboundInitial {
+        pub fn observe(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state.observe = true;
+            UserMessageInbound(state)
+        }
+        pub fn deny(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            UserMessageInbound(state)
+        }
+        pub fn message(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            UserMessageInbound(state)
+        }
+        pub fn modify_prompt(&self, grant: Modify) -> UserMessageInbound {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("prompt".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserMessageInbound(state)
+        }
+        pub fn elicitation_form(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserMessageInbound(state)
+        }
+        pub fn elicitation_url(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserMessageInbound(state)
+        }
+    }
+    impl UserMessageInbound {
+        pub fn observe(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserMessageInbound(state)
+        }
+        pub fn deny(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            UserMessageInbound(state)
+        }
+        pub fn message(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            UserMessageInbound(state)
+        }
+        pub fn modify_prompt(&self, grant: Modify) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("prompt".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserMessageInbound(state)
+        }
+        pub fn elicitation_form(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserMessageInbound(state)
+        }
+        pub fn elicitation_url(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserMessageInbound(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserMessageOutbound(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserMessageOutboundInitial(());
+    pub fn user_message_outbound() -> UserMessageOutboundInitial {
+        UserMessageOutboundInitial(())
+    }
+    impl Serialize for UserMessageOutbound {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserMessageOutboundInitial {
+        pub fn observe(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state.observe = true;
+            UserMessageOutbound(state)
+        }
+        pub fn deny(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            UserMessageOutbound(state)
+        }
+        pub fn message(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            UserMessageOutbound(state)
+        }
+        pub fn modify_content(&self, grant: Modify) -> UserMessageOutbound {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("content".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserMessageOutbound(state)
+        }
+        pub fn elicitation_form(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserMessageOutbound(state)
+        }
+        pub fn elicitation_url(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserMessageOutbound(state)
+        }
+    }
+    impl UserMessageOutbound {
+        pub fn observe(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserMessageOutbound(state)
+        }
+        pub fn deny(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            UserMessageOutbound(state)
+        }
+        pub fn message(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            UserMessageOutbound(state)
+        }
+        pub fn modify_content(&self, grant: Modify) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("content".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserMessageOutbound(state)
+        }
+        pub fn elicitation_form(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserMessageOutbound(state)
+        }
+        pub fn elicitation_url(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserMessageOutbound(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct WorkspaceChangeBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct WorkspaceChangeBeforeInitial(());
+    pub fn workspace_change_before() -> WorkspaceChangeBeforeInitial {
+        WorkspaceChangeBeforeInitial(())
+    }
+    impl Serialize for WorkspaceChangeBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl WorkspaceChangeBeforeInitial {
+        pub fn observe(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state.observe = true;
+            WorkspaceChangeBefore(state)
+        }
+        pub fn deny(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn message(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn modify_workspace(&self, grant: Modify) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("workspace".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            WorkspaceChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            WorkspaceChangeBefore(state)
+        }
+    }
+    impl WorkspaceChangeBefore {
+        pub fn observe(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            WorkspaceChangeBefore(state)
+        }
+        pub fn deny(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn message(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn modify_workspace(&self, grant: Modify) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("workspace".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            WorkspaceChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            WorkspaceChangeBefore(state)
+        }
     }
 }
 /// Inline schema model.

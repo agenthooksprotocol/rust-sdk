@@ -21,7 +21,7 @@ agenthooksprotocol = "0.4"
 ## Registration-driven hooks
 
 `Hooks` accepts an ordinary `Registration` and `HooksOptions` with
-explicit per-event `EventGrant` authority. Registration selects routes; it does
+typed `capability::HostCapabilities` authority. Registration selects routes; it does
 not grant effects or observation permission. `tool_before(ToolBeforeInput<T>)`
 accepts flattened typed host facts and preserves the application argument type.
 `tool_input(T).context(...)` and `event(...)` retain advanced canonical paths.
@@ -31,8 +31,9 @@ with projection deferred until await, including `tool_after`,
 Generic host inputs preserve caller-owned arguments.
 `tool_before_event(ToolBeforeInput<T>)` returns an `EventOutcome` containing the
 canonical event; `tool_before` preserves the application argument type in
-`result.input`. Capability vocabulary is available
-as `capability::{Event, EffectType, ModifyTarget}` with canonical wire spellings.
+`result.input`. Declare host authority with event-specific constructors in
+`capability`; the fields of `capability::HostCapabilities` accept only matching
+event declarations.
 
 Use `hooks.subscribes("tool.before")` before expensive input preparation when
 only subscribed consumers need that input. This synchronous lookup includes
@@ -240,10 +241,27 @@ credentials are never an implicit fallback for independently bound uploads.
 Named boundaries such as `hooks.session_start(facts).await` supply their event
 `type`, identity, time, and configured source. Session start also supplies the
 configured manifest; do not duplicate those fields in `facts`. Conflicting
-caller values are rejected. Use `HooksOptions::from_manifest(source, manifest)`
-for a complete `StaticCapabilityManifest`, including tool paths,
-limits, and extension fields; the simple event-grant constructor only advertises
-its supported event/mode/capability subset.
+caller values are rejected. `HooksOptions::new(source, HostCapabilities)` stores
+typed authority without network I/O or JSON parsing. Each omitted field grants
+nothing. A declaration explicitly opts into observation with `.observe()`;
+interception selects supported controls or an elicitation facility.
+
+```rust
+use agenthooksprotocol::{capability::{self, HostCapabilities, Modify}, hooks::HooksOptions};
+
+let options = HooksOptions::new("urn:example:host", HostCapabilities {
+    tool_before: Some(capability::tool_before()
+        .allow().deny().return_result().modify_input(Modify::ReplaceAndMerge)
+        .observe()),
+    ..HostCapabilities::default()
+});
+```
+
+`Hooks::manifest()` renders the configured event/mode/capability subset for
+session start. Set `HooksOptions::manifest_metadata` to customize typed transport,
+authentication, tool-path, scope, limit, and other non-event metadata. Its opaque
+extras cannot replace known fields or event authority. External registration and transport configuration are validated
+by `Hooks::new`.
 
 Use generated host inputs with `PartInput::inline_text(...)` and
 `PartInput::owned(Attachment::lazy(source), media_type)` in canonical message
@@ -497,12 +515,17 @@ intentional: the runtime-neutral core does not install a global timer or executo
 | `interop` | Executable test hosts | Test-only blocking HTTP/process fixtures; not a default core dependency |
 
 `transport::{Request, Response, Http}` do not expose Reqwest or Axum types.
-Server callbacks receive generated request types and credential-derived principals;
-request IDs, event IDs, and content references are correlation, not authorization.
+`server::HandlerSet` registers callbacks in separate `intercept` and `observe`
+maps. Each event slot receives its matching generated event type and an
+authenticated context. Interception returns `ctx.reply().effect(effect)` with
+matching canonical effects; `ctx.reply()` alone is a valid no-op. Observation
+returns `Ok(())` and cannot return controls. Both maps can handle the same event.
+The server owns envelope correlation. Request IDs, event IDs, and content
+references are correlation, not authorization.
 Use `Server::handle_with_content(request, &store)` to verify schema-defined
-selected content before dispatch. Override `Handler::handle_verified` to consume
-`ResolvedContent` bytes indexed by request JSON pointer. The authenticated
-principal determines the storage scope; arbitrary open payload fields are not
+selected content before dispatch. Event-specific contexts expose verified content
+bytes indexed by request JSON pointer. The authenticated principal determines
+the storage scope; arbitrary open payload fields are not
 scanned for references. Plain `handle()` performs protocol validation without
 automatic content resolution.
 The bounded stdio adapter frames the **same** server handler rather than maintaining
@@ -588,7 +611,7 @@ cargo test --locked --all-features
 
 Generated code lives in `src/generated.rs`. Its provenance is recorded in `src/ahp-codegen.lock.json`; schema changes are made in the [protocol repository](https://github.com/agenthooksprotocol/agent-hooks-protocol), not by editing the generated file.
 
-The generator source is protocol commit `7544872e5beff69f29b04ae61686cc8ac25c3654`. From a protocol checkout at that commit, regenerate and verify with:
+The generator source is protocol commit `acb35f107b038296fd082072bb5bb64e8013e4e1`. From a protocol checkout at that commit, regenerate and verify with:
 
 ```sh
 python3 tools/generate_sdk.py --rust-sdk ../rust-sdk
@@ -639,14 +662,13 @@ error rather than an implicit null default.
 
 Query advertised effect-family membership on incoming generic or event-specific
 capabilities with `capabilities.supports(EffectId::Deny)`. `EffectId` aliases the
-schema's extensible effect vocabulary (also exported as
-`capability::EffectType`), so
+schema's extensible effect vocabulary, so
 `capabilities.supports(EffectId::Unknown("vendor.effect".into()))` works for custom
 families too. This query does not grant authorization and does not inspect
 modify targets, operations, or other admission constraints. A populated `modify`
 member does not imply membership of `"modify"` in `effects`.
 
-Use `capability::EffectType::as_str()` to borrow an identifier's wire spelling
+Use `EffectId::as_str()` to borrow an identifier's wire spelling
 and to obtain keys for ordered or hashed collections. Clone an identifier when reusing its
 owned string. `supports` compares typed identifiers without JSON serialization.
 

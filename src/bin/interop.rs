@@ -2,9 +2,7 @@ use agenthooksprotocol::client::{
     Client, FailurePolicy, Hook, HookError, LocalFuture, Permission, Subscription, ToolContext,
 };
 use agenthooksprotocol::interop::{self, Result, Schemas};
-use agenthooksprotocol::server::{
-    Authenticator, Handler, HandlerFuture, Incoming, Outgoing, Principal, Server,
-};
+use agenthooksprotocol::server::{Authenticator, HandlerSet, Principal, Server};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -595,36 +593,64 @@ impl Authenticator for CoreCredentials<'_> {
         })
     }
 }
-struct CoreHandler<'a> {
-    cases: &'a [Value],
-    schemas: &'a Schemas,
-    receipts: &'a Mutex<Vec<Value>>,
-    barriers: &'a (Mutex<Vec<String>>, Condvar),
-    raw: &'a Value,
-}
-impl Handler for CoreHandler<'_> {
-    fn handle(&self, principal: Principal, message: Incoming) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            if principal.subject.is_empty() {
-                return Err("missing authenticated principal".into());
-            }
-            let Incoming::Intercept(_) = message else {
-                return Err("unsupported core message".into());
-            };
-            let response = fixture_reply(
-                self.raw,
-                self.cases,
-                self.schemas,
-                self.receipts,
-                self.barriers,
-            )
-            .map_err(|e| e.to_string())?;
-            let parsed = agenthooksprotocol::generated::parse_intercept_response_value(response)
-                .into_value()
-                .ok_or("invalid fixture response")?;
-            Ok(Outgoing::Intercept(parsed.into()))
-        })
+fn core_handlers(
+    cases: Arc<Vec<Value>>,
+    schemas: Arc<Schemas>,
+    receipts: Arc<Mutex<Vec<Value>>>,
+    barriers: Arc<(Mutex<Vec<String>>, Condvar)>,
+) -> HandlerSet {
+    let mut handlers = HandlerSet::default();
+    // These are the four events advertised by the synthetic adapter manifest.
+    // Each expansion has a distinct generated event/effect callback signature.
+    macro_rules! intercept {
+        ($slot:ident, $effect:ty) => {{
+            let cases = cases.clone();
+            let schemas = schemas.clone();
+            let receipts = receipts.clone();
+            let barriers = barriers.clone();
+            handlers.intercept.$slot = Some(Arc::new(move |ctx, _event| {
+                let cases = cases.clone();
+                let schemas = schemas.clone();
+                let receipts = receipts.clone();
+                let barriers = barriers.clone();
+                Box::pin(async move {
+                    if ctx.principal.subject.is_empty() {
+                        return Err("missing authenticated principal".into());
+                    }
+                    let response =
+                        fixture_reply(ctx.request(), &cases, &schemas, &receipts, &barriers)
+                            .map_err(|e| e.to_string())?;
+                    if response["id"] != ctx.request()["id"] {
+                        return Err("uncorrelated fixture response".into());
+                    }
+                    let effects = response["result"]["effects"]
+                        .as_array()
+                        .ok_or("invalid fixture effects")?;
+                    let mut reply = ctx.reply();
+                    for effect in effects {
+                        let effect: $effect =
+                            serde_json::from_value(effect.clone()).map_err(|e| e.to_string())?;
+                        reply = reply.effect(effect);
+                    }
+                    Ok(reply)
+                })
+            }));
+        }};
     }
+    intercept!(tool_before, agenthooksprotocol::generated::ToolBeforeEffect);
+    intercept!(
+        turn_finish_before,
+        agenthooksprotocol::generated::TurnFinishBeforeEffect
+    );
+    intercept!(
+        task_change_before,
+        agenthooksprotocol::generated::TaskChangeBeforeEffect
+    );
+    intercept!(
+        workspace_change_before,
+        agenthooksprotocol::generated::WorkspaceChangeBeforeEffect
+    );
+    handlers
 }
 // Exact conformance fault controls. Neither expectError nor a tag grants a raw
 // response bypass to arbitrary fixtures or application-schema refusals.
@@ -675,23 +701,22 @@ fn raw_adversary(id: &str) -> bool {
 }
 fn reply(
     request: &Value,
-    cases: &[Value],
-    schemas: &Schemas,
-    receipts: &Mutex<Vec<Value>>,
-    barriers: &(Mutex<Vec<String>>, Condvar),
+    cases: &Arc<Vec<Value>>,
+    schemas: &Arc<Schemas>,
+    receipts: &Arc<Mutex<Vec<Value>>>,
+    barriers: &Arc<(Mutex<Vec<String>>, Condvar)>,
     credentials: (&Value, &str),
 ) -> Result<Value> {
     if string(request, "method") == "hooks/capabilities" || raw_adversary(string(request, "id")) {
         return fixture_reply(request, cases, schemas, receipts, barriers);
     }
     let server = Server {
-        handler: CoreHandler {
-            cases,
-            schemas,
-            receipts,
-            barriers,
-            raw: request,
-        },
+        handlers: core_handlers(
+            cases.clone(),
+            schemas.clone(),
+            receipts.clone(),
+            barriers.clone(),
+        ),
         authenticator: CoreCredentials(credentials.0),
         max_body_bytes: 1048576,
     };
@@ -1151,17 +1176,17 @@ mod tests {
     use super::*;
     #[test]
     fn null_effects_negative_fixture_preserves_invalid_wire_for_client_validation() {
-        let schemas = Schemas::bundled().unwrap();
+        let schemas = Arc::new(Schemas::bundled().unwrap());
         let request = json!({"jsonrpc":"2.0","id":"null-effects-array","method":"hooks/intercept",
             "params":{"protocolVersion":"draft","event":{"id":"null-effects-array","source":"urn:test:interop",
                 "type":"tool.before","time":"2026-09-01T00:00:00Z","call":{"id":"call"},"path":"native",
                 "tool":{"name":"task","origin":"native","input":{"task":1}}},"capabilities":interop::capabilities()}});
         let response = json!({"jsonrpc":"2.0","id":"null-effects-array","result":{"protocolVersion":"draft","effects":null}});
-        let cases = vec![
+        let cases = Arc::new(vec![
             json!({"id":"null-effects-array","request":request,"response":response,"expectError":true}),
-        ];
-        let receipts = Mutex::new(Vec::new());
-        let barriers = (Mutex::new(Vec::new()), Condvar::new());
+        ]);
+        let receipts = Arc::new(Mutex::new(Vec::new()));
+        let barriers = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
         let actual = reply(
             &request,
             &cases,
@@ -1189,8 +1214,9 @@ mod tests {
         ordinary_request["params"]["event"]["id"] = json!("ordinary-invalid");
         let mut ordinary_response = response;
         ordinary_response["id"] = json!("ordinary-invalid");
-        let ordinary =
-            vec![json!({"id":"ordinary-invalid","response":ordinary_response,"expectError":true})];
+        let ordinary = Arc::new(vec![
+            json!({"id":"ordinary-invalid","response":ordinary_response,"expectError":true}),
+        ]);
         let actual = reply(
             &ordinary_request,
             &ordinary,
@@ -1223,7 +1249,7 @@ mod tests {
 
     #[test]
     fn accepted_core_receipt_preserves_the_exact_canonical_message() {
-        let schemas = schema(&json!({})).unwrap();
+        let schemas = Arc::new(schema(&json!({})).unwrap());
         let request = json!({
             "jsonrpc": "2.0",
             "id": "receipt",
@@ -1250,7 +1276,7 @@ mod tests {
                 "capabilities": interop::capabilities()
             }
         });
-        let cases = vec![json!({
+        let cases = Arc::new(vec![json!({
             "id": "receipt",
             "response": {
                 "jsonrpc": "2.0",
@@ -1260,9 +1286,9 @@ mod tests {
                     "effects": []
                 }
             }
-        })];
-        let receipts = Mutex::new(Vec::new());
-        let barriers = (Mutex::new(Vec::new()), Condvar::new());
+        })]);
+        let receipts = Arc::new(Mutex::new(Vec::new()));
+        let barriers = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
         reply(
             &request,
             &cases,

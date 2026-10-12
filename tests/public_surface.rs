@@ -1,10 +1,6 @@
-use agenthooksprotocol::{
-    hooks::{EventGrant, HooksOptions},
-    inputs::*,
-};
+use agenthooksprotocol::{hooks::HooksOptions, inputs::*};
 use serde::Serialize;
 use serde_json::json;
-use std::collections::BTreeMap;
 
 #[test]
 fn handwritten_consumer_surface_has_no_compatibility_layers() {
@@ -99,9 +95,7 @@ fn missing_tool_methods_settle_typed_generic_host_facts() {
         ];
         let hooks = Hooks::new(
             json!({"protocolVersion":"draft","hooks":[{"id":"org.example.coverage","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[{"events":["tool.*"],"mode":"observe","filters":{"paths":["unmatched/**"]},"content":{"default":"metadata"}}]}]}),
-            HooksOptions::new("urn:test:coverage", BTreeMap::from_iter(names.map(|name| (
-                name.into(), EventGrant::observe()
-            )))).with_backend("org.example.coverage", std::sync::Arc::new(Noop)),
+            HooksOptions::new("urn:test:coverage", capability::HostCapabilities { tool_after: Some(capability::tool_after().observe()), tool_permission_request: Some(capability::tool_permission_request().observe()), tool_permission_resolved: Some(capability::Observe), tool_progress: Some(capability::Observe), ..Default::default() }).with_backend("org.example.coverage", std::sync::Arc::new(Noop)),
         ).unwrap();
         let after = ToolAfterInput::new(
             "call".into(),

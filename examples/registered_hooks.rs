@@ -13,8 +13,8 @@
 //! application, not the hook SDK, owns execution and approval policy.
 
 use agenthooksprotocol::{
-    EventType, Registration, ToolBeforeInputOrigin,
-    capability::{self, ModifyOperation},
+    Registration, ToolBeforeInputOrigin,
+    capability::{self, Modify},
     client::Permission,
     hooks::{Hooks, HooksOptions},
     inputs::ToolBeforeInput,
@@ -53,17 +53,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let registration = serde_json::from_str::<Registration>(&configuration)?;
     // Authority is separate from configuration and limited to one named event.
     // No wildcard grants or implicit elicitation modes are enabled.
-    let mut options = HooksOptions::from_declarations(
+    let mut options = HooksOptions::new(
         "https://example.test/registered-hooks-demo",
-        [(
-            EventType::ToolBefore,
-            capability::intercept()
-                .allow()
-                .deny()
-                .r#return()
-                .modify_input([ModifyOperation::Replace, ModifyOperation::Merge])?,
-        )],
-    )?;
+        capability::HostCapabilities {
+            tool_before: Some(
+                capability::tool_before()
+                    .allow()
+                    .deny()
+                    .return_result()
+                    .modify_input(Modify::ReplaceAndMerge),
+            ),
+            ..Default::default()
+        },
+    );
     options.backend.allow_loopback_http = allow_loopback_http;
     if let Ok(token) = std::env::var("REGISTERED_HOOK_TOKEN") {
         options

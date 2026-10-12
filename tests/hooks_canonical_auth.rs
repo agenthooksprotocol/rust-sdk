@@ -1,8 +1,9 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Hooks,
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
 };
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
@@ -30,11 +31,10 @@ fn registration() -> Value {
 fn options() -> HooksOptions {
     let mut options = HooksOptions::new(
         "urn:example:comparison",
-        [(
-            "tool.before".into(),
-            EventGrant::intercept(Capabilities::none()),
-        )]
-        .into(),
+        capability::HostCapabilities {
+            tool_before: Some(capability::tool_before().message()),
+            ..Default::default()
+        },
     )
     .with_backend("org.example.review", Arc::new(Unused));
     options

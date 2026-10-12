@@ -1,15 +1,15 @@
 //! Public ownership and capacity regressions for Hooks-managed content.
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Attachment, Hooks,
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
     generated::CanonicalMessageRole,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
 };
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     future::IntoFuture,
     sync::{
         Arc,
@@ -22,10 +22,10 @@ use std::{
 fn options() -> HooksOptions {
     HooksOptions::new(
         "urn:test:content-lifecycle",
-        BTreeMap::from([(
-            "user.message.outbound".into(),
-            EventGrant::intercept(Capabilities::none()),
-        )]),
+        capability::HostCapabilities {
+            user_message_outbound: Some(capability::user_message_outbound().message()),
+            ..Default::default()
+        },
     )
 }
 
@@ -566,7 +566,7 @@ mod chained_replacements {
                 let mut line = String::new();
                 reader.read_line(&mut line).unwrap();
                 assert_eq!(line, "POST /upload HTTP/1.1\r\n");
-                let mut headers = BTreeMap::new();
+                let mut headers = std::collections::BTreeMap::new();
                 loop {
                     line.clear();
                     assert!(reader.read_line(&mut line).unwrap() > 0);
@@ -605,11 +605,14 @@ mod chained_replacements {
         })).collect();
         let mut options = HooksOptions::new(
             "urn:test:content-lifecycle",
-            BTreeMap::from([(
-                "user.message.outbound".into(),
-                EventGrant::intercept(Capabilities::none().modify("content", true, false))
-                    .with_observe(),
-            )]),
+            capability::HostCapabilities {
+                user_message_outbound: Some(
+                    capability::user_message_outbound()
+                        .modify_content(capability::Modify::Replace)
+                        .observe(),
+                ),
+                ..Default::default()
+            },
         )
         .with_backend("org.example.first", Arc::new(Replace("middle")))
         .with_backend("org.example.second", Arc::new(Replace("final")));
@@ -747,10 +750,12 @@ mod chained_replacements {
             json!({"endpoint":endpoint,"maxBytes":64,"timeoutMs":5000});
         let mut options = HooksOptions::new(
             "urn:test:content-lifecycle",
-            BTreeMap::from([(
-                "user.message.outbound".into(),
-                EventGrant::intercept(Capabilities::none().modify("content", true, false)),
-            )]),
+            capability::HostCapabilities {
+                user_message_outbound: Some(
+                    capability::user_message_outbound().modify_content(capability::Modify::Replace),
+                ),
+                ..Default::default()
+            },
         )
         .with_backend("org.example.lifecycle", Arc::new(Effects));
         options.backend.allow_loopback_http = true;
@@ -1089,10 +1094,8 @@ fn observation_route_budgets_exclude_other_routes_delivery_time() {
     });
     let mut options = options();
     options.observation_timeout = Duration::from_secs(1);
-    options.capabilities.insert(
-        "user.message.outbound".into(),
-        EventGrant::intercept(Capabilities::none()).with_observe(),
-    );
+    options.capabilities.user_message_outbound =
+        Some(capability::user_message_outbound().message().observe());
     let registrations: Vec<_> = ["org.example.first", "org.example.second"].iter().map(|id| json!({
         "id": id,
         "transport":{"type":"stdio","command":"never-run","lifecycle":"persistent"},
@@ -1233,12 +1236,16 @@ fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
     let injection = json!({"type":"inject","target":"context","operation":"append",
         "deliverAt":"now","value":[{"id":"injected", "role":"system", "parts":[{"id":"instruction", "kind":"text", "mediaType":"text/plain", "selection":"body", "text":"keep this instruction"}]}]});
     let effects = json!([message, injection, {"type":"return","value":opaque}]);
-    let caps = Capabilities::from_value(json!({"effects":["message","inject","return"],
-        "inject":{"context":{"append":true,"deliverAt":["now"]}}}))
-    .unwrap();
+    let caps = capability::tool_before()
+        .message()
+        .inject_context(capability::InjectContext::Now)
+        .return_result();
     let mut options = HooksOptions::new(
         "urn:test:content-lifecycle",
-        BTreeMap::from([("tool.before".into(), EventGrant::intercept(caps))]),
+        capability::HostCapabilities {
+            tool_before: Some(caps),
+            ..Default::default()
+        },
     );
     options.max_stored_entries = 1;
     let mut registration = registration();

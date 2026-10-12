@@ -1,8 +1,9 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Hooks,
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture, Permission, ToolContext},
-    hooks::{Capabilities, EventGrant, HooksOptions, NAMED_BOUNDARIES},
+    hooks::{HooksOptions, NAMED_BOUNDARIES},
 };
 use std::future::IntoFuture;
 fn block_on<F: IntoFuture>(future: F) -> F::Output {
@@ -11,7 +12,6 @@ fn block_on<F: IntoFuture>(future: F) -> F::Output {
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -153,19 +153,17 @@ fn generated_named_source_is_closed_unused_without_reads_and_capacity_is_reusabl
 }
 
 fn options(backend: Arc<dyn ManagedBackend>, observe: bool) -> HooksOptions {
-    let grant = EventGrant::intercept(
-        Capabilities::none()
-            .allow()
-            .deny()
-            .return_value()
-            .modify_input(),
-    );
+    let grant = capability::tool_before()
+        .allow()
+        .deny()
+        .return_result()
+        .modify_input(capability::Modify::ReplaceAndMerge);
     HooksOptions::new(
         "urn:example:host",
-        BTreeMap::from([(
-            "tool.before".into(),
-            if observe { grant.with_observe() } else { grant },
-        )]),
+        capability::HostCapabilities {
+            tool_before: Some(if observe { grant.observe() } else { grant }),
+            ..Default::default()
+        },
     )
     .with_backend("org.example.hook", backend)
 }
@@ -229,14 +227,14 @@ fn ordinary_json_registration_typed_modification_return_deny_and_shutdown() {
 fn no_implicit_observation_routes_or_capability_expansion() {
     let backend = Arc::new(Backend::default());
     *backend.effects.lock().unwrap() = json!([]);
-    assert!(Hooks::new(registration(true), options(backend.clone(), false)).is_ok());
+    assert!(Hooks::new(registration(true), options(backend.clone(), false)).is_err());
     let hooks = Hooks::new(registration(false), options(backend.clone(), false)).unwrap();
     assert!(
         block_on(
             hooks
                 .tool_input(input())
                 .context(context())
-                .capabilities(Capabilities::none().flow_stop())
+                .capabilities(capability::tool_before().flow(capability::ToolBeforeFlow::Stop))
         )
         .is_err()
     );
@@ -248,27 +246,30 @@ fn no_implicit_observation_routes_or_capability_expansion() {
 #[test]
 fn unknown_events_duplicate_ids_and_mode_grants_fail_closed() {
     let backend = Arc::new(Backend::default());
-    let mut opts = options(backend.clone(), false);
-    opts.capabilities
-        .insert("not.a.boundary".into(), EventGrant::observe());
-    assert!(Hooks::new(registration(false), opts).is_err());
+    let mut config = registration(false);
+    config["hooks"][0]["subscriptions"][0]["events"] = json!(["not.a.boundary"]);
+    assert!(Hooks::new(config, options(backend.clone(), false)).is_err());
     let mut config = registration(false);
     let duplicate = config["hooks"][0].clone();
     config["hooks"].as_array_mut().unwrap().push(duplicate);
     assert!(Hooks::new(config, options(backend.clone(), false)).is_err());
+    let mut config = registration(false);
+    config["hooks"][0]["subscriptions"][0]["events"] = json!(["file.changed"]);
     let mut opts = options(backend, false);
-    opts.capabilities.insert(
-        "file.changed".into(),
-        EventGrant::intercept(Capabilities::none().deny()),
+    opts.capabilities.file_changed = Some(capability::Observe);
+    assert!(Hooks::new(config, opts).is_err());
+    let caps = capability::tool_before().return_result();
+    assert!(
+        serde_json::to_value(&caps).unwrap()["capabilities"]
+            .get("elicitation")
+            .is_none()
     );
-    assert!(Hooks::new(registration(false), opts).is_err());
-    let caps = Capabilities::none().return_value();
-    assert!(caps.as_value().get("elicitation").is_none());
     assert_eq!(
-        caps.elicitation_form().as_value()["elicitation"],
+        serde_json::to_value(caps.elicitation_form()).unwrap()["capabilities"]["elicitation"],
         json!({"form":{}})
     );
 }
+
 #[test]
 fn named_facade_inventory_matches_the_generated_canonical_inventory() {
     let mut actual = NAMED_BOUNDARIES.to_vec();

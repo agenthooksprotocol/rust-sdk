@@ -1,12 +1,12 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
-    hooks::{Capabilities, EventGrant, Hooks, HooksOptions},
+    hooks::{Hooks, HooksOptions},
 };
 use futures::{FutureExt, executor::LocalPool};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     future::IntoFuture,
     sync::{Arc, Mutex},
     time::Duration,
@@ -45,10 +45,10 @@ fn registration() -> Value {
 fn options(backend: Arc<Backend>) -> HooksOptions {
     HooksOptions::new(
         "urn:test:host",
-        BTreeMap::from([(
-            "session.start".into(),
-            EventGrant::intercept(Capabilities::none()).with_observe(),
-        )]),
+        capability::HostCapabilities {
+            session_start: Some(capability::session_start().message().observe()),
+            ..Default::default()
+        },
     )
     .with_backend("org.example.test", backend)
 }
@@ -127,22 +127,56 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
     pool.run_until(hooks.shutdown()).unwrap();
 }
 #[test]
-fn full_manifest_is_preserved_in_session_start() {
+fn metadata_is_preserved_without_replacing_typed_event_authority() {
+    use agenthooksprotocol::generated as g;
     let mut pool = LocalPool::new();
     let backend = Arc::new(Backend::default());
-    let opts = options(backend.clone());
-    let original = Hooks::new(registration(), opts).unwrap();
-    let mut manifest = original.manifest();
-    manifest["toolPaths"] = json!(["native"]);
-    manifest["limits"] = json!({"maxUploadBytes":1234});
-    manifest["vendor.example"] = json!({"preserved":true});
-    let options = HooksOptions::from_manifest(
-        "urn:test:host",
-        serde_json::from_value(manifest.clone()).unwrap(),
-    )
-    .unwrap()
-    .with_backend("org.example.test", backend);
+    let mut options = options(backend);
+    options.manifest_metadata.tool_paths = vec!["native".into()];
+    options.manifest_metadata.transports = vec![g::StaticCapabilityManifestTransportsItem::Http];
+    options.manifest_metadata.authentication =
+        vec![g::StaticCapabilityManifestAuthenticationItem::Bearer];
+    options.manifest_metadata.limits = g::StaticCapabilityManifestLimits::new()
+        .with_max_upload_bytes(g::Integer::from_i64(1234).unwrap());
+    options.manifest_metadata.managed_policy = g::StaticCapabilityManifestManagedPolicy::new(
+        false,
+        vec![g::StaticCapabilityManifestManagedPolicyScopesItem::Managed],
+    );
+    options
+        .manifest_metadata
+        .additional_properties
+        .insert("vendor.example".into(), json!({"preserved":true}));
+    options.manifest_metadata.additional_properties.insert(
+        "events".into(),
+        json!([{"event":"tool.before","modes":["intercept"],"capabilities":{"effects":["deny"]}}]),
+    );
+    options
+        .manifest_metadata
+        .additional_properties
+        .insert("toolPaths".into(), json!(["forged"]));
+    options
+        .manifest_metadata
+        .limits
+        .additional_properties
+        .insert("maxUploadBytes".into(), json!(9999));
+    options
+        .manifest_metadata
+        .managed_policy
+        .additional_properties
+        .insert("scopes".into(), json!(["user"]));
     let hooks = Hooks::new(registration(), options).unwrap();
+    let manifest = hooks.manifest();
+    assert_eq!(manifest["toolPaths"], json!(["native"]));
+    assert_eq!(manifest["limits"], json!({"maxUploadBytes":1234}));
+    assert_eq!(manifest["transports"], json!(["http"]));
+    assert_eq!(manifest["authentication"], json!(["bearer"]));
+    assert_eq!(
+        manifest["managedPolicy"],
+        json!({"disableable":false,"scopes":["managed"]})
+    );
+    assert_eq!(manifest["vendor.example"], json!({"preserved":true}));
+    assert_eq!(manifest["events"][0]["event"], json!("session.start"));
+    assert!(!hooks.subscribes("tool.before"));
     let result = pool
         .run_until(hooks.session_start(facts()).into_future())
         .unwrap();

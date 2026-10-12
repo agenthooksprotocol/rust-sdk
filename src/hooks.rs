@@ -24,154 +24,92 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Explicit effect/operation grants. No constructor infers elicitation modes.
-#[derive(Clone, Debug, Serialize)]
-#[serde(transparent)]
-pub struct Capabilities(Value);
-impl Default for Capabilities {
-    fn default() -> Self {
-        Self::none()
-    }
-}
-impl Capabilities {
-    pub fn none() -> Self {
-        Self(json!({"effects":[]}))
-    }
-    /// Accept generated capability models or ordinary JSON; canonical validation
-    /// runs here and event-specific validation runs in Hooks::new.
-    pub fn from_value(value: impl Serialize) -> Result<Self, HookError> {
-        let value = serde_json::to_value(value).map_err(err)?;
-        crate::canonical::validate("capabilities", &value).map_err(HookError::new)?;
-        Ok(Self(value))
-    }
-    fn effect(mut self, name: &str) -> Self {
-        let effects = self.0["effects"]
-            .as_array_mut()
-            .expect("capabilities effects");
-        if !effects.contains(&json!(name)) {
-            effects.push(json!(name));
-        }
-        self
-    }
-    pub fn allow(self) -> Self {
-        self.effect("allow")
-    }
-    pub fn deny(self) -> Self {
-        self.effect("deny")
-    }
-    pub fn ask(self) -> Self {
-        self.effect("ask")
-    }
-    pub fn message(self) -> Self {
-        self.effect("message")
-    }
-    pub fn return_value(self) -> Self {
-        self.effect("return")
-    }
-    pub fn modify(mut self, target: &str, replace: bool, merge: bool) -> Self {
-        self = self.effect("modify");
-        if self.0.get("modify").is_none() {
-            self.0["modify"] = json!({});
-        }
-        self.0["modify"][target] = json!({"replace":replace,"merge":merge});
-        self
-    }
-    pub fn modify_input(self) -> Self {
-        self.modify("input", true, true)
-    }
-    pub fn elicitation_form(mut self) -> Self {
-        if self.0.get("elicitation").is_none() {
-            self.0["elicitation"] = json!({});
-        }
-        self.0["elicitation"]["form"] = json!({});
-        self
-    }
-    pub fn elicitation_url(mut self) -> Self {
-        if self.0.get("elicitation").is_none() {
-            self.0["elicitation"] = json!({});
-        }
-        self.0["elicitation"]["url"] = json!({});
-        self
-    }
-    pub fn flow_stop(mut self) -> Self {
-        self = self.effect("flow");
-        self.0["flow"] = json!({"operations":["stop"]});
-        self
-    }
-    pub fn as_value(&self) -> &Value {
-        &self.0
-    }
-}
-/// A missing entry grants neither mode. The interception convenience grants both;
-/// exact independent mode declarations are preserved by `HooksOptions::from_manifest`.
+use crate::generated::capability::HostCapabilities;
+
+/// Non-event session-start manifest metadata. Event authority belongs exclusively
+/// to `capability::HostCapabilities`. Opaque extras cannot replace known members.
 #[derive(Clone, Debug)]
-pub struct EventGrant {
-    intercept: Option<Capabilities>,
-    observe: bool,
+pub struct ManifestMetadata {
+    pub authentication: Vec<generated::StaticCapabilityManifestAuthenticationItem>,
+    pub content_categories: Vec<String>,
+    pub correlation_identity_fields: Vec<String>,
+    pub gaps: Vec<generated::StaticCapabilityManifestGapsItem>,
+    pub limits: generated::StaticCapabilityManifestLimits,
+    pub managed_policy: generated::StaticCapabilityManifestManagedPolicy,
+    pub tool_paths: Vec<String>,
+    pub transports: Vec<generated::StaticCapabilityManifestTransportsItem>,
+    pub additional_properties: BTreeMap<String, generated::JsonValue>,
 }
-impl EventGrant {
-    /// Admit a generated capability declaration without inferring omitted modes.
-    pub fn from_declaration(declaration: impl Serialize) -> Result<Self, HookError> {
-        let value = serde_json::to_value(declaration).map_err(err)?;
-        let modes = value["modes"]
-            .as_array()
-            .ok_or_else(|| err("declaration requires modes"))?;
-        if modes.is_empty()
-            || modes
-                .iter()
-                .any(|mode| mode != "intercept" && mode != "observe")
-            || modes
-                .iter()
-                .map(Value::as_str)
-                .collect::<BTreeSet<_>>()
-                .len()
-                != modes.len()
-        {
-            return Err(err("invalid declaration modes"));
-        }
-        let intercept = modes.contains(&json!("intercept"));
-        let capabilities = value.get("capabilities");
-        if intercept != capabilities.is_some() {
-            return Err(err(
-                "interception mode requires exactly its capability block",
-            ));
-        }
-        Ok(Self {
-            intercept: capabilities.map(Capabilities::from_value).transpose()?,
-            observe: modes.contains(&json!("observe")),
-        })
-    }
-    /// Grant interception and observation together.
-    pub fn intercept(capabilities: Capabilities) -> Self {
+impl Default for ManifestMetadata {
+    fn default() -> Self {
         Self {
-            intercept: Some(capabilities),
-            observe: true,
+            authentication: Vec::new(),
+            content_categories: Vec::new(),
+            correlation_identity_fields: Vec::new(),
+            gaps: Vec::new(),
+            limits: generated::StaticCapabilityManifestLimits::new(),
+            managed_policy: generated::StaticCapabilityManifestManagedPolicy::new(true, vec![]),
+            tool_paths: Vec::new(),
+            transports: vec![generated::StaticCapabilityManifestTransportsItem::InProcess],
+            additional_properties: BTreeMap::new(),
         }
-    }
-    pub fn observe() -> Self {
-        Self {
-            intercept: None,
-            observe: true,
-        }
-    }
-    pub fn with_observe(mut self) -> Self {
-        self.observe = true;
-        self
     }
 }
-pub type EventCapabilities = BTreeMap<String, EventGrant>;
+impl ManifestMetadata {
+    fn wire(&self) -> Value {
+        let mut limits = self.limits.clone();
+        for key in [
+            "maxContinuations",
+            "maxTimeoutMs",
+            "maxUploadBytes",
+            "minTimeoutMs",
+        ] {
+            limits.additional_properties.remove(key);
+        }
+        let mut policy = self.managed_policy.clone();
+        for key in ["disableable", "scopes"] {
+            policy.additional_properties.remove(key);
+        }
+        let gaps: Vec<_> = self
+            .gaps
+            .iter()
+            .cloned()
+            .map(|mut gap| {
+                gap.additional_properties.remove("path");
+                gap.additional_properties.remove("reason");
+                gap
+            })
+            .collect();
+        let mut wire = json!({
+            "authentication": self.authentication,
+            "contentCategories": self.content_categories,
+            "correlationIdentityFields": self.correlation_identity_fields,
+            "gaps": gaps,
+            "limits": limits,
+            "managedPolicy": policy,
+            "toolPaths": self.tool_paths,
+            "transports": self.transports,
+        });
+        for (key, value) in &self.additional_properties {
+            if key != "events" && wire.get(key).is_none() {
+                wire[key] = value.clone();
+            }
+        }
+        wire
+    }
+}
 
 /// Host authority, not registration data. Ordinary callers supply a source and
 /// explicit per-event grants; registration still owns routing and transport.
 pub struct HooksOptions {
     pub source: String,
-    pub capabilities: EventCapabilities,
+    pub capabilities: HostCapabilities,
+    pub manifest_metadata: ManifestMetadata,
     pub backend: BackendOptions,
     pub observation_timeout: Duration,
     pub max_observations: usize,
     /// Maximum simultaneous upload transfers across active Hooks operations.
     pub max_concurrent_uploads: usize,
-    manifest: Option<Value>,
     pub max_body_bytes: usize,
     /// Active attachment byte budget. Historical name; no harness store exists.
     pub max_stored_bytes: usize,
@@ -180,36 +118,15 @@ pub struct HooksOptions {
     backends: BTreeMap<String, Arc<dyn ManagedBackend>>,
 }
 impl HooksOptions {
-    /// Compose generated event keys and immutable declarations into host authority.
-    /// Boundary-specific admission still occurs in `Hooks::new` before delivery.
-    pub fn from_declarations<K: Serialize, D: Serialize>(
-        source: impl Into<String>,
-        declarations: impl IntoIterator<Item = (K, D)>,
-    ) -> Result<Self, HookError> {
-        let mut grants = BTreeMap::new();
-        for (event, declaration) in declarations {
-            let event = serde_json::to_value(event).map_err(err)?;
-            let name = event
-                .as_str()
-                .ok_or_else(|| err("event key must be a canonical string"))?;
-            if grants
-                .insert(name.to_owned(), EventGrant::from_declaration(declaration)?)
-                .is_some()
-            {
-                return Err(err("duplicate event declaration"));
-            }
-        }
-        Ok(Self::new(source, grants))
-    }
-    pub fn new(source: impl Into<String>, capabilities: EventCapabilities) -> Self {
+    pub fn new(source: impl Into<String>, capabilities: HostCapabilities) -> Self {
         Self {
             source: source.into(),
             capabilities,
+            manifest_metadata: ManifestMetadata::default(),
             backend: BackendOptions::default(),
             observation_timeout: Duration::from_secs(30),
             max_observations: 1024,
             max_concurrent_uploads: 8,
-            manifest: None,
             max_body_bytes: 4 * 1024 * 1024,
             max_stored_bytes: 64 * 1024 * 1024,
             max_stored_entries: 4096,
@@ -222,51 +139,14 @@ impl HooksOptions {
         self.backends.insert(id.into(), backend);
         self
     }
-    /// Alternative to the event map, using a complete generated manifest.
-    pub fn from_manifest(
-        source: impl Into<String>,
-        manifest: generated::StaticCapabilityManifest,
-    ) -> Result<Self, HookError> {
-        let manifest = serde_json::to_value(manifest).map_err(err)?;
-        crate::canonical::validate("capabilities-response", &json!({"jsonrpc":"2.0","id":"manifest","result":{"protocolVersion":"draft","manifest":manifest}})).map_err(HookError::new)?;
-        let mut grants = BTreeMap::new();
-        for entry in manifest["events"]
-            .as_array()
-            .ok_or_else(|| err("manifest events"))?
-        {
-            let name = entry["event"]
-                .as_str()
-                .ok_or_else(|| err("manifest event"))?;
-            let modes = entry["modes"]
-                .as_array()
-                .ok_or_else(|| err("manifest modes"))?;
-            let intercept = if modes.contains(&json!("intercept")) {
-                Some(Capabilities::from_value(
-                    entry
-                        .get("capabilities")
-                        .ok_or_else(|| err("interception requires explicit capabilities"))?,
-                )?)
-            } else {
-                None
-            };
-            if grants
-                .insert(
-                    name.into(),
-                    EventGrant {
-                        intercept,
-                        observe: modes.contains(&json!("observe")),
-                    },
-                )
-                .is_some()
-            {
-                return Err(err("duplicate manifest event"));
-            }
-        }
-        let mut options = Self::new(source, grants);
-        options.manifest = Some(manifest);
-        Ok(options)
-    }
 }
+
+fn observes(grant: &Value) -> bool {
+    grant["modes"]
+        .as_array()
+        .is_some_and(|modes| modes.iter().any(|mode| mode.as_str() == Some("observe")))
+}
+
 #[derive(Clone)]
 struct Route {
     id: String,
@@ -590,6 +470,7 @@ impl Drop for Delivery<'_> {
 pub struct Hooks {
     options: HooksOptions,
     routes: Vec<Route>,
+    grants: BTreeMap<String, Value>,
     backends: Vec<Arc<dyn ManagedBackend>>,
     budget: Arc<Budget>,
     life: Arc<Lifecycle>,
@@ -617,18 +498,19 @@ impl Hooks {
         }
         let registration = serde_json::to_value(registration).map_err(err)?;
         crate::canonical::validate("registration", &registration).map_err(HookError::new)?;
-        for (name, grant) in &options.capabilities {
-            let descriptor = generated::boundary::ALL_BOUNDARIES
-                .iter()
-                .find(|b| b.name == name)
-                .ok_or_else(|| err(format!("unknown event grant: {name}")))?;
-            if let Some(caps) = &grant.intercept {
-                let schema = descriptor
-                    .capability_schema
-                    .ok_or_else(|| err(format!("{name} is observation-only")))?;
-                crate::canonical::validate(schema, &caps.0).map_err(HookError::new)?;
-            }
-        }
+        // Render owned wire data once. Typed declarations are already valid; this
+        // does not parse, hydrate, or schema-validate host authority.
+        let grants: BTreeMap<String, Value> = options
+            .capabilities
+            .to_wire()
+            .into_iter()
+            .map(|(name, grant)| {
+                (
+                    name,
+                    serde_json::to_value(grant).expect("typed capability serialization"),
+                )
+            })
+            .collect();
         let mut ids = BTreeSet::new();
         let mut routes = vec![];
         let mut backends = vec![];
@@ -667,15 +549,14 @@ impl Hooks {
                     .ok_or_else(|| err("events"))?
                 {
                     let selector = selector.as_str().ok_or_else(|| err("event selector"))?;
-                    let matched: Vec<_> = options
-                        .capabilities
+                    let matched: Vec<_> = grants
                         .iter()
                         .filter(|(name, grant)| {
                             matches(selector, name)
                                 && if intercept {
-                                    grant.intercept.is_some()
+                                    grant.get("capabilities").is_some()
                                 } else {
-                                    grant.observe
+                                    observes(grant)
                                 }
                         })
                         .map(|(name, _)| name.clone())
@@ -716,6 +597,7 @@ impl Hooks {
             upload_limiter: crate::upload_plan::UploadLimiter::new(options.max_concurrent_uploads),
             options,
             routes,
+            grants,
             backends,
             budget,
             life: Arc::new(Lifecycle::default()),
@@ -728,14 +610,14 @@ impl Hooks {
     /// or a guarantee of delivery. This lookup performs no input preparation,
     /// transport, authentication, uploads, or mutation.
     pub fn subscribes(&self, event: &str) -> bool {
-        let Some(grant) = self.options.capabilities.get(event) else {
+        let Some(grant) = self.grants.get(event) else {
             return false;
         };
         self.routes.iter().any(|route| {
             route.events.iter().any(|selector| matches(selector, event))
                 && match route.mode {
-                    Mode::Intercept(_) => grant.intercept.is_some(),
-                    Mode::Observe => grant.observe,
+                    Mode::Intercept(_) => grant.get("capabilities").is_some(),
+                    Mode::Observe => observes(grant),
                 }
         })
     }
@@ -806,7 +688,7 @@ impl Hooks {
             settings: Settings::default(),
         }
     }
-    fn prepare(&self, mut event: Value) -> Result<(Value, String, Capabilities), HookError> {
+    fn prepare(&self, mut event: Value) -> Result<(Value, String, Value), HookError> {
         let event_object = event
             .as_object_mut()
             .ok_or_else(|| err("event must be an object"))?;
@@ -857,42 +739,32 @@ impl Hooks {
             event["manifest"] = manifest;
         }
         let grant = self
-            .options
-            .capabilities
+            .grants
             .get(&name)
             .ok_or_else(|| err(format!("event not explicitly granted: {name}")))?;
         Ok((
             event,
             name,
-            grant.intercept.clone().unwrap_or_else(Capabilities::none),
+            grant
+                .get("capabilities")
+                .cloned()
+                .unwrap_or_else(|| json!({"effects": []})),
         ))
     }
     /// Canonical static host declaration used by session.start.
     pub fn manifest(&self) -> Value {
-        self.options.manifest.clone().unwrap_or_else(|| {
-            let events: Vec<_> = self
-                .options
-                .capabilities
-                .iter()
-                .map(|(name, grant)| {
-                    let mut modes = Vec::new();
-                    let mut entry = json!({"event":name});
-                    if let Some(caps) = &grant.intercept {
-                        modes.push("intercept");
-                        entry["capabilities"] = caps.0.clone();
-                    }
-                    if grant.observe {
-                        modes.push("observe");
-                    }
-                    entry["modes"] = json!(modes);
-                    entry
-                })
-                .collect();
-            json!({"events":events,"gaps":[],"transports":["in_process"],
-                "authentication":[],"toolPaths":[],"contentCategories":[],
-                "limits":{},"managedPolicy":{"scopes":[],"disableable":true},
-                "correlationIdentityFields":[]})
-        })
+        let events: Vec<_> = self
+            .grants
+            .iter()
+            .map(|(name, grant)| {
+                let mut entry = grant.clone();
+                entry["event"] = json!(name);
+                entry
+            })
+            .collect();
+        let mut manifest = self.options.manifest_metadata.wire();
+        manifest["events"] = json!(events);
+        manifest
     }
     async fn plan_uploads(
         &self,
@@ -909,7 +781,7 @@ impl Hooks {
         for route in self.routes.iter().filter(|route| {
             route.events.iter().any(|e| e == name)
                 && !filtered(&route.configuration, event)
-                && (route.mode != Mode::Observe || self.options.capabilities[name].observe)
+                && (route.mode != Mode::Observe || observes(&self.grants[name]))
         }) {
             let route = route.clone();
             let id = route.id.clone();
@@ -1004,7 +876,7 @@ impl Hooks {
     ) -> (Vec<PreparedObservation<'a>>, Vec<DeliveryDiagnostic>) {
         let mut prepared = Vec::new();
         let mut diagnostics = vec![];
-        if !self.options.capabilities[name].observe {
+        if !observes(&self.grants[name]) {
             return (prepared, diagnostics);
         }
         for (index, observation) in observations.into_iter().enumerate() {
@@ -1160,7 +1032,7 @@ struct Settings<'a> {
     cancellation: Option<LocalFuture<'a, ()>>,
     initial: Option<Permission>,
     candidate: Option<Value>,
-    capabilities: Option<Capabilities>,
+    capabilities: Option<generated::capability::ToolBefore>,
     gates: Option<bool>,
     reauthorization: Option<bool>,
     continuation: Option<(u64, u64, u64)>,
@@ -1222,10 +1094,6 @@ macro_rules! settings_methods {
         }
         pub fn initial_candidate(mut self, candidate: Value) -> Self {
             self.settings.candidate = Some(candidate);
-            self
-        }
-        pub fn capabilities(mut self, capabilities: Capabilities) -> Self {
-            self.settings.capabilities = Some(capabilities);
             self
         }
         pub fn mandatory_gates_passed(mut self, passed: bool) -> Self {
@@ -1370,7 +1238,7 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
                     err(error).classified(generated::DeliveryDiagnosticCode::Preparation)
                 })?;
                 let (event, name, granted) = self.hooks.prepare(event)?;
-                let caps = narrow(self.settings.capabilities, granted)?;
+                let caps = granted;
                 let uploads = self
                     .hooks
                     .plan_uploads(&event, &name, self.settings.deadline, &content)
@@ -1380,7 +1248,7 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
                         .client(&event, &name, self.settings.deadline, &content, &uploads);
                 let mut boundary = client
                     .event(event)
-                    .capabilities(caps.0)
+                    .capabilities(caps)
                     .attachments(content.clone())
                     .admission(self.settings.admission);
                 if let Some(snapshot) = self.settings.snapshot {
@@ -1495,6 +1363,10 @@ pub struct ToolBoundary<'a, T, R = Value, P = Value> {
 }
 impl<'a, T, R, P> ToolBoundary<'a, T, R, P> {
     settings_methods!();
+    pub fn capabilities(mut self, capabilities: generated::capability::ToolBefore) -> Self {
+        self.settings.capabilities = Some(capabilities);
+        self
+    }
     pub fn context(mut self, context: ToolContext) -> Self {
         self.context = context.event;
         self
@@ -1515,9 +1387,17 @@ impl<T, R, P> ToolOutcome<T, R, P> {
         self.outcome.permission()
     }
 }
-fn narrow(caps: Option<Capabilities>, granted: Capabilities) -> Result<Capabilities, HookError> {
+fn narrow(
+    caps: Option<generated::capability::ToolBefore>,
+    granted: Value,
+) -> Result<Value, HookError> {
     if let Some(caps) = caps {
-        if !crate::client::subset(&caps.0, &granted.0) {
+        let declaration = serde_json::to_value(caps).map_err(err)?;
+        let caps = declaration["capabilities"].clone();
+        if caps.is_null() {
+            return Err(err("per-occurrence tool capabilities require interception"));
+        }
+        if !crate::client::subset(&caps, &granted) {
             return Err(err(
                 "per-occurrence capabilities may only narrow explicit host grants",
             ));
@@ -1584,7 +1464,7 @@ where
                         .client(&context, &name, self.settings.deadline, &content, &uploads);
                 let mut boundary = client
                     .tool_before(input)
-                    .capabilities(caps.0)
+                    .capabilities(caps)
                     .admission(self.settings.admission);
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;

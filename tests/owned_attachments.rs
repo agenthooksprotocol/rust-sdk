@@ -1,14 +1,14 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Attachment, Hooks,
     body::{BodyChunkFuture, BodyStream},
     generated::CanonicalMessageRole,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
 };
 use futures::executor::block_on;
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     future::IntoFuture,
     sync::{
         Arc,
@@ -55,10 +55,10 @@ fn source() -> (Attachment, Arc<AtomicUsize>, Arc<AtomicUsize>) {
 fn hooks(limit: usize) -> Hooks {
     let mut options = HooksOptions::new(
         "urn:test:attachments",
-        BTreeMap::from([(
-            "user.message.outbound".into(),
-            EventGrant::intercept(Capabilities::none()),
-        )]),
+        capability::HostCapabilities {
+            user_message_outbound: Some(capability::user_message_outbound().message()),
+            ..Default::default()
+        },
     );
     options.max_body_bytes = limit;
     Hooks::new(
@@ -280,10 +280,10 @@ fn no_match_typed_input_is_not_mutated_and_sources_remain_unread() {
         config["hooks"][0]["subscriptions"][0]["filters"] = json!({"paths":["/unrelated/**"]});
         let options = HooksOptions::new(
             "urn:test:attachments",
-            BTreeMap::from([(
-                "user.message.outbound".into(),
-                EventGrant::intercept(Capabilities::none()),
-            )]),
+            capability::HostCapabilities {
+                user_message_outbound: Some(capability::user_message_outbound().message()),
+                ..Default::default()
+            },
         )
         .with_backend("org.example.attachments", Arc::new(UnreachableBackend));
         let hooks = Hooks::new(config, options).unwrap();
@@ -510,15 +510,20 @@ fn inline_instructions_and_elicitation_exchange_outlive_hooks() {
             config["hooks"][0]["subscriptions"][0]["events"] = json!([name]);
             config["hooks"][0]["subscriptions"][0]["content"] = json!({"default":"body"});
             let caps = if name == "user.elicitation.request" {
-                Capabilities::none().elicitation_form()
+                capability::HostCapabilities {
+                    user_elicitation_request: Some(
+                        capability::user_elicitation_request().elicitation_form(),
+                    ),
+                    ..Default::default()
+                }
             } else {
-                Capabilities::none()
+                capability::HostCapabilities {
+                    context_compact_before: Some(capability::context_compact_before().message()),
+                    ..Default::default()
+                }
             };
-            let options = HooksOptions::new(
-                "urn:test:inline",
-                BTreeMap::from([(name.into(), EventGrant::intercept(caps))]),
-            )
-            .with_backend("org.example.attachments", Arc::new(Noop));
+            let options = HooksOptions::new("urn:test:inline", caps)
+                .with_backend("org.example.attachments", Arc::new(Noop));
             let hooks = Hooks::new(config, options).unwrap();
             let result = hooks.event(event).await.unwrap();
             assert!(

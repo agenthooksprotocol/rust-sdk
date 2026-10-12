@@ -1,6 +1,7 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Attachment, Hooks, ToolBeforeInputOrigin,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::{PartInput, ToolBeforeInput},
 };
 use agenthooksprotocol::{
@@ -10,7 +11,7 @@ use agenthooksprotocol::{
 use futures::executor::block_on;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 struct Unreachable;
 impl ManagedBackend for Unreachable {
     fn call(
@@ -37,10 +38,7 @@ fn primary_typed_tool_hook_owns_direct_binary_parts() {
             json!({"protocolVersion":"draft","hooks":[{"id":"org.example.direct", "transport":{"type":"stdio","command":"unused","lifecycle":"persistent"}, "subscriptions":[{"events":["tool.before"],"mode":"intercept","failurePolicy":"fail-closed","timeoutMs":1000,"filters":{"paths":["unmatched/**"]},"content":{"default":"metadata"}}]}]}),
             HooksOptions::new(
                 "urn:test:direct-tool",
-                BTreeMap::from([(
-                    "tool.before".into(),
-                    EventGrant::intercept(Capabilities::none()),
-                )]),
+                capability::HostCapabilities { tool_before: Some(capability::tool_before().message()), ..Default::default() },
             ).with_backend("org.example.direct", Arc::new(Unreachable)),
         )
         .unwrap();

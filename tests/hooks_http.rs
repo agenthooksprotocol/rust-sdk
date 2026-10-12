@@ -1,9 +1,10 @@
 #![cfg(feature = "reqwest")]
+use agenthooksprotocol::capability;
 
 use agenthooksprotocol::{
     client::{Permission, ToolContext},
     generated::Registration,
-    hooks::{Capabilities, EventGrant, Hooks, HooksOptions},
+    hooks::{Hooks, HooksOptions},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -110,18 +111,17 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
         ]
     }]}).to_string();
     let registration = serde_json::from_str::<Registration>(&config).unwrap();
-    let grants = [(
-        "tool.before".into(),
-        EventGrant::intercept(
-            Capabilities::none()
+    let grants = capability::HostCapabilities {
+        tool_before: Some(
+            capability::tool_before()
                 .allow()
                 .deny()
-                .return_value()
-                .modify_input(),
-        )
-        .with_observe(),
-    )]
-    .into();
+                .return_result()
+                .modify_input(capability::Modify::ReplaceAndMerge)
+                .observe(),
+        ),
+        ..Default::default()
+    };
     let mut options = HooksOptions::new("https://host.test/http", grants);
     options.backend.allow_loopback_http = true;
     options
@@ -153,7 +153,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
             command: "cached".into(),
             timeout_ms: 100,
         })
-        .capabilities(Capabilities::none().allow().return_value())
+        .capabilities(capability::tool_before().allow().return_result())
         .context(context())
         .initial_state(Permission::Allow)
         .await
@@ -183,7 +183,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
                 timeout_ms: 1
             })
             .context(context())
-            .capabilities(Capabilities::none().ask())
+            .capabilities(capability::tool_before().ask())
             .await
             .is_err()
     );

@@ -1,5 +1,5 @@
 //! Application policy without any network runtime.
-use agenthooksprotocol::{generated as g, server::*};
+use agenthooksprotocol::server::*;
 use serde_json::json;
 
 pub struct Credentials;
@@ -14,25 +14,21 @@ impl Authenticator for Credentials {
         })
     }
 }
-pub struct Policy;
-impl Handler for Policy {
-    fn handle(&self, principal: Principal, message: Incoming) -> HandlerFuture<'_> {
+pub fn handlers() -> HandlerSet {
+    let mut handlers = HandlerSet::default();
+    handlers.intercept.tool_before = Some(std::sync::Arc::new(|ctx, _event| {
         Box::pin(async move {
-            assert_eq!(principal.subject, "local-demo-user");
-            match message {
-                Incoming::Intercept(request) => {
-                    let response = json!({"jsonrpc":"2.0", "id":request.id, "result":{"protocolVersion":"draft","effects":[]}});
-                    Ok(Outgoing::Intercept(Box::new(
-                        g::parse_intercept_response_value(response)
-                            .into_value()
-                            .ok_or("invalid response")?,
-                    )))
-                }
-                Incoming::Observe(_) => Ok(Outgoing::Observed),
-                Incoming::Capabilities(_) => Err("discovery not configured in this example".into()),
-            }
+            assert_eq!(ctx.principal.subject, "local-demo-user");
+            Ok(ctx.reply())
         })
-    }
+    }));
+    handlers.observe.tool_before = Some(std::sync::Arc::new(|ctx, _event| {
+        Box::pin(async move {
+            assert_eq!(ctx.principal.subject, "local-demo-user");
+            Ok(())
+        })
+    }));
+    handlers
 }
 pub fn request_body() -> Vec<u8> {
     serde_json::to_vec(&json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}})).unwrap()
@@ -40,7 +36,7 @@ pub fn request_body() -> Vec<u8> {
 #[allow(dead_code)]
 fn main() {
     let server = Server {
-        handler: Policy,
+        handlers: handlers(),
         authenticator: Credentials,
         max_body_bytes: 65536,
     };

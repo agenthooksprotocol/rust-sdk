@@ -1,3 +1,4 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::client::{
     Client, FailurePolicy, Hook, HookError, LocalFuture, Permission, Subscription, ToolContext,
 };
@@ -111,12 +112,12 @@ fn ordinary_futures_and_progress_are_movable_between_threads() {
 #[test]
 fn generated_capability_declarations_are_immutable_and_boundary_checked() {
     use agenthooksprotocol::{
-        EventType, Hooks,
-        capability::{self, ModifyOperation},
-        hooks::{EventGrant, HooksOptions},
+        Hooks,
+        capability::{self, Modify},
+        hooks::HooksOptions,
     };
-    let base = capability::intercept().deny();
-    let modified = base.modify_input([ModifyOperation::Replace]).unwrap();
+    let base = capability::tool_before().deny();
+    let modified = base.modify_input(Modify::Replace).observe();
     assert_eq!(
         serde_json::to_value(&base).unwrap()["capabilities"]["effects"],
         json!(["deny"])
@@ -125,12 +126,18 @@ fn generated_capability_declarations_are_immutable_and_boundary_checked() {
         serde_json::to_value(&modified).unwrap()["modes"],
         json!(["intercept", "observe"])
     );
-    assert!(base.modify_input([]).is_err());
-    assert!(EventGrant::from_declaration(capability::intercept()).is_err());
+    assert_eq!(
+        serde_json::to_value(capability::HostCapabilities::default().to_wire()).unwrap(),
+        json!({})
+    );
     let registration = json!({"protocolVersion":"draft","hooks":[{"id":"org.example.capabilities","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[{"events":["tool.before"],"mode":"intercept","timeoutMs":1000,"failurePolicy":"fail-closed","content":{"default":"metadata"}}]}]});
-    let options =
-        HooksOptions::from_declarations("urn:typed-host", [(EventType::ToolBefore, modified)])
-            .unwrap();
+    let options = HooksOptions::new(
+        "urn:typed-host",
+        capability::HostCapabilities {
+            tool_before: Some(modified),
+            ..Default::default()
+        },
+    );
     let hooks = Hooks::new(
         registration.clone(),
         options.with_backend(
@@ -143,8 +150,13 @@ fn generated_capability_declarations_are_immutable_and_boundary_checked() {
         hooks.manifest()["events"][0]["modes"],
         json!(["intercept", "observe"])
     );
-    let invalid =
-        HooksOptions::from_declarations("urn:typed-host", [(EventType::SessionEnd, base)]).unwrap();
+    let invalid = HooksOptions::new(
+        "urn:typed-host",
+        capability::HostCapabilities {
+            session_end: Some(capability::Observe),
+            ..Default::default()
+        },
+    );
     assert!(
         Hooks::new(
             registration,
@@ -237,10 +249,8 @@ fn generated_state_candidate_distinguishes_null_from_absence() {
 #[test]
 fn generated_named_tool_event_is_lazy_and_accepts_serialize_only_arguments() {
     use agenthooksprotocol::{
-        DeliveryDiagnosticCode, Hooks, Permission,
-        generated::ToolBeforeInputOrigin,
-        hooks::{Capabilities, EventGrant, HooksOptions},
-        inputs::ToolBeforeInput,
+        DeliveryDiagnosticCode, Hooks, Permission, generated::ToolBeforeInputOrigin,
+        hooks::HooksOptions, inputs::ToolBeforeInput,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
     // Intentionally no Deserialize implementation: full-event projection only
@@ -257,11 +267,10 @@ fn generated_named_tool_event_is_lazy_and_accepts_serialize_only_arguments() {
     let registration = json!({"protocolVersion":"draft","hooks":[{"id":"org.example.lazy","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[{"events":["tool.before"],"mode":"intercept","timeoutMs":1000,"failurePolicy":"fail-closed","content":{"default":"metadata"}}]}]});
     let options = HooksOptions::new(
         "urn:lazy",
-        [(
-            "tool.before".into(),
-            EventGrant::intercept(Capabilities::none().allow().deny()),
-        )]
-        .into(),
+        capability::HostCapabilities {
+            tool_before: Some(capability::tool_before().allow().deny()),
+            ..Default::default()
+        },
     )
     .with_backend("org.example.lazy", Arc::new(Capture(calls.clone())));
     let hooks = Hooks::new(registration, options).unwrap();
@@ -317,14 +326,20 @@ fn generated_named_tool_event_is_lazy_and_accepts_serialize_only_arguments() {
 
 #[test]
 fn generated_capability_vocabulary_uses_canonical_wire_tags() {
-    use agenthooksprotocol::{
-        EventType,
-        capability::{EffectType, Event, ModifyTarget},
+    let host = capability::HostCapabilities {
+        tool_before: Some(
+            capability::tool_before()
+                .deny()
+                .modify_input(capability::Modify::ReplaceAndMerge),
+        ),
+        ..Default::default()
     };
-    let event: EventType = Event::ToolBefore;
-    assert_eq!(serde_json::to_value(event).unwrap(), "tool.before");
-    assert_eq!(EffectType::Deny.as_str(), "deny");
-    assert_eq!(serde_json::to_value(EffectType::Deny).unwrap(), "deny");
-    assert_eq!(ModifyTarget::Input.as_str(), "input");
-    assert_eq!(serde_json::to_value(ModifyTarget::Input).unwrap(), "input");
+    let wire = serde_json::to_value(host.to_wire()).unwrap();
+    assert_eq!(
+        wire,
+        json!({"tool.before": {
+            "modes": ["intercept"],
+            "capabilities": {"effects": ["deny", "modify"], "modify": {"input": {"replace": true, "merge": true}}}
+        }})
+    );
 }

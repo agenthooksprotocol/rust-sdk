@@ -2,11 +2,12 @@
 use agenthooksprotocol::{
     Hooks,
     adapters::registered::ManagedBackend,
+    capability,
     client::{HookError, LocalFuture},
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 struct Reply(Value);
 impl ManagedBackend for Reply {
@@ -17,20 +18,14 @@ impl ManagedBackend for Reply {
         Box::pin(async { Ok(()) })
     }
 }
-fn hooks(name: &str, caps: Value, result: Value) -> Hooks {
+fn hooks(name: &str, caps: capability::HostCapabilities, result: Value) -> Hooks {
     Hooks::new(
         json!({"protocolVersion":"draft","hooks":[{"id":"org.example.typed",
         "transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},
         "subscriptions":[{"events":[name],"mode":"intercept","failurePolicy":"fail-open",
         "timeoutMs":1000,"content":{"default":"body"}}]}]}),
-        HooksOptions::new(
-            "urn:test:typed",
-            BTreeMap::from([(
-                name.into(),
-                EventGrant::intercept(Capabilities::from_value(caps).unwrap()),
-            )]),
-        )
-        .with_backend("org.example.typed", Arc::new(Reply(result))),
+        HooksOptions::new("urn:test:typed", caps)
+            .with_backend("org.example.typed", Arc::new(Reply(result))),
     )
     .unwrap()
 }
@@ -65,7 +60,14 @@ fn omitted_and_empty_effects_are_neutral_through_registered_backend() {
     }
     futures::executor::block_on(async {
         for reply in [json!({"protocolVersion":"draft"}), result(json!([]))] {
-            let hooks = hooks("tool.before", json!({"effects":[]}), reply);
+            let hooks = hooks(
+                "tool.before",
+                capability::HostCapabilities {
+                    tool_before: Some(capability::tool_before().message()),
+                    ..Default::default()
+                },
+                reply,
+            );
             let outcome = hooks
                 .tool_before(ToolBeforeInput::new(
                     "call".into(),
@@ -110,11 +112,23 @@ fn compaction_inline_instructions_and_summary_edits_do_not_insert_parts() {
             let replacement = json!([text(" revised\r\nλ ")]);
             let hooks = hooks(
                 name,
-                agenthooksprotocol::compaction::capabilities(
-                    if after { "after" } else { "before" },
-                    false,
-                )
-                .unwrap(),
+                if after {
+                    capability::HostCapabilities {
+                        context_compact_after: Some(
+                            capability::context_compact_after()
+                                .modify_summary(capability::Modify::ReplaceAndMerge),
+                        ),
+                        ..Default::default()
+                    }
+                } else {
+                    capability::HostCapabilities {
+                        context_compact_before: Some(
+                            capability::context_compact_before()
+                                .modify_instructions(capability::Modify::ReplaceAndMerge),
+                        ),
+                        ..Default::default()
+                    }
+                },
                 result(json!([edit(target, replacement.clone())])),
             );
             let outcome = hooks.event(original.clone()).await.unwrap();
@@ -149,7 +163,14 @@ fn known_messages_model_return_and_opaque_workspace_forward_unknown_bags() {
             (
                 "model.request.before",
                 json!({"model":{"id":"small","provider":"example"},"attempt":{"id":"attempt","number":1},"params":{},"items":[]}),
-                json!({"effects":["modify","return"],"modify":{"request":{"replace":true,"merge":false}}}),
+                capability::HostCapabilities {
+                    model_request_before: Some(
+                        capability::model_request_before()
+                            .modify_request(capability::Modify::Replace)
+                            .return_result(),
+                    ),
+                    ..Default::default()
+                },
                 json!([edit("request",messages("request")),{"type":"return","value":messages("candidate")}]),
                 "/items",
                 messages("request"),
@@ -157,7 +178,13 @@ fn known_messages_model_return_and_opaque_workspace_forward_unknown_bags() {
             (
                 "user.message.outbound",
                 json!({"message":{"channel":"test","messages":messages("old")}}),
-                json!({"effects":["modify"],"modify":{"content":{"replace":true,"merge":false}}}),
+                capability::HostCapabilities {
+                    user_message_outbound: Some(
+                        capability::user_message_outbound()
+                            .modify_content(capability::Modify::Replace),
+                    ),
+                    ..Default::default()
+                },
                 json!([edit("content", messages("new"))]),
                 "/message/messages",
                 messages("new"),
@@ -165,7 +192,13 @@ fn known_messages_model_return_and_opaque_workspace_forward_unknown_bags() {
             (
                 "workspace.change.before",
                 json!({"workspace":{"kind":"cwd","change":{"cwd":"/old"},"prior":{"cwd":"/prior"}}}),
-                json!({"effects":["modify"],"modify":{"workspace":{"replace":true,"merge":false}}}),
+                capability::HostCapabilities {
+                    workspace_change_before: Some(
+                        capability::workspace_change_before()
+                            .modify_workspace(capability::Modify::Replace),
+                    ),
+                    ..Default::default()
+                },
                 json!([edit("workspace", json!({"cwd":"/new"}))]),
                 "/workspace/change",
                 json!({"cwd":"/new"}),
@@ -214,7 +247,12 @@ fn invalid_response_rolls_back_all_edits() {
         );
         let hooks = hooks(
             "user.message.outbound",
-            json!({"effects":["modify"],"modify":{"content":{"replace":true,"merge":false}}}),
+            capability::HostCapabilities {
+                user_message_outbound: Some(
+                    capability::user_message_outbound().modify_content(capability::Modify::Replace),
+                ),
+                ..Default::default()
+            },
             result(json!([
                 edit("content", messages("leak")),
                 edit("content", json!([{"id":"invalid"}]))
@@ -239,7 +277,14 @@ fn elicitation_result_candidate_preserves_opaque_metadata() {
         let candidate = json!({"action":"decline","_meta":{"parts":[{"kind":"attachment","body":{"ref":"opaque"}}]}});
         let hooks = hooks(
             "user.elicitation.request",
-            json!({"effects":["return"],"elicitation":{"form":{}}}),
+            capability::HostCapabilities {
+                user_elicitation_request: Some(
+                    capability::user_elicitation_request()
+                        .return_result()
+                        .elicitation_form(),
+                ),
+                ..Default::default()
+            },
             result(json!([{"type":"return","value":candidate}])),
         );
         let outcome = hooks.event(original.clone()).await.unwrap();
@@ -290,7 +335,14 @@ fn session_counters_are_lossless_unbounded_and_nonnegative_in_full_sdk_decoding(
             json!({"model":{"id":"small","provider":"example"},"attempt":{"id":"attempt","number":1},"params":{},"items":[]}),
         );
         original["session"]["counters"] = raw.clone();
-        let hooks = hooks(name, json!({"effects":[]}), result(json!([])));
+        let hooks = hooks(
+            name,
+            capability::HostCapabilities {
+                model_request_before: Some(capability::model_request_before().message()),
+                ..Default::default()
+            },
+            result(json!([])),
+        );
         let outcome = hooks.event(original.clone()).await.unwrap();
         assert!(outcome.outcome.failures.is_empty());
         assert_eq!(

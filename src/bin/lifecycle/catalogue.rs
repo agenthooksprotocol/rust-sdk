@@ -586,13 +586,13 @@ mod tests {
     #[test]
     fn receiver_records_exact_rejections_and_recovers_atomically() {
         let receiver = ServerState {
-            data: Mutex::new(Shared::default()),
-            changed: Condvar::new(),
-            validation: Validation::new(&json!({})).unwrap(),
+            data: Arc::new(Mutex::new(Shared::default())),
+            changed: Arc::new(Condvar::new()),
+            validation: Arc::new(Validation::new(&json!({})).unwrap()),
             responses: BTreeMap::new(),
             sequences: BTreeMap::new(),
             stdio: false,
-            stdout_order: Mutex::new(()),
+            stdout_order: Arc::new(Mutex::new(())),
             upload: json!({}),
             auth: json!({"auth":{"mode":"none"}}),
             catalogue: true,

@@ -108,9 +108,9 @@ fn incoming_capabilities_support_schema_effect_ids_and_custom_families() {
     let value = serde_json::json!({"effects":["deny","vendor.effect"], "modify":{"input":{"replace":true,"merge":false}}});
     let capabilities: Capabilities = serde_json::from_value(value.clone()).unwrap();
     assert!(capabilities.supports(EffectId::Deny));
-    assert!(capabilities.supports(capability::EffectType::Deny));
+    assert!(capabilities.supports(EffectId::Deny));
     assert_eq!(
-        capability::EffectType::Unknown("vendor.effect".into()).as_str(),
+        EffectId::Unknown("vendor.effect".into()).as_str(),
         "vendor.effect"
     );
     let native = Capabilities::new(vec![
@@ -121,8 +121,8 @@ fn incoming_capabilities_support_schema_effect_ids_and_custom_families() {
     assert!(native.supports(EffectId::Unknown("vendor.effect".into())));
     let scoped: ToolBeforeCapabilities =
         serde_json::from_value(serde_json::json!({"effects":["deny"]})).unwrap();
-    assert!(scoped.supports(capability::EffectType::Deny));
-    assert!(!scoped.supports(capability::EffectType::Modify));
+    assert!(scoped.supports(EffectId::Deny));
+    assert!(!scoped.supports(EffectId::Modify));
     assert!(capabilities.supports(EffectId::Unknown("vendor.effect".into())));
     assert!(!capabilities.supports(EffectId::Modify));
     assert!(!capabilities.supports(EffectId::Unknown("absent.effect".into())));

@@ -1,9 +1,10 @@
 #![cfg(all(feature = "tokio-process", unix))]
+use agenthooksprotocol::capability;
 
 use agenthooksprotocol::{
     client::{Permission, ToolContext},
     generated::Registration,
-    hooks::{Capabilities, EventGrant, Hooks, HooksOptions},
+    hooks::{Hooks, HooksOptions},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -89,12 +90,15 @@ fn configured(log: &Log, lifecycle: &str, observe: bool) -> Hooks {
     let mut subscriptions = vec![
         json!({"events":["tool.before"],"mode":"intercept","timeoutMs":3000,"failurePolicy":"fail-closed","content":{"default":"metadata"}}),
     ];
-    let grant = EventGrant::intercept(Capabilities::none().allow().deny().modify_input());
+    let grant = capability::tool_before()
+        .allow()
+        .deny()
+        .modify_input(capability::Modify::ReplaceAndMerge);
     let grant = if observe {
         subscriptions.push(
             json!({"events":["tool.before"],"mode":"observe","content":{"default":"metadata"}}),
         );
-        grant.with_observe()
+        grant.observe()
     } else {
         grant
     };
@@ -106,7 +110,10 @@ fn configured(log: &Log, lifecycle: &str, observe: bool) -> Hooks {
     let registration = serde_json::from_str::<Registration>(&config).unwrap();
     let mut options = HooksOptions::new(
         "https://host.test/stdio",
-        [("tool.before".into(), grant)].into(),
+        capability::HostCapabilities {
+            tool_before: Some(grant),
+            ..Default::default()
+        },
     );
     options.observation_timeout = Duration::from_secs(3);
     Hooks::new(registration, options).unwrap()

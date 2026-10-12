@@ -1,5 +1,5 @@
 use crate::{
-    server::{Authenticator, Handler, Server},
+    server::{Authenticator, Server},
     transport,
 };
 use axum::{
@@ -7,8 +7,8 @@ use axum::{
     http::{Request, Response, StatusCode},
 };
 /// Bind in an Axum route; body collection is bounded before dispatch.
-pub async fn handle<H: Handler, A: Authenticator>(
-    server: &Server<H, A>,
+pub async fn handle<A: Authenticator>(
+    server: &Server<A>,
     request: Request<Body>,
 ) -> Response<Body> {
     let (parts, body) = request.into_parts();

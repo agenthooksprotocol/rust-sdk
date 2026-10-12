@@ -1,12 +1,12 @@
 use agenthooksprotocol::{
     Hooks,
     adapters::registered::ManagedBackend,
+    capability::{self, HostCapabilities, Observe},
     client::{HookError, LocalFuture},
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
 };
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -32,7 +32,7 @@ impl ManagedBackend for Backend {
 fn hooks(
     selector: &str,
     mode: &str,
-    grants: BTreeMap<String, EventGrant>,
+    grants: HostCapabilities,
     filters: Value,
 ) -> (Hooks, Arc<Backend>) {
     let backend = Arc::new(Backend::default());
@@ -51,16 +51,14 @@ fn hooks(
     ).unwrap();
     (hooks, backend)
 }
-fn grants() -> BTreeMap<String, EventGrant> {
-    BTreeMap::from([
-        (
-            "tool.before".into(),
-            EventGrant::intercept(Capabilities::none()),
-        ),
-        ("tool.after".into(), EventGrant::observe()),
-        ("session.end".into(), EventGrant::observe()),
-        ("tool.permission.resolved".into(), EventGrant::observe()),
-    ])
+fn grants() -> HostCapabilities {
+    HostCapabilities {
+        tool_before: Some(capability::tool_before().allow().observe()),
+        tool_after: Some(capability::tool_after().observe()),
+        session_end: Some(Observe),
+        tool_permission_resolved: Some(Observe),
+        ..HostCapabilities::default()
+    }
 }
 fn finish(hooks: Hooks, backend: &Backend) {
     assert_eq!(backend.calls.load(Ordering::SeqCst), 0);
@@ -135,17 +133,12 @@ fn payload_filters_do_not_turn_potential_interest_into_a_false_negative() {
 
 #[test]
 fn observation_selector_does_not_claim_intercept_only_host_entries() {
-    let grants = BTreeMap::from([
-        (
-            "tool.before".into(),
-            EventGrant::from_declaration(
-                json!({"modes":["intercept"],"capabilities":{"effects":[]}}),
-            )
-            .unwrap(),
-        ),
-        ("session.end".into(), EventGrant::observe()),
-        ("tool.permission.resolved".into(), EventGrant::observe()),
-    ]);
+    let grants = HostCapabilities {
+        tool_before: Some(capability::tool_before().allow()),
+        session_end: Some(Observe),
+        tool_permission_resolved: Some(Observe),
+        ..HostCapabilities::default()
+    };
     let (hooks, backend) = hooks("*", "observe", grants, Value::Null);
     assert!(!hooks.subscribes("tool.before"));
     assert!(hooks.subscribes("session.end"));

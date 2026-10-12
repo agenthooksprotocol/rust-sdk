@@ -303,14 +303,15 @@ struct Shared {
     shutdown: bool,
     attempts: BTreeMap<String, usize>,
 }
+#[derive(Clone)]
 struct ServerState {
-    data: Mutex<Shared>,
-    changed: Condvar,
-    validation: Validation,
+    data: Arc<Mutex<Shared>>,
+    changed: Arc<Condvar>,
+    validation: Arc<Validation>,
     responses: BTreeMap<String, Value>,
     sequences: BTreeMap<String, Vec<Value>>,
     stdio: bool,
-    stdout_order: Mutex<()>,
+    stdout_order: Arc<Mutex<()>>,
     upload: Value,
     auth: Value,
     catalogue: bool,
@@ -391,45 +392,6 @@ impl agenthooksprotocol::server::Authenticator for FixturePrincipal {
     ) -> std::result::Result<agenthooksprotocol::server::Principal, String> {
         Ok(agenthooksprotocol::server::Principal {
             subject: self.0.clone(),
-        })
-    }
-}
-struct FixtureHandler<'a> {
-    state: &'a ServerState,
-    error: Mutex<Option<String>>,
-}
-impl agenthooksprotocol::server::Handler for FixtureHandler<'_> {
-    fn handle(
-        &self,
-        _: agenthooksprotocol::server::Principal,
-        message: agenthooksprotocol::server::Incoming,
-    ) -> agenthooksprotocol::server::HandlerFuture<'_> {
-        Box::pin(async move {
-            use agenthooksprotocol::server::{Incoming, Outgoing};
-            let (request, method) = match message {
-                Incoming::Intercept(v) => (serde_json::to_value(v), "intercept"),
-                Incoming::Observe(v) => (serde_json::to_value(v), "observe"),
-                Incoming::Capabilities(v) => (serde_json::to_value(v), "capabilities"),
-            };
-            let request = request.map_err(|e| e.to_string())?;
-            let response = self.state.protocol_fixture(&request).map_err(|e| {
-                let error = e.to_string();
-                *self.error.lock().unwrap() = Some(error.clone());
-                error
-            })?;
-            match method {
-                "observe" => Ok(Outgoing::Observed),
-                "capabilities" => generated::parse_capabilities_response_value(response)
-                    .into_value()
-                    .map(Box::new)
-                    .map(Outgoing::Capabilities)
-                    .ok_or_else(|| "invalid fixture capabilities".into()),
-                _ => generated::parse_intercept_response_value(response)
-                    .into_value()
-                    .map(Box::new)
-                    .map(Outgoing::Intercept)
-                    .ok_or_else(|| "invalid fixture response".into()),
-            }
         })
     }
 }
@@ -637,11 +599,174 @@ impl ServerState {
         if self.catalogue && v["method"] == "hooks/observe" && self.validation.observe(v).is_err() {
             return Err(self.rejection(v, "schema"));
         }
+        // Forward-compatible event fixtures are synthetic wire traffic, not a
+        // broad public callback. Their validation/receipt semantics live here.
+        if matches!(s(v, "method"), "hooks/intercept" | "hooks/observe")
+            && !matches!(
+                s(&v["params"]["event"], "type"),
+                "config.change.after"
+                    | "config.change.before"
+                    | "context.compact.after"
+                    | "context.compact.before"
+                    | "file.changed"
+                    | "hook.failure"
+                    | "model.error"
+                    | "model.request.before"
+                    | "model.response.after"
+                    | "model.switch.after"
+                    | "model.switch.before"
+                    | "session.end"
+                    | "session.start"
+                    | "task.change.before"
+                    | "task.change.after"
+                    | "user.attention"
+                    | "tool.after"
+                    | "tool.batch.after"
+                    | "tool.before"
+                    | "tool.permission.request"
+                    | "tool.permission.resolved"
+                    | "tool.progress"
+                    | "turn.end"
+                    | "turn.finish.before"
+                    | "turn.progress"
+                    | "turn.start"
+                    | "user.elicitation.request"
+                    | "user.elicitation.result"
+                    | "user.message.inbound"
+                    | "user.message.outbound"
+                    | "workspace.change.after"
+                    | "workspace.change.before"
+            )
+        {
+            return self.protocol_fixture(v);
+        }
+        let error = Arc::new(Mutex::new(None));
+        let state = Arc::new(self.clone());
+        let mut handlers = agenthooksprotocol::server::HandlerSet::default();
+        // Each registration has a generated event and its correlated effect type.
+        // Synthetic invalid replies stay on the explicit wire path above.
+        macro_rules! intercept {
+            ($($slot:ident),+ $(,)?) => { $( {
+                let state = state.clone();
+                let error = error.clone();
+                handlers.intercept.$slot = Some(Arc::new(move |ctx, _event| {
+                    let state = state.clone();
+                    let error = error.clone();
+                    Box::pin(async move {
+                        let response = state.protocol_fixture(ctx.request()).map_err(|e| {
+                            let message = e.to_string();
+                            *error.lock().unwrap() = Some(message.clone());
+                            message
+                        })?;
+                        if response["id"] != ctx.request()["id"] {
+                            return Err("uncorrelated fixture response".into());
+                        }
+                        let effects = response["result"]["effects"].as_array()
+                            .ok_or("invalid fixture effects")?;
+                        let mut reply = ctx.reply();
+                        for effect in effects {
+                            reply = reply.effect(serde_json::from_value(effect.clone())
+                                .map_err(|e| e.to_string())?);
+                        }
+                        Ok(reply)
+                    })
+                }));
+            } )+ };
+        }
+        macro_rules! observe {
+            ($($slot:ident),+ $(,)?) => { $( {
+                let state = state.clone();
+                let error = error.clone();
+                handlers.observe.$slot = Some(Arc::new(move |ctx, _event| {
+                    let state = state.clone();
+                    let error = error.clone();
+                    Box::pin(async move {
+                        state.protocol_fixture(ctx.request()).map(|_| ()).map_err(|e| {
+                            let message = e.to_string();
+                            *error.lock().unwrap() = Some(message.clone());
+                            message
+                        })
+                    })
+                }));
+            } )+ };
+        }
+        intercept!(
+            tool_before,
+            tool_after,
+            session_start,
+            config_change_before,
+            turn_start,
+            turn_finish_before,
+            model_request_before,
+            model_response_after,
+            model_switch_before,
+            tool_permission_request,
+            tool_batch_after,
+            context_compact_before,
+            context_compact_after,
+            task_change_before,
+            user_elicitation_request,
+            user_elicitation_result,
+            user_message_inbound,
+            user_message_outbound,
+            workspace_change_before
+        );
+        observe!(
+            tool_before,
+            tool_after,
+            session_start,
+            config_change_before,
+            turn_start,
+            turn_finish_before,
+            model_request_before,
+            model_response_after,
+            model_switch_before,
+            tool_permission_request,
+            tool_batch_after,
+            context_compact_before,
+            context_compact_after,
+            task_change_before,
+            user_elicitation_request,
+            user_elicitation_result,
+            user_message_inbound,
+            user_message_outbound,
+            workspace_change_before,
+            session_end,
+            config_change_after,
+            turn_end,
+            turn_progress,
+            model_error,
+            model_switch_after,
+            tool_permission_resolved,
+            tool_progress,
+            task_change_after,
+            user_attention,
+            workspace_change_after,
+            file_changed,
+            hook_failure
+        );
+        let discovery_state = state.clone();
+        let discovery_error = error.clone();
+        handlers.discovery = Some(Arc::new(move |ctx, request| {
+            let state = discovery_state.clone();
+            let error = discovery_error.clone();
+            Box::pin(async move {
+                let request = serde_json::to_value(request).map_err(|e| e.to_string())?;
+                let response = state.protocol_fixture(&request).map_err(|e| {
+                    let message = e.to_string();
+                    *error.lock().unwrap() = Some(message.clone());
+                    message
+                })?;
+                if response["id"] != request["id"] {
+                    return Err("uncorrelated fixture response".into());
+                }
+                let manifest = serde_json::from_value(response["result"]["manifest"].clone())
+                    .map_err(|e| e.to_string())?;
+                Ok(ctx.reply(manifest))
+            })
+        }));
         let server = agenthooksprotocol::server::Server {
-            handler: FixtureHandler {
-                state: self,
-                error: Mutex::new(None),
-            },
+            handlers,
             authenticator: FixturePrincipal(self.event_scope().to_owned()),
             max_body_bytes: 16 * 1024 * 1024,
         };
@@ -668,7 +793,7 @@ impl ServerState {
             return Ok(Value::Null);
         }
         if response.status != 200 {
-            if let Some(error) = server.handler.error.lock().unwrap().take() {
+            if let Some(error) = error.lock().unwrap().take() {
                 return Err(error.into());
             }
             // Preserve the fixture's historical 409 for an unconfirmed body.
@@ -980,13 +1105,13 @@ fn server(c: &Value) -> Result<()> {
             json!({"mode":"bearer","token":secret,"scope":c["auth"]["scope"]});
     }
     let state = Arc::new(ServerState {
-        data: Mutex::new(Shared::default()),
-        changed: Condvar::new(),
-        validation: Validation::new(c)?,
+        data: Arc::new(Mutex::new(Shared::default())),
+        changed: Arc::new(Condvar::new()),
+        validation: Arc::new(Validation::new(c)?),
         responses,
         sequences,
         stdio: s(c, "transport") == "stdio",
-        stdout_order: Mutex::new(()),
+        stdout_order: Arc::new(Mutex::new(())),
         upload: c["uploadAuth"].clone(),
         auth: internal_config,
         catalogue: s(c, "suite") == "catalogue",
@@ -2031,13 +2156,13 @@ mod lifecycle_tests {
     use super::*;
     fn state() -> ServerState {
         ServerState {
-            data: Mutex::new(Shared::default()),
-            changed: Condvar::new(),
-            validation: Validation::new(&json!({})).unwrap(),
+            data: Arc::new(Mutex::new(Shared::default())),
+            changed: Arc::new(Condvar::new()),
+            validation: Arc::new(Validation::new(&json!({})).unwrap()),
             responses: BTreeMap::new(),
             sequences: BTreeMap::new(),
             stdio: false,
-            stdout_order: Mutex::new(()),
+            stdout_order: Arc::new(Mutex::new(())),
             upload: json!({"anonymous":true,"subscriptions":["body"]}),
             auth: json!({"auth":{"mode":"none"}}),
             catalogue: false,
@@ -2313,13 +2438,13 @@ mod hardening_tests {
     }
     fn server() -> ServerState {
         ServerState {
-            data: Mutex::new(Shared::default()),
-            changed: Condvar::new(),
-            validation: Validation::new(&json!({})).unwrap(),
+            data: Arc::new(Mutex::new(Shared::default())),
+            changed: Arc::new(Condvar::new()),
+            validation: Arc::new(Validation::new(&json!({})).unwrap()),
             responses: BTreeMap::new(),
             sequences: BTreeMap::new(),
             stdio: false,
-            stdout_order: Mutex::new(()),
+            stdout_order: Arc::new(Mutex::new(())),
             upload: json!({"anonymous":true,"subscriptions":["body"]}),
             auth: json!({"auth":{"mode":"none"}}),
             catalogue: false,

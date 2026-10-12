@@ -1,9 +1,10 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Hooks, ToolBeforeInputOrigin,
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
     contracts::Contract,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::ToolBeforeInput,
 };
 use serde::{Deserialize, Serialize};
@@ -48,8 +49,8 @@ fn hooks(replies: Vec<Value>) -> (Hooks, Arc<Mutex<Vec<Value>>>) {
     });
     let hooks=Hooks::new(json!({"protocolVersion":"draft","hooks":[{"id":"org.example.contracts",
         "transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":subscriptions}]}),
-        HooksOptions::new("urn:test:contracts",BTreeMap::from([("tool.before".into(),EventGrant::intercept(
-            Capabilities::none().return_value().modify_input()))]))
+        HooksOptions::new("urn:test:contracts",capability::HostCapabilities { tool_before: Some(
+            capability::tool_before().return_result().modify_input(capability::Modify::ReplaceAndMerge)), ..Default::default() })
         .with_backend("org.example.contracts",backend)).unwrap();
     (hooks, requests)
 }
