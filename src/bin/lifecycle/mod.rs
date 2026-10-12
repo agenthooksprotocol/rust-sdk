@@ -641,6 +641,9 @@ impl ServerState {
             return self.protocol_fixture(v);
         }
         let error = Arc::new(Mutex::new(None));
+        // Rejected notifications are silent on the wire; the fixture detects
+        // rejection by the observer never being reached.
+        let observed = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let state = Arc::new(self.clone());
         let mut handlers = agenthooksprotocol::server::HandlerSet::default();
         // Each registration has a generated event and its correlated effect type.
@@ -677,9 +680,11 @@ impl ServerState {
             ($($slot:ident),+ $(,)?) => { $( {
                 let state = state.clone();
                 let error = error.clone();
+                let observed = observed.clone();
                 handlers.observe.$slot = Some(Arc::new(move |ctx, _event| {
                     let state = state.clone();
                     let error = error.clone();
+                    observed.store(true, std::sync::atomic::Ordering::SeqCst);
                     Box::pin(async move {
                         state.protocol_fixture(ctx.request()).map(|_| ()).map_err(|e| {
                             let message = e.to_string();
@@ -782,6 +787,13 @@ impl ServerState {
             let store = self.content_store();
             futures::executor::block_on(server.handle_with_content(request, &store))
         };
+        if response.status == 204 && !observed.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(format!(
+                "schema: SDK server rejected notification {}",
+                s(&v["params"]["event"], "id")
+            )
+            .into());
+        }
         if response.status == 204 {
             // Exactly this adversarial scenario injects a forbidden response to a
             // notification. Normal observation delivery is one-way through Server.
@@ -800,9 +812,9 @@ impl ServerState {
             // Only this exact public resolution failure is a content conflict;
             // malformed envelopes/descriptors remain schema errors (HTTP 400).
             let kind = if response.status == 400
-                && serde_json::from_slice::<Value>(&response.body).ok()
-                    == Some(json!({"error":"selected content unavailable or invalid"}))
-            {
+                && serde_json::from_slice::<Value>(&response.body).is_ok_and(|body| {
+                    body["error"]["message"] == "Selected content unavailable or invalid"
+                }) {
                 "content"
             } else {
                 "schema"

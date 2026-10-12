@@ -76,6 +76,10 @@ impl<E> ObserveContext<E> {
     pub fn request(&self) -> &serde_json::Value {
         &self.request
     }
+    /// The observed event type, or `None` for a type this SDK does not know.
+    pub fn event_type(&self) -> Option<g::EventType> {
+        serde_json::from_value(self.request["params"]["event"]["type"].clone()).ok()
+    }
     /// Decode caller-owned data without dropping wire members or bypassing invariants.
     pub fn decode<T: serde::Serialize + serde::de::DeserializeOwned>(
         &self,
@@ -178,7 +182,52 @@ pub type WorkspaceChangeBeforeObserveContext = ObserveContext<g::WorkspaceChange
 pub type WorkspaceChangeAfterObserveContext = ObserveContext<g::WorkspaceChangeAfterEvent>;
 pub type FileChangedObserveContext = ObserveContext<g::FileChangedEvent>;
 pub type HookFailureObserveContext = ObserveContext<g::HookFailureEvent>;
-type Callback<C, E, R> = Arc<dyn Fn(C, E) -> ServerFuture<R> + Send + Sync>;
+/// Context for the catch-all observer: the whole validated notification.
+pub type AnyObserveContext = ObserveContext<g::ObserveNotification>;
+/// A shareable event callback. Build one with [`callback`] or [`with_state`].
+pub type Callback<C, E, R> = Arc<dyn Fn(C, E) -> ServerFuture<R> + Send + Sync>;
+/// Wrap an async closure as a [`Callback`] without manual `Arc`/`Box::pin`.
+/// Annotate the context parameter when the closure calls methods on it.
+///
+/// ```
+/// use agenthooksprotocol::server::{HandlerSet, ToolBeforeContext, callback};
+/// let mut handlers = HandlerSet::default();
+/// handlers.intercept.tool_before = Some(callback(|ctx: ToolBeforeContext, _event| async move {
+///     Ok(ctx.reply())
+/// }));
+/// ```
+pub fn callback<C, E, R, F, Fut>(f: F) -> Callback<C, E, R>
+where
+    F: Fn(C, E) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<R, String>> + Send + 'static,
+{
+    Arc::new(move |context, event| Box::pin(f(context, event)))
+}
+/// Like [`callback`], but hands every invocation a clone of shared `state`,
+/// so callbacks need no per-closure `Arc` cloning.
+///
+/// ```
+/// use agenthooksprotocol::server::{HandlerSet, ToolBeforeContext, with_state};
+/// use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+/// let seen = Arc::new(AtomicUsize::new(0));
+/// let mut handlers = HandlerSet::default();
+/// handlers.observe.tool_after = Some(with_state(seen.clone(), |seen, _ctx, _event| async move {
+///     seen.fetch_add(1, Ordering::Relaxed);
+///     Ok(())
+/// }));
+/// handlers.intercept.tool_before = Some(with_state(seen, |seen, ctx: ToolBeforeContext, _event| async move {
+///     let _ = seen.load(Ordering::Relaxed);
+///     Ok(ctx.reply())
+/// }));
+/// ```
+pub fn with_state<S, C, E, R, F, Fut>(state: Arc<S>, f: F) -> Callback<C, E, R>
+where
+    S: ?Sized + Send + Sync + 'static,
+    F: Fn(Arc<S>, C, E) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<R, String>> + Send + 'static,
+{
+    Arc::new(move |context, event| Box::pin(f(state.clone(), context, event)))
+}
 #[derive(Default)]
 pub struct InterceptHandlers {
     pub tool_before: Option<Callback<ToolBeforeContext, g::ToolBeforeEvent, ToolBeforeReply>>,
@@ -303,6 +352,10 @@ pub struct ObserveHandlers {
         Option<Callback<WorkspaceChangeAfterObserveContext, g::WorkspaceChangeAfterEvent, ()>>,
     pub file_changed: Option<Callback<FileChangedObserveContext, g::FileChangedEvent, ()>>,
     pub hook_failure: Option<Callback<HookFailureObserveContext, g::HookFailureEvent, ()>>,
+    /// Catch-all observer, invoked only for events whose per-event observer is
+    /// `None`. It receives the validated notification; see
+    /// [`ObserveContext::event_type`].
+    pub any: Option<Callback<AnyObserveContext, g::ObserveNotification, ()>>,
 }
 #[derive(Default)]
 pub struct HandlerSet {
@@ -333,12 +386,109 @@ impl ResolvedContent {
         self.bodies.is_empty()
     }
 }
-type Prepared = (Principal, serde_json::Value, Option<ResolvedContent>);
+/// A validated message, parsed exactly once.
+enum Message {
+    Intercept(Box<g::InterceptRequest>),
+    Observe(g::ObserveNotification),
+    Capabilities(g::CapabilitiesRequest),
+}
+struct Prepared {
+    principal: Principal,
+    raw: Arc<serde_json::Value>,
+    message: Message,
+    content: Option<ResolvedContent>,
+}
+fn parsed<T>(result: g::ParseResult<T>) -> Option<(T, serde_json::Value)> {
+    match result {
+        g::ParseResult::Success { value, raw, .. } => Some((value, raw)),
+        g::ParseResult::Failure { .. } => None,
+    }
+}
 pub struct Server<A> {
     pub handlers: HandlerSet,
     pub authenticator: A,
     pub max_body_bytes: usize,
 }
+/// Server-side JSON-RPC failure classes. Messages are fixed strings: handler
+/// errors and validation diagnostics never reach the wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RpcError {
+    Parse,
+    InvalidRequest,
+    MethodNotFound,
+    InvalidParams,
+    /// Invalid params: selected content could not be verified for this principal.
+    ContentUnavailable,
+    Internal,
+    UnsupportedProtocolVersion,
+    UnsupportedEvent,
+    BackendInternal,
+}
+impl RpcError {
+    fn code(self) -> i64 {
+        match self {
+            Self::Parse => -32700,
+            Self::InvalidRequest => -32600,
+            Self::MethodNotFound => -32601,
+            Self::InvalidParams | Self::ContentUnavailable => -32602,
+            Self::Internal => -32603,
+            Self::UnsupportedProtocolVersion => -32001,
+            Self::UnsupportedEvent => -32002,
+            Self::BackendInternal => -32004,
+        }
+    }
+    fn message(self) -> &'static str {
+        match self {
+            Self::Parse => "Parse error",
+            Self::InvalidRequest => "Invalid Request",
+            Self::MethodNotFound => "Method not found",
+            Self::InvalidParams => "Invalid params",
+            Self::ContentUnavailable => "Selected content unavailable or invalid",
+            Self::Internal => "Internal error",
+            Self::UnsupportedProtocolVersion => "Unsupported AHP protocol version",
+            Self::UnsupportedEvent => "Unsupported event",
+            Self::BackendInternal => "Backend internal error",
+        }
+    }
+    /// HTTP status carrying the envelope: caller errors are 400, server errors 500.
+    fn status(self) -> u16 {
+        match self {
+            Self::Internal | Self::BackendInternal => 500,
+            _ => 400,
+        }
+    }
+}
+/// Why a message was not dispatched to a callback.
+enum Rejection {
+    /// Transport-level rejection before any JSON-RPC message is known.
+    Transport(u16),
+    /// A notification never receives a JSON-RPC response of any kind.
+    Notification,
+    /// A request receives a correlated (or null-id) JSON-RPC error.
+    Request(serde_json::Value, RpcError),
+}
+/// Events that `hooks/intercept` can deliver. Must match the `invoke` match arms.
+const INTERCEPT_EVENTS: &[&str] = &[
+    "tool.before",
+    "tool.after",
+    "session.start",
+    "config.change.before",
+    "turn.start",
+    "turn.finish.before",
+    "model.request.before",
+    "model.response.after",
+    "model.switch.before",
+    "tool.permission.request",
+    "tool.batch.after",
+    "context.compact.before",
+    "context.compact.after",
+    "task.change.before",
+    "user.elicitation.request",
+    "user.elicitation.result",
+    "user.message.inbound",
+    "user.message.outbound",
+    "workspace.change.before",
+];
 fn response(status: u16, body: Vec<u8>) -> Response {
     Response {
         status,
@@ -346,11 +496,56 @@ fn response(status: u16, body: Vec<u8>) -> Response {
         headers: BTreeMap::from([("content-type".into(), "application/json".into())]),
     }
 }
-fn failure(status: u16, message: &str) -> Response {
-    response(
+/// Bodyless status: transport rejections and notification acknowledgments.
+fn empty(status: u16) -> Response {
+    Response {
         status,
-        serde_json::to_vec(&serde_json::json!({"error":message})).expect("JSON string"),
+        ..Default::default()
+    }
+}
+/// Build a JSON-RPC error envelope. `data` never carries handler diagnostics.
+pub(crate) fn rpc_error(id: &serde_json::Value, error: RpcError) -> Response {
+    let mut body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {"code": error.code(), "message": error.message()},
+    });
+    if error == RpcError::UnsupportedProtocolVersion {
+        body["error"]["data"] = serde_json::json!({"supported": [g::PROTOCOL_VERSION]});
+    }
+    response(
+        error.status(),
+        serde_json::to_vec(&body).expect("JSON value"),
     )
+}
+/// JSON-RPC notification: a request object (string `method`) without an `id` member.
+pub(crate) fn is_notification(message: &serde_json::Value) -> bool {
+    message.as_object().is_some_and(|object| {
+        !object.contains_key("id")
+            && object
+                .get("method")
+                .is_some_and(serde_json::Value::is_string)
+    })
+}
+/// A transport-level rejection for a framed request, expressed as a JSON-RPC error.
+/// Notifications and unparseable frames are left untouched.
+pub(crate) fn frame_rejection(frame: &[u8], response: Response) -> Response {
+    if !response.body.is_empty() || (200..300).contains(&response.status) {
+        return response;
+    }
+    match serde_json::from_slice::<serde_json::Value>(frame) {
+        Ok(message) if is_notification(&message) => empty(204),
+        Ok(message) => {
+            let id = match message.get("id") {
+                Some(id @ (serde_json::Value::String(_) | serde_json::Value::Number(_))) => {
+                    id.clone()
+                }
+                _ => serde_json::Value::Null,
+            };
+            rpc_error(&id, RpcError::InvalidRequest)
+        }
+        Err(_) => rpc_error(&serde_json::Value::Null, RpcError::Parse),
+    }
 }
 fn header<'a>(request: &'a Request, name: &str) -> Result<Option<&'a str>, ()> {
     let mut matches = request
@@ -365,216 +560,183 @@ fn header<'a>(request: &'a Request, name: &str) -> Result<Option<&'a str>, ()> {
     }
 }
 impl<A: Authenticator> Server<A> {
-    async fn invoke(
-        &self,
-        principal: Principal,
-        raw: &serde_json::Value,
-        content: ResolvedContent,
-    ) -> Result<Option<serde_json::Value>, String> {
+    async fn invoke(&self, prepared: Prepared) -> Result<Option<serde_json::Value>, RpcError> {
+        let Prepared {
+            principal,
+            raw,
+            message,
+            content,
+        } = prepared;
+        let content = content.unwrap_or_default();
         let scope = Arc::new(());
-        let request = Arc::new(raw.clone());
         // These macros only remove repetitive framing. Every arm still invokes
-        // a different statically typed callback with a canonical event model.
+        // a different statically typed callback with the already-parsed event.
         macro_rules! intercept {
-            ($field:ident, $event:ty) => {{
-                let event: $event = serde_json::from_value(raw["params"]["event"].clone())
-                    .map_err(|e| e.to_string())?;
+            ($field:ident, $event:expr) => {{
                 let handler = self
                     .handlers
                     .intercept
                     .$field
                     .as_ref()
-                    .ok_or("interception not configured")?;
+                    .ok_or(RpcError::UnsupportedEvent)?;
                 let reply = handler(
                     InterceptContext {
                         principal,
                         verified_content: content,
-                        request,
+                        request: raw.clone(),
                         scope: scope.clone(),
                         marker: std::marker::PhantomData,
                     },
-                    event,
+                    *$event,
                 )
-                .await?;
+                .await
+                .map_err(|_| RpcError::BackendInternal)?;
                 if !Arc::ptr_eq(&scope, &reply.scope) {
-                    return Err("reply scope mismatch".into());
+                    return Err(RpcError::Internal);
                 }
-                serde_json::to_value(reply.effects).map_err(|e| e.to_string())?
+                serde_json::to_value(reply.effects).map_err(|_| RpcError::Internal)?
             }};
         }
-        macro_rules! observe {
-            ($field:ident, $event:ty) => {{
-                let event: $event = serde_json::from_value(raw["params"]["event"].clone())
-                    .map_err(|e| e.to_string())?;
-                if let Some(handler) = &self.handlers.observe.$field {
-                    handler(
-                        ObserveContext {
-                            principal,
-                            verified_content: content,
-                            request,
-                            marker: std::marker::PhantomData,
-                        },
-                        event,
-                    )
-                    .await?;
-                }
-            }};
-        }
-        match raw["method"].as_str().ok_or("missing method")? {
-            "hooks/capabilities" => {
+        match message {
+            Message::Capabilities(request) => {
                 let handler = self
                     .handlers
                     .discovery
                     .as_ref()
-                    .ok_or("discovery not configured")?;
-                let event = serde_json::from_value(raw.clone()).map_err(|e| e.to_string())?;
+                    .ok_or(RpcError::MethodNotFound)?;
                 let reply = handler(
                     DiscoveryContext {
                         principal,
                         verified_content: content,
                         scope: scope.clone(),
                     },
-                    event,
+                    request,
                 )
-                .await?;
+                .await
+                .map_err(|_| RpcError::BackendInternal)?;
                 if !Arc::ptr_eq(&scope, &reply.scope) {
-                    return Err("reply scope mismatch".into());
+                    return Err(RpcError::Internal);
                 }
                 Ok(Some(
                     serde_json::json!({"jsonrpc":"2.0", "id":raw["id"], "result":{"protocolVersion":g::PROTOCOL_VERSION, "manifest":reply.manifest}}),
                 ))
             }
-            "hooks/intercept" => {
-                let effects = match raw["params"]["event"]["type"]
-                    .as_str()
-                    .ok_or("missing event type")?
-                {
-                    "tool.before" => intercept!(tool_before, g::ToolBeforeEvent),
-                    "tool.after" => intercept!(tool_after, g::ToolAfterEvent),
-                    "session.start" => intercept!(session_start, g::SessionStartEvent),
-                    "config.change.before" => {
-                        intercept!(config_change_before, g::ConfigChangeBeforeEvent)
-                    }
-                    "turn.start" => intercept!(turn_start, g::TurnStartEvent),
-                    "turn.finish.before" => {
-                        intercept!(turn_finish_before, g::TurnFinishBeforeEvent)
-                    }
-                    "model.request.before" => {
-                        intercept!(model_request_before, g::ModelRequestBeforeEvent)
-                    }
-                    "model.response.after" => {
-                        intercept!(model_response_after, g::ModelResponseAfterEvent)
-                    }
-                    "model.switch.before" => {
-                        intercept!(model_switch_before, g::ModelSwitchBeforeEvent)
-                    }
-                    "tool.permission.request" => {
-                        intercept!(tool_permission_request, g::ToolPermissionRequestEvent)
-                    }
-                    "tool.batch.after" => intercept!(tool_batch_after, g::ToolBatchAfterEvent),
-                    "context.compact.before" => {
-                        intercept!(context_compact_before, g::ContextCompactBeforeEvent)
-                    }
-                    "context.compact.after" => {
-                        intercept!(context_compact_after, g::ContextCompactAfterEvent)
-                    }
-                    "task.change.before" => {
-                        intercept!(task_change_before, g::TaskChangeBeforeEvent)
-                    }
-                    "user.elicitation.request" => {
-                        intercept!(user_elicitation_request, g::UserElicitationRequestEvent)
-                    }
-                    "user.elicitation.result" => {
-                        intercept!(user_elicitation_result, g::UserElicitationResultEvent)
-                    }
-                    "user.message.inbound" => {
-                        intercept!(user_message_inbound, g::UserMessageInboundEvent)
-                    }
-                    "user.message.outbound" => {
-                        intercept!(user_message_outbound, g::UserMessageOutboundEvent)
-                    }
-                    "workspace.change.before" => {
-                        intercept!(workspace_change_before, g::WorkspaceChangeBeforeEvent)
-                    }
-                    _ => return Err("unsupported interception".into()),
+            Message::Intercept(request) => {
+                use g::Event as E;
+                let effects = match *request.params.event {
+                    E::ToolBefore(e) => intercept!(tool_before, e),
+                    E::ToolAfter(e) => intercept!(tool_after, e),
+                    E::SessionStart(e) => intercept!(session_start, e),
+                    E::ConfigChangeBefore(e) => intercept!(config_change_before, e),
+                    E::TurnStart(e) => intercept!(turn_start, e),
+                    E::TurnFinishBefore(e) => intercept!(turn_finish_before, e),
+                    E::ModelRequestBefore(e) => intercept!(model_request_before, e),
+                    E::ModelResponseAfter(e) => intercept!(model_response_after, e),
+                    E::ModelSwitchBefore(e) => intercept!(model_switch_before, e),
+                    E::ToolPermissionRequest(e) => intercept!(tool_permission_request, e),
+                    E::ToolBatchAfter(e) => intercept!(tool_batch_after, e),
+                    E::ContextCompactBefore(e) => intercept!(context_compact_before, e),
+                    E::ContextCompactAfter(e) => intercept!(context_compact_after, e),
+                    E::TaskChangeBefore(e) => intercept!(task_change_before, e),
+                    E::UserElicitationRequest(e) => intercept!(user_elicitation_request, e),
+                    E::UserElicitationResult(e) => intercept!(user_elicitation_result, e),
+                    E::UserMessageInbound(e) => intercept!(user_message_inbound, e),
+                    E::UserMessageOutbound(e) => intercept!(user_message_outbound, e),
+                    E::WorkspaceChangeBefore(e) => intercept!(workspace_change_before, e),
+                    _ => return Err(RpcError::UnsupportedEvent),
                 };
                 Ok(Some(
                     serde_json::json!({"jsonrpc":"2.0", "id":raw["id"], "result":{"protocolVersion":g::PROTOCOL_VERSION, "effects":effects}}),
                 ))
             }
-            "hooks/observe" => {
-                match raw["params"]["event"]["type"]
-                    .as_str()
-                    .ok_or("missing event type")?
-                {
-                    "tool.before" => observe!(tool_before, g::ToolBeforeEvent),
-                    "tool.after" => observe!(tool_after, g::ToolAfterEvent),
-                    "session.start" => observe!(session_start, g::SessionStartEvent),
-                    "session.end" => observe!(session_end, g::SessionEndEvent),
-                    "config.change.before" => {
-                        observe!(config_change_before, g::ConfigChangeBeforeEvent)
-                    }
-                    "config.change.after" => {
-                        observe!(config_change_after, g::ConfigChangeAfterEvent)
-                    }
-                    "turn.start" => observe!(turn_start, g::TurnStartEvent),
-                    "turn.finish.before" => observe!(turn_finish_before, g::TurnFinishBeforeEvent),
-                    "turn.end" => observe!(turn_end, g::TurnEndEvent),
-                    "turn.progress" => observe!(turn_progress, g::TurnProgressEvent),
-                    "model.request.before" => {
-                        observe!(model_request_before, g::ModelRequestBeforeEvent)
-                    }
-                    "model.response.after" => {
-                        observe!(model_response_after, g::ModelResponseAfterEvent)
-                    }
-                    "model.error" => observe!(model_error, g::ModelErrorEvent),
-                    "model.switch.before" => {
-                        observe!(model_switch_before, g::ModelSwitchBeforeEvent)
-                    }
-                    "model.switch.after" => observe!(model_switch_after, g::ModelSwitchAfterEvent),
-                    "tool.permission.request" => {
-                        observe!(tool_permission_request, g::ToolPermissionRequestEvent)
-                    }
-                    "tool.permission.resolved" => {
-                        observe!(tool_permission_resolved, g::ToolPermissionResolvedEvent)
-                    }
-                    "tool.progress" => observe!(tool_progress, g::ToolProgressEvent),
-                    "tool.batch.after" => observe!(tool_batch_after, g::ToolBatchAfterEvent),
-                    "context.compact.before" => {
-                        observe!(context_compact_before, g::ContextCompactBeforeEvent)
-                    }
-                    "context.compact.after" => {
-                        observe!(context_compact_after, g::ContextCompactAfterEvent)
-                    }
-                    "task.change.before" => observe!(task_change_before, g::TaskChangeBeforeEvent),
-                    "task.change.after" => observe!(task_change_after, g::TaskChangeAfterEvent),
-                    "user.attention" => observe!(user_attention, g::UserAttentionEvent),
-                    "user.elicitation.request" => {
-                        observe!(user_elicitation_request, g::UserElicitationRequestEvent)
-                    }
-                    "user.elicitation.result" => {
-                        observe!(user_elicitation_result, g::UserElicitationResultEvent)
-                    }
-                    "user.message.inbound" => {
-                        observe!(user_message_inbound, g::UserMessageInboundEvent)
-                    }
-                    "user.message.outbound" => {
-                        observe!(user_message_outbound, g::UserMessageOutboundEvent)
-                    }
-                    "workspace.change.before" => {
-                        observe!(workspace_change_before, g::WorkspaceChangeBeforeEvent)
-                    }
-                    "workspace.change.after" => {
-                        observe!(workspace_change_after, g::WorkspaceChangeAfterEvent)
-                    }
-                    "file.changed" => observe!(file_changed, g::FileChangedEvent),
-                    "hook.failure" => observe!(hook_failure, g::HookFailureEvent),
-                    _ => return Err("unsupported observation".into()),
-                }
+            Message::Observe(notification) => {
+                self.observe(principal, content, raw, notification)
+                    .await
+                    .map_err(|_| RpcError::BackendInternal)?;
                 Ok(None)
             }
-            _ => Err("unsupported method".into()),
         }
+    }
+    /// Per-event observers take precedence; `any` sees every other validated
+    /// notification. With neither, observation is a silent no-op.
+    async fn observe(
+        &self,
+        principal: Principal,
+        content: ResolvedContent,
+        raw: Arc<serde_json::Value>,
+        notification: g::ObserveNotification,
+    ) -> Result<(), String> {
+        macro_rules! observe {
+            ($($variant:ident => $field:ident),+ $(,)?) => {
+                match &*notification.params.event {
+                    $(g::Event::$variant(_) if self.handlers.observe.$field.is_some() => {
+                        let g::Event::$variant(event) = *notification.params.event else {
+                            unreachable!("matched variant")
+                        };
+                        let handler = self.handlers.observe.$field.as_ref().expect("checked");
+                        handler(
+                            ObserveContext {
+                                principal,
+                                verified_content: content,
+                                request: raw,
+                                marker: std::marker::PhantomData,
+                            },
+                            *event,
+                        )
+                        .await
+                    })+
+                    _ => match &self.handlers.observe.any {
+                        Some(any) => {
+                            any(
+                                ObserveContext {
+                                    principal,
+                                    verified_content: content,
+                                    request: raw,
+                                    marker: std::marker::PhantomData,
+                                },
+                                notification,
+                            )
+                            .await
+                        }
+                        None => Ok(()),
+                    },
+                }
+            };
+        }
+        observe!(
+            ToolBefore => tool_before,
+            ToolAfter => tool_after,
+            SessionStart => session_start,
+            SessionEnd => session_end,
+            ConfigChangeBefore => config_change_before,
+            ConfigChangeAfter => config_change_after,
+            TurnStart => turn_start,
+            TurnFinishBefore => turn_finish_before,
+            TurnEnd => turn_end,
+            TurnProgress => turn_progress,
+            ModelRequestBefore => model_request_before,
+            ModelResponseAfter => model_response_after,
+            ModelError => model_error,
+            ModelSwitchBefore => model_switch_before,
+            ModelSwitchAfter => model_switch_after,
+            ToolPermissionRequest => tool_permission_request,
+            ToolPermissionResolved => tool_permission_resolved,
+            ToolProgress => tool_progress,
+            ToolBatchAfter => tool_batch_after,
+            ContextCompactBefore => context_compact_before,
+            ContextCompactAfter => context_compact_after,
+            TaskChangeBefore => task_change_before,
+            TaskChangeAfter => task_change_after,
+            UserAttention => user_attention,
+            UserElicitationRequest => user_elicitation_request,
+            UserElicitationResult => user_elicitation_result,
+            UserMessageInbound => user_message_inbound,
+            UserMessageOutbound => user_message_outbound,
+            WorkspaceChangeBefore => workspace_change_before,
+            WorkspaceChangeAfter => workspace_change_after,
+            FileChanged => file_changed,
+            HookFailure => hook_failure,
+        )
     }
     pub async fn handle(&self, request: Request) -> Response {
         self.dispatch(self.prepare(request, None)).await
@@ -594,59 +756,82 @@ impl<A: Authenticator> Server<A> {
         &self,
         request: Request,
         store: Option<&dyn ContentStore>,
-    ) -> Result<Prepared, Response> {
+    ) -> Result<Prepared, Rejection> {
         if request.method != "POST" {
-            return Err(failure(405, "POST required"));
+            return Err(Rejection::Transport(405));
         }
         if request.body.len() > self.max_body_bytes {
-            return Err(failure(413, "body too large"));
+            return Err(Rejection::Transport(413));
         }
-        let authorization = match header(&request, "authorization") {
-            Ok(v) => v,
-            Err(_) => return Err(failure(401, "ambiguous credentials")),
-        };
-        let principal = match self.authenticator.authenticate(authorization) {
-            Ok(p) => p,
-            Err(_) => return Err(failure(401, "authentication failed")),
-        };
+        let authorization =
+            header(&request, "authorization").map_err(|_| Rejection::Transport(401))?;
+        let principal = self
+            .authenticator
+            .authenticate(authorization)
+            .map_err(|_| Rejection::Transport(401))?;
         if !matches!(header(&request, "content-type"), Ok(Some(v)) if v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json"))
         {
-            return Err(failure(415, "application/json required"));
+            return Err(Rejection::Transport(415));
         }
-        let raw: serde_json::Value = match serde_json::from_slice(&request.body) {
-            Ok(v) => v,
-            Err(_) => return Err(failure(400, "invalid JSON")),
+        let raw: serde_json::Value = serde_json::from_slice(&request.body)
+            .map_err(|_| Rejection::Request(serde_json::Value::Null, RpcError::Parse))?;
+        // Classify notification-ness first: every later failure for a
+        // notification is silent, whatever its cause.
+        let notification = is_notification(&raw);
+        let id = match raw.get("id") {
+            None | Some(serde_json::Value::Null) => serde_json::Value::Null,
+            Some(id @ (serde_json::Value::String(_) | serde_json::Value::Number(_))) => id.clone(),
+            Some(_) => {
+                return Err(Rejection::Request(
+                    serde_json::Value::Null,
+                    RpcError::InvalidRequest,
+                ));
+            }
         };
+        let reject = |error: RpcError| {
+            if notification {
+                Rejection::Notification
+            } else {
+                Rejection::Request(id.clone(), error)
+            }
+        };
+        if !raw.is_object() || raw["jsonrpc"] != "2.0" || !raw["method"].is_string() {
+            return Err(reject(RpcError::InvalidRequest));
+        }
         let method = raw["method"].as_str().unwrap_or("");
         let schema = match method {
             "hooks/intercept" => "intercept-request",
             "hooks/observe" => "observe-notification",
             "hooks/capabilities" => "capabilities-request",
-            _ => return Err(failure(400, "unsupported method")),
+            _ => return Err(reject(RpcError::MethodNotFound)),
         };
+        if let Some(version) = raw["params"]["protocolVersion"].as_str()
+            && version != g::PROTOCOL_VERSION
+        {
+            return Err(reject(RpcError::UnsupportedProtocolVersion));
+        }
+        if method == "hooks/intercept"
+            && let Some(event_type) = raw["params"]["event"]["type"].as_str()
+            && !INTERCEPT_EVENTS.contains(&event_type)
+        {
+            return Err(reject(RpcError::UnsupportedEvent));
+        }
         if crate::canonical::validate(schema, &raw).is_err() {
-            return Err(failure(400, "invalid canonical message"));
+            return Err(reject(RpcError::InvalidParams));
         }
-        let parsed = match method {
-            "hooks/capabilities" => g::parse_capabilities_request_value(raw.clone())
-                .into_value()
-                .is_some(),
-            "hooks/intercept" => {
-                if raw["id"] != raw["params"]["event"]["id"] {
-                    return Err(failure(400, "event correlation mismatch"));
-                }
-                g::parse_intercept_request_value(raw.clone())
-                    .into_value()
-                    .is_some()
-            }
-            "hooks/observe" => g::parse_observe_notification_value(raw.clone())
-                .into_value()
-                .is_some(),
-            _ => false,
-        };
-        if !parsed {
-            return Err(failure(400, "invalid protocol message"));
+        if method == "hooks/intercept" && raw["id"] != raw["params"]["event"]["id"] {
+            return Err(reject(RpcError::InvalidParams));
         }
+        // The codec hands the validated document back, so nothing is cloned.
+        let (message, raw) = match schema {
+            "intercept-request" => parsed(g::parse_intercept_request_value(raw))
+                .map(|(value, raw)| (Message::Intercept(Box::new(value)), raw)),
+            "observe-notification" => parsed(g::parse_observe_notification_value(raw))
+                .map(|(value, raw)| (Message::Observe(value), raw)),
+            _ => parsed(g::parse_capabilities_request_value(raw))
+                .map(|(value, raw)| (Message::Capabilities(value), raw)),
+        }
+        .ok_or_else(|| reject(RpcError::InvalidParams))?;
 
         let content = if let Some(store) = store {
             let context = ContentContext {
@@ -655,46 +840,51 @@ impl<A: Authenticator> Server<A> {
             };
             Some(
                 resolve_event_content(&raw, &context)
-                    .map_err(|_| failure(400, "selected content unavailable or invalid"))?,
+                    .map_err(|_| reject(RpcError::ContentUnavailable))?,
             )
         } else {
             None
         };
-        Ok((principal, raw, content))
+        Ok(Prepared {
+            principal,
+            raw: Arc::new(raw),
+            message,
+            content,
+        })
     }
-    async fn dispatch(&self, prepared: Result<Prepared, Response>) -> Response {
-        let (principal, raw, content) = match prepared {
+    async fn dispatch(&self, prepared: Result<Prepared, Rejection>) -> Response {
+        let prepared = match prepared {
             Ok(prepared) => prepared,
-            Err(response) => return response,
+            Err(Rejection::Transport(status)) => return empty(status),
+            Err(Rejection::Notification) => return empty(204),
+            Err(Rejection::Request(id, error)) => return rpc_error(&id, error),
         };
-        let method = raw["method"].as_str().unwrap_or("");
-        let value = match self
-            .invoke(principal, &raw, content.unwrap_or_default())
-            .await
-        {
-            Ok(Some(value)) => value,
-            Ok(None) => return response(204, Vec::new()),
-            Err(_) => return failure(500, "handler failed or reply scope mismatch"),
+        let raw = prepared.raw.clone();
+        let notification = matches!(prepared.message, Message::Observe(_));
+        let intercept = matches!(prepared.message, Message::Intercept(_));
+        let value = match self.invoke(prepared).await {
+            Ok(Some(value)) if !notification => value,
+            Ok(_) if notification => return empty(204),
+            // An observer failure is a bodyless transport signal, never a JSON-RPC reply.
+            Err(_) if notification => return empty(500),
+            Ok(_) => return rpc_error(&raw["id"], RpcError::Internal),
+            Err(error) => return rpc_error(&raw["id"], error),
         };
-        let valid = match method {
-            "hooks/intercept" => contextual_response(&raw, &value).is_ok(),
-            _ => g::parse_capabilities_response_value(value.clone())
-                .into_value()
-                .is_some(),
-        };
-        let schema = if method == "hooks/intercept" {
-            "intercept-response"
-        } else {
-            "capabilities-response"
-        };
-        if !valid
-            || (method != "hooks/intercept" && crate::canonical::validate(schema, &value).is_err())
-            || value["id"] != raw["id"]
-        {
-            return failure(500, "invalid or uncorrelated response");
+        if value["id"] != raw["id"] {
+            return rpc_error(&raw["id"], RpcError::Internal);
         }
-        if method == "hooks/intercept" && validate_effect_capabilities(&raw, &value).is_err() {
-            return failure(500, "response exceeds advertised capabilities");
+        if intercept {
+            let Ok(typed) = contextual_response(&raw, &value) else {
+                return rpc_error(&raw["id"], RpcError::Internal);
+            };
+            if validate_typed_effect_capabilities(&raw, &typed).is_err() {
+                // The callback returned effects the harness did not grant.
+                return rpc_error(&raw["id"], RpcError::BackendInternal);
+            }
+        } else if crate::canonical::validate("capabilities-response", &value).is_err()
+            || !g::parse_capabilities_response_value(value.clone()).is_ok()
+        {
+            return rpc_error(&raw["id"], RpcError::Internal);
         }
         response(200, serde_json::to_vec(&value).expect("JSON value"))
     }
@@ -738,6 +928,13 @@ pub fn validate_effect_capabilities(
     request: &serde_json::Value,
     response: &serde_json::Value,
 ) -> Result<(), String> {
+    validate_typed_effect_capabilities(request, &contextual_response(request, response)?)
+}
+/// `validate_effect_capabilities` for a response already parsed by `contextual_response`.
+pub(crate) fn validate_typed_effect_capabilities(
+    request: &serde_json::Value,
+    typed: &g::ContextualResponse,
+) -> Result<(), String> {
     use crate::protocol::{Kind, Operation};
     use serde_json::Value;
     fn contains(array: &Value, value: &str) -> bool {
@@ -746,8 +943,7 @@ pub fn validate_effect_capabilities(
             .is_some_and(|items| items.iter().any(|item| item.as_str() == Some(value)))
     }
     let caps = &request["params"]["capabilities"];
-    let typed = contextual_response(request, response)?;
-    let effects = crate::protocol::effects(&typed).map_err(|e| e.to_string())?;
+    let effects = crate::protocol::effects(typed).map_err(|e| e.to_string())?;
     let event = &request["params"]["event"];
     if effects
         .iter()
