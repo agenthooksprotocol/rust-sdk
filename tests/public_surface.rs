@@ -60,12 +60,13 @@ fn every_canonical_event_has_a_handwritten_typed_hooks_method() {
         .collect();
     let actual: std::collections::BTreeSet<&str> = agenthooksprotocol::hooks::NAMED_BOUNDARIES
         .iter()
-        .copied()
+        .map(|event| event.as_str())
         .collect();
     assert_eq!(actual, canonical);
     let source = include_str!("../src/hooks.rs");
-    for name in agenthooksprotocol::hooks::NAMED_BOUNDARIES {
-        if *name == "tool.before" {
+    for event in agenthooksprotocol::hooks::NAMED_BOUNDARIES {
+        let name = event.as_str();
+        if name == "tool.before" {
             assert!(source.contains("pub fn tool_before<T:"));
         } else {
             let method = name.replace('.', "_");
@@ -73,7 +74,7 @@ fn every_canonical_event_has_a_handwritten_typed_hooks_method() {
                 source.contains(&format!("({method}, ")),
                 "missing typed Hooks::{method}"
             );
-            assert!(source.contains(&format!("\"{name}\"")));
+            assert!(source.contains(&format!("generated::EventType::{event:?}")));
         }
     }
 }

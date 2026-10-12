@@ -55,7 +55,16 @@ fn full_event_is_lazy_and_requires_no_client_tool_context() {
 fn invalid_initial_event_and_name_fail_without_hooks() {
     let c = client();
     assert!(block_on(async { c.event(json!({"type":"tool.before"})).await }).is_err());
-    assert!(block_on(async { c.event_for("session.end", event()).await }).is_err());
+    assert!(
+        block_on(async {
+            c.event_for(
+                agenthooksprotocol::generated::EventType::SessionEnd,
+                event(),
+            )
+            .await
+        })
+        .is_err()
+    );
     assert!(
         block_on(async {
             c.event(event())

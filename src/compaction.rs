@@ -93,9 +93,9 @@ pub(crate) fn stage_boundary_admitted(
         return Err("compaction request/event correlation mismatch".into());
     }
     let event_type = if before {
-        "context.compact.before"
+        crate::generated::EventType::ContextCompactBefore
     } else {
-        "context.compact.after"
+        crate::generated::EventType::ContextCompactAfter
     };
     let response = json!({"jsonrpc":"2.0", "id":request["id"],
         "result":{"protocolVersion":"draft","effects":effects}});

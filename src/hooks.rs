@@ -151,7 +151,7 @@ fn observes(grant: &Value) -> bool {
 struct Route {
     id: String,
     backend_id: String,
-    events: Vec<String>,
+    events: Vec<generated::EventType>,
     mode: Mode,
     timeout: Duration,
     configuration: Value,
@@ -260,7 +260,10 @@ fn restore_effect_attachment_refs(
             }
         })
         .collect();
-    let mut typed = crate::protocol::parse(original["type"].as_str().unwrap_or(""), response)?;
+    // Decode the event name at this explicit wire-envelope negotiation boundary.
+    let event_type: generated::EventType =
+        serde_json::from_value(original["type"].clone()).map_err(err)?;
+    let mut typed = crate::protocol::parse(event_type, response)?;
     crate::protocol::visit_messages_mut(&mut typed, |messages| {
         for message in &mut messages.0 {
             for part in &mut message.parts {
@@ -470,7 +473,7 @@ impl Drop for Delivery<'_> {
 pub struct Hooks {
     options: HooksOptions,
     routes: Vec<Route>,
-    grants: BTreeMap<String, Value>,
+    grants: BTreeMap<generated::EventType, Value>,
     backends: Vec<Arc<dyn ManagedBackend>>,
     budget: Arc<Budget>,
     life: Arc<Lifecycle>,
@@ -500,7 +503,7 @@ impl Hooks {
         crate::canonical::validate("registration", &registration).map_err(HookError::new)?;
         // Render owned wire data once. Typed declarations are already valid; this
         // does not parse, hydrate, or schema-validate host authority.
-        let grants: BTreeMap<String, Value> = options
+        let grants: BTreeMap<generated::EventType, Value> = options
             .capabilities
             .to_wire()
             .into_iter()
@@ -552,14 +555,14 @@ impl Hooks {
                     let matched: Vec<_> = grants
                         .iter()
                         .filter(|(name, grant)| {
-                            matches(selector, name)
+                            matches(selector, name.as_str())
                                 && if intercept {
                                     grant.get("capabilities").is_some()
                                 } else {
                                     observes(grant)
                                 }
                         })
-                        .map(|(name, _)| name.clone())
+                        .map(|(name, _)| *name)
                         .collect();
                     if matched.is_empty() {
                         return Err(err(format!(
@@ -610,12 +613,11 @@ impl Hooks {
     /// or a guarantee of delivery. This lookup performs no input preparation,
     /// transport, authentication, uploads, or mutation.
     pub fn subscribes(&self, event: generated::EventType) -> bool {
-        let event = event.as_str();
-        let Some(grant) = self.grants.get(event) else {
+        let Some(grant) = self.grants.get(&event) else {
             return false;
         };
         self.routes.iter().any(|route| {
-            route.events.iter().any(|selector| matches(selector, event))
+            route.events.contains(&event)
                 && match route.mode {
                     Mode::Intercept(_) => grant.get("capabilities").is_some(),
                     Mode::Observe => observes(grant),
@@ -631,7 +633,11 @@ impl Hooks {
             settings: Settings::default(),
         }
     }
-    pub fn event_for<T: Serialize>(&self, name: &'static str, event: T) -> EventBoundary<'_, T> {
+    pub fn event_for<T: Serialize>(
+        &self,
+        name: generated::EventType,
+        event: T,
+    ) -> EventBoundary<'_, T> {
         EventBoundary {
             hooks: self,
             event,
@@ -645,7 +651,7 @@ impl Hooks {
         T: generated::inputs::__support::ProjectHostInput<crate::Attachment>,
     >(
         &self,
-        name: &'static str,
+        name: generated::EventType,
         input: T,
     ) -> InputBoundary<'_, T> {
         InputBoundary {
@@ -676,7 +682,7 @@ impl Hooks {
         &self,
         input: I,
     ) -> InputBoundary<'_, I> {
-        self.host_input_for("tool.before", input)
+        self.host_input_for(generated::EventType::ToolBefore, input)
     }
     /// Advanced application-input API; provide canonical context with `.context(...)`.
     pub fn tool_input<T: Serialize + DeserializeOwned>(&self, input: T) -> ToolBoundary<'_, T> {
@@ -689,7 +695,7 @@ impl Hooks {
             settings: Settings::default(),
         }
     }
-    fn prepare(&self, mut event: Value) -> Result<(Value, String, Value), HookError> {
+    fn prepare(&self, mut event: Value) -> Result<(Value, generated::EventType, Value), HookError> {
         let event_object = event
             .as_object_mut()
             .ok_or_else(|| err("event must be an object"))?;
@@ -725,11 +731,10 @@ impl Hooks {
                 )),
             );
         }
-        let name = event["type"]
-            .as_str()
-            .ok_or_else(|| err("missing event type"))?
-            .to_owned();
-        if name == "session.start" {
+        // Complete-event input is an explicit wire boundary; decode unknown names fallibly.
+        let name: generated::EventType =
+            serde_json::from_value(event["type"].clone()).map_err(err)?;
+        if name == generated::EventType::SessionStart {
             let manifest = self.manifest();
             if event
                 .get("manifest")
@@ -742,7 +747,7 @@ impl Hooks {
         let grant = self
             .grants
             .get(&name)
-            .ok_or_else(|| err(format!("event not explicitly granted: {name}")))?;
+            .ok_or_else(|| err(format!("event not explicitly granted: {}", name.as_str())))?;
         Ok((
             event,
             name,
@@ -759,7 +764,7 @@ impl Hooks {
             .iter()
             .map(|(name, grant)| {
                 let mut entry = grant.clone();
-                entry["event"] = json!(name);
+                entry["event"] = json!(name.as_str());
                 entry
             })
             .collect();
@@ -770,7 +775,7 @@ impl Hooks {
     async fn plan_uploads(
         &self,
         event: &Value,
-        name: &str,
+        name: &generated::EventType,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
     ) -> Arc<UploadPlans> {
@@ -780,7 +785,7 @@ impl Hooks {
             LocalFuture<'static, (String, Result<crate::hooks_content::Receipts, HookError>)>,
         > = Vec::new();
         for route in self.routes.iter().filter(|route| {
-            route.events.iter().any(|e| e == name)
+            route.events.contains(name)
                 && !filtered(&route.configuration, event)
                 && (route.mode != Mode::Observe || observes(&self.grants[name]))
         }) {
@@ -829,22 +834,20 @@ impl Hooks {
     fn client(
         &self,
         event: &Value,
-        name: &str,
+        name: &generated::EventType,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
         uploads: &Arc<UploadPlans>,
     ) -> Client {
         self.routes
             .iter()
-            .filter(|route| {
-                route.events.iter().any(|e| e == name) && !filtered(&route.configuration, event)
-            })
+            .filter(|route| route.events.contains(name) && !filtered(&route.configuration, event))
             .fold(
                 Client::new(ToolContext::new(event.clone())),
                 |client, route| {
                     client.with_subscription(Subscription {
                         id: route.id.clone(),
-                        events: vec![name.into()],
+                        events: vec![name.as_str().into()],
                         mode: route.mode,
                         timeout: route.timeout,
                         hook: Box::new(self.route_hook(route, deadline, attachments, uploads)),
@@ -869,7 +872,7 @@ impl Hooks {
     }
     async fn prepare_observations<'a>(
         &'a self,
-        name: &str,
+        name: &generated::EventType,
         observations: Vec<crate::client::Observation<'_>>,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
@@ -1112,7 +1115,7 @@ macro_rules! settings_methods {
 pub struct InputBoundary<'a, T> {
     hooks: &'a Hooks,
     input: T,
-    name: &'static str,
+    name: generated::EventType,
     settings: Settings<'a>,
 }
 impl<'a, T> InputBoundary<'a, T> {
@@ -1174,7 +1177,7 @@ impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + 
 pub struct EventBoundary<'a, T> {
     hooks: &'a Hooks,
     event: T,
-    name: Option<&'static str>,
+    name: Option<generated::EventType>,
     settings: Settings<'a>,
 }
 impl<'a, T> EventBoundary<'a, T> {
@@ -1224,10 +1227,13 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
                     let object = event
                         .as_object_mut()
                         .ok_or_else(|| err("event must be an object"))?;
-                    if object.get("type").is_some_and(|actual| actual != expected) {
+                    if object
+                        .get("type")
+                        .is_some_and(|actual| actual != expected.as_str())
+                    {
                         return Err(err("event name mismatch"));
                     }
-                    object.insert("type".into(), json!(expected));
+                    object.insert("type".into(), json!(expected.as_str()));
                 }
                 let content = InvocationAttachments::bind(
                     &mut event,
@@ -1550,7 +1556,8 @@ where
 }
 
 // Both the named methods and their inventory are generated from the schema catalogue.
-pub const NAMED_BOUNDARIES: &[&str] = crate::generated::ahp_hooks_boundary_methods!(inventory);
+pub const NAMED_BOUNDARIES: &[generated::EventType] =
+    crate::generated::ahp_hooks_boundary_methods!(inventory);
 impl<T: Serialize> generated::inputs::__support::ProjectHostInput<crate::Attachment>
     for generated::inputs::ToolBeforeInput<T>
 {
@@ -1571,7 +1578,7 @@ impl<T: Serialize> generated::inputs::__support::ProjectHostInput<crate::Attachm
 }
 // Named methods accept either canonical generated facts or direct owned host inputs.
 macro_rules! host_methods {
-    ($(($method:ident, $input:ident, $name:literal)),* $(,)?) => {
+    ($(($method:ident, $input:ident, $name:path)),* $(,)?) => {
         $(impl generated::inputs::__support::ProjectHostInput<crate::Attachment>
             for generated::inputs::$input {
             fn into_host_event(self) -> Result<(Value, Vec<generated::inputs::__support::ContentSourceBinding<crate::Attachment>>), serde_json::Error> {
@@ -1586,38 +1593,38 @@ macro_rules! host_methods {
     };
 }
 host_methods! {
-    (config_change_after, ConfigChangeAfterInput, "config.change.after"),
-    (config_change_before, ConfigChangeBeforeInput, "config.change.before"),
-    (context_compact_after, ContextCompactAfterInput, "context.compact.after"),
-    (context_compact_before, ContextCompactBeforeInput, "context.compact.before"),
-    (file_changed, FileChangedInput, "file.changed"),
-    (hook_failure, HookFailureInput, "hook.failure"),
-    (model_error, ModelErrorInput, "model.error"),
-    (model_request_before, ModelRequestBeforeInput, "model.request.before"),
-    (model_response_after, ModelResponseAfterInput, "model.response.after"),
-    (model_switch_after, ModelSwitchAfterInput, "model.switch.after"),
-    (model_switch_before, ModelSwitchBeforeInput, "model.switch.before"),
-    (session_end, SessionEndInput, "session.end"),
-    (session_start, SessionStartInput, "session.start"),
-    (task_change_after, TaskChangeAfterInput, "task.change.after"),
-    (task_change_before, TaskChangeBeforeInput, "task.change.before"),
-    (tool_batch_after, ToolBatchAfterInput, "tool.batch.after"),
-    (turn_end, TurnEndInput, "turn.end"),
-    (turn_finish_before, TurnFinishBeforeInput, "turn.finish.before"),
-    (turn_progress, TurnProgressInput, "turn.progress"),
-    (turn_start, TurnStartInput, "turn.start"),
-    (user_attention, UserAttentionInput, "user.attention"),
-    (user_elicitation_request, UserElicitationRequestInput, "user.elicitation.request"),
-    (user_elicitation_result, UserElicitationResultInput, "user.elicitation.result"),
-    (user_message_inbound, UserMessageInboundInput, "user.message.inbound"),
-    (user_message_outbound, UserMessageOutboundInput, "user.message.outbound"),
-    (workspace_change_after, WorkspaceChangeAfterInput, "workspace.change.after"),
-    (workspace_change_before, WorkspaceChangeBeforeInput, "workspace.change.before"),
+    (config_change_after, ConfigChangeAfterInput, generated::EventType::ConfigChangeAfter),
+    (config_change_before, ConfigChangeBeforeInput, generated::EventType::ConfigChangeBefore),
+    (context_compact_after, ContextCompactAfterInput, generated::EventType::ContextCompactAfter),
+    (context_compact_before, ContextCompactBeforeInput, generated::EventType::ContextCompactBefore),
+    (file_changed, FileChangedInput, generated::EventType::FileChanged),
+    (hook_failure, HookFailureInput, generated::EventType::HookFailure),
+    (model_error, ModelErrorInput, generated::EventType::ModelError),
+    (model_request_before, ModelRequestBeforeInput, generated::EventType::ModelRequestBefore),
+    (model_response_after, ModelResponseAfterInput, generated::EventType::ModelResponseAfter),
+    (model_switch_after, ModelSwitchAfterInput, generated::EventType::ModelSwitchAfter),
+    (model_switch_before, ModelSwitchBeforeInput, generated::EventType::ModelSwitchBefore),
+    (session_end, SessionEndInput, generated::EventType::SessionEnd),
+    (session_start, SessionStartInput, generated::EventType::SessionStart),
+    (task_change_after, TaskChangeAfterInput, generated::EventType::TaskChangeAfter),
+    (task_change_before, TaskChangeBeforeInput, generated::EventType::TaskChangeBefore),
+    (tool_batch_after, ToolBatchAfterInput, generated::EventType::ToolBatchAfter),
+    (turn_end, TurnEndInput, generated::EventType::TurnEnd),
+    (turn_finish_before, TurnFinishBeforeInput, generated::EventType::TurnFinishBefore),
+    (turn_progress, TurnProgressInput, generated::EventType::TurnProgress),
+    (turn_start, TurnStartInput, generated::EventType::TurnStart),
+    (user_attention, UserAttentionInput, generated::EventType::UserAttention),
+    (user_elicitation_request, UserElicitationRequestInput, generated::EventType::UserElicitationRequest),
+    (user_elicitation_result, UserElicitationResultInput, generated::EventType::UserElicitationResult),
+    (user_message_inbound, UserMessageInboundInput, generated::EventType::UserMessageInbound),
+    (user_message_outbound, UserMessageOutboundInput, generated::EventType::UserMessageOutbound),
+    (workspace_change_after, WorkspaceChangeAfterInput, generated::EventType::WorkspaceChangeAfter),
+    (workspace_change_before, WorkspaceChangeBeforeInput, generated::EventType::WorkspaceChangeBefore),
 }
 
 // Tool facts retain caller-owned arguments while the event envelope is SDK-owned.
 macro_rules! generic_host_methods {
-    ($(($method:ident, $input:ident, $name:literal)),* $(,)?) => {
+    ($(($method:ident, $input:ident, $name:path)),* $(,)?) => {
         $(impl<T: Serialize> generated::inputs::__support::ProjectHostInput<crate::Attachment>
             for generated::inputs::$input<T> {
             fn into_host_event(self) -> Result<(Value, Vec<generated::inputs::__support::ContentSourceBinding<crate::Attachment>>), serde_json::Error> {
@@ -1632,10 +1639,10 @@ macro_rules! generic_host_methods {
     };
 }
 generic_host_methods! {
-    (tool_after, ToolAfterInput, "tool.after"),
-    (tool_permission_request, ToolPermissionRequestInput, "tool.permission.request"),
-    (tool_permission_resolved, ToolPermissionResolvedInput, "tool.permission.resolved"),
-    (tool_progress, ToolProgressInput, "tool.progress"),
+    (tool_after, ToolAfterInput, generated::EventType::ToolAfter),
+    (tool_permission_request, ToolPermissionRequestInput, generated::EventType::ToolPermissionRequest),
+    (tool_permission_resolved, ToolPermissionResolvedInput, generated::EventType::ToolPermissionResolved),
+    (tool_progress, ToolProgressInput, generated::EventType::ToolProgress),
 }
 
 fn bounded<'a, T: Send + 'a>(

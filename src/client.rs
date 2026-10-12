@@ -102,6 +102,7 @@ pub enum Mode {
 /// Distinct subscriptions remain independent even when sharing a backend.
 pub struct Subscription {
     pub id: String,
+    /// Wire subscription selectors, including `*` and dotted-prefix wildcards.
     pub events: Vec<String>,
     pub mode: Mode,
     pub hook: Box<dyn Hook>,
@@ -171,7 +172,7 @@ impl Client {
     /// Bind a complete event to an expected canonical name (checked on await).
     pub fn event_for<T: Serialize + DeserializeOwned>(
         &self,
-        name: &'static str,
+        name: crate::generated::EventType,
         event: T,
     ) -> crate::runtime::EventBoundary<'_, T> {
         crate::runtime::EventBoundary::new(self, Some(name), event)
@@ -876,7 +877,7 @@ fn stage(
     }
     let mut typed_request: crate::generated::InterceptRequest =
         serde_json::from_value(request.clone()).map_err(crate::protocol::failure)?;
-    let typed_response = crate::protocol::parse("tool.before", response)?;
+    let typed_response = crate::protocol::parse(crate::generated::EventType::ToolBefore, response)?;
     crate::server::validate_effect_capabilities(request, response).map_err(error)?;
     let effects = crate::protocol::effects(&typed_response)?;
     let original = match typed_request.params.event.as_ref() {

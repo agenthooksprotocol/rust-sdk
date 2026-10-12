@@ -705,9 +705,10 @@ pub(crate) fn contextual_response(
     request: &serde_json::Value,
     response: &serde_json::Value,
 ) -> Result<g::ContextualResponse, String> {
-    let event_type = request["params"]["event"]["type"]
-        .as_str()
-        .ok_or("missing originating event type")?;
+    // This is an external originating envelope, not typed declaration transfer.
+    let event_type: g::EventType =
+        serde_json::from_value(request["params"]["event"]["type"].clone())
+            .map_err(|cause| format!("invalid originating event type: {cause}"))?;
     crate::canonical::validate("intercept-response", response)?;
     crate::protocol::parse(event_type, response).map_err(|e| e.to_string())
 }
@@ -909,7 +910,7 @@ mod contextual_response_tests {
             "target":"input", "operation":"replace", "value":{"type":"modify"}
         }]));
         let original = response.clone();
-        let typed = crate::protocol::parse("tool.before", &response).unwrap();
+        let typed = crate::protocol::parse(g::EventType::ToolBefore, &response).unwrap();
         assert!(
             crate::protocol::effects(&typed)
                 .unwrap()

@@ -82,8 +82,10 @@ fn continuation_instructions_accumulate_but_consume_one_allowance() {
         .unwrap()
         .remove("tool");
     req["params"]["event"]["type"] = json!("turn.finish.before");
-    req["params"]["capabilities"] =
-        agenthooksprotocol::interop::capabilities_for("turn.finish.before").unwrap();
+    req["params"]["capabilities"] = agenthooksprotocol::interop::capabilities_for(
+        agenthooksprotocol::generated::EventType::TurnFinishBefore,
+    )
+    .unwrap();
     req["params"]["event"]["turn"] = json!({"id":"turn"});
     req["params"]["event"]["continuationCount"] = json!(0);
     req["params"]["event"]["outcome"] = json!("completed");
@@ -129,18 +131,22 @@ fn changed_input_invalidates_candidate_and_prior_allow_but_never_ask_or_deny() {
 #[test]
 fn task_workspace_payloads_and_capabilities_are_enforced() {
     let schemas = schemas();
-    for (kind, payload) in [
+    for (event, kind, payload) in [
         (
+            agenthooksprotocol::generated::EventType::TaskChangeBefore,
             "task",
             json!({"id":"durable","operation":"update","change":{"status":"native-done"}}),
         ),
-        ("workspace", json!({"kind":"cwd","change":{"cwd":"/next"}})),
+        (
+            agenthooksprotocol::generated::EventType::WorkspaceChangeBefore,
+            "workspace",
+            json!({"kind":"cwd","change":{"cwd":"/next"}}),
+        ),
     ] {
-        let event = format!("{kind}.change.before");
         let mut req = request();
-        req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","time":"2026-09-01T00:00:00Z","type":event,kind:payload});
+        req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","time":"2026-09-01T00:00:00Z","type":event.as_str(),kind:payload});
         req["params"]["capabilities"] =
-            agenthooksprotocol::interop::capabilities_for(&event).unwrap();
+            agenthooksprotocol::interop::capabilities_for(event).unwrap();
         let actual = apply(
             &req,
             &response(json!([{"type":"deny","reason":"policy"}])),
@@ -193,8 +199,10 @@ fn prior_continuation_consumes_no_second_allowance_and_stop_is_sticky() {
     let schemas = schemas();
     let mut req = request();
     req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","type":"turn.finish.before","time":"2026-09-01T00:00:00Z","turn":{"id":"turn"},"outcome":"completed","items":[],"continuationCount":0});
-    req["params"]["capabilities"] =
-        agenthooksprotocol::interop::capabilities_for("turn.finish.before").unwrap();
+    req["params"]["capabilities"] = agenthooksprotocol::interop::capabilities_for(
+        agenthooksprotocol::generated::EventType::TurnFinishBefore,
+    )
+    .unwrap();
     let first = apply(
         &req,
         &response(json!([{"type":"flow","operation":"continue","instruction":"first"}])),
@@ -347,8 +355,10 @@ fn continuation_without_instruction_does_not_invent_one() {
     let schemas = schemas();
     let mut req = request();
     req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","type":"turn.finish.before","time":"2026-09-01T00:00:00Z","turn":{"id":"turn"},"outcome":"completed","items":[],"continuationCount":0});
-    req["params"]["capabilities"] =
-        agenthooksprotocol::interop::capabilities_for("turn.finish.before").unwrap();
+    req["params"]["capabilities"] = agenthooksprotocol::interop::capabilities_for(
+        agenthooksprotocol::generated::EventType::TurnFinishBefore,
+    )
+    .unwrap();
     let actual = apply(
         &req,
         &response(json!([{"type":"flow","operation":"continue"}])),

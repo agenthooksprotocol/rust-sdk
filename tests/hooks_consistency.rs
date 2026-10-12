@@ -92,7 +92,11 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
     same["manifest"] = hooks.manifest();
     same["extensions"] = json!({"org.example.vendor":{"data":[null,42]}});
     let settled = pool
-        .run_until(hooks.event_for("session.start", same.clone()).into_future())
+        .run_until(
+            hooks
+                .event_for(EventType::SessionStart, same.clone())
+                .into_future(),
+        )
         .unwrap();
     // The structural Event codec preserves open revision extras without changing
     // the strict canonical wire validator used by Hooks.
@@ -110,7 +114,7 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
         same["extensions"]
     );
     assert!(
-        pool.run_until(hooks.event_for("session.start", same).into_future())
+        pool.run_until(hooks.event_for(EventType::SessionStart, same).into_future())
             .is_ok()
     );
     for (field, wrong) in [
@@ -121,8 +125,12 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
         let mut event = canonical_facts();
         event[field] = wrong;
         assert!(
-            pool.run_until(hooks.event_for("session.start", event).into_future())
-                .is_err()
+            pool.run_until(
+                hooks
+                    .event_for(EventType::SessionStart, event)
+                    .into_future()
+            )
+            .is_err()
         );
     }
     pool.run_until(hooks.shutdown()).unwrap();

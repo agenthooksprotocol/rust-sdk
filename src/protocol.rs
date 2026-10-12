@@ -47,7 +47,7 @@ pub(crate) fn convert<T: Serialize, U: DeserializeOwned>(value: &T) -> Result<U,
     serde_json::from_value(self::value(value)?).map_err(failure)
 }
 pub(crate) fn parse(
-    event_type: &str,
+    event_type: g::EventType,
     response: &Value,
 ) -> Result<g::ContextualResponse, HookError> {
     match g::response_for_request(
@@ -1066,13 +1066,13 @@ mod tests {
             let wire = serde_json::json!({"jsonrpc":"2.0","id":"neutral","result":result});
             let original = wire.clone();
             crate::canonical::validate("intercept-response", &wire).unwrap();
-            let typed = parse("tool.before", &wire).unwrap();
+            let typed = parse(g::EventType::ToolBefore, &wire).unwrap();
             assert!(effects(&typed).unwrap().is_empty());
             assert_eq!(response_value(&typed).unwrap(), wire);
             assert_eq!(wire, original);
         }
         let null = serde_json::json!({"jsonrpc":"2.0","id":"neutral","result":{"protocolVersion":"draft","effects":null}});
-        assert!(parse("tool.before", &null).is_err());
+        assert!(parse(g::EventType::ToolBefore, &null).is_err());
         assert!(crate::canonical::validate("intercept-response", &null).is_err());
     }
 }

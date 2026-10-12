@@ -272,7 +272,10 @@ fn unknown_events_duplicate_ids_and_mode_grants_fail_closed() {
 
 #[test]
 fn named_facade_inventory_matches_the_generated_canonical_inventory() {
-    let mut actual = NAMED_BOUNDARIES.to_vec();
+    let mut actual = NAMED_BOUNDARIES
+        .iter()
+        .map(|event| event.as_str())
+        .collect::<Vec<_>>();
     actual.sort();
     let mut expected = agenthooksprotocol::generated::boundary::ALL_BOUNDARIES
         .iter()

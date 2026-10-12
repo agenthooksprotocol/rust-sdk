@@ -358,224 +358,224 @@ macro_rules! ahp_event_boundary_methods {
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("config.change.after", event)
+            self.event_for($crate::EventType::ConfigChangeAfter, event)
         }
         /// Execute the `config.change.before` boundary with a complete event payload.
         pub fn config_change_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("config.change.before", event)
+            self.event_for($crate::EventType::ConfigChangeBefore, event)
         }
         /// Execute the `context.compact.after` boundary with a complete event payload.
         pub fn context_compact_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("context.compact.after", event)
+            self.event_for($crate::EventType::ContextCompactAfter, event)
         }
         /// Execute the `context.compact.before` boundary with a complete event payload.
         pub fn context_compact_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("context.compact.before", event)
+            self.event_for($crate::EventType::ContextCompactBefore, event)
         }
         /// Execute the `file.changed` boundary with a complete event payload.
         pub fn file_changed_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("file.changed", event)
+            self.event_for($crate::EventType::FileChanged, event)
         }
         /// Execute the `hook.failure` boundary with a complete event payload.
         pub fn hook_failure_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("hook.failure", event)
+            self.event_for($crate::EventType::HookFailure, event)
         }
         /// Execute the `model.error` boundary with a complete event payload.
         pub fn model_error_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.error", event)
+            self.event_for($crate::EventType::ModelError, event)
         }
         /// Execute the `model.request.before` boundary with a complete event payload.
         pub fn model_request_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.request.before", event)
+            self.event_for($crate::EventType::ModelRequestBefore, event)
         }
         /// Execute the `model.response.after` boundary with a complete event payload.
         pub fn model_response_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.response.after", event)
+            self.event_for($crate::EventType::ModelResponseAfter, event)
         }
         /// Execute the `model.switch.after` boundary with a complete event payload.
         pub fn model_switch_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.switch.after", event)
+            self.event_for($crate::EventType::ModelSwitchAfter, event)
         }
         /// Execute the `model.switch.before` boundary with a complete event payload.
         pub fn model_switch_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.switch.before", event)
+            self.event_for($crate::EventType::ModelSwitchBefore, event)
         }
         /// Execute the `session.end` boundary with a complete event payload.
         pub fn session_end_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("session.end", event)
+            self.event_for($crate::EventType::SessionEnd, event)
         }
         /// Execute the `session.start` boundary with a complete event payload.
         pub fn session_start_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("session.start", event)
+            self.event_for($crate::EventType::SessionStart, event)
         }
         /// Execute the `task.change.after` boundary with a complete event payload.
         pub fn task_change_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("task.change.after", event)
+            self.event_for($crate::EventType::TaskChangeAfter, event)
         }
         /// Execute the `task.change.before` boundary with a complete event payload.
         pub fn task_change_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("task.change.before", event)
+            self.event_for($crate::EventType::TaskChangeBefore, event)
         }
         /// Execute the `tool.after` boundary with a complete event payload.
         pub fn tool_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.after", event)
+            self.event_for($crate::EventType::ToolAfter, event)
         }
         /// Execute the `tool.batch.after` boundary with a complete event payload.
         pub fn tool_batch_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.batch.after", event)
+            self.event_for($crate::EventType::ToolBatchAfter, event)
         }
         /// Execute the `tool.before` boundary with a complete event payload.
         pub fn tool_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.before", event)
+            self.event_for($crate::EventType::ToolBefore, event)
         }
         /// Execute the `tool.permission.request` boundary with a complete event payload.
         pub fn tool_permission_request_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.permission.request", event)
+            self.event_for($crate::EventType::ToolPermissionRequest, event)
         }
         /// Execute the `tool.permission.resolved` boundary with a complete event payload.
         pub fn tool_permission_resolved_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.permission.resolved", event)
+            self.event_for($crate::EventType::ToolPermissionResolved, event)
         }
         /// Execute the `tool.progress` boundary with a complete event payload.
         pub fn tool_progress_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.progress", event)
+            self.event_for($crate::EventType::ToolProgress, event)
         }
         /// Execute the `turn.end` boundary with a complete event payload.
         pub fn turn_end_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("turn.end", event)
+            self.event_for($crate::EventType::TurnEnd, event)
         }
         /// Execute the `turn.finish.before` boundary with a complete event payload.
         pub fn turn_finish_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("turn.finish.before", event)
+            self.event_for($crate::EventType::TurnFinishBefore, event)
         }
         /// Execute the `turn.progress` boundary with a complete event payload.
         pub fn turn_progress_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("turn.progress", event)
+            self.event_for($crate::EventType::TurnProgress, event)
         }
         /// Execute the `turn.start` boundary with a complete event payload.
         pub fn turn_start_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("turn.start", event)
+            self.event_for($crate::EventType::TurnStart, event)
         }
         /// Execute the `user.attention` boundary with a complete event payload.
         pub fn user_attention_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.attention", event)
+            self.event_for($crate::EventType::UserAttention, event)
         }
         /// Execute the `user.elicitation.request` boundary with a complete event payload.
         pub fn user_elicitation_request_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.elicitation.request", event)
+            self.event_for($crate::EventType::UserElicitationRequest, event)
         }
         /// Execute the `user.elicitation.result` boundary with a complete event payload.
         pub fn user_elicitation_result_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.elicitation.result", event)
+            self.event_for($crate::EventType::UserElicitationResult, event)
         }
         /// Execute the `user.message.inbound` boundary with a complete event payload.
         pub fn user_message_inbound_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.message.inbound", event)
+            self.event_for($crate::EventType::UserMessageInbound, event)
         }
         /// Execute the `user.message.outbound` boundary with a complete event payload.
         pub fn user_message_outbound_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.message.outbound", event)
+            self.event_for($crate::EventType::UserMessageOutbound, event)
         }
         /// Execute the `workspace.change.after` boundary with a complete event payload.
         pub fn workspace_change_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("workspace.change.after", event)
+            self.event_for($crate::EventType::WorkspaceChangeAfter, event)
         }
         /// Execute the `workspace.change.before` boundary with a complete event payload.
         pub fn workspace_change_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("workspace.change.before", event)
+            self.event_for($crate::EventType::WorkspaceChangeBefore, event)
         }
     };
 }
@@ -589,39 +589,39 @@ pub(crate) use ahp_event_boundary_methods;
 macro_rules! ahp_hooks_boundary_methods {
     (inventory) => {
         &[
-            "config.change.after",
-            "config.change.before",
-            "context.compact.after",
-            "context.compact.before",
-            "file.changed",
-            "hook.failure",
-            "model.error",
-            "model.request.before",
-            "model.response.after",
-            "model.switch.after",
-            "model.switch.before",
-            "session.end",
-            "session.start",
-            "task.change.after",
-            "task.change.before",
-            "tool.after",
-            "tool.batch.after",
-            "tool.before",
-            "tool.permission.request",
-            "tool.permission.resolved",
-            "tool.progress",
-            "turn.end",
-            "turn.finish.before",
-            "turn.progress",
-            "turn.start",
-            "user.attention",
-            "user.elicitation.request",
-            "user.elicitation.result",
-            "user.message.inbound",
-            "user.message.outbound",
-            "workspace.change.after",
-            "workspace.change.before",
-        ] as &'static [&'static str]
+            $crate::EventType::ConfigChangeAfter,
+            $crate::EventType::ConfigChangeBefore,
+            $crate::EventType::ContextCompactAfter,
+            $crate::EventType::ContextCompactBefore,
+            $crate::EventType::FileChanged,
+            $crate::EventType::HookFailure,
+            $crate::EventType::ModelError,
+            $crate::EventType::ModelRequestBefore,
+            $crate::EventType::ModelResponseAfter,
+            $crate::EventType::ModelSwitchAfter,
+            $crate::EventType::ModelSwitchBefore,
+            $crate::EventType::SessionEnd,
+            $crate::EventType::SessionStart,
+            $crate::EventType::TaskChangeAfter,
+            $crate::EventType::TaskChangeBefore,
+            $crate::EventType::ToolAfter,
+            $crate::EventType::ToolBatchAfter,
+            $crate::EventType::ToolBefore,
+            $crate::EventType::ToolPermissionRequest,
+            $crate::EventType::ToolPermissionResolved,
+            $crate::EventType::ToolProgress,
+            $crate::EventType::TurnEnd,
+            $crate::EventType::TurnFinishBefore,
+            $crate::EventType::TurnProgress,
+            $crate::EventType::TurnStart,
+            $crate::EventType::UserAttention,
+            $crate::EventType::UserElicitationRequest,
+            $crate::EventType::UserElicitationResult,
+            $crate::EventType::UserMessageInbound,
+            $crate::EventType::UserMessageOutbound,
+            $crate::EventType::WorkspaceChangeAfter,
+            $crate::EventType::WorkspaceChangeBefore,
+        ] as &'static [$crate::EventType]
     };
     () => {
         /// Execute the `config.change.after` boundary with a complete event payload.
@@ -629,224 +629,224 @@ macro_rules! ahp_hooks_boundary_methods {
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("config.change.after", event)
+            self.event_for($crate::EventType::ConfigChangeAfter, event)
         }
         /// Execute the `config.change.before` boundary with a complete event payload.
         pub fn config_change_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("config.change.before", event)
+            self.event_for($crate::EventType::ConfigChangeBefore, event)
         }
         /// Execute the `context.compact.after` boundary with a complete event payload.
         pub fn context_compact_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("context.compact.after", event)
+            self.event_for($crate::EventType::ContextCompactAfter, event)
         }
         /// Execute the `context.compact.before` boundary with a complete event payload.
         pub fn context_compact_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("context.compact.before", event)
+            self.event_for($crate::EventType::ContextCompactBefore, event)
         }
         /// Execute the `file.changed` boundary with a complete event payload.
         pub fn file_changed<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("file.changed", event)
+            self.event_for($crate::EventType::FileChanged, event)
         }
         /// Execute the `hook.failure` boundary with a complete event payload.
         pub fn hook_failure<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("hook.failure", event)
+            self.event_for($crate::EventType::HookFailure, event)
         }
         /// Execute the `model.error` boundary with a complete event payload.
         pub fn model_error<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.error", event)
+            self.event_for($crate::EventType::ModelError, event)
         }
         /// Execute the `model.request.before` boundary with a complete event payload.
         pub fn model_request_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.request.before", event)
+            self.event_for($crate::EventType::ModelRequestBefore, event)
         }
         /// Execute the `model.response.after` boundary with a complete event payload.
         pub fn model_response_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.response.after", event)
+            self.event_for($crate::EventType::ModelResponseAfter, event)
         }
         /// Execute the `model.switch.after` boundary with a complete event payload.
         pub fn model_switch_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.switch.after", event)
+            self.event_for($crate::EventType::ModelSwitchAfter, event)
         }
         /// Execute the `model.switch.before` boundary with a complete event payload.
         pub fn model_switch_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.switch.before", event)
+            self.event_for($crate::EventType::ModelSwitchBefore, event)
         }
         /// Execute the `session.end` boundary with a complete event payload.
         pub fn session_end<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("session.end", event)
+            self.event_for($crate::EventType::SessionEnd, event)
         }
         /// Execute the `session.start` boundary with a complete event payload.
         pub fn session_start<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("session.start", event)
+            self.event_for($crate::EventType::SessionStart, event)
         }
         /// Execute the `task.change.after` boundary with a complete event payload.
         pub fn task_change_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("task.change.after", event)
+            self.event_for($crate::EventType::TaskChangeAfter, event)
         }
         /// Execute the `task.change.before` boundary with a complete event payload.
         pub fn task_change_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("task.change.before", event)
+            self.event_for($crate::EventType::TaskChangeBefore, event)
         }
         /// Execute the `tool.after` boundary with a complete event payload.
         pub fn tool_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.after", event)
+            self.event_for($crate::EventType::ToolAfter, event)
         }
         /// Execute the `tool.batch.after` boundary with a complete event payload.
         pub fn tool_batch_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.batch.after", event)
+            self.event_for($crate::EventType::ToolBatchAfter, event)
         }
         /// Execute the `tool.before` boundary with a complete event payload.
         pub fn tool_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.before", event)
+            self.event_for($crate::EventType::ToolBefore, event)
         }
         /// Execute the `tool.permission.request` boundary with a complete event payload.
         pub fn tool_permission_request<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.permission.request", event)
+            self.event_for($crate::EventType::ToolPermissionRequest, event)
         }
         /// Execute the `tool.permission.resolved` boundary with a complete event payload.
         pub fn tool_permission_resolved<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.permission.resolved", event)
+            self.event_for($crate::EventType::ToolPermissionResolved, event)
         }
         /// Execute the `tool.progress` boundary with a complete event payload.
         pub fn tool_progress<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.progress", event)
+            self.event_for($crate::EventType::ToolProgress, event)
         }
         /// Execute the `turn.end` boundary with a complete event payload.
         pub fn turn_end<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("turn.end", event)
+            self.event_for($crate::EventType::TurnEnd, event)
         }
         /// Execute the `turn.finish.before` boundary with a complete event payload.
         pub fn turn_finish_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("turn.finish.before", event)
+            self.event_for($crate::EventType::TurnFinishBefore, event)
         }
         /// Execute the `turn.progress` boundary with a complete event payload.
         pub fn turn_progress<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("turn.progress", event)
+            self.event_for($crate::EventType::TurnProgress, event)
         }
         /// Execute the `turn.start` boundary with a complete event payload.
         pub fn turn_start<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("turn.start", event)
+            self.event_for($crate::EventType::TurnStart, event)
         }
         /// Execute the `user.attention` boundary with a complete event payload.
         pub fn user_attention<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.attention", event)
+            self.event_for($crate::EventType::UserAttention, event)
         }
         /// Execute the `user.elicitation.request` boundary with a complete event payload.
         pub fn user_elicitation_request<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.elicitation.request", event)
+            self.event_for($crate::EventType::UserElicitationRequest, event)
         }
         /// Execute the `user.elicitation.result` boundary with a complete event payload.
         pub fn user_elicitation_result<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.elicitation.result", event)
+            self.event_for($crate::EventType::UserElicitationResult, event)
         }
         /// Execute the `user.message.inbound` boundary with a complete event payload.
         pub fn user_message_inbound<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.message.inbound", event)
+            self.event_for($crate::EventType::UserMessageInbound, event)
         }
         /// Execute the `user.message.outbound` boundary with a complete event payload.
         pub fn user_message_outbound<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.message.outbound", event)
+            self.event_for($crate::EventType::UserMessageOutbound, event)
         }
         /// Execute the `workspace.change.after` boundary with a complete event payload.
         pub fn workspace_change_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("workspace.change.after", event)
+            self.event_for($crate::EventType::WorkspaceChangeAfter, event)
         }
         /// Execute the `workspace.change.before` boundary with a complete event payload.
         pub fn workspace_change_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("workspace.change.before", event)
+            self.event_for($crate::EventType::WorkspaceChangeBefore, event)
         }
     };
 }
@@ -35069,38 +35069,38 @@ pub mod inputs {
 macro_rules! ahp_ergonomic_hook_methods {
  () => { $crate::generated::ahp_ergonomic_hook_methods!(generated); };
  ($models:ident) => {
-pub fn config_change_after(&self, input: $crate::$models::inputs::ConfigChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ConfigChangeAfterInput> { self.input_for("config.change.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ConfigChangeAfterInput>) }
-pub fn config_change_before(&self, input: $crate::$models::inputs::ConfigChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ConfigChangeBeforeInput> { self.input_for("config.change.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ConfigChangeBeforeInput>) }
-pub fn context_compact_after(&self, input: $crate::$models::inputs::ContextCompactAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ContextCompactAfterInput> { self.input_for("context.compact.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ContextCompactAfterInput>) }
-pub fn context_compact_before(&self, input: $crate::$models::inputs::ContextCompactBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ContextCompactBeforeInput> { self.input_for("context.compact.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ContextCompactBeforeInput>) }
-pub fn file_changed(&self, input: $crate::$models::inputs::FileChangedInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::FileChangedInput> { self.input_for("file.changed", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::FileChangedInput>) }
-pub fn hook_failure(&self, input: $crate::$models::inputs::HookFailureInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::HookFailureInput> { self.input_for("hook.failure", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::HookFailureInput>) }
-pub fn model_error(&self, input: $crate::$models::inputs::ModelErrorInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelErrorInput> { self.input_for("model.error", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelErrorInput>) }
-pub fn model_request_before(&self, input: $crate::$models::inputs::ModelRequestBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelRequestBeforeInput> { self.input_for("model.request.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelRequestBeforeInput>) }
-pub fn model_response_after(&self, input: $crate::$models::inputs::ModelResponseAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelResponseAfterInput> { self.input_for("model.response.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelResponseAfterInput>) }
-pub fn model_switch_after(&self, input: $crate::$models::inputs::ModelSwitchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelSwitchAfterInput> { self.input_for("model.switch.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelSwitchAfterInput>) }
-pub fn model_switch_before(&self, input: $crate::$models::inputs::ModelSwitchBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelSwitchBeforeInput> { self.input_for("model.switch.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelSwitchBeforeInput>) }
-pub fn session_end(&self, input: $crate::$models::inputs::SessionEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::SessionEndInput> { self.input_for("session.end", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::SessionEndInput>) }
-pub fn session_start(&self, input: $crate::$models::inputs::SessionStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::SessionStartInput> { self.input_for("session.start", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::SessionStartInput>) }
-pub fn task_change_after(&self, input: $crate::$models::inputs::TaskChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TaskChangeAfterInput> { self.input_for("task.change.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TaskChangeAfterInput>) }
-pub fn task_change_before(&self, input: $crate::$models::inputs::TaskChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TaskChangeBeforeInput> { self.input_for("task.change.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TaskChangeBeforeInput>) }
-pub fn tool_after<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolAfterInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolAfterInput<T>> { self.input_for("tool.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolAfterInput<T>>) }
-pub fn tool_batch_after(&self, input: $crate::$models::inputs::ToolBatchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolBatchAfterInput> { self.input_for("tool.batch.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolBatchAfterInput>) }
-pub fn tool_before_event<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolBeforeInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolBeforeInput<T>> { self.input_for("tool.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolBeforeInput<T>>) }
-pub fn tool_permission_request<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolPermissionRequestInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolPermissionRequestInput<T>> { self.input_for("tool.permission.request", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolPermissionRequestInput<T>>) }
-pub fn tool_permission_resolved<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolPermissionResolvedInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolPermissionResolvedInput<T>> { self.input_for("tool.permission.resolved", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolPermissionResolvedInput<T>>) }
-pub fn tool_progress<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolProgressInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolProgressInput<T>> { self.input_for("tool.progress", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolProgressInput<T>>) }
-pub fn turn_end(&self, input: $crate::$models::inputs::TurnEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnEndInput> { self.input_for("turn.end", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnEndInput>) }
-pub fn turn_finish_before(&self, input: $crate::$models::inputs::TurnFinishBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnFinishBeforeInput> { self.input_for("turn.finish.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnFinishBeforeInput>) }
-pub fn turn_progress(&self, input: $crate::$models::inputs::TurnProgressInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnProgressInput> { self.input_for("turn.progress", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnProgressInput>) }
-pub fn turn_start(&self, input: $crate::$models::inputs::TurnStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnStartInput> { self.input_for("turn.start", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnStartInput>) }
-pub fn user_attention(&self, input: $crate::$models::inputs::UserAttentionInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserAttentionInput> { self.input_for("user.attention", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserAttentionInput>) }
-pub fn user_elicitation_request(&self, input: $crate::$models::inputs::UserElicitationRequestInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserElicitationRequestInput> { self.input_for("user.elicitation.request", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserElicitationRequestInput>) }
-pub fn user_elicitation_result(&self, input: $crate::$models::inputs::UserElicitationResultInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserElicitationResultInput> { self.input_for("user.elicitation.result", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserElicitationResultInput>) }
-pub fn user_message_inbound(&self, input: $crate::$models::inputs::UserMessageInboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserMessageInboundInput> { self.input_for("user.message.inbound", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserMessageInboundInput>) }
-pub fn user_message_outbound(&self, input: $crate::$models::inputs::UserMessageOutboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserMessageOutboundInput> { self.input_for("user.message.outbound", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserMessageOutboundInput>) }
-pub fn workspace_change_after(&self, input: $crate::$models::inputs::WorkspaceChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::WorkspaceChangeAfterInput> { self.input_for("workspace.change.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::WorkspaceChangeAfterInput>) }
-pub fn workspace_change_before(&self, input: $crate::$models::inputs::WorkspaceChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::WorkspaceChangeBeforeInput> { self.input_for("workspace.change.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::WorkspaceChangeBeforeInput>) }
+pub fn config_change_after(&self, input: $crate::$models::inputs::ConfigChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ConfigChangeAfterInput> { self.input_for($crate::EventType::ConfigChangeAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ConfigChangeAfterInput>) }
+pub fn config_change_before(&self, input: $crate::$models::inputs::ConfigChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ConfigChangeBeforeInput> { self.input_for($crate::EventType::ConfigChangeBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ConfigChangeBeforeInput>) }
+pub fn context_compact_after(&self, input: $crate::$models::inputs::ContextCompactAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ContextCompactAfterInput> { self.input_for($crate::EventType::ContextCompactAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ContextCompactAfterInput>) }
+pub fn context_compact_before(&self, input: $crate::$models::inputs::ContextCompactBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ContextCompactBeforeInput> { self.input_for($crate::EventType::ContextCompactBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ContextCompactBeforeInput>) }
+pub fn file_changed(&self, input: $crate::$models::inputs::FileChangedInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::FileChangedInput> { self.input_for($crate::EventType::FileChanged, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::FileChangedInput>) }
+pub fn hook_failure(&self, input: $crate::$models::inputs::HookFailureInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::HookFailureInput> { self.input_for($crate::EventType::HookFailure, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::HookFailureInput>) }
+pub fn model_error(&self, input: $crate::$models::inputs::ModelErrorInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelErrorInput> { self.input_for($crate::EventType::ModelError, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelErrorInput>) }
+pub fn model_request_before(&self, input: $crate::$models::inputs::ModelRequestBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelRequestBeforeInput> { self.input_for($crate::EventType::ModelRequestBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelRequestBeforeInput>) }
+pub fn model_response_after(&self, input: $crate::$models::inputs::ModelResponseAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelResponseAfterInput> { self.input_for($crate::EventType::ModelResponseAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelResponseAfterInput>) }
+pub fn model_switch_after(&self, input: $crate::$models::inputs::ModelSwitchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelSwitchAfterInput> { self.input_for($crate::EventType::ModelSwitchAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelSwitchAfterInput>) }
+pub fn model_switch_before(&self, input: $crate::$models::inputs::ModelSwitchBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelSwitchBeforeInput> { self.input_for($crate::EventType::ModelSwitchBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelSwitchBeforeInput>) }
+pub fn session_end(&self, input: $crate::$models::inputs::SessionEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::SessionEndInput> { self.input_for($crate::EventType::SessionEnd, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::SessionEndInput>) }
+pub fn session_start(&self, input: $crate::$models::inputs::SessionStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::SessionStartInput> { self.input_for($crate::EventType::SessionStart, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::SessionStartInput>) }
+pub fn task_change_after(&self, input: $crate::$models::inputs::TaskChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TaskChangeAfterInput> { self.input_for($crate::EventType::TaskChangeAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TaskChangeAfterInput>) }
+pub fn task_change_before(&self, input: $crate::$models::inputs::TaskChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TaskChangeBeforeInput> { self.input_for($crate::EventType::TaskChangeBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TaskChangeBeforeInput>) }
+pub fn tool_after<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolAfterInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolAfterInput<T>> { self.input_for($crate::EventType::ToolAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolAfterInput<T>>) }
+pub fn tool_batch_after(&self, input: $crate::$models::inputs::ToolBatchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolBatchAfterInput> { self.input_for($crate::EventType::ToolBatchAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolBatchAfterInput>) }
+pub fn tool_before_event<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolBeforeInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolBeforeInput<T>> { self.input_for($crate::EventType::ToolBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolBeforeInput<T>>) }
+pub fn tool_permission_request<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolPermissionRequestInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolPermissionRequestInput<T>> { self.input_for($crate::EventType::ToolPermissionRequest, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolPermissionRequestInput<T>>) }
+pub fn tool_permission_resolved<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolPermissionResolvedInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolPermissionResolvedInput<T>> { self.input_for($crate::EventType::ToolPermissionResolved, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolPermissionResolvedInput<T>>) }
+pub fn tool_progress<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolProgressInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolProgressInput<T>> { self.input_for($crate::EventType::ToolProgress, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolProgressInput<T>>) }
+pub fn turn_end(&self, input: $crate::$models::inputs::TurnEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnEndInput> { self.input_for($crate::EventType::TurnEnd, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnEndInput>) }
+pub fn turn_finish_before(&self, input: $crate::$models::inputs::TurnFinishBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnFinishBeforeInput> { self.input_for($crate::EventType::TurnFinishBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnFinishBeforeInput>) }
+pub fn turn_progress(&self, input: $crate::$models::inputs::TurnProgressInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnProgressInput> { self.input_for($crate::EventType::TurnProgress, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnProgressInput>) }
+pub fn turn_start(&self, input: $crate::$models::inputs::TurnStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnStartInput> { self.input_for($crate::EventType::TurnStart, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnStartInput>) }
+pub fn user_attention(&self, input: $crate::$models::inputs::UserAttentionInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserAttentionInput> { self.input_for($crate::EventType::UserAttention, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserAttentionInput>) }
+pub fn user_elicitation_request(&self, input: $crate::$models::inputs::UserElicitationRequestInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserElicitationRequestInput> { self.input_for($crate::EventType::UserElicitationRequest, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserElicitationRequestInput>) }
+pub fn user_elicitation_result(&self, input: $crate::$models::inputs::UserElicitationResultInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserElicitationResultInput> { self.input_for($crate::EventType::UserElicitationResult, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserElicitationResultInput>) }
+pub fn user_message_inbound(&self, input: $crate::$models::inputs::UserMessageInboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserMessageInboundInput> { self.input_for($crate::EventType::UserMessageInbound, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserMessageInboundInput>) }
+pub fn user_message_outbound(&self, input: $crate::$models::inputs::UserMessageOutboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserMessageOutboundInput> { self.input_for($crate::EventType::UserMessageOutbound, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserMessageOutboundInput>) }
+pub fn workspace_change_after(&self, input: $crate::$models::inputs::WorkspaceChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::WorkspaceChangeAfterInput> { self.input_for($crate::EventType::WorkspaceChangeAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::WorkspaceChangeAfterInput>) }
+pub fn workspace_change_before(&self, input: $crate::$models::inputs::WorkspaceChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::WorkspaceChangeBeforeInput> { self.input_for($crate::EventType::WorkspaceChangeBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::WorkspaceChangeBeforeInput>) }
 
  };
 }
@@ -35580,9 +35580,9 @@ pub enum ContextualResponse {
     UserMessageOutbound(Box<UserMessageOutboundInterceptResponse>),
     WorkspaceChangeBefore(Box<WorkspaceChangeBeforeInterceptResponse>),
 }
-pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<ContextualResponse> {
+pub fn response_for_request(event_type: EventType, input: &str) -> ParseResult<ContextualResponse> {
     match event_type {
-        "config.change.before" => match parse_root::<ConfigChangeBeforeInterceptResponse>(
+        EventType::ConfigChangeBefore => match parse_root::<ConfigChangeBeforeInterceptResponse>(
             "ConfigChangeBeforeInterceptResponse",
             input,
         ) {
@@ -35597,7 +35597,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "context.compact.after" => match parse_root::<ContextCompactAfterInterceptResponse>(
+        EventType::ContextCompactAfter => match parse_root::<ContextCompactAfterInterceptResponse>(
             "ContextCompactAfterInterceptResponse",
             input,
         ) {
@@ -35612,22 +35612,26 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "context.compact.before" => match parse_root::<ContextCompactBeforeInterceptResponse>(
-            "ContextCompactBeforeInterceptResponse",
-            input,
-        ) {
-            ParseResult::Success {
-                value,
-                raw,
-                diagnostics,
-            } => ParseResult::Success {
-                value: ContextualResponse::ContextCompactBefore(Box::new(value)),
-                raw,
-                diagnostics,
-            },
-            ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
-        },
-        "model.request.before" => match parse_root::<ModelRequestBeforeInterceptResponse>(
+        EventType::ContextCompactBefore => {
+            match parse_root::<ContextCompactBeforeInterceptResponse>(
+                "ContextCompactBeforeInterceptResponse",
+                input,
+            ) {
+                ParseResult::Success {
+                    value,
+                    raw,
+                    diagnostics,
+                } => ParseResult::Success {
+                    value: ContextualResponse::ContextCompactBefore(Box::new(value)),
+                    raw,
+                    diagnostics,
+                },
+                ParseResult::Failure { raw, diagnostics } => {
+                    ParseResult::Failure { raw, diagnostics }
+                }
+            }
+        }
+        EventType::ModelRequestBefore => match parse_root::<ModelRequestBeforeInterceptResponse>(
             "ModelRequestBeforeInterceptResponse",
             input,
         ) {
@@ -35642,7 +35646,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "model.response.after" => match parse_root::<ModelResponseAfterInterceptResponse>(
+        EventType::ModelResponseAfter => match parse_root::<ModelResponseAfterInterceptResponse>(
             "ModelResponseAfterInterceptResponse",
             input,
         ) {
@@ -35657,7 +35661,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "model.switch.before" => match parse_root::<ModelSwitchBeforeInterceptResponse>(
+        EventType::ModelSwitchBefore => match parse_root::<ModelSwitchBeforeInterceptResponse>(
             "ModelSwitchBeforeInterceptResponse",
             input,
         ) {
@@ -35672,7 +35676,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "session.start" => match parse_root::<SessionStartInterceptResponse>(
+        EventType::SessionStart => match parse_root::<SessionStartInterceptResponse>(
             "SessionStartInterceptResponse",
             input,
         ) {
@@ -35687,7 +35691,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "task.change.before" => match parse_root::<TaskChangeBeforeInterceptResponse>(
+        EventType::TaskChangeBefore => match parse_root::<TaskChangeBeforeInterceptResponse>(
             "TaskChangeBeforeInterceptResponse",
             input,
         ) {
@@ -35702,7 +35706,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "tool.after" => {
+        EventType::ToolAfter => {
             match parse_root::<ToolAfterInterceptResponse>("ToolAfterInterceptResponse", input) {
                 ParseResult::Success {
                     value,
@@ -35718,7 +35722,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
                 }
             }
         }
-        "tool.batch.after" => match parse_root::<ToolBatchAfterInterceptResponse>(
+        EventType::ToolBatchAfter => match parse_root::<ToolBatchAfterInterceptResponse>(
             "ToolBatchAfterInterceptResponse",
             input,
         ) {
@@ -35733,7 +35737,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "tool.before" => {
+        EventType::ToolBefore => {
             match parse_root::<ToolBeforeInterceptResponse>("ToolBeforeInterceptResponse", input) {
                 ParseResult::Success {
                     value,
@@ -35749,22 +35753,26 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
                 }
             }
         }
-        "tool.permission.request" => match parse_root::<ToolPermissionRequestInterceptResponse>(
-            "ToolPermissionRequestInterceptResponse",
-            input,
-        ) {
-            ParseResult::Success {
-                value,
-                raw,
-                diagnostics,
-            } => ParseResult::Success {
-                value: ContextualResponse::ToolPermissionRequest(Box::new(value)),
-                raw,
-                diagnostics,
-            },
-            ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
-        },
-        "turn.finish.before" => match parse_root::<TurnFinishBeforeInterceptResponse>(
+        EventType::ToolPermissionRequest => {
+            match parse_root::<ToolPermissionRequestInterceptResponse>(
+                "ToolPermissionRequestInterceptResponse",
+                input,
+            ) {
+                ParseResult::Success {
+                    value,
+                    raw,
+                    diagnostics,
+                } => ParseResult::Success {
+                    value: ContextualResponse::ToolPermissionRequest(Box::new(value)),
+                    raw,
+                    diagnostics,
+                },
+                ParseResult::Failure { raw, diagnostics } => {
+                    ParseResult::Failure { raw, diagnostics }
+                }
+            }
+        }
+        EventType::TurnFinishBefore => match parse_root::<TurnFinishBeforeInterceptResponse>(
             "TurnFinishBeforeInterceptResponse",
             input,
         ) {
@@ -35779,7 +35787,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "turn.start" => {
+        EventType::TurnStart => {
             match parse_root::<TurnStartInterceptResponse>("TurnStartInterceptResponse", input) {
                 ParseResult::Success {
                     value,
@@ -35795,7 +35803,9 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
                 }
             }
         }
-        "user.elicitation.request" => match parse_root::<UserElicitationRequestInterceptResponse>(
+        EventType::UserElicitationRequest => match parse_root::<
+            UserElicitationRequestInterceptResponse,
+        >(
             "UserElicitationRequestInterceptResponse",
             input,
         ) {
@@ -35810,22 +35820,26 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "user.elicitation.result" => match parse_root::<UserElicitationResultInterceptResponse>(
-            "UserElicitationResultInterceptResponse",
-            input,
-        ) {
-            ParseResult::Success {
-                value,
-                raw,
-                diagnostics,
-            } => ParseResult::Success {
-                value: ContextualResponse::UserElicitationResult(Box::new(value)),
-                raw,
-                diagnostics,
-            },
-            ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
-        },
-        "user.message.inbound" => match parse_root::<UserMessageInboundInterceptResponse>(
+        EventType::UserElicitationResult => {
+            match parse_root::<UserElicitationResultInterceptResponse>(
+                "UserElicitationResultInterceptResponse",
+                input,
+            ) {
+                ParseResult::Success {
+                    value,
+                    raw,
+                    diagnostics,
+                } => ParseResult::Success {
+                    value: ContextualResponse::UserElicitationResult(Box::new(value)),
+                    raw,
+                    diagnostics,
+                },
+                ParseResult::Failure { raw, diagnostics } => {
+                    ParseResult::Failure { raw, diagnostics }
+                }
+            }
+        }
+        EventType::UserMessageInbound => match parse_root::<UserMessageInboundInterceptResponse>(
             "UserMessageInboundInterceptResponse",
             input,
         ) {
@@ -35840,7 +35854,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "user.message.outbound" => match parse_root::<UserMessageOutboundInterceptResponse>(
+        EventType::UserMessageOutbound => match parse_root::<UserMessageOutboundInterceptResponse>(
             "UserMessageOutboundInterceptResponse",
             input,
         ) {
@@ -35855,35 +35869,42 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "workspace.change.before" => match parse_root::<WorkspaceChangeBeforeInterceptResponse>(
-            "WorkspaceChangeBeforeInterceptResponse",
-            input,
-        ) {
-            ParseResult::Success {
-                value,
-                raw,
-                diagnostics,
-            } => ParseResult::Success {
-                value: ContextualResponse::WorkspaceChangeBefore(Box::new(value)),
-                raw,
-                diagnostics,
-            },
-            ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
-        },
+        EventType::WorkspaceChangeBefore => {
+            match parse_root::<WorkspaceChangeBeforeInterceptResponse>(
+                "WorkspaceChangeBeforeInterceptResponse",
+                input,
+            ) {
+                ParseResult::Success {
+                    value,
+                    raw,
+                    diagnostics,
+                } => ParseResult::Success {
+                    value: ContextualResponse::WorkspaceChangeBefore(Box::new(value)),
+                    raw,
+                    diagnostics,
+                },
+                ParseResult::Failure { raw, diagnostics } => {
+                    ParseResult::Failure { raw, diagnostics }
+                }
+            }
+        }
         _ => ParseResult::Failure {
             raw: None,
             diagnostics: vec![ParseDiagnostic {
                 path: String::new(),
                 code: DiagnosticCode::UnknownVariant,
                 severity: DiagnosticSeverity::Error,
-                message: format!("Unknown request event: {event_type}"),
+                message: format!(
+                    "Request event does not support interception: {}",
+                    event_type.as_str()
+                ),
             }],
         },
     }
 }
 /// Run application validation before returning a publishable response. No state is changed.
 pub fn stage_response_for_request(
-    event_type: &str,
+    event_type: EventType,
     input: &str,
     validate: impl FnOnce(&ContextualResponse) -> Result<(), String>,
 ) -> ParseResult<ContextualResponse> {
@@ -36057,6 +36078,7 @@ pub mod responses {
 }
 
 pub mod capability {
+    use super::EventType;
     use serde::Serialize;
     use std::collections::{BTreeMap, BTreeSet};
     #[derive(Clone, Copy, Debug)]
@@ -36385,11 +36407,11 @@ pub mod capability {
         pub workspace_change_before: Option<WorkspaceChangeBefore>,
     }
     impl HostCapabilities {
-        pub fn to_wire(&self) -> BTreeMap<String, WireDeclaration> {
+        pub fn to_wire(&self) -> BTreeMap<EventType, WireDeclaration> {
             let mut wire = BTreeMap::new();
             if let Some(_declaration) = &self.config_change_after {
                 wire.insert(
-                    "config.change.after".into(),
+                    EventType::ConfigChangeAfter,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36397,17 +36419,17 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.config_change_before {
-                wire.insert("config.change.before".into(), _declaration.0.wire());
+                wire.insert(EventType::ConfigChangeBefore, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.context_compact_after {
-                wire.insert("context.compact.after".into(), _declaration.0.wire());
+                wire.insert(EventType::ContextCompactAfter, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.context_compact_before {
-                wire.insert("context.compact.before".into(), _declaration.0.wire());
+                wire.insert(EventType::ContextCompactBefore, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.file_changed {
                 wire.insert(
-                    "file.changed".into(),
+                    EventType::FileChanged,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36416,7 +36438,7 @@ pub mod capability {
             }
             if let Some(_declaration) = &self.hook_failure {
                 wire.insert(
-                    "hook.failure".into(),
+                    EventType::HookFailure,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36425,7 +36447,7 @@ pub mod capability {
             }
             if let Some(_declaration) = &self.model_error {
                 wire.insert(
-                    "model.error".into(),
+                    EventType::ModelError,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36433,14 +36455,14 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.model_request_before {
-                wire.insert("model.request.before".into(), _declaration.0.wire());
+                wire.insert(EventType::ModelRequestBefore, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.model_response_after {
-                wire.insert("model.response.after".into(), _declaration.0.wire());
+                wire.insert(EventType::ModelResponseAfter, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.model_switch_after {
                 wire.insert(
-                    "model.switch.after".into(),
+                    EventType::ModelSwitchAfter,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36448,11 +36470,11 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.model_switch_before {
-                wire.insert("model.switch.before".into(), _declaration.0.wire());
+                wire.insert(EventType::ModelSwitchBefore, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.session_end {
                 wire.insert(
-                    "session.end".into(),
+                    EventType::SessionEnd,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36460,11 +36482,11 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.session_start {
-                wire.insert("session.start".into(), _declaration.0.wire());
+                wire.insert(EventType::SessionStart, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.task_change_after {
                 wire.insert(
-                    "task.change.after".into(),
+                    EventType::TaskChangeAfter,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36472,23 +36494,23 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.task_change_before {
-                wire.insert("task.change.before".into(), _declaration.0.wire());
+                wire.insert(EventType::TaskChangeBefore, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.tool_after {
-                wire.insert("tool.after".into(), _declaration.0.wire());
+                wire.insert(EventType::ToolAfter, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.tool_batch_after {
-                wire.insert("tool.batch.after".into(), _declaration.0.wire());
+                wire.insert(EventType::ToolBatchAfter, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.tool_before {
-                wire.insert("tool.before".into(), _declaration.0.wire());
+                wire.insert(EventType::ToolBefore, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.tool_permission_request {
-                wire.insert("tool.permission.request".into(), _declaration.0.wire());
+                wire.insert(EventType::ToolPermissionRequest, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.tool_permission_resolved {
                 wire.insert(
-                    "tool.permission.resolved".into(),
+                    EventType::ToolPermissionResolved,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36497,7 +36519,7 @@ pub mod capability {
             }
             if let Some(_declaration) = &self.tool_progress {
                 wire.insert(
-                    "tool.progress".into(),
+                    EventType::ToolProgress,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36506,7 +36528,7 @@ pub mod capability {
             }
             if let Some(_declaration) = &self.turn_end {
                 wire.insert(
-                    "turn.end".into(),
+                    EventType::TurnEnd,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36514,11 +36536,11 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.turn_finish_before {
-                wire.insert("turn.finish.before".into(), _declaration.0.wire());
+                wire.insert(EventType::TurnFinishBefore, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.turn_progress {
                 wire.insert(
-                    "turn.progress".into(),
+                    EventType::TurnProgress,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36526,11 +36548,11 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.turn_start {
-                wire.insert("turn.start".into(), _declaration.0.wire());
+                wire.insert(EventType::TurnStart, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.user_attention {
                 wire.insert(
-                    "user.attention".into(),
+                    EventType::UserAttention,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36538,20 +36560,20 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.user_elicitation_request {
-                wire.insert("user.elicitation.request".into(), _declaration.0.wire());
+                wire.insert(EventType::UserElicitationRequest, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.user_elicitation_result {
-                wire.insert("user.elicitation.result".into(), _declaration.0.wire());
+                wire.insert(EventType::UserElicitationResult, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.user_message_inbound {
-                wire.insert("user.message.inbound".into(), _declaration.0.wire());
+                wire.insert(EventType::UserMessageInbound, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.user_message_outbound {
-                wire.insert("user.message.outbound".into(), _declaration.0.wire());
+                wire.insert(EventType::UserMessageOutbound, _declaration.0.wire());
             }
             if let Some(_declaration) = &self.workspace_change_after {
                 wire.insert(
-                    "workspace.change.after".into(),
+                    EventType::WorkspaceChangeAfter,
                     WireDeclaration {
                         modes: vec!["observe"],
                         capabilities: None,
@@ -36559,7 +36581,7 @@ pub mod capability {
                 );
             }
             if let Some(_declaration) = &self.workspace_change_before {
-                wire.insert("workspace.change.before".into(), _declaration.0.wire());
+                wire.insert(EventType::WorkspaceChangeBefore, _declaration.0.wire());
             }
             wire
         }

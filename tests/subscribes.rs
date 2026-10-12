@@ -223,7 +223,12 @@ fn every_canonical_event_accepts_typed_interest_without_preparation() {
         assert!(events.iter().any(|event| event.as_str() == boundary.name));
     }
     let (hooks, backend) = hooks("*", "observe", capabilities, Value::Null);
+    let client = agenthooksprotocol::client::Client::new(
+        agenthooksprotocol::client::ToolContext::new(json!({})),
+    );
     for event in events {
+        let _ = hooks.event_for(event, json!({}));
+        let _ = client.event_for(event, json!({}));
         assert!(hooks.subscribes(event), "{}", event.as_str());
     }
     finish(hooks, &backend);

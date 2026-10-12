@@ -447,8 +447,10 @@ authenticated identity nor evidence of execution.
 
 `Client::event(event)` accepts a complete canonical event, including its identity
 and context. Schema-derived named methods such as `tool_before_event(event)`
-add an event-name check; `boundary::ALL_BOUNDARIES` exposes the generated
-inventory. These APIs are distinct from `tool_before(input)`, which accepts only
+add an event-name check. `Hooks::event_for` and `Client::event_for` bind a
+complete event to an expected generated `EventType`, such as
+`EventType::SessionStart`; `hooks::NAMED_BOUNDARIES` exposes typed event values,
+and `boundary::ALL_BOUNDARIES` exposes wire-schema descriptors. These APIs are distinct from `tool_before(input)`, which accepts only
 application input and uses the client's `ToolContext`.
 
 Complete-event boundaries are lazy. Their `runtime::EventResult<T>` separates
@@ -614,7 +616,7 @@ cargo test --locked --all-features
 
 Generated code lives in `src/generated.rs`. Its provenance is recorded in `src/ahp-codegen.lock.json`; schema changes are made in the [protocol repository](https://github.com/agenthooksprotocol/agent-hooks-protocol), not by editing the generated file.
 
-The generator source is protocol commit `acb35f107b038296fd082072bb5bb64e8013e4e1`. From a protocol checkout at that commit, regenerate and verify with:
+The generator source is protocol commit `51d606a7f69a9c7008d49b91c726e22e7fef96d4`. From a protocol checkout at that commit, regenerate and verify with:
 
 ```sh
 python3 tools/generate_sdk.py --rust-sdk ../rust-sdk

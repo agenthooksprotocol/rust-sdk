@@ -121,6 +121,15 @@ pub fn boundary<'a>(hooks:&'a Hooks,input:ToolBeforeInput<JsonValue>)->ToolBound
 pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.outcome.settled_candidate }
 pub fn input(outcome:ToolOutcome<JsonValue,String>)->JsonValue { outcome.input }
 pub fn subscribes(hooks:&Hooks,event:agenthooksprotocol::generated::EventType)->bool { hooks.subscribes(event) }
+pub fn declared_events(hooks:&Hooks, client:&agenthooksprotocol::client::Client, event:agenthooksprotocol::generated::EventType, payload:JsonValue) {
+    let _ = hooks.event_for(event, payload.clone());
+    let _ = client.event_for(event, payload);
+    let _ = agenthooksprotocol::interop::capabilities_for(event);
+    let _ = agenthooksprotocol::generated::response_for_request(event, "{}");
+    let _ = agenthooksprotocol::generated::stage_response_for_request(event, "{}", |_| Ok(()));
+    let _: &[agenthooksprotocol::generated::EventType] = agenthooksprotocol::hooks::NAMED_BOUNDARIES;
+    let _: std::collections::BTreeMap<agenthooksprotocol::generated::EventType, agenthooksprotocol::capability::WireDeclaration> = agenthooksprotocol::capability::HostCapabilities::default().to_wire();
+}
 pub fn typed_options()->agenthooksprotocol::hooks::HooksOptions {
     use agenthooksprotocol::capability::{self, HostCapabilities, Modify};
     agenthooksprotocol::hooks::HooksOptions::new("urn:test:typed", HostCapabilities {
@@ -156,6 +165,36 @@ pub fn form() {
 fn assembly_and_provisional_helpers_are_not_public_consumer_apis() {
     let consumer = Consumer::new();
     for (name, source, diagnostic) in [
+        (
+            "stringly_declaration_keys",
+            "fn wrong(key: String) {let declarations = agenthooksprotocol::capability::HostCapabilities::default().to_wire(); let _ = declarations.get(&key);}",
+            "String",
+        ),
+        (
+            "stringly_response_context",
+            r#"fn wrong(name: &str) {let _ = agenthooksprotocol::generated::response_for_request(name, "{}");}"#,
+            "EventType",
+        ),
+        (
+            "stringly_staged_context",
+            r#"fn wrong(name: &str) {let _ = agenthooksprotocol::generated::stage_response_for_request(name, "{}", |_| Ok(()));}"#,
+            "EventType",
+        ),
+        (
+            "stringly_hooks_event_for",
+            "fn wrong(hooks: &agenthooksprotocol::Hooks, name: &str, payload: agenthooksprotocol::generated::JsonValue) {let _ = hooks.event_for(name, payload);}",
+            "EventType",
+        ),
+        (
+            "stringly_client_event_for",
+            "fn wrong(client: &agenthooksprotocol::client::Client, name: &str, payload: agenthooksprotocol::generated::JsonValue) {let _ = client.event_for(name, payload);}",
+            "EventType",
+        ),
+        (
+            "stringly_fixture_grants",
+            "fn wrong(name: &str) {let _ = agenthooksprotocol::interop::capabilities_for(name);}",
+            "EventType",
+        ),
         (
             "stringly_subscription_interest",
             "fn interest(hooks: &agenthooksprotocol::Hooks, event: String) { let _ = hooks.subscribes(event); }",

@@ -15,7 +15,7 @@ use std::{future::IntoFuture, task::Poll, time::Instant};
 pub struct EventBoundary<'a, T> {
     admission: crate::contracts::Admission,
     client: &'a Client,
-    name: Option<&'static str>,
+    name: Option<crate::generated::EventType>,
     event: T,
     initial: Permission,
     initial_candidate: Option<Value>,
@@ -36,7 +36,11 @@ impl<'a, T> EventBoundary<'a, T> {
         self.admission = admission;
         self
     }
-    pub(crate) fn new(client: &'a Client, name: Option<&'static str>, event: T) -> Self {
+    pub(crate) fn new(
+        client: &'a Client,
+        name: Option<crate::generated::EventType>,
+        event: T,
+    ) -> Self {
         Self {
             admission: Default::default(),
             client,
@@ -165,8 +169,15 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
             let result: Result<EventResult<'a, T>, HookError> = async move {
             if self.progress.interrupted() { return Err(error("boundary interrupted")); }
             let mut input = serde_json::to_value(self.event).map_err(|e| error(e.to_string()))?;
-            let name = input["type"].as_str().ok_or_else(|| error("missing canonical event type"))?.to_owned();
-            if self.name.is_some_and(|expected| expected != name) { return Err(error("event name mismatch")); }
+            let event_type = if let Some(expected) = self.name {
+                if input["type"].as_str() != Some(expected.as_str()) { return Err(error("event name mismatch")); }
+                expected
+            } else {
+                // Explicit complete-event wire input: unknown names fail decoding.
+                serde_json::from_value::<crate::generated::EventType>(input["type"].clone())
+                    .map_err(|cause| error(format!("invalid canonical event type: {cause}")))?
+            };
+            let name = event_type.as_str().to_owned();
             let inline_attachments = InvocationAttachments::bind(&mut input, vec![],
                 crate::attachment::Budget::new(usize::MAX, usize::MAX), usize::MAX)
                 .map_err(|e| error(e.to_string()))?;
@@ -439,10 +450,12 @@ fn stage(
     }
     let mut typed_request: crate::generated::InterceptRequest =
         serde_json::from_value(request.clone()).map_err(crate::protocol::failure)?;
-    let name = request["params"]["event"]["type"]
-        .as_str()
-        .ok_or_else(|| error("missing originating event type"))?;
-    let typed_response = crate::protocol::parse(name, response)?;
+    // The originating envelope is a wire input, so decode its canonical name fallibly.
+    let event_type: crate::generated::EventType =
+        serde_json::from_value(request["params"]["event"]["type"].clone())
+            .map_err(crate::protocol::failure)?;
+    let typed_response = crate::protocol::parse(event_type, response)?;
+    let name = event_type.as_str();
     crate::server::validate_effect_capabilities(request, response).map_err(error)?;
     let effects = crate::protocol::effects(&typed_response)?;
     let original = typed_request.params.event.as_ref().clone();

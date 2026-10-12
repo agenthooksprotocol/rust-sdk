@@ -782,11 +782,11 @@ fn fixture_reply(
                     }, {
                         "event": "task.change.before",
                         "modes": ["intercept"],
-                        "capabilities": interop::capabilities_for("task.change.before")?
+                        "capabilities": interop::capabilities_for(agenthooksprotocol::generated::EventType::TaskChangeBefore)?
                     }, {
                         "event": "workspace.change.before",
                         "modes": ["intercept"],
-                        "capabilities": interop::capabilities_for("workspace.change.before")?
+                        "capabilities": interop::capabilities_for(agenthooksprotocol::generated::EventType::WorkspaceChangeBefore)?
                     }],
                     "gaps": [{
                         "path": "events.other",

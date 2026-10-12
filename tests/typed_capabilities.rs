@@ -35,7 +35,10 @@ fn typed_capabilities_render_exact_grants_and_explicit_observation() {
         session_end: Some(Observe),
         ..Default::default()
     };
-    let wire = serde_json::to_value(capabilities.to_wire()).unwrap();
+    let declarations = capabilities.to_wire();
+    let _: &std::collections::BTreeMap<EventType, capability::WireDeclaration> = &declarations;
+    assert!(declarations.contains_key(&EventType::ToolBefore));
+    let wire = serde_json::to_value(declarations).unwrap();
     assert_eq!(
         wire["tool.before"]["modes"],
         json!(["intercept", "observe"])
