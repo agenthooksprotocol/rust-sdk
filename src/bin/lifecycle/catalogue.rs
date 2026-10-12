@@ -97,7 +97,7 @@ impl agenthooksprotocol::client::Hook for CatalogueObserver {
                 }
                 Ok(())
             })();
-            sent.map_err(|e| agenthooksprotocol::client::HookError(e.to_string()))?;
+            sent.map_err(|e| agenthooksprotocol::client::HookError::new(e.to_string()))?;
             // A notification cannot supply effects to the settled occurrence.
             Ok(Value::Null)
         })
@@ -126,7 +126,7 @@ async fn deliver_event(client: &agenthooksprotocol::client::Client, event: Value
     };
     let result = client.event(event).content(content).await?;
     // A fresh complete-event decode is part of the actual public boundary path.
-    let _decoded: Value = result.event?;
+    let _decoded: Value = result.decoded_event?;
     if !result.outcome.failures.is_empty() || result.observations.len() != 1 {
         return Err("catalogue event did not settle into one observation".into());
     }
@@ -323,7 +323,7 @@ mod tests {
             messages.lock().unwrap().is_empty(),
             "settlement must not perform observer I/O"
         );
-        assert_eq!(settled.event.unwrap(), event);
+        assert_eq!(serde_json::to_value(&settled.event).unwrap(), event);
         assert_eq!(settled.observations.len(), 1);
         let observation = settled.observations.into_iter().next().unwrap();
         futures::executor::block_on(observation.deliver()).unwrap();
@@ -335,7 +335,7 @@ mod tests {
         );
         assert_eq!(
             settled.outcome.decision,
-            agenthooksprotocol::client::Decision::None
+            agenthooksprotocol::client::Permission::None
         );
     }
     #[test]
@@ -586,13 +586,13 @@ mod tests {
     #[test]
     fn receiver_records_exact_rejections_and_recovers_atomically() {
         let receiver = ServerState {
-            data: Mutex::new(Shared::default()),
-            changed: Condvar::new(),
-            validation: Validation::new(&json!({})).unwrap(),
+            data: Arc::new(Mutex::new(Shared::default())),
+            changed: Arc::new(Condvar::new()),
+            validation: Arc::new(Validation::new(&json!({})).unwrap()),
             responses: BTreeMap::new(),
             sequences: BTreeMap::new(),
             stdio: false,
-            stdout_order: Mutex::new(()),
+            stdout_order: Arc::new(Mutex::new(())),
             upload: json!({}),
             auth: json!({"auth":{"mode":"none"}}),
             catalogue: true,

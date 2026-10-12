@@ -57,8 +57,11 @@ fn protocol_commit_precedes_fresh_typed_decode_and_observation() {
         .with_subscription(Subscription::observe("audit", Fake { effects: json!([]), calls: calls.clone() }));
     let result = block_on(async { client.tool_before(Input { count: 1 }).await.unwrap() });
     assert!(result.input.is_err());
-    assert_eq!(result.effective_input, json!({"count":"not a u64"}));
-    assert_eq!(result.outcome.decision, Decision::Allow);
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["tool"]["input"],
+        json!({"count":"not a u64"})
+    );
+    assert_eq!(result.outcome.decision, Permission::Allow);
     assert_eq!(result.outcome.messages.len(), 1);
     assert!(result.outcome.failures.is_empty());
     assert_eq!(calls.lock().unwrap().len(), 1); // observers never delay settlement
@@ -102,7 +105,7 @@ fn serial_candidates_and_approval_are_invalidated_only_on_change() {
     let result = block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .await
             .unwrap()
     });
@@ -115,7 +118,7 @@ fn serial_candidates_and_approval_are_invalidated_only_on_change() {
         calls.lock().unwrap()[3]["params"]["state"]["candidate"],
         Value::Null
     );
-    assert_eq!(result.outcome.decision, Decision::None);
+    assert_eq!(result.outcome.decision, Permission::None);
     assert!(result.outcome.approval_invalidated);
     assert!(!result.outcome.can_execute());
 }
@@ -129,7 +132,7 @@ fn atomic_invalid_compound_does_not_salvage_deny_or_mutation() {
     let result = block_on(async { client.tool_before(json!({"count":1})).await.unwrap() });
     assert_eq!(result.input.unwrap(), json!({"count":2}));
     assert_eq!(result.outcome.failures.len(), 1);
-    assert_eq!(result.outcome.decision, Decision::Allow);
+    assert_eq!(result.outcome.decision, Permission::Allow);
     assert_eq!(calls.lock().unwrap().len(), 3);
 }
 #[test]
@@ -154,7 +157,7 @@ fn deny_wins_and_only_uncalled_or_explicit_observers_get_notifications() {
         ))
         .with_subscription(unmatched);
     let result = block_on(async { client.tool_before(Input { count: 1 }).await.unwrap() });
-    assert_eq!(result.outcome.decision, Decision::Deny);
+    assert_eq!(result.outcome.decision, Permission::Deny);
     assert_eq!(calls.lock().unwrap().len(), 1);
     assert_eq!(
         result
@@ -177,11 +180,11 @@ fn ask_persists_and_mandatory_gates_block_supplied_results() {
     let result = block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::Ask)
+            .initial_state(Permission::Ask)
             .await
             .unwrap()
     });
-    assert_eq!(result.outcome.decision, Decision::Ask);
+    assert_eq!(result.outcome.decision, Permission::Ask);
     assert!(result.outcome.supplied_result().is_none());
     let result = block_on(async {
         client
@@ -190,7 +193,7 @@ fn ask_persists_and_mandatory_gates_block_supplied_results() {
             .await
             .unwrap()
     });
-    assert_eq!(result.outcome.decision, Decision::Deny);
+    assert_eq!(result.outcome.decision, Permission::Deny);
     assert!(result.outcome.supplied_result().is_none());
 }
 #[test]
@@ -211,7 +214,7 @@ fn fail_closed_is_distinct_and_capability_narrowing_is_enforced() {
             .await
             .unwrap()
     });
-    assert_eq!(result.outcome.decision, Decision::Deny);
+    assert_eq!(result.outcome.decision, Permission::Deny);
     assert_eq!(result.outcome.failures.len(), 1);
     assert_eq!(calls.lock().unwrap().len(), 1);
     assert_eq!(result.observations.len(), 1);
@@ -229,12 +232,12 @@ fn strict_invalid_effects_are_atomic_and_fail_open() {
         let result = block_on(async {
             client
                 .tool_before(Input { count: 1 })
-                .initial_state(Decision::Allow)
+                .initial_state(Permission::Allow)
                 .await
                 .unwrap()
         });
         assert_eq!(result.input.unwrap().count, 1);
-        assert_eq!(result.outcome.decision, Decision::Allow);
+        assert_eq!(result.outcome.decision, Permission::Allow);
         assert!(result.outcome.messages.is_empty());
         assert_eq!(result.outcome.failures.len(), 1);
     }
@@ -253,11 +256,14 @@ fn return_binds_after_modifications_and_stop_discards_candidate() {
     let result = block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .await
             .unwrap()
     });
-    assert_eq!(result.outcome.supplied_result(), Some(&json!(42)));
+    assert_eq!(
+        serde_json::to_value(result.outcome.supplied_result()).unwrap(),
+        json!(42)
+    );
     assert_eq!(result.input.unwrap().count, 2);
     assert!(!result.outcome.can_execute());
     let stopped = Client::new(context()).with_subscription(hook("stop", json!([
@@ -265,7 +271,7 @@ fn return_binds_after_modifications_and_stop_discards_candidate() {
     ]), FailurePolicy::Closed, &calls));
     let result = block_on(async { stopped.tool_before(Input { count: 1 }).await.unwrap() });
     assert!(result.outcome.stopped);
-    assert!(result.outcome.candidate.is_none());
+    assert!(result.outcome.settled_candidate.is_none());
     assert!(!result.outcome.can_execute());
 }
 #[test]
@@ -287,7 +293,7 @@ fn changed_approval_without_reauthorization_refuses_path() {
     let result = block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .reauthorization_available(false)
             .await
             .unwrap()
@@ -318,13 +324,13 @@ fn builder_is_lazy_and_initial_permission_is_per_occurrence() {
     let first = block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .await
             .unwrap()
     });
     assert!(first.outcome.can_execute());
     let second = block_on(async { client.tool_before(Input { count: 1 }).await.unwrap() });
-    assert_eq!(second.outcome.decision, Decision::None);
+    assert_eq!(second.outcome.decision, Permission::None);
     assert!(!second.outcome.can_execute());
 }
 
@@ -352,7 +358,7 @@ fn dropping_pending_boundary_retains_nonexecutable_accepted_evidence() {
         .with_subscription(hook("never", json!([{"type":"allow"}]), FailurePolicy::Open, &calls));
     let builder = client
         .tool_before(Input { count: 1 })
-        .initial_state(Decision::Allow);
+        .initial_state(Permission::Allow);
     let progress = builder.progress();
     assert_eq!(progress.snapshot().status, BoundaryStatus::NotStarted);
     assert!(progress.snapshot().partial.is_none());
@@ -364,8 +370,11 @@ fn dropping_pending_boundary_retains_nonexecutable_accepted_evidence() {
     let snapshot = progress.snapshot();
     assert_eq!(snapshot.status, BoundaryStatus::Interrupted);
     let partial = snapshot.partial.unwrap();
-    assert_eq!(partial.effective_input, json!({"count":2}));
-    assert_eq!(partial.outcome.decision, Decision::Allow);
+    assert_eq!(
+        serde_json::to_value(&partial.event).unwrap()["tool"]["input"],
+        json!({"count":2})
+    );
+    assert_eq!(partial.outcome.decision, Permission::Allow);
     assert_eq!(partial.outcome.messages.len(), 1);
     assert!(!partial.outcome.authorized);
     assert!(!partial.outcome.can_execute());
@@ -408,7 +417,10 @@ fn explicit_interruption_overrides_fail_open_and_preserves_prior_commit() {
     };
     assert_eq!(error.kind, BoundaryErrorKind::Interrupted);
     let partial = error.partial.unwrap();
-    assert_eq!(partial.effective_input, json!({"count":2}));
+    assert_eq!(
+        serde_json::to_value(&partial.event).unwrap()["tool"]["input"],
+        json!({"count":2})
+    );
     assert!(!partial.outcome.authorized);
     assert!(partial.outcome.failures.is_empty()); // not a fail-open operational failure
     assert_eq!(calls.lock().unwrap().len(), 1);
@@ -472,9 +484,9 @@ fn original_deadline_rejects_whole_late_response_once() {
         assert_eq!(
             result.outcome.decision,
             if policy == FailurePolicy::Open {
-                Decision::Allow
+                Permission::Allow
             } else {
-                Decision::Deny
+                Permission::Deny
             }
         );
         assert_eq!(
@@ -495,14 +507,18 @@ fn native_candidate_preserves_provenance_without_advertising_return() {
     let result = block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .initial_candidate(descriptor.clone())
             .capabilities(json!({"effects":["message"]}))
             .await
             .unwrap()
     });
     assert!(result.outcome.failures.is_empty());
-    assert_eq!(result.outcome.supplied_result(), Some(&Value::Null));
+    assert!(result.outcome.supplied_result().is_some());
+    assert_eq!(
+        serde_json::to_value(result.outcome.supplied_result()).unwrap(),
+        Value::Null
+    );
     assert_eq!(calls.lock().unwrap().len(), 2);
     for request in calls.lock().unwrap().iter() {
         assert_eq!(request["params"]["state"]["candidate"], descriptor);
@@ -527,7 +543,7 @@ fn native_candidate_is_invalidated_by_changed_effective_input() {
     let result = block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .initial_candidate(descriptor.clone())
             .await
             .unwrap()
@@ -540,7 +556,7 @@ fn native_candidate_is_invalidated_by_changed_effective_input() {
         calls.lock().unwrap()[1]["params"]["state"]["candidate"],
         Value::Null
     );
-    assert!(result.outcome.candidate.is_none());
+    assert!(result.outcome.settled_candidate.is_none());
     assert_eq!(result.input.unwrap().count, 2);
 }
 
@@ -565,7 +581,7 @@ fn accepted_equal_return_replaces_native_provenance() {
     let result = block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .initial_candidate(descriptor.clone())
             .await
             .unwrap()
@@ -578,7 +594,10 @@ fn accepted_equal_return_replaces_native_provenance() {
         calls.lock().unwrap()[2]["params"]["state"]["candidate"],
         json!({"value":7})
     );
-    assert_eq!(result.outcome.supplied_result(), Some(&json!(7)));
+    assert_eq!(
+        serde_json::to_value(result.outcome.supplied_result()).unwrap(),
+        json!(7)
+    );
 }
 
 #[test]
@@ -597,7 +616,7 @@ fn malformed_native_candidate_fails_preflight_even_on_initial_denial() {
         let error = match block_on(async {
             client
                 .tool_before(Input { count: 1 })
-                .initial_state(Decision::Deny)
+                .initial_state(Permission::Deny)
                 .initial_candidate(descriptor)
                 .await
         }) {
@@ -626,7 +645,7 @@ fn omitted_native_state_differs_from_explicit_none_until_first_acceptance() {
     block_on(async {
         client
             .tool_before(Input { count: 1 })
-            .initial_state(Decision::None)
+            .initial_state(Permission::None)
             .await
             .unwrap()
     });
@@ -652,8 +671,31 @@ fn low_level_tool_result_retains_settled_request_event_not_just_effective_input(
     ));
     let result = block_on(async { client.tool_before(Input { count: 1 }).await.unwrap() });
     event["tool"]["input"] = json!({"count":2});
-    assert_eq!(result.effective_event, event);
-    let settled: agenthooksprotocol::Event = result.settled_event().unwrap();
-    assert_eq!(serde_json::to_value(settled).unwrap(), event);
+    assert_eq!(serde_json::to_value(&result.event).unwrap(), event);
     assert_eq!(result.input.unwrap(), Input { count: 2 });
+}
+
+#[test]
+fn stop_supersedes_continuation_from_initial_snapshot() {
+    let calls = Arc::new(Mutex::new(vec![]));
+    let client = Client::new(context()).with_subscription(hook(
+        "stop",
+        json!([{"type":"flow","operation":"stop","reason":"settled"}]),
+        FailurePolicy::Closed,
+        &calls,
+    ));
+    let result = block_on(async {
+        client
+            .tool_before(Input { count: 1 })
+            .initial_snapshot(json!({"permission":"allow","candidate":null,"flow":"continue"}))
+            .unwrap()
+            .capabilities(json!({"effects":["flow"],"flow":{"operations":["stop"]}}))
+            .await
+            .unwrap()
+    });
+    assert!(result.outcome.failures.is_empty());
+    assert!(result.outcome.stopped);
+    assert!(!result.outcome.continuation_requested);
+    assert!(!result.outcome.can_execute());
+    assert_eq!(calls.lock().unwrap().len(), 1);
 }

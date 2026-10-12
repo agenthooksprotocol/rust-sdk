@@ -13,9 +13,9 @@
 //! application, not the hook SDK, owns execution and approval policy.
 
 use agenthooksprotocol::{
-    EventType, Registration, ToolBeforeInputOrigin,
-    capability::{self, ModifyOperation},
-    client::Decision,
+    Registration, ToolBeforeInputOrigin,
+    capability::{self, Modify},
+    client::Permission,
     hooks::{Hooks, HooksOptions},
     inputs::ToolBeforeInput,
     state,
@@ -53,17 +53,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let registration = serde_json::from_str::<Registration>(&configuration)?;
     // Authority is separate from configuration and limited to one named event.
     // No wildcard grants or implicit elicitation modes are enabled.
-    let mut options = HooksOptions::from_declarations(
+    let mut options = HooksOptions::new(
         "https://example.test/registered-hooks-demo",
-        [(
-            EventType::ToolBefore,
-            capability::intercept()
-                .allow()
-                .deny()
-                .r#return()
-                .modify_input([ModifyOperation::Replace, ModifyOperation::Merge])?,
-        )],
-    )?;
+        capability::HostCapabilities {
+            tool_before: Some(
+                capability::tool_before()
+                    .allow()
+                    .deny()
+                    .return_result()
+                    .modify_input(Modify::ReplaceAndMerge),
+            ),
+            ..Default::default()
+        },
+    );
     options.backend.allow_loopback_http = allow_loopback_http;
     if let Ok(token) = std::env::var("REGISTERED_HOOK_TOKEN") {
         options
@@ -89,7 +91,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .with_tool_kind("shell".into()),
         )
         // Native policy already decided for this exact occurrence; not execution.
-        .initial_snapshot(state::initial(Decision::Allow))?;
+        .initial_snapshot(state::initial(Permission::Allow))?;
     // Dispatch is lazy. Event identity/time are generated and source is bound
     // to the explicit host authority when this boundary is awaited.
     let result = pending.await;
@@ -110,7 +112,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else if result.outcome.can_execute() {
         // Re-deserialization occurs after the effective protocol input settles.
         // A typed decode failure must not fall back to the original input.
-        let effective = result.input?;
+        let effective = result.input;
         println!("Authorized effective input: {effective:?}");
         println!("The host would execute this input here; this example does not.");
     } else {

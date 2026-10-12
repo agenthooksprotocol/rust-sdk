@@ -1,8 +1,8 @@
 //! Agent Hooks Protocol models and structural codecs.
 
 mod canonical;
-// Canonical constructors expose each required schema field.
-#[allow(clippy::too_many_arguments)]
+// Canonical constructors expose required fields and compose generated defaults.
+#[allow(clippy::too_many_arguments, clippy::field_reassign_with_default)]
 pub mod generated;
 
 pub mod interop;

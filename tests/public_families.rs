@@ -76,9 +76,15 @@ fn session_start_collects_injection_and_message_without_rewriting_event() {
     let c = client(json!([inject, message]), &calls);
     let result = block_on(async { c.event(input.clone()).await.unwrap() });
     assert!(result.outcome.failures.is_empty());
-    assert_eq!(result.outcome.injections, vec![inject]);
-    assert_eq!(result.outcome.messages, vec![message]);
-    assert_eq!(result.event.unwrap(), input);
+    assert_eq!(
+        serde_json::to_value(&result.outcome.injections).unwrap(),
+        json!([inject])
+    );
+    assert_eq!(
+        serde_json::to_value(&result.outcome.messages).unwrap(),
+        json!([message])
+    );
+    assert_eq!(serde_json::to_value(&result.event).unwrap(), input);
     assert_eq!(calls.lock().unwrap().len(), 1);
 }
 
@@ -102,7 +108,7 @@ fn config_and_task_changes_can_be_denied_without_applying_changes() {
         assert!(result.outcome.failures.is_empty());
         assert!(result.outcome.is_denied());
         assert!(!result.outcome.can_execute());
-        assert_eq!(result.event.unwrap(), input);
+        assert_eq!(serde_json::to_value(&result.event).unwrap(), input);
     }
 }
 
@@ -127,7 +133,7 @@ fn model_switch_stop_prevents_later_interception() {
     assert!(result.outcome.failures.is_empty());
     assert!(result.outcome.stopped);
     assert!(!result.outcome.can_execute());
-    assert_eq!(result.event.unwrap(), input);
+    assert_eq!(serde_json::to_value(&result.event).unwrap(), input);
     assert_eq!(calls.lock().unwrap().len(), 1);
 }
 
@@ -156,8 +162,11 @@ fn model_request_appends_messages_preserves_params_and_settles_typed_event() {
     );
     let result = block_on(async { c.event(typed).await.unwrap() });
     assert!(result.outcome.failures.is_empty());
-    assert_eq!(result.outcome.candidate, Some(candidate));
-    let typed = result.event.unwrap();
+    assert_eq!(
+        serde_json::to_value(result.outcome.candidate()).unwrap(),
+        candidate
+    );
+    let typed = result.decoded_event.unwrap();
     assert_eq!(typed.params["temperature"], 1);
     assert_eq!(
         typed.envelope["items"][0]["parts"][0]["text"],
@@ -165,7 +174,10 @@ fn model_request_appends_messages_preserves_params_and_settles_typed_event() {
     );
     assert_eq!(typed.params["hostOption"], "preserved");
     assert_eq!(typed.envelope["hostMetadata"]["trace"], "retained");
-    assert_eq!(serde_json::to_value(typed).unwrap(), result.effective_event);
+    assert_eq!(
+        serde_json::to_value(typed).unwrap(),
+        serde_json::to_value(&result.event).unwrap()
+    );
 }
 
 #[test]
@@ -203,8 +215,7 @@ fn permission_input_and_workspace_change_modify_only_their_protocol_targets() {
         assert!(result.outcome.failures.is_empty(), "{target}");
         let mut expected_event = input;
         *expected_event.pointer_mut(pointer).unwrap() = expected;
-        assert_eq!(result.effective_event, expected_event);
-        assert_eq!(result.event.unwrap(), expected_event);
+        assert_eq!(serde_json::to_value(&result.event).unwrap(), expected_event);
     }
 }
 
@@ -228,9 +239,9 @@ fn unknown_effect_rolls_back_entire_model_request_response_before_next_hook() {
     .with_subscription(subscription("next", json!([]), &calls));
     let result = block_on(async { c.event(input.clone()).await.unwrap() });
     assert_eq!(result.outcome.failures.len(), 1);
-    assert!(result.outcome.candidate.is_none());
+    assert!(result.outcome.settled_candidate.is_none());
     assert!(result.outcome.messages.is_empty());
-    assert_eq!(result.effective_event, input);
+    assert_eq!(serde_json::to_value(&result.event).unwrap(), input);
     assert_eq!(calls.lock().unwrap().len(), 2);
     assert_eq!(calls.lock().unwrap()[1]["params"]["event"], input);
 }
@@ -297,7 +308,7 @@ fn remaining_content_families_replace_inline_lists_preserving_siblings() {
                 .unwrap()
         });
         assert!(result.outcome.failures.is_empty(), "{name}");
-        let effective = result.event.unwrap();
+        let effective = serde_json::to_value(&result.event).unwrap();
         assert_eq!(
             effective.pointer(&pointer.replace("/1", "/0")).unwrap(),
             &first,
@@ -336,7 +347,7 @@ fn tool_output_replacement_substitutes_and_merge_appends_canonical_messages() {
     let result = block_on(async { c.event(original.clone()).await.unwrap() });
     assert!(result.outcome.failures.is_empty());
     assert_eq!(
-        result.effective_event["items"],
+        serde_json::to_value(&result.event).unwrap()["items"],
         json!([
             message("replacement"),
             message("appended"),
@@ -344,5 +355,9 @@ fn tool_output_replacement_substitutes_and_merge_appends_canonical_messages() {
         ])
     );
     assert_eq!(original["items"], json!([message("original")]));
-    assert!(result.effective_event["tool"].get("output").is_none());
+    assert!(
+        serde_json::to_value(&result.event).unwrap()["tool"]
+            .get("output")
+            .is_none()
+    );
 }

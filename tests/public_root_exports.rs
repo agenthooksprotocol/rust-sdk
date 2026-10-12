@@ -1,4 +1,4 @@
-//! Compile-time coverage for the crate-root model API and legacy paths.
+//! Compile-time coverage for the crate-root model API and typed capability paths.
 use agenthooksprotocol::{
     Registration, StaticCapabilityManifest, encode_registration, generated, parse_registration,
 };
@@ -26,7 +26,7 @@ fn handwritten_modules_and_semantic_helpers_remain_accessible() {
     let _ = registration::validate;
     let _: agenthooksprotocol::Effect = effect::deny("denied".into());
     let _: agenthooksprotocol::Effect = effect::DenyEffect::new("denied").into();
-    let _: Option<agenthooksprotocol::capability::Event> = None;
+    let _: Option<agenthooksprotocol::capability::HostCapabilities> = None;
     let _: Option<agenthooksprotocol::state::Candidate> = None;
 }
 

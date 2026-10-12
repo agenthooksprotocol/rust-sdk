@@ -15,13 +15,13 @@ pub struct HttpHook<T> {
     pub authorization: String,
 }
 fn protocol_error(message: &str) -> HookError {
-    HookError(message.into()).classified(g::DeliveryDiagnosticCode::ProtocolRejection)
+    HookError::new(message).classified(g::DeliveryDiagnosticCode::ProtocolRejection)
 }
 impl<T: Http + Send + Sync> Hook for HttpHook<T> {
     fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
         Box::pin(async move {
             if self.authorization.trim().is_empty() {
-                return Err(HookError("missing HTTP credential".into()));
+                return Err(HookError::new("missing HTTP credential"));
             }
             let method = request["method"].as_str().unwrap_or("");
             let valid = match method {
@@ -58,10 +58,11 @@ impl<T: Http + Send + Sync> Hook for HttpHook<T> {
                         ("content-type".into(), "application/json".into()),
                         ("authorization".into(), self.authorization.clone()),
                     ]),
-                    body: serde_json::to_vec(&request).map_err(|e| HookError(e.to_string()))?,
+                    body: serde_json::to_vec(&request)
+                        .map_err(|e| HookError::new(e.to_string()))?,
                 })
                 .await
-                .map_err(|_| HookError("HTTP transport failed".into()))?;
+                .map_err(|_| HookError::new("HTTP transport failed"))?;
             if method == "hooks/observe" {
                 return if matches!(response.status, 202 | 204) && response.body.is_empty() {
                     Ok(Value::Null)
@@ -70,7 +71,7 @@ impl<T: Http + Send + Sync> Hook for HttpHook<T> {
                 };
             }
             if response.status != 200 {
-                return Err(HookError(format!(
+                return Err(HookError::new(format!(
                     "unexpected HTTP response status {}",
                     response.status
                 )));

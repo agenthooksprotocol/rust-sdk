@@ -1,16 +1,17 @@
 //! Run with: cargo run --no-default-features --example tool_contracts
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Hooks,
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
     contracts::Contract,
     generated::ToolBeforeInputOrigin,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::ToolBeforeInput,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -63,10 +64,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }]});
         let options = HooksOptions::new(
             "urn:example:contracts",
-            BTreeMap::from([(
-                "tool.before".into(),
-                EventGrant::intercept(Capabilities::none().modify_input().return_value()),
-            )]),
+            capability::HostCapabilities {
+                tool_before: Some(
+                    capability::tool_before()
+                        .modify_input(capability::Modify::ReplaceAndMerge)
+                        .return_result(),
+                ),
+                ..Default::default()
+            },
         )
         .with_backend("org.example.contracts", Arc::new(Policy));
         let hooks = Hooks::new(registration, options)?;
@@ -93,9 +98,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hooks.shutdown().await?;
         let outcome = operation?;
         println!("permission: {:?}", outcome.permission());
-        let arguments = outcome.input?;
+        let arguments = outcome.input;
         assert_eq!(arguments.count, 2);
-        if let Some(candidate) = outcome.candidate {
+        if let Some(candidate) = outcome.outcome.settled_candidate {
             assert_eq!(candidate.value.total, 20);
             println!("candidate: {:?}", candidate.value);
         }

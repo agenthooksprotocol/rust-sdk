@@ -358,224 +358,224 @@ macro_rules! ahp_event_boundary_methods {
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("config.change.after", event)
+            self.event_for($crate::EventType::ConfigChangeAfter, event)
         }
         /// Execute the `config.change.before` boundary with a complete event payload.
         pub fn config_change_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("config.change.before", event)
+            self.event_for($crate::EventType::ConfigChangeBefore, event)
         }
         /// Execute the `context.compact.after` boundary with a complete event payload.
         pub fn context_compact_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("context.compact.after", event)
+            self.event_for($crate::EventType::ContextCompactAfter, event)
         }
         /// Execute the `context.compact.before` boundary with a complete event payload.
         pub fn context_compact_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("context.compact.before", event)
+            self.event_for($crate::EventType::ContextCompactBefore, event)
         }
         /// Execute the `file.changed` boundary with a complete event payload.
         pub fn file_changed_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("file.changed", event)
+            self.event_for($crate::EventType::FileChanged, event)
         }
         /// Execute the `hook.failure` boundary with a complete event payload.
         pub fn hook_failure_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("hook.failure", event)
+            self.event_for($crate::EventType::HookFailure, event)
         }
         /// Execute the `model.error` boundary with a complete event payload.
         pub fn model_error_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.error", event)
+            self.event_for($crate::EventType::ModelError, event)
         }
         /// Execute the `model.request.before` boundary with a complete event payload.
         pub fn model_request_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.request.before", event)
+            self.event_for($crate::EventType::ModelRequestBefore, event)
         }
         /// Execute the `model.response.after` boundary with a complete event payload.
         pub fn model_response_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.response.after", event)
+            self.event_for($crate::EventType::ModelResponseAfter, event)
         }
         /// Execute the `model.switch.after` boundary with a complete event payload.
         pub fn model_switch_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.switch.after", event)
+            self.event_for($crate::EventType::ModelSwitchAfter, event)
         }
         /// Execute the `model.switch.before` boundary with a complete event payload.
         pub fn model_switch_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("model.switch.before", event)
+            self.event_for($crate::EventType::ModelSwitchBefore, event)
         }
         /// Execute the `session.end` boundary with a complete event payload.
         pub fn session_end_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("session.end", event)
+            self.event_for($crate::EventType::SessionEnd, event)
         }
         /// Execute the `session.start` boundary with a complete event payload.
         pub fn session_start_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("session.start", event)
+            self.event_for($crate::EventType::SessionStart, event)
         }
         /// Execute the `task.change.after` boundary with a complete event payload.
         pub fn task_change_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("task.change.after", event)
+            self.event_for($crate::EventType::TaskChangeAfter, event)
         }
         /// Execute the `task.change.before` boundary with a complete event payload.
         pub fn task_change_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("task.change.before", event)
+            self.event_for($crate::EventType::TaskChangeBefore, event)
         }
         /// Execute the `tool.after` boundary with a complete event payload.
         pub fn tool_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.after", event)
+            self.event_for($crate::EventType::ToolAfter, event)
         }
         /// Execute the `tool.batch.after` boundary with a complete event payload.
         pub fn tool_batch_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.batch.after", event)
+            self.event_for($crate::EventType::ToolBatchAfter, event)
         }
         /// Execute the `tool.before` boundary with a complete event payload.
         pub fn tool_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.before", event)
+            self.event_for($crate::EventType::ToolBefore, event)
         }
         /// Execute the `tool.permission.request` boundary with a complete event payload.
         pub fn tool_permission_request_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.permission.request", event)
+            self.event_for($crate::EventType::ToolPermissionRequest, event)
         }
         /// Execute the `tool.permission.resolved` boundary with a complete event payload.
         pub fn tool_permission_resolved_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.permission.resolved", event)
+            self.event_for($crate::EventType::ToolPermissionResolved, event)
         }
         /// Execute the `tool.progress` boundary with a complete event payload.
         pub fn tool_progress_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("tool.progress", event)
+            self.event_for($crate::EventType::ToolProgress, event)
         }
         /// Execute the `turn.end` boundary with a complete event payload.
         pub fn turn_end_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("turn.end", event)
+            self.event_for($crate::EventType::TurnEnd, event)
         }
         /// Execute the `turn.finish.before` boundary with a complete event payload.
         pub fn turn_finish_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("turn.finish.before", event)
+            self.event_for($crate::EventType::TurnFinishBefore, event)
         }
         /// Execute the `turn.progress` boundary with a complete event payload.
         pub fn turn_progress_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("turn.progress", event)
+            self.event_for($crate::EventType::TurnProgress, event)
         }
         /// Execute the `turn.start` boundary with a complete event payload.
         pub fn turn_start_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("turn.start", event)
+            self.event_for($crate::EventType::TurnStart, event)
         }
         /// Execute the `user.attention` boundary with a complete event payload.
         pub fn user_attention_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.attention", event)
+            self.event_for($crate::EventType::UserAttention, event)
         }
         /// Execute the `user.elicitation.request` boundary with a complete event payload.
         pub fn user_elicitation_request_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.elicitation.request", event)
+            self.event_for($crate::EventType::UserElicitationRequest, event)
         }
         /// Execute the `user.elicitation.result` boundary with a complete event payload.
         pub fn user_elicitation_result_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.elicitation.result", event)
+            self.event_for($crate::EventType::UserElicitationResult, event)
         }
         /// Execute the `user.message.inbound` boundary with a complete event payload.
         pub fn user_message_inbound_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.message.inbound", event)
+            self.event_for($crate::EventType::UserMessageInbound, event)
         }
         /// Execute the `user.message.outbound` boundary with a complete event payload.
         pub fn user_message_outbound_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("user.message.outbound", event)
+            self.event_for($crate::EventType::UserMessageOutbound, event)
         }
         /// Execute the `workspace.change.after` boundary with a complete event payload.
         pub fn workspace_change_after_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("workspace.change.after", event)
+            self.event_for($crate::EventType::WorkspaceChangeAfter, event)
         }
         /// Execute the `workspace.change.before` boundary with a complete event payload.
         pub fn workspace_change_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::runtime::EventBoundary<'_, T> {
-            self.event_for("workspace.change.before", event)
+            self.event_for($crate::EventType::WorkspaceChangeBefore, event)
         }
     };
 }
@@ -589,39 +589,39 @@ pub(crate) use ahp_event_boundary_methods;
 macro_rules! ahp_hooks_boundary_methods {
     (inventory) => {
         &[
-            "config.change.after",
-            "config.change.before",
-            "context.compact.after",
-            "context.compact.before",
-            "file.changed",
-            "hook.failure",
-            "model.error",
-            "model.request.before",
-            "model.response.after",
-            "model.switch.after",
-            "model.switch.before",
-            "session.end",
-            "session.start",
-            "task.change.after",
-            "task.change.before",
-            "tool.after",
-            "tool.batch.after",
-            "tool.before",
-            "tool.permission.request",
-            "tool.permission.resolved",
-            "tool.progress",
-            "turn.end",
-            "turn.finish.before",
-            "turn.progress",
-            "turn.start",
-            "user.attention",
-            "user.elicitation.request",
-            "user.elicitation.result",
-            "user.message.inbound",
-            "user.message.outbound",
-            "workspace.change.after",
-            "workspace.change.before",
-        ] as &'static [&'static str]
+            $crate::EventType::ConfigChangeAfter,
+            $crate::EventType::ConfigChangeBefore,
+            $crate::EventType::ContextCompactAfter,
+            $crate::EventType::ContextCompactBefore,
+            $crate::EventType::FileChanged,
+            $crate::EventType::HookFailure,
+            $crate::EventType::ModelError,
+            $crate::EventType::ModelRequestBefore,
+            $crate::EventType::ModelResponseAfter,
+            $crate::EventType::ModelSwitchAfter,
+            $crate::EventType::ModelSwitchBefore,
+            $crate::EventType::SessionEnd,
+            $crate::EventType::SessionStart,
+            $crate::EventType::TaskChangeAfter,
+            $crate::EventType::TaskChangeBefore,
+            $crate::EventType::ToolAfter,
+            $crate::EventType::ToolBatchAfter,
+            $crate::EventType::ToolBefore,
+            $crate::EventType::ToolPermissionRequest,
+            $crate::EventType::ToolPermissionResolved,
+            $crate::EventType::ToolProgress,
+            $crate::EventType::TurnEnd,
+            $crate::EventType::TurnFinishBefore,
+            $crate::EventType::TurnProgress,
+            $crate::EventType::TurnStart,
+            $crate::EventType::UserAttention,
+            $crate::EventType::UserElicitationRequest,
+            $crate::EventType::UserElicitationResult,
+            $crate::EventType::UserMessageInbound,
+            $crate::EventType::UserMessageOutbound,
+            $crate::EventType::WorkspaceChangeAfter,
+            $crate::EventType::WorkspaceChangeBefore,
+        ] as &'static [$crate::EventType]
     };
     () => {
         /// Execute the `config.change.after` boundary with a complete event payload.
@@ -629,224 +629,224 @@ macro_rules! ahp_hooks_boundary_methods {
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("config.change.after", event)
+            self.event_for($crate::EventType::ConfigChangeAfter, event)
         }
         /// Execute the `config.change.before` boundary with a complete event payload.
         pub fn config_change_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("config.change.before", event)
+            self.event_for($crate::EventType::ConfigChangeBefore, event)
         }
         /// Execute the `context.compact.after` boundary with a complete event payload.
         pub fn context_compact_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("context.compact.after", event)
+            self.event_for($crate::EventType::ContextCompactAfter, event)
         }
         /// Execute the `context.compact.before` boundary with a complete event payload.
         pub fn context_compact_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("context.compact.before", event)
+            self.event_for($crate::EventType::ContextCompactBefore, event)
         }
         /// Execute the `file.changed` boundary with a complete event payload.
         pub fn file_changed<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("file.changed", event)
+            self.event_for($crate::EventType::FileChanged, event)
         }
         /// Execute the `hook.failure` boundary with a complete event payload.
         pub fn hook_failure<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("hook.failure", event)
+            self.event_for($crate::EventType::HookFailure, event)
         }
         /// Execute the `model.error` boundary with a complete event payload.
         pub fn model_error<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.error", event)
+            self.event_for($crate::EventType::ModelError, event)
         }
         /// Execute the `model.request.before` boundary with a complete event payload.
         pub fn model_request_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.request.before", event)
+            self.event_for($crate::EventType::ModelRequestBefore, event)
         }
         /// Execute the `model.response.after` boundary with a complete event payload.
         pub fn model_response_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.response.after", event)
+            self.event_for($crate::EventType::ModelResponseAfter, event)
         }
         /// Execute the `model.switch.after` boundary with a complete event payload.
         pub fn model_switch_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.switch.after", event)
+            self.event_for($crate::EventType::ModelSwitchAfter, event)
         }
         /// Execute the `model.switch.before` boundary with a complete event payload.
         pub fn model_switch_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("model.switch.before", event)
+            self.event_for($crate::EventType::ModelSwitchBefore, event)
         }
         /// Execute the `session.end` boundary with a complete event payload.
         pub fn session_end<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("session.end", event)
+            self.event_for($crate::EventType::SessionEnd, event)
         }
         /// Execute the `session.start` boundary with a complete event payload.
         pub fn session_start<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("session.start", event)
+            self.event_for($crate::EventType::SessionStart, event)
         }
         /// Execute the `task.change.after` boundary with a complete event payload.
         pub fn task_change_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("task.change.after", event)
+            self.event_for($crate::EventType::TaskChangeAfter, event)
         }
         /// Execute the `task.change.before` boundary with a complete event payload.
         pub fn task_change_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("task.change.before", event)
+            self.event_for($crate::EventType::TaskChangeBefore, event)
         }
         /// Execute the `tool.after` boundary with a complete event payload.
         pub fn tool_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.after", event)
+            self.event_for($crate::EventType::ToolAfter, event)
         }
         /// Execute the `tool.batch.after` boundary with a complete event payload.
         pub fn tool_batch_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.batch.after", event)
+            self.event_for($crate::EventType::ToolBatchAfter, event)
         }
         /// Execute the `tool.before` boundary with a complete event payload.
         pub fn tool_before_event<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.before", event)
+            self.event_for($crate::EventType::ToolBefore, event)
         }
         /// Execute the `tool.permission.request` boundary with a complete event payload.
         pub fn tool_permission_request<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.permission.request", event)
+            self.event_for($crate::EventType::ToolPermissionRequest, event)
         }
         /// Execute the `tool.permission.resolved` boundary with a complete event payload.
         pub fn tool_permission_resolved<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.permission.resolved", event)
+            self.event_for($crate::EventType::ToolPermissionResolved, event)
         }
         /// Execute the `tool.progress` boundary with a complete event payload.
         pub fn tool_progress<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("tool.progress", event)
+            self.event_for($crate::EventType::ToolProgress, event)
         }
         /// Execute the `turn.end` boundary with a complete event payload.
         pub fn turn_end<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("turn.end", event)
+            self.event_for($crate::EventType::TurnEnd, event)
         }
         /// Execute the `turn.finish.before` boundary with a complete event payload.
         pub fn turn_finish_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("turn.finish.before", event)
+            self.event_for($crate::EventType::TurnFinishBefore, event)
         }
         /// Execute the `turn.progress` boundary with a complete event payload.
         pub fn turn_progress<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("turn.progress", event)
+            self.event_for($crate::EventType::TurnProgress, event)
         }
         /// Execute the `turn.start` boundary with a complete event payload.
         pub fn turn_start<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("turn.start", event)
+            self.event_for($crate::EventType::TurnStart, event)
         }
         /// Execute the `user.attention` boundary with a complete event payload.
         pub fn user_attention<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.attention", event)
+            self.event_for($crate::EventType::UserAttention, event)
         }
         /// Execute the `user.elicitation.request` boundary with a complete event payload.
         pub fn user_elicitation_request<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.elicitation.request", event)
+            self.event_for($crate::EventType::UserElicitationRequest, event)
         }
         /// Execute the `user.elicitation.result` boundary with a complete event payload.
         pub fn user_elicitation_result<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.elicitation.result", event)
+            self.event_for($crate::EventType::UserElicitationResult, event)
         }
         /// Execute the `user.message.inbound` boundary with a complete event payload.
         pub fn user_message_inbound<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.message.inbound", event)
+            self.event_for($crate::EventType::UserMessageInbound, event)
         }
         /// Execute the `user.message.outbound` boundary with a complete event payload.
         pub fn user_message_outbound<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("user.message.outbound", event)
+            self.event_for($crate::EventType::UserMessageOutbound, event)
         }
         /// Execute the `workspace.change.after` boundary with a complete event payload.
         pub fn workspace_change_after<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("workspace.change.after", event)
+            self.event_for($crate::EventType::WorkspaceChangeAfter, event)
         }
         /// Execute the `workspace.change.before` boundary with a complete event payload.
         pub fn workspace_change_before<T: serde::Serialize + serde::de::DeserializeOwned>(
             &self,
             event: T,
         ) -> $crate::hooks::EventBoundary<'_, T> {
-            self.event_for("workspace.change.before", event)
+            self.event_for($crate::EventType::WorkspaceChangeBefore, event)
         }
     };
 }
@@ -35069,38 +35069,38 @@ pub mod inputs {
 macro_rules! ahp_ergonomic_hook_methods {
  () => { $crate::generated::ahp_ergonomic_hook_methods!(generated); };
  ($models:ident) => {
-pub fn config_change_after(&self, input: $crate::$models::inputs::ConfigChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ConfigChangeAfterInput> { self.input_for("config.change.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ConfigChangeAfterInput>) }
-pub fn config_change_before(&self, input: $crate::$models::inputs::ConfigChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ConfigChangeBeforeInput> { self.input_for("config.change.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ConfigChangeBeforeInput>) }
-pub fn context_compact_after(&self, input: $crate::$models::inputs::ContextCompactAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ContextCompactAfterInput> { self.input_for("context.compact.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ContextCompactAfterInput>) }
-pub fn context_compact_before(&self, input: $crate::$models::inputs::ContextCompactBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ContextCompactBeforeInput> { self.input_for("context.compact.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ContextCompactBeforeInput>) }
-pub fn file_changed(&self, input: $crate::$models::inputs::FileChangedInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::FileChangedInput> { self.input_for("file.changed", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::FileChangedInput>) }
-pub fn hook_failure(&self, input: $crate::$models::inputs::HookFailureInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::HookFailureInput> { self.input_for("hook.failure", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::HookFailureInput>) }
-pub fn model_error(&self, input: $crate::$models::inputs::ModelErrorInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelErrorInput> { self.input_for("model.error", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelErrorInput>) }
-pub fn model_request_before(&self, input: $crate::$models::inputs::ModelRequestBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelRequestBeforeInput> { self.input_for("model.request.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelRequestBeforeInput>) }
-pub fn model_response_after(&self, input: $crate::$models::inputs::ModelResponseAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelResponseAfterInput> { self.input_for("model.response.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelResponseAfterInput>) }
-pub fn model_switch_after(&self, input: $crate::$models::inputs::ModelSwitchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelSwitchAfterInput> { self.input_for("model.switch.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelSwitchAfterInput>) }
-pub fn model_switch_before(&self, input: $crate::$models::inputs::ModelSwitchBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelSwitchBeforeInput> { self.input_for("model.switch.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelSwitchBeforeInput>) }
-pub fn session_end(&self, input: $crate::$models::inputs::SessionEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::SessionEndInput> { self.input_for("session.end", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::SessionEndInput>) }
-pub fn session_start(&self, input: $crate::$models::inputs::SessionStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::SessionStartInput> { self.input_for("session.start", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::SessionStartInput>) }
-pub fn task_change_after(&self, input: $crate::$models::inputs::TaskChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TaskChangeAfterInput> { self.input_for("task.change.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TaskChangeAfterInput>) }
-pub fn task_change_before(&self, input: $crate::$models::inputs::TaskChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TaskChangeBeforeInput> { self.input_for("task.change.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TaskChangeBeforeInput>) }
-pub fn tool_after<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolAfterInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolAfterInput<T>> { self.input_for("tool.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolAfterInput<T>>) }
-pub fn tool_batch_after(&self, input: $crate::$models::inputs::ToolBatchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolBatchAfterInput> { self.input_for("tool.batch.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolBatchAfterInput>) }
-pub fn tool_before_event<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolBeforeInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolBeforeInput<T>> { self.input_for("tool.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolBeforeInput<T>>) }
-pub fn tool_permission_request<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolPermissionRequestInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolPermissionRequestInput<T>> { self.input_for("tool.permission.request", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolPermissionRequestInput<T>>) }
-pub fn tool_permission_resolved<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolPermissionResolvedInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolPermissionResolvedInput<T>> { self.input_for("tool.permission.resolved", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolPermissionResolvedInput<T>>) }
-pub fn tool_progress<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolProgressInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolProgressInput<T>> { self.input_for("tool.progress", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolProgressInput<T>>) }
-pub fn turn_end(&self, input: $crate::$models::inputs::TurnEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnEndInput> { self.input_for("turn.end", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnEndInput>) }
-pub fn turn_finish_before(&self, input: $crate::$models::inputs::TurnFinishBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnFinishBeforeInput> { self.input_for("turn.finish.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnFinishBeforeInput>) }
-pub fn turn_progress(&self, input: $crate::$models::inputs::TurnProgressInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnProgressInput> { self.input_for("turn.progress", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnProgressInput>) }
-pub fn turn_start(&self, input: $crate::$models::inputs::TurnStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnStartInput> { self.input_for("turn.start", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnStartInput>) }
-pub fn user_attention(&self, input: $crate::$models::inputs::UserAttentionInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserAttentionInput> { self.input_for("user.attention", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserAttentionInput>) }
-pub fn user_elicitation_request(&self, input: $crate::$models::inputs::UserElicitationRequestInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserElicitationRequestInput> { self.input_for("user.elicitation.request", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserElicitationRequestInput>) }
-pub fn user_elicitation_result(&self, input: $crate::$models::inputs::UserElicitationResultInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserElicitationResultInput> { self.input_for("user.elicitation.result", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserElicitationResultInput>) }
-pub fn user_message_inbound(&self, input: $crate::$models::inputs::UserMessageInboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserMessageInboundInput> { self.input_for("user.message.inbound", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserMessageInboundInput>) }
-pub fn user_message_outbound(&self, input: $crate::$models::inputs::UserMessageOutboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserMessageOutboundInput> { self.input_for("user.message.outbound", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserMessageOutboundInput>) }
-pub fn workspace_change_after(&self, input: $crate::$models::inputs::WorkspaceChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::WorkspaceChangeAfterInput> { self.input_for("workspace.change.after", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::WorkspaceChangeAfterInput>) }
-pub fn workspace_change_before(&self, input: $crate::$models::inputs::WorkspaceChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::WorkspaceChangeBeforeInput> { self.input_for("workspace.change.before", input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::WorkspaceChangeBeforeInput>) }
+pub fn config_change_after(&self, input: $crate::$models::inputs::ConfigChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ConfigChangeAfterInput> { self.input_for($crate::EventType::ConfigChangeAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ConfigChangeAfterInput>) }
+pub fn config_change_before(&self, input: $crate::$models::inputs::ConfigChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ConfigChangeBeforeInput> { self.input_for($crate::EventType::ConfigChangeBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ConfigChangeBeforeInput>) }
+pub fn context_compact_after(&self, input: $crate::$models::inputs::ContextCompactAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ContextCompactAfterInput> { self.input_for($crate::EventType::ContextCompactAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ContextCompactAfterInput>) }
+pub fn context_compact_before(&self, input: $crate::$models::inputs::ContextCompactBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ContextCompactBeforeInput> { self.input_for($crate::EventType::ContextCompactBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ContextCompactBeforeInput>) }
+pub fn file_changed(&self, input: $crate::$models::inputs::FileChangedInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::FileChangedInput> { self.input_for($crate::EventType::FileChanged, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::FileChangedInput>) }
+pub fn hook_failure(&self, input: $crate::$models::inputs::HookFailureInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::HookFailureInput> { self.input_for($crate::EventType::HookFailure, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::HookFailureInput>) }
+pub fn model_error(&self, input: $crate::$models::inputs::ModelErrorInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelErrorInput> { self.input_for($crate::EventType::ModelError, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelErrorInput>) }
+pub fn model_request_before(&self, input: $crate::$models::inputs::ModelRequestBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelRequestBeforeInput> { self.input_for($crate::EventType::ModelRequestBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelRequestBeforeInput>) }
+pub fn model_response_after(&self, input: $crate::$models::inputs::ModelResponseAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelResponseAfterInput> { self.input_for($crate::EventType::ModelResponseAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelResponseAfterInput>) }
+pub fn model_switch_after(&self, input: $crate::$models::inputs::ModelSwitchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelSwitchAfterInput> { self.input_for($crate::EventType::ModelSwitchAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelSwitchAfterInput>) }
+pub fn model_switch_before(&self, input: $crate::$models::inputs::ModelSwitchBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ModelSwitchBeforeInput> { self.input_for($crate::EventType::ModelSwitchBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ModelSwitchBeforeInput>) }
+pub fn session_end(&self, input: $crate::$models::inputs::SessionEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::SessionEndInput> { self.input_for($crate::EventType::SessionEnd, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::SessionEndInput>) }
+pub fn session_start(&self, input: $crate::$models::inputs::SessionStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::SessionStartInput> { self.input_for($crate::EventType::SessionStart, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::SessionStartInput>) }
+pub fn task_change_after(&self, input: $crate::$models::inputs::TaskChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TaskChangeAfterInput> { self.input_for($crate::EventType::TaskChangeAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TaskChangeAfterInput>) }
+pub fn task_change_before(&self, input: $crate::$models::inputs::TaskChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TaskChangeBeforeInput> { self.input_for($crate::EventType::TaskChangeBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TaskChangeBeforeInput>) }
+pub fn tool_after<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolAfterInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolAfterInput<T>> { self.input_for($crate::EventType::ToolAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolAfterInput<T>>) }
+pub fn tool_batch_after(&self, input: $crate::$models::inputs::ToolBatchAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolBatchAfterInput> { self.input_for($crate::EventType::ToolBatchAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolBatchAfterInput>) }
+pub fn tool_before_event<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolBeforeInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolBeforeInput<T>> { self.input_for($crate::EventType::ToolBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolBeforeInput<T>>) }
+pub fn tool_permission_request<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolPermissionRequestInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolPermissionRequestInput<T>> { self.input_for($crate::EventType::ToolPermissionRequest, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolPermissionRequestInput<T>>) }
+pub fn tool_permission_resolved<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolPermissionResolvedInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolPermissionResolvedInput<T>> { self.input_for($crate::EventType::ToolPermissionResolved, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolPermissionResolvedInput<T>>) }
+pub fn tool_progress<T: serde::Serialize>(&self, input: $crate::$models::inputs::ToolProgressInput<T>) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::ToolProgressInput<T>> { self.input_for($crate::EventType::ToolProgress, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::ToolProgressInput<T>>) }
+pub fn turn_end(&self, input: $crate::$models::inputs::TurnEndInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnEndInput> { self.input_for($crate::EventType::TurnEnd, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnEndInput>) }
+pub fn turn_finish_before(&self, input: $crate::$models::inputs::TurnFinishBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnFinishBeforeInput> { self.input_for($crate::EventType::TurnFinishBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnFinishBeforeInput>) }
+pub fn turn_progress(&self, input: $crate::$models::inputs::TurnProgressInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnProgressInput> { self.input_for($crate::EventType::TurnProgress, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnProgressInput>) }
+pub fn turn_start(&self, input: $crate::$models::inputs::TurnStartInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::TurnStartInput> { self.input_for($crate::EventType::TurnStart, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::TurnStartInput>) }
+pub fn user_attention(&self, input: $crate::$models::inputs::UserAttentionInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserAttentionInput> { self.input_for($crate::EventType::UserAttention, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserAttentionInput>) }
+pub fn user_elicitation_request(&self, input: $crate::$models::inputs::UserElicitationRequestInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserElicitationRequestInput> { self.input_for($crate::EventType::UserElicitationRequest, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserElicitationRequestInput>) }
+pub fn user_elicitation_result(&self, input: $crate::$models::inputs::UserElicitationResultInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserElicitationResultInput> { self.input_for($crate::EventType::UserElicitationResult, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserElicitationResultInput>) }
+pub fn user_message_inbound(&self, input: $crate::$models::inputs::UserMessageInboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserMessageInboundInput> { self.input_for($crate::EventType::UserMessageInbound, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserMessageInboundInput>) }
+pub fn user_message_outbound(&self, input: $crate::$models::inputs::UserMessageOutboundInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::UserMessageOutboundInput> { self.input_for($crate::EventType::UserMessageOutbound, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::UserMessageOutboundInput>) }
+pub fn workspace_change_after(&self, input: $crate::$models::inputs::WorkspaceChangeAfterInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::WorkspaceChangeAfterInput> { self.input_for($crate::EventType::WorkspaceChangeAfter, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::WorkspaceChangeAfterInput>) }
+pub fn workspace_change_before(&self, input: $crate::$models::inputs::WorkspaceChangeBeforeInput) -> $crate::hooks::InputBoundary<'_, $crate::$models::inputs::WorkspaceChangeBeforeInput> { self.input_for($crate::EventType::WorkspaceChangeBefore, input, $crate::$models::inputs::__support::project_event::<$crate::$models::inputs::WorkspaceChangeBeforeInput>) }
 
  };
 }
@@ -35580,9 +35580,9 @@ pub enum ContextualResponse {
     UserMessageOutbound(Box<UserMessageOutboundInterceptResponse>),
     WorkspaceChangeBefore(Box<WorkspaceChangeBeforeInterceptResponse>),
 }
-pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<ContextualResponse> {
+pub fn response_for_request(event_type: EventType, input: &str) -> ParseResult<ContextualResponse> {
     match event_type {
-        "config.change.before" => match parse_root::<ConfigChangeBeforeInterceptResponse>(
+        EventType::ConfigChangeBefore => match parse_root::<ConfigChangeBeforeInterceptResponse>(
             "ConfigChangeBeforeInterceptResponse",
             input,
         ) {
@@ -35597,7 +35597,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "context.compact.after" => match parse_root::<ContextCompactAfterInterceptResponse>(
+        EventType::ContextCompactAfter => match parse_root::<ContextCompactAfterInterceptResponse>(
             "ContextCompactAfterInterceptResponse",
             input,
         ) {
@@ -35612,22 +35612,26 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "context.compact.before" => match parse_root::<ContextCompactBeforeInterceptResponse>(
-            "ContextCompactBeforeInterceptResponse",
-            input,
-        ) {
-            ParseResult::Success {
-                value,
-                raw,
-                diagnostics,
-            } => ParseResult::Success {
-                value: ContextualResponse::ContextCompactBefore(Box::new(value)),
-                raw,
-                diagnostics,
-            },
-            ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
-        },
-        "model.request.before" => match parse_root::<ModelRequestBeforeInterceptResponse>(
+        EventType::ContextCompactBefore => {
+            match parse_root::<ContextCompactBeforeInterceptResponse>(
+                "ContextCompactBeforeInterceptResponse",
+                input,
+            ) {
+                ParseResult::Success {
+                    value,
+                    raw,
+                    diagnostics,
+                } => ParseResult::Success {
+                    value: ContextualResponse::ContextCompactBefore(Box::new(value)),
+                    raw,
+                    diagnostics,
+                },
+                ParseResult::Failure { raw, diagnostics } => {
+                    ParseResult::Failure { raw, diagnostics }
+                }
+            }
+        }
+        EventType::ModelRequestBefore => match parse_root::<ModelRequestBeforeInterceptResponse>(
             "ModelRequestBeforeInterceptResponse",
             input,
         ) {
@@ -35642,7 +35646,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "model.response.after" => match parse_root::<ModelResponseAfterInterceptResponse>(
+        EventType::ModelResponseAfter => match parse_root::<ModelResponseAfterInterceptResponse>(
             "ModelResponseAfterInterceptResponse",
             input,
         ) {
@@ -35657,7 +35661,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "model.switch.before" => match parse_root::<ModelSwitchBeforeInterceptResponse>(
+        EventType::ModelSwitchBefore => match parse_root::<ModelSwitchBeforeInterceptResponse>(
             "ModelSwitchBeforeInterceptResponse",
             input,
         ) {
@@ -35672,7 +35676,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "session.start" => match parse_root::<SessionStartInterceptResponse>(
+        EventType::SessionStart => match parse_root::<SessionStartInterceptResponse>(
             "SessionStartInterceptResponse",
             input,
         ) {
@@ -35687,7 +35691,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "task.change.before" => match parse_root::<TaskChangeBeforeInterceptResponse>(
+        EventType::TaskChangeBefore => match parse_root::<TaskChangeBeforeInterceptResponse>(
             "TaskChangeBeforeInterceptResponse",
             input,
         ) {
@@ -35702,7 +35706,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "tool.after" => {
+        EventType::ToolAfter => {
             match parse_root::<ToolAfterInterceptResponse>("ToolAfterInterceptResponse", input) {
                 ParseResult::Success {
                     value,
@@ -35718,7 +35722,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
                 }
             }
         }
-        "tool.batch.after" => match parse_root::<ToolBatchAfterInterceptResponse>(
+        EventType::ToolBatchAfter => match parse_root::<ToolBatchAfterInterceptResponse>(
             "ToolBatchAfterInterceptResponse",
             input,
         ) {
@@ -35733,7 +35737,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "tool.before" => {
+        EventType::ToolBefore => {
             match parse_root::<ToolBeforeInterceptResponse>("ToolBeforeInterceptResponse", input) {
                 ParseResult::Success {
                     value,
@@ -35749,22 +35753,26 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
                 }
             }
         }
-        "tool.permission.request" => match parse_root::<ToolPermissionRequestInterceptResponse>(
-            "ToolPermissionRequestInterceptResponse",
-            input,
-        ) {
-            ParseResult::Success {
-                value,
-                raw,
-                diagnostics,
-            } => ParseResult::Success {
-                value: ContextualResponse::ToolPermissionRequest(Box::new(value)),
-                raw,
-                diagnostics,
-            },
-            ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
-        },
-        "turn.finish.before" => match parse_root::<TurnFinishBeforeInterceptResponse>(
+        EventType::ToolPermissionRequest => {
+            match parse_root::<ToolPermissionRequestInterceptResponse>(
+                "ToolPermissionRequestInterceptResponse",
+                input,
+            ) {
+                ParseResult::Success {
+                    value,
+                    raw,
+                    diagnostics,
+                } => ParseResult::Success {
+                    value: ContextualResponse::ToolPermissionRequest(Box::new(value)),
+                    raw,
+                    diagnostics,
+                },
+                ParseResult::Failure { raw, diagnostics } => {
+                    ParseResult::Failure { raw, diagnostics }
+                }
+            }
+        }
+        EventType::TurnFinishBefore => match parse_root::<TurnFinishBeforeInterceptResponse>(
             "TurnFinishBeforeInterceptResponse",
             input,
         ) {
@@ -35779,7 +35787,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "turn.start" => {
+        EventType::TurnStart => {
             match parse_root::<TurnStartInterceptResponse>("TurnStartInterceptResponse", input) {
                 ParseResult::Success {
                     value,
@@ -35795,7 +35803,9 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
                 }
             }
         }
-        "user.elicitation.request" => match parse_root::<UserElicitationRequestInterceptResponse>(
+        EventType::UserElicitationRequest => match parse_root::<
+            UserElicitationRequestInterceptResponse,
+        >(
             "UserElicitationRequestInterceptResponse",
             input,
         ) {
@@ -35810,22 +35820,26 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "user.elicitation.result" => match parse_root::<UserElicitationResultInterceptResponse>(
-            "UserElicitationResultInterceptResponse",
-            input,
-        ) {
-            ParseResult::Success {
-                value,
-                raw,
-                diagnostics,
-            } => ParseResult::Success {
-                value: ContextualResponse::UserElicitationResult(Box::new(value)),
-                raw,
-                diagnostics,
-            },
-            ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
-        },
-        "user.message.inbound" => match parse_root::<UserMessageInboundInterceptResponse>(
+        EventType::UserElicitationResult => {
+            match parse_root::<UserElicitationResultInterceptResponse>(
+                "UserElicitationResultInterceptResponse",
+                input,
+            ) {
+                ParseResult::Success {
+                    value,
+                    raw,
+                    diagnostics,
+                } => ParseResult::Success {
+                    value: ContextualResponse::UserElicitationResult(Box::new(value)),
+                    raw,
+                    diagnostics,
+                },
+                ParseResult::Failure { raw, diagnostics } => {
+                    ParseResult::Failure { raw, diagnostics }
+                }
+            }
+        }
+        EventType::UserMessageInbound => match parse_root::<UserMessageInboundInterceptResponse>(
             "UserMessageInboundInterceptResponse",
             input,
         ) {
@@ -35840,7 +35854,7 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "user.message.outbound" => match parse_root::<UserMessageOutboundInterceptResponse>(
+        EventType::UserMessageOutbound => match parse_root::<UserMessageOutboundInterceptResponse>(
             "UserMessageOutboundInterceptResponse",
             input,
         ) {
@@ -35855,35 +35869,42 @@ pub fn response_for_request(event_type: &str, input: &str) -> ParseResult<Contex
             },
             ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
         },
-        "workspace.change.before" => match parse_root::<WorkspaceChangeBeforeInterceptResponse>(
-            "WorkspaceChangeBeforeInterceptResponse",
-            input,
-        ) {
-            ParseResult::Success {
-                value,
-                raw,
-                diagnostics,
-            } => ParseResult::Success {
-                value: ContextualResponse::WorkspaceChangeBefore(Box::new(value)),
-                raw,
-                diagnostics,
-            },
-            ParseResult::Failure { raw, diagnostics } => ParseResult::Failure { raw, diagnostics },
-        },
+        EventType::WorkspaceChangeBefore => {
+            match parse_root::<WorkspaceChangeBeforeInterceptResponse>(
+                "WorkspaceChangeBeforeInterceptResponse",
+                input,
+            ) {
+                ParseResult::Success {
+                    value,
+                    raw,
+                    diagnostics,
+                } => ParseResult::Success {
+                    value: ContextualResponse::WorkspaceChangeBefore(Box::new(value)),
+                    raw,
+                    diagnostics,
+                },
+                ParseResult::Failure { raw, diagnostics } => {
+                    ParseResult::Failure { raw, diagnostics }
+                }
+            }
+        }
         _ => ParseResult::Failure {
             raw: None,
             diagnostics: vec![ParseDiagnostic {
                 path: String::new(),
                 code: DiagnosticCode::UnknownVariant,
                 severity: DiagnosticSeverity::Error,
-                message: format!("Unknown request event: {event_type}"),
+                message: format!(
+                    "Request event does not support interception: {}",
+                    event_type.as_str()
+                ),
             }],
         },
     }
 }
 /// Run application validation before returning a publishable response. No state is changed.
 pub fn stage_response_for_request(
-    event_type: &str,
+    event_type: EventType,
     input: &str,
     validate: impl FnOnce(&ContextualResponse) -> Result<(), String>,
 ) -> ParseResult<ContextualResponse> {
@@ -36056,433 +36077,2556 @@ pub mod responses {
     }
 }
 
-/// Immutable declarations only; boundary admission and per-call narrowing are runtime-owned.
 pub mod capability {
-    use super::Capabilities;
+    use super::EventType;
     use serde::Serialize;
-    use serde_json::{Value, json};
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct Error(pub String);
-    impl std::fmt::Display for Error {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(&self.0)
-        }
-    }
-    impl std::error::Error for Error {}
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-    #[serde(rename_all = "lowercase")]
-    pub enum Mode {
-        Intercept,
-        Observe,
-    }
-    #[derive(Debug, Clone, Serialize)]
-    pub struct Declaration {
-        pub modes: Vec<Mode>,
+    use std::collections::{BTreeMap, BTreeSet};
+    #[derive(Clone, Copy, Debug)]
+    pub struct Observe;
+    #[derive(Clone, Debug, Serialize)]
+    pub struct WireDeclaration {
+        modes: Vec<&'static str>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub capabilities: Option<Capabilities>,
+        capabilities: Option<WireCapabilities>,
     }
-    #[derive(Debug, Clone)]
-    pub struct Builder {
-        value: Value,
+    #[derive(Clone, Debug, Default, Serialize)]
+    struct WireCapabilities {
+        effects: BTreeSet<String>,
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        modify: BTreeMap<String, BTreeMap<String, bool>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        flow: Option<WireFlow>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        inject: Option<WireInject>,
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        elicitation: BTreeMap<String, BTreeMap<String, bool>>,
     }
-    /// Deliberately advertises BOTH intercept and observe, unlike raw manifests.
-    pub fn intercept() -> Builder {
-        Builder {
-            value: json!({"effects": []}),
-        }
+    #[derive(Clone, Debug, Serialize)]
+    struct WireFlow {
+        operations: Vec<String>,
+        #[serde(
+            rename = "remainingContinuations",
+            skip_serializing_if = "Option::is_none"
+        )]
+        remaining: Option<u64>,
+        #[serde(rename = "continuationCount", skip_serializing_if = "Option::is_none")]
+        count: Option<u64>,
+        #[serde(rename = "maxContinuations", skip_serializing_if = "Option::is_none")]
+        max: Option<u64>,
     }
-    pub fn observe() -> Declaration {
-        Declaration {
-            modes: vec![Mode::Observe],
-            capabilities: None,
-        }
+    #[derive(Clone, Debug, Serialize)]
+    struct WireInject {
+        context: WireContext,
     }
-    fn merge(a: &mut Value, b: Value) {
-        match (a, b) {
-            (Value::Object(a), Value::Object(b)) => {
-                for (k, v) in b {
-                    merge(a.entry(k).or_insert(Value::Null), v);
+    #[derive(Clone, Debug, Serialize)]
+    struct WireContext {
+        append: bool,
+        #[serde(rename = "deliverAt")]
+        deliver_at: Vec<String>,
+    }
+    #[derive(Clone, Debug, Default)]
+    struct State {
+        observe: bool,
+        grants: WireCapabilities,
+    }
+    impl State {
+        fn add_flow(&mut self, mut grant: WireFlow) {
+            if let Some(old) = &self.grants.flow {
+                for operation in &old.operations {
+                    if !grant.operations.contains(operation) {
+                        grant.operations.push(operation.clone());
+                    }
                 }
+                grant.remaining = grant.remaining.or(old.remaining);
+                grant.count = grant.count.or(old.count);
+                grant.max = grant.max.or(old.max);
             }
-            (Value::Array(a), Value::Array(b)) => {
-                for v in b {
-                    if !a.contains(&v) {
-                        a.push(v);
+            grant
+                .operations
+                .sort_by_key(|op| if op == "stop" { 0 } else { 1 });
+            self.grants.effects.insert("flow".into());
+            self.grants.flow = Some(grant);
+        }
+        fn add_inject(&mut self, mut delivery: Vec<String>) {
+            if let Some(old) = &self.grants.inject {
+                for mode in &old.context.deliver_at {
+                    if !delivery.contains(mode) {
+                        delivery.push(mode.clone());
                     }
                 }
             }
-            (Value::Bool(a), Value::Bool(b)) => *a |= b,
-            (a, b) => *a = b,
+            delivery.sort_by_key(|mode| if mode == "now" { 0 } else { 1 });
+            self.grants.effects.insert("inject".into());
+            self.grants.inject = Some(WireInject {
+                context: WireContext {
+                    append: true,
+                    deliver_at: delivery,
+                },
+            });
         }
-    }
-    impl Serialize for Builder {
-        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-            self.build()
-                .map_err(serde::ser::Error::custom)?
-                .serialize(serializer)
-        }
-    }
-    pub use super::EffectId as EffectType;
-    pub use super::EventType as Event;
-    #[derive(
-        Debug,
-        Clone,
-        Copy,
-        PartialEq,
-        Eq,
-        PartialOrd,
-        Ord,
-        Hash,
-        serde::Serialize,
-        serde::Deserialize,
-    )]
-    pub enum ModifyTarget {
-        #[serde(rename = "content")]
-        Content,
-        #[serde(rename = "input")]
-        Input,
-        #[serde(rename = "instructions")]
-        Instructions,
-        #[serde(rename = "output")]
-        Output,
-        #[serde(rename = "prompt")]
-        Prompt,
-        #[serde(rename = "request")]
-        Request,
-        #[serde(rename = "response")]
-        Response,
-        #[serde(rename = "summary")]
-        Summary,
-        #[serde(rename = "workspace")]
-        Workspace,
-    }
-    impl ModifyTarget {
-        pub fn as_str(self) -> &'static str {
-            match self {
-                Self::Content => "content",
-                Self::Input => "input",
-                Self::Instructions => "instructions",
-                Self::Output => "output",
-                Self::Prompt => "prompt",
-                Self::Request => "request",
-                Self::Response => "response",
-                Self::Summary => "summary",
-                Self::Workspace => "workspace",
+        fn wire(&self) -> WireDeclaration {
+            let intercept = !self.grants.effects.is_empty() || !self.grants.elicitation.is_empty();
+            let mut modes = Vec::new();
+            if intercept {
+                modes.push("intercept");
+            }
+            if self.observe {
+                modes.push("observe");
+            }
+            WireDeclaration {
+                modes,
+                capabilities: intercept.then(|| self.grants.clone()),
             }
         }
     }
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ModifyOperation {
-        Merge,
-        Replace,
-    }
-    impl ModifyOperation {
-        fn wire(self) -> &'static str {
-            match self {
-                Self::Merge => "merge",
-                Self::Replace => "replace",
-            }
-        }
-    }
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum FlowOperation {
-        Continue,
+    #[derive(Clone, Copy, Debug)]
+    pub enum ModelRequestBeforeFlow {
         Stop,
     }
-    impl FlowOperation {
-        fn wire(self) -> &'static str {
+    impl ModelRequestBeforeFlow {
+        fn wire(self) -> WireFlow {
             match self {
-                Self::Continue => "continue",
-                Self::Stop => "stop",
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
             }
         }
     }
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum Delivery {
-        NextTurn,
+    #[derive(Clone, Copy, Debug)]
+    pub enum ModelResponseAfterFlow {
+        Stop,
+    }
+    impl ModelResponseAfterFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum ModelSwitchBeforeFlow {
+        Stop,
+    }
+    impl ModelSwitchBeforeFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum Flow {
+        Stop,
+        Continue {
+            remaining_continuations: u64,
+            continuation_count: u64,
+            max_continuations: Option<u64>,
+        },
+        StopAndContinue {
+            remaining_continuations: u64,
+            continuation_count: u64,
+            max_continuations: Option<u64>,
+        },
+    }
+    impl Flow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+                Self::Continue {
+                    remaining_continuations,
+                    continuation_count,
+                    max_continuations,
+                } => WireFlow {
+                    operations: vec!["continue".into()],
+                    remaining: Some(remaining_continuations),
+                    count: Some(continuation_count),
+                    max: max_continuations,
+                },
+                Self::StopAndContinue {
+                    remaining_continuations,
+                    continuation_count,
+                    max_continuations,
+                } => WireFlow {
+                    operations: vec!["stop".into(), "continue".into()],
+                    remaining: Some(remaining_continuations),
+                    count: Some(continuation_count),
+                    max: max_continuations,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum ToolBatchAfterFlow {
+        Stop,
+    }
+    impl ToolBatchAfterFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum ToolBeforeFlow {
+        Stop,
+    }
+    impl ToolBeforeFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum ToolPermissionRequestFlow {
+        Stop,
+    }
+    impl ToolPermissionRequestFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum TurnStartFlow {
+        Stop,
+    }
+    impl TurnStartFlow {
+        fn wire(self) -> WireFlow {
+            match self {
+                Self::Stop => WireFlow {
+                    operations: vec!["stop".into()],
+                    remaining: None,
+                    count: None,
+                    max: None,
+                },
+            }
+        }
+    }
+    #[derive(Clone, Copy, Debug)]
+    pub enum InjectContext {
         Now,
+        NextTurn,
+        NowAndNextTurn,
     }
-    impl Delivery {
-        fn wire(self) -> &'static str {
+    impl InjectContext {
+        fn wire(self) -> Vec<String> {
             match self {
-                Self::NextTurn => "next_turn",
-                Self::Now => "now",
+                Self::Now => vec!["now".into()],
+                Self::NextTurn => vec!["next_turn".into()],
+                Self::NowAndNextTurn => vec!["now".into(), "next_turn".into()],
             }
         }
     }
-    impl Builder {
-        pub fn allow(&self) -> Self {
-            self.add(Some("allow"), serde_json::json!({}))
-        }
-        pub fn ask(&self) -> Self {
-            self.add(Some("ask"), serde_json::json!({}))
-        }
-        pub fn deny(&self) -> Self {
-            self.add(Some("deny"), serde_json::json!({}))
-        }
-        pub fn message(&self) -> Self {
-            self.add(Some("message"), serde_json::json!({}))
-        }
-        pub fn r#return(&self) -> Self {
-            self.add(Some("return"), serde_json::json!({}))
-        }
-        pub fn modify_content(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"content": grant}}),
-            ))
-        }
-        pub fn modify_input(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"input": grant}}),
-            ))
-        }
-        pub fn modify_instructions(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"instructions": grant}}),
-            ))
-        }
-        pub fn modify_output(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"output": grant}}),
-            ))
-        }
-        pub fn modify_prompt(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"prompt": grant}}),
-            ))
-        }
-        pub fn modify_request(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"request": grant}}),
-            ))
-        }
-        pub fn modify_response(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"response": grant}}),
-            ))
-        }
-        pub fn modify_summary(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"summary": grant}}),
-            ))
-        }
-        pub fn modify_workspace(
-            &self,
-            operations: impl IntoIterator<Item = ModifyOperation>,
-        ) -> Result<Self, Error> {
-            let mut grant = serde_json::json!({ "merge": false,"replace": false });
-            let mut any = false;
-            for operation in operations {
-                grant[operation.wire()] = serde_json::json!(true);
-                any = true;
-            }
-            if !any {
-                return Err(Error("nonempty modify operations required".into()));
-            }
-            Ok(self.add(
-                Some("modify"),
-                serde_json::json!({"modify": {"workspace": grant}}),
-            ))
-        }
-        pub fn elicitation_form(&self) -> Self {
-            self.add(None, serde_json::json!({"elicitation": {"form": {}}}))
-        }
-        pub fn elicitation_url(&self) -> Self {
-            self.add(None, serde_json::json!({"elicitation": {"url": {}}}))
-        }
-
-        fn add(&self, effect: Option<&str>, grant: Value) -> Self {
-            let mut next = self.clone();
-            merge(&mut next.value, grant);
-            if let Some(effect) = effect {
-                merge(&mut next.value, json!({"effects": [effect]}));
-            }
-            next
-        }
-        pub fn build(&self) -> Result<Declaration, Error> {
-            let effects = self
-                .value
-                .get("effects")
-                .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            let modes = self
-                .value
-                .get("elicitation")
-                .and_then(Value::as_object)
-                .map_or(0, |v| v.len());
-            if effects == 0 && modes == 0 {
-                return Err(Error("empty interception declaration".into()));
-            }
-            let capabilities = serde_json::from_value(self.value.clone())
-                .map_err(|e| Error(format!("invalid capability declaration: {e}")))?;
-            Ok(Declaration {
-                modes: vec![Mode::Intercept, Mode::Observe],
-                capabilities: Some(capabilities),
-            })
-        }
-        pub fn flow(
-            &self,
-            operations: impl IntoIterator<Item = FlowOperation>,
-            counts: ContinuationCounts,
-        ) -> Result<Self, Error> {
-            let operations: Vec<_> = operations.into_iter().map(FlowOperation::wire).collect();
-            if operations.is_empty() {
-                return Err(Error("nonempty flow operations required".into()));
-            }
-            if operations.contains(&"continue")
-                && (counts.remaining_continuations.is_none() || counts.continuation_count.is_none())
-            {
-                return Err(Error("continue requires counts".into()));
-            }
-            let mut flow = json!({"operations": []});
-            for operation in operations {
-                merge(&mut flow, json!({"operations": [operation]}));
-            }
-            for (key, value) in [
-                ("remainingContinuations", counts.remaining_continuations),
-                ("continuationCount", counts.continuation_count),
-                ("maxContinuations", counts.max_continuations),
-            ] {
-                if let Some(value) = value {
-                    if value > 9_007_199_254_740_991 {
-                        return Err(Error(
-                            "continuation count exceeds safe integer range".into(),
-                        ));
-                    }
-                    flow[key] = json!(value);
+    #[derive(Clone, Copy, Debug)]
+    pub enum Modify {
+        Replace,
+        Merge,
+        ReplaceAndMerge,
+    }
+    impl Modify {
+        fn wire(self) -> BTreeMap<String, bool> {
+            match self {
+                Self::Replace => {
+                    BTreeMap::from([("replace".into(), true), ("merge".into(), false)])
+                }
+                Self::Merge => BTreeMap::from([("replace".into(), false), ("merge".into(), true)]),
+                Self::ReplaceAndMerge => {
+                    BTreeMap::from([("replace".into(), true), ("merge".into(), true)])
                 }
             }
-            Ok(self.add(Some("flow"), json!({"flow":flow})))
-        }
-        pub fn inject_context(
-            &self,
-            deliver_at: impl IntoIterator<Item = Delivery>,
-        ) -> Result<Self, Error> {
-            let mut values = Vec::new();
-            for value in deliver_at {
-                let value = value.wire();
-                if !values.contains(&value) {
-                    values.push(value);
-                }
-            }
-            if values.is_empty() {
-                return Err(Error("nonempty delivery operations required".into()));
-            }
-            Ok(self.add(
-                Some("inject"),
-                json!({"inject":{"context":{"append":true,"deliverAt":values}}}),
-            ))
         }
     }
-    #[derive(Debug, Clone, Copy, Default)]
-    pub struct ContinuationCounts {
-        pub remaining_continuations: Option<u64>,
-        pub continuation_count: Option<u64>,
-        pub max_continuations: Option<u64>,
+    #[derive(Clone, Debug, Default)]
+    pub struct HostCapabilities {
+        pub config_change_after: Option<Observe>,
+        pub config_change_before: Option<ConfigChangeBefore>,
+        pub context_compact_after: Option<ContextCompactAfter>,
+        pub context_compact_before: Option<ContextCompactBefore>,
+        pub file_changed: Option<Observe>,
+        pub hook_failure: Option<Observe>,
+        pub model_error: Option<Observe>,
+        pub model_request_before: Option<ModelRequestBefore>,
+        pub model_response_after: Option<ModelResponseAfter>,
+        pub model_switch_after: Option<Observe>,
+        pub model_switch_before: Option<ModelSwitchBefore>,
+        pub session_end: Option<Observe>,
+        pub session_start: Option<SessionStart>,
+        pub task_change_after: Option<Observe>,
+        pub task_change_before: Option<TaskChangeBefore>,
+        pub tool_after: Option<ToolAfter>,
+        pub tool_batch_after: Option<ToolBatchAfter>,
+        pub tool_before: Option<ToolBefore>,
+        pub tool_permission_request: Option<ToolPermissionRequest>,
+        pub tool_permission_resolved: Option<Observe>,
+        pub tool_progress: Option<Observe>,
+        pub turn_end: Option<Observe>,
+        pub turn_finish_before: Option<TurnFinishBefore>,
+        pub turn_progress: Option<Observe>,
+        pub turn_start: Option<TurnStart>,
+        pub user_attention: Option<Observe>,
+        pub user_elicitation_request: Option<UserElicitationRequest>,
+        pub user_elicitation_result: Option<UserElicitationResult>,
+        pub user_message_inbound: Option<UserMessageInbound>,
+        pub user_message_outbound: Option<UserMessageOutbound>,
+        pub workspace_change_after: Option<Observe>,
+        pub workspace_change_before: Option<WorkspaceChangeBefore>,
+    }
+    impl HostCapabilities {
+        pub fn to_wire(&self) -> BTreeMap<EventType, WireDeclaration> {
+            let mut wire = BTreeMap::new();
+            if let Some(_declaration) = &self.config_change_after {
+                wire.insert(
+                    EventType::ConfigChangeAfter,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.config_change_before {
+                wire.insert(EventType::ConfigChangeBefore, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.context_compact_after {
+                wire.insert(EventType::ContextCompactAfter, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.context_compact_before {
+                wire.insert(EventType::ContextCompactBefore, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.file_changed {
+                wire.insert(
+                    EventType::FileChanged,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.hook_failure {
+                wire.insert(
+                    EventType::HookFailure,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.model_error {
+                wire.insert(
+                    EventType::ModelError,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.model_request_before {
+                wire.insert(EventType::ModelRequestBefore, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.model_response_after {
+                wire.insert(EventType::ModelResponseAfter, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.model_switch_after {
+                wire.insert(
+                    EventType::ModelSwitchAfter,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.model_switch_before {
+                wire.insert(EventType::ModelSwitchBefore, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.session_end {
+                wire.insert(
+                    EventType::SessionEnd,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.session_start {
+                wire.insert(EventType::SessionStart, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.task_change_after {
+                wire.insert(
+                    EventType::TaskChangeAfter,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.task_change_before {
+                wire.insert(EventType::TaskChangeBefore, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_after {
+                wire.insert(EventType::ToolAfter, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_batch_after {
+                wire.insert(EventType::ToolBatchAfter, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_before {
+                wire.insert(EventType::ToolBefore, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_permission_request {
+                wire.insert(EventType::ToolPermissionRequest, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.tool_permission_resolved {
+                wire.insert(
+                    EventType::ToolPermissionResolved,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.tool_progress {
+                wire.insert(
+                    EventType::ToolProgress,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.turn_end {
+                wire.insert(
+                    EventType::TurnEnd,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.turn_finish_before {
+                wire.insert(EventType::TurnFinishBefore, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.turn_progress {
+                wire.insert(
+                    EventType::TurnProgress,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.turn_start {
+                wire.insert(EventType::TurnStart, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.user_attention {
+                wire.insert(
+                    EventType::UserAttention,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.user_elicitation_request {
+                wire.insert(EventType::UserElicitationRequest, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.user_elicitation_result {
+                wire.insert(EventType::UserElicitationResult, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.user_message_inbound {
+                wire.insert(EventType::UserMessageInbound, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.user_message_outbound {
+                wire.insert(EventType::UserMessageOutbound, _declaration.0.wire());
+            }
+            if let Some(_declaration) = &self.workspace_change_after {
+                wire.insert(
+                    EventType::WorkspaceChangeAfter,
+                    WireDeclaration {
+                        modes: vec!["observe"],
+                        capabilities: None,
+                    },
+                );
+            }
+            if let Some(_declaration) = &self.workspace_change_before {
+                wire.insert(EventType::WorkspaceChangeBefore, _declaration.0.wire());
+            }
+            wire
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ConfigChangeBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ConfigChangeBeforeInitial(());
+    pub fn config_change_before() -> ConfigChangeBeforeInitial {
+        ConfigChangeBeforeInitial(())
+    }
+    impl Serialize for ConfigChangeBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ConfigChangeBeforeInitial {
+        pub fn observe(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ConfigChangeBefore(state)
+        }
+        pub fn deny(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ConfigChangeBefore(state)
+        }
+        pub fn message(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ConfigChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ConfigChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ConfigChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ConfigChangeBefore(state)
+        }
+    }
+    impl ConfigChangeBefore {
+        pub fn observe(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ConfigChangeBefore(state)
+        }
+        pub fn deny(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ConfigChangeBefore(state)
+        }
+        pub fn message(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ConfigChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ConfigChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ConfigChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ConfigChangeBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ContextCompactAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ContextCompactAfterInitial(());
+    pub fn context_compact_after() -> ContextCompactAfterInitial {
+        ContextCompactAfterInitial(())
+    }
+    impl Serialize for ContextCompactAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ContextCompactAfterInitial {
+        pub fn observe(&self) -> ContextCompactAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ContextCompactAfter(state)
+        }
+        pub fn message(&self) -> ContextCompactAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ContextCompactAfter(state)
+        }
+        pub fn modify_summary(&self, grant: Modify) -> ContextCompactAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("summary".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ContextCompactAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ContextCompactAfter {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ContextCompactAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ContextCompactAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ContextCompactAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ContextCompactAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ContextCompactAfter(state)
+        }
+    }
+    impl ContextCompactAfter {
+        pub fn observe(&self) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ContextCompactAfter(state)
+        }
+        pub fn message(&self) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ContextCompactAfter(state)
+        }
+        pub fn modify_summary(&self, grant: Modify) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("summary".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ContextCompactAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ContextCompactAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ContextCompactAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ContextCompactAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ContextCompactAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ContextCompactBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ContextCompactBeforeInitial(());
+    pub fn context_compact_before() -> ContextCompactBeforeInitial {
+        ContextCompactBeforeInitial(())
+    }
+    impl Serialize for ContextCompactBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ContextCompactBeforeInitial {
+        pub fn observe(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ContextCompactBefore(state)
+        }
+        pub fn deny(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ContextCompactBefore(state)
+        }
+        pub fn message(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ContextCompactBefore(state)
+        }
+        pub fn return_result(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("return".into());
+            ContextCompactBefore(state)
+        }
+        pub fn modify_instructions(&self, grant: Modify) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("instructions".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ContextCompactBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ContextCompactBefore {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ContextCompactBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ContextCompactBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ContextCompactBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ContextCompactBefore(state)
+        }
+    }
+    impl ContextCompactBefore {
+        pub fn observe(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ContextCompactBefore(state)
+        }
+        pub fn deny(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ContextCompactBefore(state)
+        }
+        pub fn message(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ContextCompactBefore(state)
+        }
+        pub fn return_result(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("return".into());
+            ContextCompactBefore(state)
+        }
+        pub fn modify_instructions(&self, grant: Modify) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("instructions".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ContextCompactBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ContextCompactBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ContextCompactBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ContextCompactBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ContextCompactBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ModelRequestBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ModelRequestBeforeInitial(());
+    pub fn model_request_before() -> ModelRequestBeforeInitial {
+        ModelRequestBeforeInitial(())
+    }
+    impl Serialize for ModelRequestBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ModelRequestBeforeInitial {
+        pub fn observe(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ModelRequestBefore(state)
+        }
+        pub fn deny(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ModelRequestBefore(state)
+        }
+        pub fn message(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ModelRequestBefore(state)
+        }
+        pub fn return_result(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("return".into());
+            ModelRequestBefore(state)
+        }
+        pub fn modify_request(&self, grant: Modify) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("request".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ModelRequestBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ModelRequestBefore(state)
+        }
+        pub fn flow(&self, grant: ModelRequestBeforeFlow) -> ModelRequestBefore {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ModelRequestBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelRequestBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ModelRequestBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelRequestBefore(state)
+        }
+    }
+    impl ModelRequestBefore {
+        pub fn observe(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ModelRequestBefore(state)
+        }
+        pub fn deny(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ModelRequestBefore(state)
+        }
+        pub fn message(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ModelRequestBefore(state)
+        }
+        pub fn return_result(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("return".into());
+            ModelRequestBefore(state)
+        }
+        pub fn modify_request(&self, grant: Modify) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("request".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ModelRequestBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ModelRequestBefore(state)
+        }
+        pub fn flow(&self, grant: ModelRequestBeforeFlow) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ModelRequestBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelRequestBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ModelRequestBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelRequestBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ModelResponseAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ModelResponseAfterInitial(());
+    pub fn model_response_after() -> ModelResponseAfterInitial {
+        ModelResponseAfterInitial(())
+    }
+    impl Serialize for ModelResponseAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ModelResponseAfterInitial {
+        pub fn observe(&self) -> ModelResponseAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ModelResponseAfter(state)
+        }
+        pub fn message(&self) -> ModelResponseAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ModelResponseAfter(state)
+        }
+        pub fn modify_response(&self, grant: Modify) -> ModelResponseAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("response".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ModelResponseAfter(state)
+        }
+        pub fn flow(&self, grant: ModelResponseAfterFlow) -> ModelResponseAfter {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ModelResponseAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ModelResponseAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelResponseAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ModelResponseAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelResponseAfter(state)
+        }
+    }
+    impl ModelResponseAfter {
+        pub fn observe(&self) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ModelResponseAfter(state)
+        }
+        pub fn message(&self) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ModelResponseAfter(state)
+        }
+        pub fn modify_response(&self, grant: Modify) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("response".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ModelResponseAfter(state)
+        }
+        pub fn flow(&self, grant: ModelResponseAfterFlow) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ModelResponseAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelResponseAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ModelResponseAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelResponseAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ModelSwitchBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ModelSwitchBeforeInitial(());
+    pub fn model_switch_before() -> ModelSwitchBeforeInitial {
+        ModelSwitchBeforeInitial(())
+    }
+    impl Serialize for ModelSwitchBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ModelSwitchBeforeInitial {
+        pub fn observe(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ModelSwitchBefore(state)
+        }
+        pub fn deny(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ModelSwitchBefore(state)
+        }
+        pub fn message(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ModelSwitchBefore(state)
+        }
+        pub fn flow(&self, grant: ModelSwitchBeforeFlow) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ModelSwitchBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelSwitchBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ModelSwitchBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelSwitchBefore(state)
+        }
+    }
+    impl ModelSwitchBefore {
+        pub fn observe(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ModelSwitchBefore(state)
+        }
+        pub fn deny(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ModelSwitchBefore(state)
+        }
+        pub fn message(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ModelSwitchBefore(state)
+        }
+        pub fn flow(&self, grant: ModelSwitchBeforeFlow) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ModelSwitchBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ModelSwitchBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ModelSwitchBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ModelSwitchBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct SessionStart(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct SessionStartInitial(());
+    pub fn session_start() -> SessionStartInitial {
+        SessionStartInitial(())
+    }
+    impl Serialize for SessionStart {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl SessionStartInitial {
+        pub fn observe(&self) -> SessionStart {
+            let mut state = State::default();
+            state.observe = true;
+            SessionStart(state)
+        }
+        pub fn message(&self) -> SessionStart {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            SessionStart(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> SessionStart {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            SessionStart(state)
+        }
+        pub fn elicitation_form(&self) -> SessionStart {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            SessionStart(state)
+        }
+        pub fn elicitation_url(&self) -> SessionStart {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            SessionStart(state)
+        }
+    }
+    impl SessionStart {
+        pub fn observe(&self) -> SessionStart {
+            let mut state = self.0.clone();
+            state.observe = true;
+            SessionStart(state)
+        }
+        pub fn message(&self) -> SessionStart {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            SessionStart(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> SessionStart {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            SessionStart(state)
+        }
+        pub fn elicitation_form(&self) -> SessionStart {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            SessionStart(state)
+        }
+        pub fn elicitation_url(&self) -> SessionStart {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            SessionStart(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TaskChangeBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TaskChangeBeforeInitial(());
+    pub fn task_change_before() -> TaskChangeBeforeInitial {
+        TaskChangeBeforeInitial(())
+    }
+    impl Serialize for TaskChangeBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TaskChangeBeforeInitial {
+        pub fn observe(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state.observe = true;
+            TaskChangeBefore(state)
+        }
+        pub fn deny(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            TaskChangeBefore(state)
+        }
+        pub fn message(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            TaskChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TaskChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> TaskChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TaskChangeBefore(state)
+        }
+    }
+    impl TaskChangeBefore {
+        pub fn observe(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TaskChangeBefore(state)
+        }
+        pub fn deny(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            TaskChangeBefore(state)
+        }
+        pub fn message(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            TaskChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TaskChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> TaskChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TaskChangeBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolAfterInitial(());
+    pub fn tool_after() -> ToolAfterInitial {
+        ToolAfterInitial(())
+    }
+    impl Serialize for ToolAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolAfterInitial {
+        pub fn observe(&self) -> ToolAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ToolAfter(state)
+        }
+        pub fn message(&self) -> ToolAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ToolAfter(state)
+        }
+        pub fn modify_output(&self, grant: Modify) -> ToolAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("output".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolAfter {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ToolAfter(state)
+        }
+        pub fn flow(&self, grant: Flow) -> ToolAfter {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ToolAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ToolAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ToolAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolAfter(state)
+        }
+    }
+    impl ToolAfter {
+        pub fn observe(&self) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolAfter(state)
+        }
+        pub fn message(&self) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ToolAfter(state)
+        }
+        pub fn modify_output(&self, grant: Modify) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("output".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ToolAfter(state)
+        }
+        pub fn flow(&self, grant: Flow) -> ToolAfter {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ToolAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ToolAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ToolAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolBatchAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolBatchAfterInitial(());
+    pub fn tool_batch_after() -> ToolBatchAfterInitial {
+        ToolBatchAfterInitial(())
+    }
+    impl Serialize for ToolBatchAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolBatchAfterInitial {
+        pub fn observe(&self) -> ToolBatchAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ToolBatchAfter(state)
+        }
+        pub fn message(&self) -> ToolBatchAfter {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ToolBatchAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolBatchAfter {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ToolBatchAfter(state)
+        }
+        pub fn flow(&self, grant: ToolBatchAfterFlow) -> ToolBatchAfter {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ToolBatchAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ToolBatchAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolBatchAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ToolBatchAfter {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolBatchAfter(state)
+        }
+    }
+    impl ToolBatchAfter {
+        pub fn observe(&self) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolBatchAfter(state)
+        }
+        pub fn message(&self) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ToolBatchAfter(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ToolBatchAfter(state)
+        }
+        pub fn flow(&self, grant: ToolBatchAfterFlow) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ToolBatchAfter(state)
+        }
+        pub fn elicitation_form(&self) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolBatchAfter(state)
+        }
+        pub fn elicitation_url(&self) -> ToolBatchAfter {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolBatchAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolBeforeInitial(());
+    pub fn tool_before() -> ToolBeforeInitial {
+        ToolBeforeInitial(())
+    }
+    impl Serialize for ToolBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolBeforeInitial {
+        pub fn observe(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.observe = true;
+            ToolBefore(state)
+        }
+        pub fn allow(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("allow".into());
+            ToolBefore(state)
+        }
+        pub fn ask(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("ask".into());
+            ToolBefore(state)
+        }
+        pub fn deny(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ToolBefore(state)
+        }
+        pub fn message(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ToolBefore(state)
+        }
+        pub fn return_result(&self) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("return".into());
+            ToolBefore(state)
+        }
+        pub fn modify_input(&self, grant: Modify) -> ToolBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("input".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolBefore {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            ToolBefore(state)
+        }
+        pub fn flow(&self, grant: ToolBeforeFlow) -> ToolBefore {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ToolBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ToolBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ToolBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolBefore(state)
+        }
+    }
+    impl ToolBefore {
+        pub fn observe(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolBefore(state)
+        }
+        pub fn allow(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("allow".into());
+            ToolBefore(state)
+        }
+        pub fn ask(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("ask".into());
+            ToolBefore(state)
+        }
+        pub fn deny(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ToolBefore(state)
+        }
+        pub fn message(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ToolBefore(state)
+        }
+        pub fn return_result(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("return".into());
+            ToolBefore(state)
+        }
+        pub fn modify_input(&self, grant: Modify) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("input".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolBefore(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            ToolBefore(state)
+        }
+        pub fn flow(&self, grant: ToolBeforeFlow) -> ToolBefore {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ToolBefore(state)
+        }
+        pub fn elicitation_form(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolBefore(state)
+        }
+        pub fn elicitation_url(&self) -> ToolBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolPermissionRequest(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolPermissionRequestInitial(());
+    pub fn tool_permission_request() -> ToolPermissionRequestInitial {
+        ToolPermissionRequestInitial(())
+    }
+    impl Serialize for ToolPermissionRequest {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolPermissionRequestInitial {
+        pub fn observe(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.observe = true;
+            ToolPermissionRequest(state)
+        }
+        pub fn allow(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("allow".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn deny(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn message(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn modify_input(&self, grant: Modify) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("input".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolPermissionRequest(state)
+        }
+        pub fn flow(&self, grant: ToolPermissionRequestFlow) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            ToolPermissionRequest(state)
+        }
+        pub fn elicitation_form(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolPermissionRequest(state)
+        }
+        pub fn elicitation_url(&self) -> ToolPermissionRequest {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolPermissionRequest(state)
+        }
+    }
+    impl ToolPermissionRequest {
+        pub fn observe(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolPermissionRequest(state)
+        }
+        pub fn allow(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("allow".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn deny(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn message(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            ToolPermissionRequest(state)
+        }
+        pub fn modify_input(&self, grant: Modify) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("input".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            ToolPermissionRequest(state)
+        }
+        pub fn flow(&self, grant: ToolPermissionRequestFlow) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            ToolPermissionRequest(state)
+        }
+        pub fn elicitation_form(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            ToolPermissionRequest(state)
+        }
+        pub fn elicitation_url(&self) -> ToolPermissionRequest {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            ToolPermissionRequest(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TurnFinishBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TurnFinishBeforeInitial(());
+    pub fn turn_finish_before() -> TurnFinishBeforeInitial {
+        TurnFinishBeforeInitial(())
+    }
+    impl Serialize for TurnFinishBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TurnFinishBeforeInitial {
+        pub fn observe(&self) -> TurnFinishBefore {
+            let mut state = State::default();
+            state.observe = true;
+            TurnFinishBefore(state)
+        }
+        pub fn message(&self) -> TurnFinishBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            TurnFinishBefore(state)
+        }
+        pub fn modify_response(&self, grant: Modify) -> TurnFinishBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("response".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            TurnFinishBefore(state)
+        }
+        pub fn flow(&self, grant: Flow) -> TurnFinishBefore {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            TurnFinishBefore(state)
+        }
+        pub fn elicitation_form(&self) -> TurnFinishBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TurnFinishBefore(state)
+        }
+        pub fn elicitation_url(&self) -> TurnFinishBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TurnFinishBefore(state)
+        }
+    }
+    impl TurnFinishBefore {
+        pub fn observe(&self) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TurnFinishBefore(state)
+        }
+        pub fn message(&self) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            TurnFinishBefore(state)
+        }
+        pub fn modify_response(&self, grant: Modify) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("response".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            TurnFinishBefore(state)
+        }
+        pub fn flow(&self, grant: Flow) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            TurnFinishBefore(state)
+        }
+        pub fn elicitation_form(&self) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TurnFinishBefore(state)
+        }
+        pub fn elicitation_url(&self) -> TurnFinishBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TurnFinishBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TurnStart(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TurnStartInitial(());
+    pub fn turn_start() -> TurnStartInitial {
+        TurnStartInitial(())
+    }
+    impl Serialize for TurnStart {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TurnStartInitial {
+        pub fn observe(&self) -> TurnStart {
+            let mut state = State::default();
+            state.observe = true;
+            TurnStart(state)
+        }
+        pub fn deny(&self) -> TurnStart {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            TurnStart(state)
+        }
+        pub fn message(&self) -> TurnStart {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            TurnStart(state)
+        }
+        pub fn modify_prompt(&self, grant: Modify) -> TurnStart {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("prompt".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            TurnStart(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> TurnStart {
+            let mut state = State::default();
+            state.add_inject(grant.wire());
+            TurnStart(state)
+        }
+        pub fn flow(&self, grant: TurnStartFlow) -> TurnStart {
+            let mut state = State::default();
+            state.add_flow(grant.wire());
+            TurnStart(state)
+        }
+        pub fn elicitation_form(&self) -> TurnStart {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TurnStart(state)
+        }
+        pub fn elicitation_url(&self) -> TurnStart {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TurnStart(state)
+        }
+    }
+    impl TurnStart {
+        pub fn observe(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TurnStart(state)
+        }
+        pub fn deny(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            TurnStart(state)
+        }
+        pub fn message(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            TurnStart(state)
+        }
+        pub fn modify_prompt(&self, grant: Modify) -> TurnStart {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("prompt".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            TurnStart(state)
+        }
+        pub fn inject_context(&self, grant: InjectContext) -> TurnStart {
+            let mut state = self.0.clone();
+            state.add_inject(grant.wire());
+            TurnStart(state)
+        }
+        pub fn flow(&self, grant: TurnStartFlow) -> TurnStart {
+            let mut state = self.0.clone();
+            state.add_flow(grant.wire());
+            TurnStart(state)
+        }
+        pub fn elicitation_form(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            TurnStart(state)
+        }
+        pub fn elicitation_url(&self) -> TurnStart {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            TurnStart(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserElicitationRequest(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserElicitationRequestInitial(());
+    pub fn user_elicitation_request() -> UserElicitationRequestInitial {
+        UserElicitationRequestInitial(())
+    }
+    impl Serialize for UserElicitationRequest {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserElicitationRequestInitial {
+        pub fn observe(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state.observe = true;
+            UserElicitationRequest(state)
+        }
+        pub fn deny(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            UserElicitationRequest(state)
+        }
+        pub fn message(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            UserElicitationRequest(state)
+        }
+        pub fn return_result(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state.grants.effects.insert("return".into());
+            UserElicitationRequest(state)
+        }
+        pub fn elicitation_form(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserElicitationRequest(state)
+        }
+        pub fn elicitation_url(&self) -> UserElicitationRequest {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserElicitationRequest(state)
+        }
+    }
+    impl UserElicitationRequest {
+        pub fn observe(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserElicitationRequest(state)
+        }
+        pub fn deny(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            UserElicitationRequest(state)
+        }
+        pub fn message(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            UserElicitationRequest(state)
+        }
+        pub fn return_result(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("return".into());
+            UserElicitationRequest(state)
+        }
+        pub fn elicitation_form(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserElicitationRequest(state)
+        }
+        pub fn elicitation_url(&self) -> UserElicitationRequest {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserElicitationRequest(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserElicitationResult(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserElicitationResultInitial(());
+    pub fn user_elicitation_result() -> UserElicitationResultInitial {
+        UserElicitationResultInitial(())
+    }
+    impl Serialize for UserElicitationResult {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserElicitationResultInitial {
+        pub fn observe(&self) -> UserElicitationResult {
+            let mut state = State::default();
+            state.observe = true;
+            UserElicitationResult(state)
+        }
+        pub fn message(&self) -> UserElicitationResult {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            UserElicitationResult(state)
+        }
+        pub fn modify_content(&self, grant: Modify) -> UserElicitationResult {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("content".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserElicitationResult(state)
+        }
+        pub fn elicitation_form(&self) -> UserElicitationResult {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserElicitationResult(state)
+        }
+        pub fn elicitation_url(&self) -> UserElicitationResult {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserElicitationResult(state)
+        }
+    }
+    impl UserElicitationResult {
+        pub fn observe(&self) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserElicitationResult(state)
+        }
+        pub fn message(&self) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            UserElicitationResult(state)
+        }
+        pub fn modify_content(&self, grant: Modify) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("content".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserElicitationResult(state)
+        }
+        pub fn elicitation_form(&self) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserElicitationResult(state)
+        }
+        pub fn elicitation_url(&self) -> UserElicitationResult {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserElicitationResult(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserMessageInbound(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserMessageInboundInitial(());
+    pub fn user_message_inbound() -> UserMessageInboundInitial {
+        UserMessageInboundInitial(())
+    }
+    impl Serialize for UserMessageInbound {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserMessageInboundInitial {
+        pub fn observe(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state.observe = true;
+            UserMessageInbound(state)
+        }
+        pub fn deny(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            UserMessageInbound(state)
+        }
+        pub fn message(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            UserMessageInbound(state)
+        }
+        pub fn modify_prompt(&self, grant: Modify) -> UserMessageInbound {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("prompt".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserMessageInbound(state)
+        }
+        pub fn elicitation_form(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserMessageInbound(state)
+        }
+        pub fn elicitation_url(&self) -> UserMessageInbound {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserMessageInbound(state)
+        }
+    }
+    impl UserMessageInbound {
+        pub fn observe(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserMessageInbound(state)
+        }
+        pub fn deny(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            UserMessageInbound(state)
+        }
+        pub fn message(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            UserMessageInbound(state)
+        }
+        pub fn modify_prompt(&self, grant: Modify) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("prompt".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserMessageInbound(state)
+        }
+        pub fn elicitation_form(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserMessageInbound(state)
+        }
+        pub fn elicitation_url(&self) -> UserMessageInbound {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserMessageInbound(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserMessageOutbound(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserMessageOutboundInitial(());
+    pub fn user_message_outbound() -> UserMessageOutboundInitial {
+        UserMessageOutboundInitial(())
+    }
+    impl Serialize for UserMessageOutbound {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserMessageOutboundInitial {
+        pub fn observe(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state.observe = true;
+            UserMessageOutbound(state)
+        }
+        pub fn deny(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            UserMessageOutbound(state)
+        }
+        pub fn message(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            UserMessageOutbound(state)
+        }
+        pub fn modify_content(&self, grant: Modify) -> UserMessageOutbound {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("content".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserMessageOutbound(state)
+        }
+        pub fn elicitation_form(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserMessageOutbound(state)
+        }
+        pub fn elicitation_url(&self) -> UserMessageOutbound {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserMessageOutbound(state)
+        }
+    }
+    impl UserMessageOutbound {
+        pub fn observe(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserMessageOutbound(state)
+        }
+        pub fn deny(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            UserMessageOutbound(state)
+        }
+        pub fn message(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            UserMessageOutbound(state)
+        }
+        pub fn modify_content(&self, grant: Modify) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("content".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            UserMessageOutbound(state)
+        }
+        pub fn elicitation_form(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            UserMessageOutbound(state)
+        }
+        pub fn elicitation_url(&self) -> UserMessageOutbound {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            UserMessageOutbound(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct WorkspaceChangeBefore(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct WorkspaceChangeBeforeInitial(());
+    pub fn workspace_change_before() -> WorkspaceChangeBeforeInitial {
+        WorkspaceChangeBeforeInitial(())
+    }
+    impl Serialize for WorkspaceChangeBefore {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl WorkspaceChangeBeforeInitial {
+        pub fn observe(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state.observe = true;
+            WorkspaceChangeBefore(state)
+        }
+        pub fn deny(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("deny".into());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn message(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("message".into());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn modify_workspace(&self, grant: Modify) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("workspace".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            WorkspaceChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> WorkspaceChangeBefore {
+            let mut state = State::default();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            WorkspaceChangeBefore(state)
+        }
+    }
+    impl WorkspaceChangeBefore {
+        pub fn observe(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state.observe = true;
+            WorkspaceChangeBefore(state)
+        }
+        pub fn deny(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("deny".into());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn message(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("message".into());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn modify_workspace(&self, grant: Modify) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state.grants.effects.insert("modify".into());
+            for (operation, enabled) in grant.wire() {
+                let old = state
+                    .grants
+                    .modify
+                    .entry("workspace".into())
+                    .or_default()
+                    .entry(operation)
+                    .or_default();
+                *old |= enabled;
+            }
+            WorkspaceChangeBefore(state)
+        }
+        pub fn elicitation_form(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("form".into(), BTreeMap::new());
+            WorkspaceChangeBefore(state)
+        }
+        pub fn elicitation_url(&self) -> WorkspaceChangeBefore {
+            let mut state = self.0.clone();
+            state
+                .grants
+                .elicitation
+                .insert("url".into(), BTreeMap::new());
+            WorkspaceChangeBefore(state)
+        }
     }
 }
 /// Inline schema model.

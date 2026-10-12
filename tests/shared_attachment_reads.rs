@@ -1,14 +1,14 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Attachment, Hooks,
     body::{BodyChunkFuture, BodyError, BodyStream},
     generated::CanonicalMessageRole,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
 };
 use futures::executor::block_on;
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     future::{Future, poll_fn},
     sync::{
         Arc, Mutex,
@@ -20,10 +20,10 @@ use std::{
 fn hooks(limit: usize) -> Hooks {
     let mut options = HooksOptions::new(
         "urn:test:attachments",
-        BTreeMap::from([(
-            "user.message.outbound".into(),
-            EventGrant::intercept(Capabilities::none()),
-        )]),
+        capability::HostCapabilities {
+            user_message_outbound: Some(capability::user_message_outbound().message()),
+            ..Default::default()
+        },
     );
     options.max_body_bytes = limit;
     Hooks::new(

@@ -7,7 +7,8 @@ use serde_json::Value;
 use std::time::{Duration, Instant};
 
 fn error(message: impl ToString) -> HookError {
-    HookError(message.to_string()).classified(crate::generated::DeliveryDiagnosticCode::Preparation)
+    HookError::new(message.to_string())
+        .classified(crate::generated::DeliveryDiagnosticCode::Preparation)
 }
 
 fn category(item: &Value) -> &str {
@@ -175,7 +176,7 @@ fn remaining_upload_budget(deadline: Instant) -> Result<Duration, HookError> {
         .checked_duration_since(Instant::now())
         .filter(|d| !d.is_zero())
         .ok_or_else(|| {
-            HookError("upload deadline exceeded".into())
+            HookError::new("upload deadline exceeded")
                 .classified(crate::generated::DeliveryDiagnosticCode::DeadlineExceeded)
         })
 }
@@ -188,7 +189,7 @@ async fn await_upload_phase<T>(
     #[cfg(feature = "reqwest")]
     {
         tokio::time::timeout(remaining, future).await.map_err(|_| {
-            HookError("upload deadline exceeded".into())
+            HookError::new("upload deadline exceeded")
                 .classified(crate::generated::DeliveryDiagnosticCode::DeadlineExceeded)
         })?
     }
@@ -991,7 +992,6 @@ mod tests {
         BackendOptions {
             credentials: BTreeMap::new(),
             auth_provider: None,
-            allow_anonymous_http: false,
             allow_loopback_http: false,
             max_frame_bytes: 8192,
         }
@@ -1436,8 +1436,7 @@ mod tests {
             store: &store,
             scope: AuthorizedScope::new("test"),
         };
-        let mut options = options();
-        options.allow_anonymous_http = true;
+        let options = options();
         let upload =
             json!({"endpoint":"https://upload.example/exact","maxBytes":100,"timeoutMs":50});
         let mut descriptor = item();

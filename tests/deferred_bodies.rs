@@ -1,11 +1,12 @@
 //! Owned attachments remain lazy through route selection and fail closed.
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Attachment, Hooks,
     adapters::registered::ManagedBackend,
     body::{BodyChunkFuture, BodyError, BodyStream},
     client::{HookError, LocalFuture},
     generated::ToolBeforeInputOrigin,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::{HostInput, PartInput, ToolBeforeInput},
 };
 use futures::{executor::block_on, task::noop_waker};
@@ -62,11 +63,10 @@ fn hooks_with_upload_timeout(
     let registration = json!({"protocolVersion":"draft","hooks":[{"id":"org.example.deferred","transport":{"type":"stdio","command":"never-started","lifecycle":"persistent"},"subscriptions":[subscription]}]});
     let mut options = HooksOptions::new(
         "urn:example:host",
-        [(
-            "tool.before".into(),
-            EventGrant::intercept(Capabilities::none().allow().deny()),
-        )]
-        .into(),
+        capability::HostCapabilities {
+            tool_before: Some(capability::tool_before().allow().deny()),
+            ..Default::default()
+        },
     )
     .with_backend("org.example.deferred", backend.clone());
     options

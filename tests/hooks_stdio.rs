@@ -1,9 +1,10 @@
 #![cfg(all(feature = "tokio-process", unix))]
+use agenthooksprotocol::capability;
 
 use agenthooksprotocol::{
-    client::{Decision, ToolContext},
+    client::{Permission, ToolContext},
     generated::Registration,
-    hooks::{Capabilities, EventGrant, Hooks, HooksOptions},
+    hooks::{Hooks, HooksOptions},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -89,12 +90,15 @@ fn configured(log: &Log, lifecycle: &str, observe: bool) -> Hooks {
     let mut subscriptions = vec![
         json!({"events":["tool.before"],"mode":"intercept","timeoutMs":3000,"failurePolicy":"fail-closed","content":{"default":"metadata"}}),
     ];
-    let grant = EventGrant::intercept(Capabilities::none().allow().deny().modify_input());
+    let grant = capability::tool_before()
+        .allow()
+        .deny()
+        .modify_input(capability::Modify::ReplaceAndMerge);
     let grant = if observe {
         subscriptions.push(
             json!({"events":["tool.before"],"mode":"observe","content":{"default":"metadata"}}),
         );
-        grant.with_observe()
+        grant.observe()
     } else {
         grant
     };
@@ -106,7 +110,10 @@ fn configured(log: &Log, lifecycle: &str, observe: bool) -> Hooks {
     let registration = serde_json::from_str::<Registration>(&config).unwrap();
     let mut options = HooksOptions::new(
         "https://host.test/stdio",
-        [("tool.before".into(), grant)].into(),
+        capability::HostCapabilities {
+            tool_before: Some(grant),
+            ..Default::default()
+        },
     );
     options.observation_timeout = Duration::from_secs(3);
     Hooks::new(registration, options).unwrap()
@@ -122,7 +129,7 @@ async fn ordinary_registration_persistent_stdio_drains_and_reaps_child() {
             timeout_ms: 100,
         })
         .context(context())
-        .initial_state(Decision::Allow);
+        .initial_state(Permission::Allow);
     assert!(!log.0.exists(), "construction must not spawn or dispatch");
     let modified = lazy.await.unwrap();
     assert!(
@@ -131,7 +138,7 @@ async fn ordinary_registration_persistent_stdio_drains_and_reaps_child() {
         modified.outcome.failures
     );
     assert!(modified.outcome.can_execute());
-    let input = modified.input.unwrap();
+    let input = modified.input;
     assert_eq!(input.command, "safe");
     assert_eq!(input.timeout_ms, 25);
     let denied = hooks
@@ -140,7 +147,7 @@ async fn ordinary_registration_persistent_stdio_drains_and_reaps_child() {
             timeout_ms: 100,
         })
         .context(context())
-        .initial_state(Decision::Allow)
+        .initial_state(Permission::Allow)
         .await
         .unwrap();
     assert!(denied.outcome.failures.is_empty());
@@ -232,7 +239,7 @@ async fn ordinary_registration_per_event_stdio_uses_fresh_children() {
                 timeout_ms: 100,
             })
             .context(context())
-            .initial_state(Decision::Allow)
+            .initial_state(Permission::Allow)
             .await
             .unwrap();
         assert!(
@@ -241,7 +248,7 @@ async fn ordinary_registration_per_event_stdio_uses_fresh_children() {
             result.outcome.failures
         );
         assert!(result.outcome.can_execute());
-        assert_eq!(result.input.unwrap().command, "safe");
+        assert_eq!(result.input.command, "safe");
     }
     let report = hooks.wait_until_idle().await;
     assert_eq!(report.delivered, 2);

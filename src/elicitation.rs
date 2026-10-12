@@ -460,8 +460,8 @@ pub(crate) fn stage_boundary_admitted(
     public_validate("intercept-request", request)?;
     let mut typed: InterceptRequest = serde_json::from_value(request.clone())?;
     let event_type = match typed.params.event.as_ref() {
-        Event::UserElicitationRequest(_) => "user.elicitation.request",
-        Event::UserElicitationResult(_) => "user.elicitation.result",
+        Event::UserElicitationRequest(_) => EventType::UserElicitationRequest,
+        Event::UserElicitationResult(_) => EventType::UserElicitationResult,
         _ => return Err("Invalid request boundary".into()),
     };
     let response = json!({"jsonrpc":"2.0","id":request["id"],

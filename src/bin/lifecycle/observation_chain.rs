@@ -26,7 +26,7 @@ impl Hook for ChainHook {
                 for item in items {
                     let item = item
                         .as_object_mut()
-                        .ok_or_else(|| HookError("invalid item".into()))?;
+                        .ok_or_else(|| HookError::new("invalid item"))?;
                     item.remove("body");
                     item.remove("gap");
                     item.insert("selection".into(), json!("metadata"));
@@ -79,9 +79,9 @@ impl Hook for ChainHook {
                 })();
                 // After cancellation this send fails: the SDK operation, not the
                 // late transport response, owns permission to resume the chain.
-                let _ = tx.send(result.map_err(|e| HookError(e.to_string())));
+                let _ = tx.send(result.map_err(|e| HookError::new(e.to_string())));
             }));
-            rx.await.map_err(|e| HookError(e.to_string()))?
+            rx.await.map_err(|e| HookError::new(e.to_string()))?
         })
     }
 }
@@ -190,7 +190,11 @@ pub(super) fn run(
             }
             Ok(())
         })?;
-        (result.effective_input, failures, observations)
+        (
+            serde_json::to_value(&result.event)?["tool"]["input"].clone(),
+            failures,
+            observations,
+        )
     } else {
         // Drain only the already-started wire call after operation cancellation.
         transport.control("/release", &json!({"id":id}))?;
@@ -202,7 +206,8 @@ pub(super) fn run(
         (
             snapshot
                 .partial
-                .map(|p| p.effective_input)
+                .map(|p| serde_json::to_value(&p.event).map(|event| event["tool"]["input"].clone()))
+                .transpose()?
                 .unwrap_or_else(|| original["params"]["event"]["tool"]["input"].clone()),
             vec![],
             vec![],

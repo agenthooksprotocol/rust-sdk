@@ -21,15 +21,39 @@ agenthooksprotocol = "0.4"
 ## Registration-driven hooks
 
 `Hooks` accepts an ordinary `Registration` and `HooksOptions` with
-explicit per-event `EventGrant` authority. Registration selects routes; it does
+typed `capability::HostCapabilities` authority. Registration selects routes; it does
 not grant effects or observation permission. `tool_before(ToolBeforeInput<T>)`
 accepts flattened typed host facts and preserves the application argument type.
 `tool_input(T).context(...)` and `event(...)` retain advanced canonical paths.
 All 32 named event methods accept their generated `inputs::*Input`
-with projection deferred until await. `tool_before_event(ToolBeforeInput<T>)`
-returns the complete effective event; the primary `tool_before` instead preserves
-the application argument type in `result.input`. Capability vocabulary is available
-as `capability::{Event, EffectType, ModifyTarget}` with canonical wire spellings.
+with projection deferred until await, including `tool_after`,
+`tool_permission_request`, `tool_permission_resolved`, and `tool_progress`.
+Generic host inputs preserve caller-owned arguments.
+`tool_before_event(ToolBeforeInput<T>)` returns an `EventOutcome` containing the
+canonical event; `tool_before` preserves the application argument type in
+`result.input`. Declare host authority with event-specific constructors in
+`capability`; the fields of `capability::HostCapabilities` accept only matching
+event declarations.
+
+Use `hooks.subscribes(EventType::ToolBefore)` before expensive input preparation
+when only subscribed consumers need that input. This synchronous lookup includes
+eligible interception and observe-only routes, using registration's exact, `*`,
+and dotted-prefix selectors. The argument is the generated `EventType`;
+registration selectors remain wire strings. It returns `false` for unconfigured
+events and events with no eligible matching route. Payload-dependent filters are
+not evaluated: a matching filtered route remains potentially interested.
+The lookup performs no input preparation, transport, authentication, uploads, or
+mutation. It reports static interest, not permission or guaranteed delivery.
+
+```rust,ignore
+use agenthooksprotocol::generated::EventType;
+
+if hooks.subscribes(EventType::ToolBefore) {
+    let input = prepare_tool_facts();
+    let outcome = hooks.tool_before(input).await?;
+    // Apply host policy to the settlement before executing the tool.
+}
+```
 
 Enable `reqwest` for registered HTTP and `tokio-process` for registered stdio.
 Default features are empty. Construction and unpolled boundaries perform no
@@ -70,23 +94,59 @@ covers preparation, authentication, uploads, interception and owned observations
 phase changes do not reset it. Dropping or cancelling a call never authorizes an
 incomplete interception. Bounded transport cleanup/reaping can outlast expiry.
 
-Typed decoding occurs after settlement: `result.input` is a fresh
-`Result<T, InputDecodeError>`, not an unchecked cast. A decoding error does not roll
-back accepted effects. Use an argument contract to validate edits before they are
-committed and forwarded to later interceptors. The host still owns execution policy.
+Typed decoding occurs after settlement: a successful Hooks tool boundary exposes
+a freshly decoded caller-owned `result.input: T`, not an unchecked cast. Decoding
+failure returns an outer `HookError` with accepted settlement evidence available
+through `accepted_settlement()`; it does not roll back accepted effects. Use an
+argument contract to validate edits before they are committed and forwarded to
+later interceptors. The host still owns execution policy.
 `result.diagnostics` carries generated cause codes separately from delivery stage,
 backend/subscription attribution, failure policy, and synthetic-denial evidence;
 backend messages, bodies, and credentials are excluded. Canonical protocol denial
-is not a delivery failure. Accepted raw responses remain in
-`result.outcome.responses` for advanced consumers.
+is not a delivery failure. Full accepted canonical responses remain in
+`result.outcome.responses` for inspection.
+
+### Canonical settlement and caller-owned data
+
+`client::ProtocolOutcome<C = SettledCandidate, P = serde_json::Value>` is the
+settlement value. It owns permission, flow, authorization, failures, typed
+`MessageEffect` values, full `InjectEffect` values, accepted `InterceptResponse`
+values, and `settled_candidate: Option<generated::Candidate<C, P>>`. Injections
+retain delivery timing and order. Candidate envelopes retain provenance and
+extension fields; `candidate()` borrows their payload.
+
+`hooks::EventOutcome` is non-generic and contains `event: generated::Event`,
+`outcome`, diagnostics, and owned content. The event envelope is schema-owned; opaque host facts and
+unknown properties are preserved. `hooks::ToolOutcome<T, R, P>` additionally
+exposes the caller-owned `input: T` and uses
+`ProtocolOutcome<R, P>` for application result and provenance contracts.
+Low-level `client::BoundaryResult<T>` also separates the canonical `event` from
+its decoded caller-owned `input: Result<T, InputDecodeError>`.
+
+Use `client::Permission` for permission values. Serialize canonical models with
+`serde_json::to_value` for wire inspection or JSON Pointer access. Unknown
+properties do not override known fields or authorize execution.
+`SettledCandidate` has typed summary, message, and elicitation variants;
+`SettledCandidate::Opaque` carries application-owned results without imposing
+an application schema.
+
+Responses publish atomically. An invalid response publishes no edits or effects;
+responses accepted earlier survive, and later edits cannot repair an invalid
+edit in the rejected response. `HookError::accepted_settlement()` retains
+non-executable diagnostic evidence when accepted settlement cannot satisfy a
+caller's decode contract.
 
 ### Application contracts
 
 `Hooks::tool_before(inputs::ToolBeforeInput<A>)` returns a lazy
 `ToolBoundary<A, R = serde_json::Value, P = serde_json::Value>`. Arguments,
 returned values, and candidate provenance have independent types. Awaiting yields
-`ToolOutcome<A, R, P>` with `input: Result<A, InputDecodeError>` and
-`candidate: Option<generated::Candidate<R, P>>`. Use the generated candidate's
+`ToolOutcome<A, R, P>` with `event: generated::Event`,
+`input: A`, and `outcome: ProtocolOutcome<R, P>`. Input decoding failure returns
+an outer `HookError` retaining accepted settlement evidence.
+The authoritative candidate envelope is
+`result.outcome.settled_candidate: Option<generated::Candidate<R, P>>`.
+Use the generated candidate's
 `value` and `provenance` members directly; `Presence` distinguishes omitted
 provenance from a supplied value. A present candidate with a null value is not
 an absent candidate.
@@ -101,7 +161,7 @@ let result = hooks.tool_before(input)
     .result_type::<ToolResult>()
     .provenance_type::<Provenance>()
     .await?;
-let candidate = result.candidate;
+let candidate = result.outcome.settled_candidate;
 ```
 
 `Contract::new()` checks decoding and data preservation;
@@ -184,10 +244,27 @@ credentials are never an implicit fallback for independently bound uploads.
 Named boundaries such as `hooks.session_start(facts).await` supply their event
 `type`, identity, time, and configured source. Session start also supplies the
 configured manifest; do not duplicate those fields in `facts`. Conflicting
-caller values are rejected. Use `HooksOptions::from_manifest(source, manifest)`
-for a complete `StaticCapabilityManifest`, including tool paths,
-limits, and extension fields; the simple event-grant constructor only advertises
-its supported event/mode/capability subset.
+caller values are rejected. `HooksOptions::new(source, HostCapabilities)` stores
+typed authority without network I/O or JSON parsing. Each omitted field grants
+nothing. A declaration explicitly opts into observation with `.observe()`;
+interception selects supported controls or an elicitation facility.
+
+```rust
+use agenthooksprotocol::{capability::{self, HostCapabilities, Modify}, hooks::HooksOptions};
+
+let options = HooksOptions::new("urn:example:host", HostCapabilities {
+    tool_before: Some(capability::tool_before()
+        .allow().deny().return_result().modify_input(Modify::ReplaceAndMerge)
+        .observe()),
+    ..HostCapabilities::default()
+});
+```
+
+`Hooks::manifest()` renders the configured event/mode/capability subset for
+session start. Set `HooksOptions::manifest_metadata` to customize typed transport,
+authentication, tool-path, scope, limit, and other non-event metadata. Its opaque
+extras cannot replace known fields or event authority. External registration and transport configuration are validated
+by `Hooks::new`.
 
 Use generated host inputs with `PartInput::inline_text(...)` and
 `PartInput::owned(Attachment::lazy(source), media_type)` in canonical message
@@ -334,11 +411,11 @@ file example with metadata-only auditing and a post-shutdown read.
 ```rust,ignore
 let result = client
     .tool_before(input) // T: Serialize + DeserializeOwned, inferred from input
-    .initial_state(agenthooksprotocol::client::Decision::Allow)
+    .initial_state(agenthooksprotocol::client::Permission::Allow)
     .await?;
 
 // Protocol acceptance has already completed. Decoding is a separate inner result.
-let effective_json = &result.effective_input;
+let effective_event = serde_json::to_value(&result.event)?;
 match result.input {
     Ok(input) => { /* apply your own execution policy to the fresh typed input */ }
     Err(error) => { /* refuse execution; do not roll back accepted protocol effects */ }
@@ -370,13 +447,16 @@ authenticated identity nor evidence of execution.
 
 `Client::event(event)` accepts a complete canonical event, including its identity
 and context. Schema-derived named methods such as `tool_before_event(event)`
-add an event-name check; `boundary::ALL_BOUNDARIES` exposes the generated
-inventory. These APIs are distinct from `tool_before(input)`, which accepts only
+add an event-name check. `Hooks::event_for` and `Client::event_for` bind a
+complete event to an expected generated `EventType`, such as
+`EventType::SessionStart`; `hooks::NAMED_BOUNDARIES` exposes typed event values,
+and `boundary::ALL_BOUNDARIES` exposes wire-schema descriptors. These APIs are distinct from `tool_before(input)`, which accepts only
 application input and uses the client's `ToolContext`.
 
-Complete-event boundaries are lazy. Their result separates `outcome` (settled
-protocol state), `effective_event` (canonical JSON), and `event` (the subsequent
-`Result<T, InputDecodeError>`). A failed typed decode does not undo accepted effects.
+Complete-event boundaries are lazy. Their `runtime::EventResult<T>` separates
+`outcome` (typed settled protocol state), `event: generated::Event` (the canonical
+effective event), and `decoded_event: Result<T, InputDecodeError>` (the caller-owned
+projection). A failed typed decode does not undo accepted effects.
 The SDK does not execute tools, install model context, or make application-policy
 decisions.
 
@@ -415,8 +495,9 @@ Keep `let progress = builder.progress()` before awaiting a boundary when you nee
 cancellation evidence. `progress.interrupt()` wakes the pending boundary and returns
 an outer `BoundaryErrorKind::Interrupted`, regardless of fail-open policy. Dropping
 a polled future also marks its progress interrupted. `progress.snapshot()` retains
-already accepted effective input and protocol effects, but its outcome is always
-non-executable. A pending response is never committed on interruption. Outer
+a `BoundaryPartial` with the accepted canonical `event: generated::Event` and
+typed `outcome`, but its outcome is always non-authorizing. A pending response is
+never committed on interruption. Outer
 `BoundaryError` values distinguish preflight, operational, and interruption failures
 from the inner `InputDecodeError` of a settled boundary.
 
@@ -439,12 +520,17 @@ intentional: the runtime-neutral core does not install a global timer or executo
 | `interop` | Executable test hosts | Test-only blocking HTTP/process fixtures; not a default core dependency |
 
 `transport::{Request, Response, Http}` do not expose Reqwest or Axum types.
-Server callbacks receive generated request types and credential-derived principals;
-request IDs, event IDs, and content references are correlation, not authorization.
+`server::HandlerSet` registers callbacks in separate `intercept` and `observe`
+maps. Each event slot receives its matching generated event type and an
+authenticated context. Interception returns `ctx.reply().effect(effect)` with
+matching canonical effects; `ctx.reply()` alone is a valid no-op. Observation
+returns `Ok(())` and cannot return controls. Both maps can handle the same event.
+The server owns envelope correlation. Request IDs, event IDs, and content
+references are correlation, not authorization.
 Use `Server::handle_with_content(request, &store)` to verify schema-defined
-selected content before dispatch. Override `Handler::handle_verified` to consume
-`ResolvedContent` bytes indexed by request JSON pointer. The authenticated
-principal determines the storage scope; arbitrary open payload fields are not
+selected content before dispatch. Event-specific contexts expose verified content
+bytes indexed by request JSON pointer. The authenticated principal determines
+the storage scope; arbitrary open payload fields are not
 scanned for references. Plain `handle()` performs protocol validation without
 automatic content resolution.
 The bounded stdio adapter frames the **same** server handler rather than maintaining
@@ -485,6 +571,23 @@ publishing effects. The in-memory receiver is not durable storage or a retrieval
 protocol. Upload deadlines must be enforced by the explicitly selected runtime or
 transport; core code does not secretly start a timer runtime.
 
+### Transport envelopes and canonical reducers
+
+Custom `Hook` and `ManagedBackend` implementations exchange canonical JSON
+request and response envelopes through a runtime-neutral transport seam.
+Construct transport failures with `HookError::new(message)`. Canonical validation
+precedes settlement. `ToolContext`, complete-event inputs, declarations, and
+native snapshots carry explicit host-owned facts or wire models.
+
+Low-level content editing, elicitation staging, registration validation, and
+lineage helpers operate on canonically validated JSON or caller-owned envelopes.
+`compaction::capabilities`, `compaction::selected_text`, and
+`compaction::stage_boundary` provide independent canonical compaction operations;
+the host owns generation, scheduling, and downstream context installation.
+JSON supports merge/replace operations and opaque application data at these
+boundaries. Deferred observation callbacks carry projected wire envelopes;
+the host owns their scheduling.
+
 ### Scope of the draft
 
 The SDK provides typed event boundaries, registration checks, source-scoped
@@ -513,7 +616,7 @@ cargo test --locked --all-features
 
 Generated code lives in `src/generated.rs`. Its provenance is recorded in `src/ahp-codegen.lock.json`; schema changes are made in the [protocol repository](https://github.com/agenthooksprotocol/agent-hooks-protocol), not by editing the generated file.
 
-The generator source is protocol commit `7544872e5beff69f29b04ae61686cc8ac25c3654`. From a protocol checkout at that commit, regenerate and verify with:
+The generator source is protocol commit `51d606a7f69a9c7008d49b91c726e22e7fef96d4`. From a protocol checkout at that commit, regenerate and verify with:
 
 ```sh
 python3 tools/generate_sdk.py --rust-sdk ../rust-sdk
@@ -521,10 +624,6 @@ python3 tools/generate_sdk.py --rust-sdk ../rust-sdk --check
 ```
 
 The root `ahp-codegen.lock.json` mirrors `src/ahp-codegen.lock.json`; both are generator-owned.
-
-## License
-
-Apache-2.0
 
 ### Typed composed payloads
 
@@ -568,14 +667,13 @@ error rather than an implicit null default.
 
 Query advertised effect-family membership on incoming generic or event-specific
 capabilities with `capabilities.supports(EffectId::Deny)`. `EffectId` aliases the
-schema's extensible effect vocabulary (also exported as
-`capability::EffectType`), so
+schema's extensible effect vocabulary, so
 `capabilities.supports(EffectId::Unknown("vendor.effect".into()))` works for custom
 families too. This query does not grant authorization and does not inspect
 modify targets, operations, or other admission constraints. A populated `modify`
 member does not imply membership of `"modify"` in `effects`.
 
-Use `capability::EffectType::as_str()` to borrow an identifier's wire spelling
+Use `EffectId::as_str()` to borrow an identifier's wire spelling
 and to obtain keys for ordered or hashed collections. Clone an identifier when reusing its
 owned string. `supports` compares typed identifiers without JSON serialization.
 
@@ -587,3 +685,7 @@ provenance. Candidate decoding preserves extension members.
 Numbers use arbitrary-precision JSON; integer slots reject fractions and values
 outside the interoperable safe-integer range. Fixed numeric literals may normalize
 their spelling during encoding, while `parse_*` retains the original raw JSON value.
+
+## License
+
+Apache-2.0

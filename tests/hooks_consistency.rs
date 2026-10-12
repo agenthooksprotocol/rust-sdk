@@ -1,12 +1,13 @@
+use agenthooksprotocol::capability;
+use agenthooksprotocol::generated::EventType;
 use agenthooksprotocol::{
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
-    hooks::{Capabilities, EventGrant, Hooks, HooksOptions},
+    hooks::{Hooks, HooksOptions},
 };
 use futures::{FutureExt, executor::LocalPool};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     future::IntoFuture,
     sync::{Arc, Mutex},
     time::Duration,
@@ -45,10 +46,10 @@ fn registration() -> Value {
 fn options(backend: Arc<Backend>) -> HooksOptions {
     HooksOptions::new(
         "urn:test:host",
-        BTreeMap::from([(
-            "session.start".into(),
-            EventGrant::intercept(Capabilities::none()).with_observe(),
-        )]),
+        capability::HostCapabilities {
+            session_start: Some(capability::session_start().message().observe()),
+            ..Default::default()
+        },
     )
     .with_backend("org.example.test", backend)
 }
@@ -68,12 +69,18 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
     let result = pool
         .run_until(hooks.session_start(facts()).into_future())
         .unwrap();
-    let _: &agenthooksprotocol::hooks::EventOutcome<agenthooksprotocol::Event> = &result;
-    let _: &agenthooksprotocol::Event = &result.settled_event;
-    let event: agenthooksprotocol::Event = result.event.as_ref().unwrap().clone();
+    let _: &agenthooksprotocol::hooks::EventOutcome = &result;
+    let _: &agenthooksprotocol::Event = &result.event;
+    let event: agenthooksprotocol::Event = result.event.clone();
     assert!(matches!(event, agenthooksprotocol::Event::SessionStart(_)));
-    assert_eq!(result.effective_event["type"], "session.start");
-    assert_eq!(result.effective_event["manifest"], hooks.manifest());
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["type"],
+        "session.start"
+    );
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["manifest"],
+        hooks.manifest()
+    );
     assert!(
         backend.calls.lock().unwrap().len() == 1,
         "the operation delivered its observation before completion"
@@ -85,26 +92,29 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
     same["manifest"] = hooks.manifest();
     same["extensions"] = json!({"org.example.vendor":{"data":[null,42]}});
     let settled = pool
-        .run_until(hooks.event_for("session.start", same.clone()).into_future())
+        .run_until(
+            hooks
+                .event_for(EventType::SessionStart, same.clone())
+                .into_future(),
+        )
         .unwrap();
-    assert_eq!(
-        serde_json::to_value(&settled.settled_event).unwrap(),
-        settled.effective_event
-    );
     // The structural Event codec preserves open revision extras without changing
     // the strict canonical wire validator used by Hooks.
-    let mut future_revision = settled.effective_event.clone();
+    let mut future_revision = serde_json::to_value(&settled.event).unwrap().clone();
     future_revision["vendor"] = json!({"opaque":[null,{"kind":"caller-owned"}]});
     future_revision["session"]["vendor"] = json!({"nested":true});
     let decoded: agenthooksprotocol::Event =
         serde_json::from_value(future_revision.clone()).unwrap();
     assert_eq!(serde_json::to_value(decoded).unwrap(), future_revision);
-    let mut malformed = settled.effective_event.clone();
+    let mut malformed = serde_json::to_value(&settled.event).unwrap().clone();
     malformed["harness"]["name"] = json!(42);
     assert!(serde_json::from_value::<agenthooksprotocol::Event>(malformed).is_err());
-    assert_eq!(settled.effective_event["extensions"], same["extensions"]);
+    assert_eq!(
+        serde_json::to_value(&settled.event).unwrap()["extensions"],
+        same["extensions"]
+    );
     assert!(
-        pool.run_until(hooks.event_for("session.start", same).into_future())
+        pool.run_until(hooks.event_for(EventType::SessionStart, same).into_future())
             .is_ok()
     );
     for (field, wrong) in [
@@ -115,33 +125,74 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
         let mut event = canonical_facts();
         event[field] = wrong;
         assert!(
-            pool.run_until(hooks.event_for("session.start", event).into_future())
-                .is_err()
+            pool.run_until(
+                hooks
+                    .event_for(EventType::SessionStart, event)
+                    .into_future()
+            )
+            .is_err()
         );
     }
     pool.run_until(hooks.shutdown()).unwrap();
 }
 #[test]
-fn full_manifest_is_preserved_in_session_start() {
+fn metadata_is_preserved_without_replacing_typed_event_authority() {
+    use agenthooksprotocol::generated as g;
     let mut pool = LocalPool::new();
     let backend = Arc::new(Backend::default());
-    let opts = options(backend.clone());
-    let original = Hooks::new(registration(), opts).unwrap();
-    let mut manifest = original.manifest();
-    manifest["toolPaths"] = json!(["native"]);
-    manifest["limits"] = json!({"maxUploadBytes":1234});
-    manifest["vendor.example"] = json!({"preserved":true});
-    let options = HooksOptions::from_manifest(
-        "urn:test:host",
-        serde_json::from_value(manifest.clone()).unwrap(),
-    )
-    .unwrap()
-    .with_backend("org.example.test", backend);
+    let mut options = options(backend);
+    options.manifest_metadata.tool_paths = vec!["native".into()];
+    options.manifest_metadata.transports = vec![g::StaticCapabilityManifestTransportsItem::Http];
+    options.manifest_metadata.authentication =
+        vec![g::StaticCapabilityManifestAuthenticationItem::Bearer];
+    options.manifest_metadata.limits = g::StaticCapabilityManifestLimits::new()
+        .with_max_upload_bytes(g::Integer::from_i64(1234).unwrap());
+    options.manifest_metadata.managed_policy = g::StaticCapabilityManifestManagedPolicy::new(
+        false,
+        vec![g::StaticCapabilityManifestManagedPolicyScopesItem::Managed],
+    );
+    options
+        .manifest_metadata
+        .additional_properties
+        .insert("vendor.example".into(), json!({"preserved":true}));
+    options.manifest_metadata.additional_properties.insert(
+        "events".into(),
+        json!([{"event":"tool.before","modes":["intercept"],"capabilities":{"effects":["deny"]}}]),
+    );
+    options
+        .manifest_metadata
+        .additional_properties
+        .insert("toolPaths".into(), json!(["forged"]));
+    options
+        .manifest_metadata
+        .limits
+        .additional_properties
+        .insert("maxUploadBytes".into(), json!(9999));
+    options
+        .manifest_metadata
+        .managed_policy
+        .additional_properties
+        .insert("scopes".into(), json!(["user"]));
     let hooks = Hooks::new(registration(), options).unwrap();
+    let manifest = hooks.manifest();
+    assert_eq!(manifest["toolPaths"], json!(["native"]));
+    assert_eq!(manifest["limits"], json!({"maxUploadBytes":1234}));
+    assert_eq!(manifest["transports"], json!(["http"]));
+    assert_eq!(manifest["authentication"], json!(["bearer"]));
+    assert_eq!(
+        manifest["managedPolicy"],
+        json!({"disableable":false,"scopes":["managed"]})
+    );
+    assert_eq!(manifest["vendor.example"], json!({"preserved":true}));
+    assert_eq!(manifest["events"][0]["event"], json!("session.start"));
+    assert!(!hooks.subscribes(EventType::ToolBefore));
     let result = pool
         .run_until(hooks.session_start(facts()).into_future())
         .unwrap();
-    assert_eq!(result.effective_event["manifest"], manifest);
+    assert_eq!(
+        serde_json::to_value(&result.event).unwrap()["manifest"],
+        manifest
+    );
     pool.run_until(hooks.shutdown()).unwrap();
 }
 

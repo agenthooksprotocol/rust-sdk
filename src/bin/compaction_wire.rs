@@ -357,7 +357,7 @@ impl Hook for WireHook {
                 &self.trace,
             )
             .await
-            .map_err(|e| HookError(e.to_string()))
+            .map_err(|e| HookError::new(e.to_string()))
         })
     }
 }

@@ -3,9 +3,9 @@ mod demo;
 use agenthooksprotocol::{adapters::stdio, server::*, transport::Request};
 use futures::executor::block_on;
 use std::{collections::BTreeMap, io::Cursor};
-fn server() -> Server<demo::Policy, demo::Credentials> {
+fn server() -> Server<demo::Credentials> {
     Server {
-        handler: demo::Policy,
+        handlers: demo::handlers(),
         authenticator: demo::Credentials,
         max_body_bytes: 65536,
     }
@@ -99,21 +99,27 @@ fn frame_bounds_and_eof() {
     );
     assert!(out.is_empty());
 }
-struct WrongId;
-impl Handler for WrongId {
-    fn handle(&self, _: Principal, _: Incoming) -> HandlerFuture<'_> {
-        Box::pin(async {
-            Ok(Outgoing::Intercept(Box::new(agenthooksprotocol::generated::parse_intercept_response_value(serde_json::json!({"jsonrpc":"2.0","id":"wrong","result":{"protocolVersion":"draft","effects":[]}})).into_value().unwrap())))
-        })
-    }
-}
 #[test]
-fn rejects_callback_correlation_mismatch() {
+fn rejects_callback_reply_scope_mismatch() {
+    let cached = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let mut handlers = HandlerSet::default();
+    handlers.intercept.tool_before = Some(std::sync::Arc::new(move |ctx, _event| {
+        let cached = cached.clone();
+        Box::pin(async move {
+            let mut slot = cached.lock().unwrap();
+            if let Some(reply) = slot.take() {
+                return Ok(reply);
+            }
+            *slot = Some(ctx.reply());
+            Ok(ctx.reply())
+        })
+    }));
     let server = Server {
-        handler: WrongId,
+        handlers,
         authenticator: demo::Credentials,
         max_body_bytes: 65536,
     };
+    assert_eq!(block_on(server.handle(request())).status, 200);
     assert_eq!(block_on(server.handle(request())).status, 500);
 }
 
@@ -284,23 +290,23 @@ fn stdio_preserves_json_error_body_on_non_success_status() {
     );
 }
 
-struct UnadvertisedAllow;
-impl Handler for UnadvertisedAllow {
-    fn handle(&self, _: Principal, message: Incoming) -> HandlerFuture<'_> {
+fn unadvertised_allow() -> HandlerSet {
+    let mut handlers = HandlerSet::default();
+    handlers.intercept.tool_before = Some(std::sync::Arc::new(|ctx, _event| {
         Box::pin(async move {
-            let Incoming::Intercept(request) = message else {
-                return Err("expected intercept".into());
-            };
-            Ok(Outgoing::Intercept(Box::new(agenthooksprotocol::generated::parse_intercept_response_value(
-                serde_json::json!({"jsonrpc":"2.0","id":request.id,"result":{"protocolVersion":"draft","effects":[{"type":"allow"}]}})
-            ).into_value().unwrap())))
+            let effect = serde_json::from_value::<agenthooksprotocol::generated::ToolBeforeEffect>(
+                serde_json::json!({"type":"allow"}),
+            )
+            .unwrap();
+            Ok(ctx.reply().effect(effect))
         })
-    }
+    }));
+    handlers
 }
 #[test]
 fn server_never_publishes_unadvertised_allow() {
     let server = Server {
-        handler: UnadvertisedAllow,
+        handlers: unadvertised_allow(),
         authenticator: demo::Credentials,
         max_body_bytes: 65536,
     };
@@ -325,7 +331,7 @@ fn generic_effect_grants_cover_operations_and_elicitation() {
         ),
         (
             json!({"effects":["inject"],"inject":{"context":{"append":true,"deliverAt":["now"]}}}),
-            json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":"context"}),
+            json!({"type":"inject","target":"context","operation":"append","deliverAt":"next_turn","value":[]}),
         ),
     ];
     for (caps, effect) in cases {
@@ -384,46 +390,33 @@ fn continuation_budgets_accept_integral_decimal_and_exponent_numbers() {
     assert!(validate_effect_capabilities(&request, &response).is_err());
 }
 
-struct VerifiedPolicy {
-    calls: std::sync::atomic::AtomicUsize,
+fn verified_handlers(
+    calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     expected: Option<&'static [u8]>,
-}
-impl Handler for VerifiedPolicy {
-    fn handle(&self, _: Principal, _: Incoming) -> HandlerFuture<'_> {
-        panic!("content-enabled dispatch must use the verified callback")
-    }
-    fn handle_verified(
-        &self,
-        principal: Principal,
-        message: Incoming,
-        content: ResolvedContent,
-    ) -> HandlerFuture<'_> {
+) -> HandlerSet {
+    fn verify(principal: &Principal, content: &ResolvedContent, expected: Option<&[u8]>) {
         assert_eq!(principal.subject, "local-demo-user");
-        match self.expected {
+        match expected {
             Some(bytes) => {
                 assert_eq!(content.len(), 1);
                 assert_eq!(&**content.get("/params/event/items/0").unwrap(), bytes);
             }
             None => assert!(content.is_empty()),
         }
-        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Box::pin(async move {
-            match message {
-                Incoming::Intercept(request) => Ok(Outgoing::Intercept(Box::new(
-                    agenthooksprotocol::generated::parse_intercept_response_value(
-                        serde_json::json!({
-                            "jsonrpc":"2.0", "id":request.id,
-                            "result":{"protocolVersion":"draft", "effects":[]}
-                        }),
-                    )
-                    .into_value()
-                    .unwrap(),
-                ))),
-                Incoming::Observe(_) => Ok(Outgoing::Observed),
-                _ => Err("unexpected capabilities request".into()),
-            }
-        })
     }
+    let mut handlers = HandlerSet::default();
+    let intercept_calls = calls.clone();
+    handlers.intercept.tool_before = Some(std::sync::Arc::new(move |ctx, _event| {
+        verify(&ctx.principal, &ctx.verified_content, expected);
+        intercept_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async move { Ok(ctx.reply()) })
+    }));
+    handlers.observe.tool_before = Some(std::sync::Arc::new(move |ctx, _event| {
+        verify(&ctx.principal, &ctx.verified_content, expected);
+        calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async { Ok(()) })
+    }));
+    handlers
 }
 fn content_request(items: serde_json::Value) -> Request {
     let mut request = request();
@@ -473,11 +466,9 @@ fn authenticated_automatic_resolution_reaches_verified_callback() {
     };
     let reference = context.put(b"verified bytes").unwrap();
     store.reads.store(0, std::sync::atomic::Ordering::Relaxed);
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let server = Server {
-        handler: VerifiedPolicy {
-            calls: 0.into(),
-            expected: Some(b"verified bytes"),
-        },
+        handlers: verified_handlers(calls.clone(), Some(b"verified bytes")),
         authenticator: demo::Credentials,
         max_body_bytes: 65536,
     };
@@ -487,13 +478,7 @@ fn authenticated_automatic_resolution_reaches_verified_callback() {
     assert_send(&future);
     assert_eq!(block_on(future).status, 200);
     assert_eq!(store.reads.load(std::sync::atomic::Ordering::Relaxed), 1);
-    assert_eq!(
-        server
-            .handler
-            .calls
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 #[test]
 fn content_resolution_never_uses_payload_scope_and_never_partially_dispatches() {
@@ -509,11 +494,9 @@ fn content_resolution_never_uses_payload_scope_and_never_partially_dispatches() 
         scope: AuthorizedScope::new("local-demo-user"),
     };
     let good = own.put(b"good").unwrap();
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let server = Server {
-        handler: VerifiedPolicy {
-            calls: 0.into(),
-            expected: None,
-        },
+        handlers: verified_handlers(calls.clone(), None),
         authenticator: demo::Credentials,
         max_body_bytes: 65536,
     };
@@ -544,13 +527,7 @@ fn content_resolution_never_uses_payload_scope_and_never_partially_dispatches() 
             .status,
         400
     );
-    assert_eq!(
-        server
-            .handler
-            .calls
-            .load(std::sync::atomic::Ordering::SeqCst),
-        0
-    );
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 #[test]
 fn metadata_omit_and_open_tool_input_never_trigger_content_reads() {
@@ -559,11 +536,9 @@ fn metadata_omit_and_open_tool_input_never_trigger_content_reads() {
         store: MemoryContentStore::new(128, 512, 8),
         reads: std::sync::atomic::AtomicUsize::new(0),
     };
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let server = Server {
-        handler: VerifiedPolicy {
-            calls: 0.into(),
-            expected: None,
-        },
+        handlers: verified_handlers(calls.clone(), None),
         authenticator: demo::Credentials,
         max_body_bytes: 65536,
     };
@@ -584,13 +559,7 @@ fn metadata_omit_and_open_tool_input_never_trigger_content_reads() {
         200
     );
     assert_eq!(store.reads.load(std::sync::atomic::Ordering::Relaxed), 0);
-    assert_eq!(
-        server
-            .handler
-            .calls
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 #[test]
 fn authentication_failure_happens_before_resolution() {
@@ -611,7 +580,7 @@ fn authentication_failure_happens_before_resolution() {
 }
 
 #[test]
-fn observe_and_existing_handlers_share_the_resolution_gate() {
+fn observe_and_intercept_share_the_resolution_gate() {
     use agenthooksprotocol::content::{AuthorizedScope, ContentContext, MemoryContentStore};
     let store = MemoryContentStore::new(128, 512, 8);
     let context = ContentContext {
@@ -625,11 +594,9 @@ fn observe_and_existing_handlers_share_the_resolution_gate() {
         block_on(existing.handle_with_content(request.clone(), &store)).status,
         200
     );
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let server = Server {
-        handler: VerifiedPolicy {
-            calls: 0.into(),
-            expected: Some(b"verified bytes"),
-        },
+        handlers: verified_handlers(calls.clone(), Some(b"verified bytes")),
         authenticator: demo::Credentials,
         max_body_bytes: 65536,
     };
@@ -646,11 +613,237 @@ fn observe_and_existing_handlers_share_the_resolution_gate() {
         block_on(server.handle_with_content(observe, &store)).status,
         204
     );
-    assert_eq!(
-        server
-            .handler
-            .calls
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[test]
+fn typed_effect_retains_metadata_and_opaque_members() {
+    use agenthooksprotocol::generated as g;
+    let expected = serde_json::json!({
+        "type":"deny", "reason":"policy", "code":"example.policy",
+        "extensions":{"example.audit":{"id":"eff-1", "order":2, "explicitNull":null}}
+    });
+    let effect: g::ToolBeforeEffect = serde_json::from_value(expected.clone()).unwrap();
+    let mut handlers = HandlerSet::default();
+    handlers.intercept.tool_before = Some(std::sync::Arc::new(move |ctx, _event| {
+        let effect = effect.clone();
+        Box::pin(async move { Ok(ctx.reply().effect(effect)) })
+    }));
+    let server = Server {
+        handlers,
+        authenticator: demo::Credentials,
+        max_body_bytes: 65536,
+    };
+    let response = block_on(server.handle(request()));
+    assert_eq!(response.status, 200);
+    let wire: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(wire["result"]["effects"][0], expected);
+}
+
+#[test]
+fn caller_data_contract_decodes_in_both_phases_without_erasure() {
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Input {
+        command: String,
+    }
+    let mut handlers = HandlerSet::default();
+    handlers.intercept.tool_before = Some(std::sync::Arc::new(|ctx, event| {
+        Box::pin(async move {
+            let input = ctx.decode(
+                "/params/event/tool/input",
+                &agenthooksprotocol::contracts::Contract::<Input>::new(),
+            )?;
+            assert_eq!(input.command, "echo hello");
+            assert_eq!(serde_json::to_value(event).unwrap()["path"], "example");
+            Ok(ctx.reply())
+        })
+    }));
+    handlers.observe.tool_before = Some(std::sync::Arc::new(|ctx, _event| {
+        Box::pin(async move {
+            let input = ctx.decode(
+                "/params/event/tool/input",
+                &agenthooksprotocol::contracts::Contract::<Input>::new(),
+            )?;
+            assert_eq!(input.command, "echo hello");
+            Ok(())
+        })
+    }));
+    let server = Server {
+        handlers,
+        authenticator: demo::Credentials,
+        max_body_bytes: 65536,
+    };
+    assert_eq!(block_on(server.handle(request())).status, 200);
+    let mut notification = request();
+    let mut wire: serde_json::Value = serde_json::from_slice(&notification.body).unwrap();
+    wire.as_object_mut().unwrap().remove("id");
+    wire["method"] = "hooks/observe".into();
+    wire["params"]
+        .as_object_mut()
+        .unwrap()
+        .remove("capabilities");
+    notification.body = serde_json::to_vec(&wire).unwrap();
+    assert_eq!(block_on(server.handle(notification)).status, 204);
+    let mut invalid = request();
+    let mut wire: serde_json::Value = serde_json::from_slice(&invalid.body).unwrap();
+    wire["params"]["event"]["tool"]["input"]["opaque"] = true.into();
+    invalid.body = serde_json::to_vec(&wire).unwrap();
+    // The caller's codec does not preserve the opaque field: reject, never erase it.
+    assert_eq!(block_on(server.handle(invalid)).status, 500);
+}
+
+#[test]
+fn typed_discovery_owns_correlation_and_headers() {
+    use agenthooksprotocol::generated as g;
+    let handlers = HandlerSet {
+        discovery: Some(std::sync::Arc::new(|ctx, request| {
+            Box::pin(async move {
+                assert_eq!(ctx.principal.subject, "local-demo-user");
+                assert_eq!(serde_json::to_value(request).unwrap()["id"], "discover-1");
+                let manifest = g::CapabilitiesResponseResultManifest::new(
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    g::CapabilitiesResponseResultManifestLimits::new(),
+                    g::CapabilitiesResponseResultManifestManagedPolicy::new(false, vec![]),
+                    vec![],
+                    vec![],
+                );
+                Ok(ctx.reply(manifest))
+            })
+        })),
+        ..Default::default()
+    };
+    let server = Server {
+        handlers,
+        authenticator: demo::Credentials,
+        max_body_bytes: 65536,
+    };
+    let mut request = request();
+    request.body = serde_json::to_vec(&serde_json::json!({
+        "jsonrpc":"2.0", "id":"discover-1", "method":"hooks/capabilities", "params":{"protocolVersion":"draft"}
+    })).unwrap();
+    let response = block_on(server.handle(request));
+    assert_eq!(response.status, 200);
+    let wire: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(wire["id"], "discover-1");
+    assert_eq!(wire["jsonrpc"], "2.0");
+    assert!(wire["result"]["manifest"].is_object());
+}
+
+#[test]
+fn typed_reply_retains_effect_order_delivery_and_literal_nulls() {
+    use agenthooksprotocol::generated as g;
+    let expected = serde_json::json!([
+        {"type":"inject", "target":"context", "operation":"append", "deliverAt":"next_turn",
+         "value":[{"id":"deferred", "role":"system", "parts":[]}]},
+        {"type":"return", "value":null},
+        {"type":"inject", "target":"context", "operation":"append", "deliverAt":"now",
+         "value":[{"id":"immediate", "role":"system", "parts":[], "synthesized":false}]},
+        {"type":"modify", "target":"input", "operation":"merge",
+         "value":{"explicitNull":null, "nested":{"opaque":[null,{"payload":true}]}}}
+    ]);
+    let effects: Vec<g::ToolBeforeEffect> = serde_json::from_value(expected.clone()).unwrap();
+    let mut handlers = HandlerSet::default();
+    handlers.intercept.tool_before = Some(std::sync::Arc::new(move |ctx, _event| {
+        let effects = effects.clone();
+        Box::pin(async move {
+            assert_eq!(ctx.grants()["inject"]["context"]["append"], true);
+            assert_eq!(ctx.grants(), &ctx.request()["params"]["capabilities"]);
+            let mut reply = ctx.reply();
+            for effect in effects {
+                reply = reply.effect(effect);
+            }
+            Ok(reply)
+        })
+    }));
+    let server = Server {
+        handlers,
+        authenticator: demo::Credentials,
+        max_body_bytes: 65536,
+    };
+    let mut request = request();
+    let mut raw: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    raw["params"]["capabilities"] = serde_json::json!({
+        "effects":["inject", "return", "modify"],
+        "inject":{"context":{"append":true, "deliverAt":["now", "next_turn"]}},
+        "modify":{"input":{"replace":false, "merge":true}}
+    });
+    request.body = serde_json::to_vec(&raw).unwrap();
+    let response = block_on(server.handle(request.clone()));
+    assert_eq!(response.status, 200);
+    let wire: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(wire["result"]["effects"], expected);
+    assert!(
+        wire["result"]["effects"][0]["value"][0]
+            .get("synthesized")
+            .is_none()
     );
+    assert_eq!(
+        wire["result"]["effects"][2]["value"][0]["synthesized"],
+        false
+    );
+    assert!(wire["result"]["effects"][1].get("value").unwrap().is_null());
+    raw["params"]["capabilities"]["inject"]["context"]["deliverAt"] = serde_json::json!(["now"]);
+    request.body = serde_json::to_vec(&raw).unwrap();
+    let rejected = block_on(server.handle(request));
+    assert_eq!(rejected.status, 500);
+    let rejected_wire: serde_json::Value = serde_json::from_slice(&rejected.body).unwrap();
+    assert!(rejected_wire.get("result").is_none());
+}
+
+#[test]
+fn invalid_effect_anywhere_rejects_the_entire_reply() {
+    use agenthooksprotocol::generated as g;
+    for invalid in [
+        // Canonically valid but not dynamically granted.
+        serde_json::json!({"type":"allow"}),
+        // Generated models must not bypass the canonical nonempty constraint.
+        serde_json::json!({"type":"deny", "reason":""}),
+    ] {
+        let mut handlers = HandlerSet::default();
+        handlers.intercept.tool_before = Some(std::sync::Arc::new(move |ctx, _event| {
+            let invalid = invalid.clone();
+            Box::pin(async move {
+                let valid: g::ToolBeforeEffect = serde_json::from_value(
+                    serde_json::json!({"type":"deny", "reason":"valid-first"}),
+                )
+                .unwrap();
+                Ok(ctx
+                    .reply()
+                    .effect(valid)
+                    .effect(g::ToolBeforeEffect::Unknown(invalid)))
+            })
+        }));
+        let server = Server {
+            handlers,
+            authenticator: demo::Credentials,
+            max_body_bytes: 65536,
+        };
+        let response = block_on(server.handle(request()));
+        assert_eq!(response.status, 500);
+        let wire: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert!(wire.get("result").is_none());
+        assert!(wire.get("effects").is_none());
+        assert!(
+            !String::from_utf8(response.body)
+                .unwrap()
+                .contains("valid-first")
+        );
+    }
+}
+
+#[test]
+fn empty_reply_is_correlated_noop_even_with_empty_dynamic_grants() {
+    let mut request = request();
+    let mut raw: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    raw["params"]["capabilities"]["effects"] = serde_json::json!([]);
+    request.body = serde_json::to_vec(&raw).unwrap();
+    let response = block_on(server().handle(request));
+    assert_eq!(response.status, 200);
+    let wire: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(wire["id"], raw["id"]);
+    assert_eq!(wire["result"]["effects"], serde_json::json!([]));
 }

@@ -1,14 +1,14 @@
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Attachment, Hooks,
     body::{BodyChunkFuture, BodyStream},
     generated::CanonicalMessageRole,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
 };
 use futures::executor::block_on;
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     future::IntoFuture,
     sync::{
         Arc,
@@ -55,10 +55,10 @@ fn source() -> (Attachment, Arc<AtomicUsize>, Arc<AtomicUsize>) {
 fn hooks(limit: usize) -> Hooks {
     let mut options = HooksOptions::new(
         "urn:test:attachments",
-        BTreeMap::from([(
-            "user.message.outbound".into(),
-            EventGrant::intercept(Capabilities::none()),
-        )]),
+        capability::HostCapabilities {
+            user_message_outbound: Some(capability::user_message_outbound().message()),
+            ..Default::default()
+        },
     );
     options.max_body_bytes = limit;
     Hooks::new(
@@ -107,7 +107,8 @@ fn mixed_inline_text_and_binary_parts_keep_distinct_ownership() {
         )]);
         let result = hooks.user_message_outbound(input).await.unwrap();
         assert_eq!(reads.load(Ordering::SeqCst), 0);
-        let parts = &result.effective_event["message"]["messages"][0]["parts"];
+        let parts =
+            &serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"];
         assert_eq!(parts[0]["kind"], "text");
         assert_eq!(parts[0]["text"], "Binary caption");
         assert!(parts[0].get("body").is_none());
@@ -279,10 +280,10 @@ fn no_match_typed_input_is_not_mutated_and_sources_remain_unread() {
         config["hooks"][0]["subscriptions"][0]["filters"] = json!({"paths":["/unrelated/**"]});
         let options = HooksOptions::new(
             "urn:test:attachments",
-            BTreeMap::from([(
-                "user.message.outbound".into(),
-                EventGrant::intercept(Capabilities::none()),
-            )]),
+            capability::HostCapabilities {
+                user_message_outbound: Some(capability::user_message_outbound().message()),
+                ..Default::default()
+            },
         )
         .with_backend("org.example.attachments", Arc::new(UnreachableBackend));
         let hooks = Hooks::new(config, options).unwrap();
@@ -465,7 +466,8 @@ fn forbidden_integrity_metadata_rejects_unopened_owned_sources() {
             .await
             .unwrap();
         assert_eq!(reads.load(Ordering::SeqCst), 0);
-        let part = &result.effective_event["message"]["messages"][0]["parts"][0];
+        let part =
+            &serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"][0];
         assert!(part.get("size").is_none());
         assert!(part.get("sha256").is_none());
         let first = result
@@ -508,15 +510,20 @@ fn inline_instructions_and_elicitation_exchange_outlive_hooks() {
             config["hooks"][0]["subscriptions"][0]["events"] = json!([name]);
             config["hooks"][0]["subscriptions"][0]["content"] = json!({"default":"body"});
             let caps = if name == "user.elicitation.request" {
-                Capabilities::none().elicitation_form()
+                capability::HostCapabilities {
+                    user_elicitation_request: Some(
+                        capability::user_elicitation_request().elicitation_form(),
+                    ),
+                    ..Default::default()
+                }
             } else {
-                Capabilities::none()
+                capability::HostCapabilities {
+                    context_compact_before: Some(capability::context_compact_before().message()),
+                    ..Default::default()
+                }
             };
-            let options = HooksOptions::new(
-                "urn:test:inline",
-                BTreeMap::from([(name.into(), EventGrant::intercept(caps))]),
-            )
-            .with_backend("org.example.attachments", Arc::new(Noop));
+            let options = HooksOptions::new("urn:test:inline", caps)
+                .with_backend("org.example.attachments", Arc::new(Noop));
             let hooks = Hooks::new(config, options).unwrap();
             let result = hooks.event(event).await.unwrap();
             assert!(
@@ -527,14 +534,17 @@ fn inline_instructions_and_elicitation_exchange_outlive_hooks() {
             hooks.shutdown().await.unwrap();
             drop(hooks);
             assert_eq!(
-                result.effective_event.pointer(path).unwrap()["text"]
+                serde_json::to_value(&result.event)
+                    .unwrap()
+                    .pointer(path)
+                    .unwrap()["text"]
                     .as_str()
                     .unwrap()
                     .as_bytes(),
                 text.as_bytes()
             );
             if name == "user.elicitation.request" {
-                let envelope = json!({"jsonrpc":"2.0", "id":result.effective_event["id"], "method":"hooks/intercept", "params":{"protocolVersion":"draft", "event":result.effective_event, "capabilities":{"effects":["return","deny","message"], "elicitation":{"form":{}}}}});
+                let envelope = json!({"jsonrpc":"2.0", "id":serde_json::to_value(&result.event).unwrap()["id"], "method":"hooks/intercept", "params":{"protocolVersion":"draft", "event":serde_json::to_value(&result.event).unwrap(), "capabilities":{"effects":["return","deny","message"], "elicitation":{"form":{}}}}});
                 let exchange =
                     agenthooksprotocol::elicitation::Exchange::new(&envelope, &result.content)
                         .unwrap();

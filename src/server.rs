@@ -14,32 +14,301 @@ pub struct Principal {
 pub trait Authenticator: Send + Sync {
     fn authenticate(&self, authorization: Option<&str>) -> Result<Principal, String>;
 }
-#[derive(Debug)]
-pub enum Incoming {
-    Capabilities(Box<g::CapabilitiesRequest>),
-    Intercept(Box<g::InterceptRequest>),
-    Observe(Box<g::ObserveNotification>),
+/// Owned future returned by an event-specific callback.
+pub type ServerFuture<T> = Pin<Box<dyn Future<Output = Result<T, String>> + Send + 'static>>;
+/// Event-correlated response. Only an interception context can create one.
+pub struct Reply<E> {
+    scope: Arc<()>,
+    effects: Vec<E>,
 }
-#[derive(Debug)]
-pub enum Outgoing {
-    Capabilities(Box<g::CapabilitiesResponse>),
-    Intercept(Box<g::InterceptResponse>),
-    Observed,
-}
-pub type HandlerFuture<'a> = Pin<Box<dyn Future<Output = Result<Outgoing, String>> + Send + 'a>>;
-pub trait Handler: Send + Sync {
-    fn handle(&self, principal: Principal, message: Incoming) -> HandlerFuture<'_>;
-    /// Called only after every selected body has verified. Override to consume
-    /// immutable bytes without resolving references again. The default preserves
-    /// existing handlers while still enforcing the resolution gate.
-    fn handle_verified(
-        &self,
-        principal: Principal,
-        message: Incoming,
-        _content: ResolvedContent,
-    ) -> HandlerFuture<'_> {
-        self.handle(principal, message)
+impl<E> Reply<E> {
+    /// Retains the entire canonical effect, including ordering and opaque members.
+    pub fn effect(mut self, effect: E) -> Self {
+        self.effects.push(effect);
+        self
     }
+}
+/// Authenticated, validated interception state. Protocol response headers are server-owned.
+pub struct InterceptContext<E> {
+    pub principal: Principal,
+    pub verified_content: ResolvedContent,
+    request: Arc<serde_json::Value>,
+    scope: Arc<()>,
+    marker: std::marker::PhantomData<fn() -> E>,
+}
+impl<E> InterceptContext<E> {
+    /// An empty reply is a valid no-op.
+    pub fn reply(&self) -> Reply<E> {
+        Reply {
+            scope: self.scope.clone(),
+            effects: Vec::new(),
+        }
+    }
+    pub fn grants(&self) -> &serde_json::Value {
+        &self.request["params"]["capabilities"]
+    }
+    pub fn request(&self) -> &serde_json::Value {
+        &self.request
+    }
+    /// Decode caller-owned data without dropping wire members or bypassing invariants.
+    pub fn decode<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &self,
+        pointer: &str,
+        contract: &crate::contracts::Contract<T>,
+    ) -> Result<T, String> {
+        contract
+            .decode(
+                self.request
+                    .pointer(pointer)
+                    .ok_or("missing caller-owned data")?,
+            )
+            .map_err(|error| error.to_string())
+    }
+}
+/// Observation state intentionally has no reply or effect methods.
+pub struct ObserveContext<E> {
+    pub principal: Principal,
+    pub verified_content: ResolvedContent,
+    request: Arc<serde_json::Value>,
+    marker: std::marker::PhantomData<fn() -> E>,
+}
+impl<E> ObserveContext<E> {
+    pub fn request(&self) -> &serde_json::Value {
+        &self.request
+    }
+    /// Decode caller-owned data without dropping wire members or bypassing invariants.
+    pub fn decode<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &self,
+        pointer: &str,
+        contract: &crate::contracts::Contract<T>,
+    ) -> Result<T, String> {
+        contract
+            .decode(
+                self.request
+                    .pointer(pointer)
+                    .ok_or("missing caller-owned data")?,
+            )
+            .map_err(|error| error.to_string())
+    }
+}
+pub struct DiscoveryContext {
+    pub principal: Principal,
+    pub verified_content: ResolvedContent,
+    scope: Arc<()>,
+}
+pub struct DiscoveryReply {
+    scope: Arc<()>,
+    manifest: g::CapabilitiesResponseResultManifest,
+}
+impl DiscoveryContext {
+    pub fn reply(&self, manifest: g::CapabilitiesResponseResultManifest) -> DiscoveryReply {
+        DiscoveryReply {
+            scope: self.scope.clone(),
+            manifest,
+        }
+    }
+}
+pub type ToolBeforeContext = InterceptContext<g::ToolBeforeEffect>;
+pub type ToolBeforeReply = Reply<g::ToolBeforeEffect>;
+pub type ToolAfterContext = InterceptContext<g::ToolAfterEffect>;
+pub type ToolAfterReply = Reply<g::ToolAfterEffect>;
+pub type SessionStartContext = InterceptContext<g::SessionStartEffect>;
+pub type SessionStartReply = Reply<g::SessionStartEffect>;
+pub type ConfigChangeBeforeContext = InterceptContext<g::ConfigChangeBeforeEffect>;
+pub type ConfigChangeBeforeReply = Reply<g::ConfigChangeBeforeEffect>;
+pub type TurnStartContext = InterceptContext<g::TurnStartEffect>;
+pub type TurnStartReply = Reply<g::TurnStartEffect>;
+pub type TurnFinishBeforeContext = InterceptContext<g::TurnFinishBeforeEffect>;
+pub type TurnFinishBeforeReply = Reply<g::TurnFinishBeforeEffect>;
+pub type ModelRequestBeforeContext = InterceptContext<g::ModelRequestBeforeEffect>;
+pub type ModelRequestBeforeReply = Reply<g::ModelRequestBeforeEffect>;
+pub type ModelResponseAfterContext = InterceptContext<g::ModelResponseAfterEffect>;
+pub type ModelResponseAfterReply = Reply<g::ModelResponseAfterEffect>;
+pub type ModelSwitchBeforeContext = InterceptContext<g::ModelSwitchBeforeEffect>;
+pub type ModelSwitchBeforeReply = Reply<g::ModelSwitchBeforeEffect>;
+pub type ToolPermissionRequestContext = InterceptContext<g::ToolPermissionRequestEffect>;
+pub type ToolPermissionRequestReply = Reply<g::ToolPermissionRequestEffect>;
+pub type ToolBatchAfterContext = InterceptContext<g::ToolBatchAfterEffect>;
+pub type ToolBatchAfterReply = Reply<g::ToolBatchAfterEffect>;
+pub type ContextCompactBeforeContext = InterceptContext<g::ContextCompactBeforeEffect>;
+pub type ContextCompactBeforeReply = Reply<g::ContextCompactBeforeEffect>;
+pub type ContextCompactAfterContext = InterceptContext<g::ContextCompactAfterEffect>;
+pub type ContextCompactAfterReply = Reply<g::ContextCompactAfterEffect>;
+pub type TaskChangeBeforeContext = InterceptContext<g::TaskChangeBeforeEffect>;
+pub type TaskChangeBeforeReply = Reply<g::TaskChangeBeforeEffect>;
+pub type UserElicitationRequestContext = InterceptContext<g::UserElicitationRequestEffect>;
+pub type UserElicitationRequestReply = Reply<g::UserElicitationRequestEffect>;
+pub type UserElicitationResultContext = InterceptContext<g::UserElicitationResultEffect>;
+pub type UserElicitationResultReply = Reply<g::UserElicitationResultEffect>;
+pub type UserMessageInboundContext = InterceptContext<g::UserMessageInboundEffect>;
+pub type UserMessageInboundReply = Reply<g::UserMessageInboundEffect>;
+pub type UserMessageOutboundContext = InterceptContext<g::UserMessageOutboundEffect>;
+pub type UserMessageOutboundReply = Reply<g::UserMessageOutboundEffect>;
+pub type WorkspaceChangeBeforeContext = InterceptContext<g::WorkspaceChangeBeforeEffect>;
+pub type WorkspaceChangeBeforeReply = Reply<g::WorkspaceChangeBeforeEffect>;
+pub type ToolBeforeObserveContext = ObserveContext<g::ToolBeforeEvent>;
+pub type ToolAfterObserveContext = ObserveContext<g::ToolAfterEvent>;
+pub type SessionStartObserveContext = ObserveContext<g::SessionStartEvent>;
+pub type SessionEndObserveContext = ObserveContext<g::SessionEndEvent>;
+pub type ConfigChangeBeforeObserveContext = ObserveContext<g::ConfigChangeBeforeEvent>;
+pub type ConfigChangeAfterObserveContext = ObserveContext<g::ConfigChangeAfterEvent>;
+pub type TurnStartObserveContext = ObserveContext<g::TurnStartEvent>;
+pub type TurnFinishBeforeObserveContext = ObserveContext<g::TurnFinishBeforeEvent>;
+pub type TurnEndObserveContext = ObserveContext<g::TurnEndEvent>;
+pub type TurnProgressObserveContext = ObserveContext<g::TurnProgressEvent>;
+pub type ModelRequestBeforeObserveContext = ObserveContext<g::ModelRequestBeforeEvent>;
+pub type ModelResponseAfterObserveContext = ObserveContext<g::ModelResponseAfterEvent>;
+pub type ModelErrorObserveContext = ObserveContext<g::ModelErrorEvent>;
+pub type ModelSwitchBeforeObserveContext = ObserveContext<g::ModelSwitchBeforeEvent>;
+pub type ModelSwitchAfterObserveContext = ObserveContext<g::ModelSwitchAfterEvent>;
+pub type ToolPermissionRequestObserveContext = ObserveContext<g::ToolPermissionRequestEvent>;
+pub type ToolPermissionResolvedObserveContext = ObserveContext<g::ToolPermissionResolvedEvent>;
+pub type ToolProgressObserveContext = ObserveContext<g::ToolProgressEvent>;
+pub type ToolBatchAfterObserveContext = ObserveContext<g::ToolBatchAfterEvent>;
+pub type ContextCompactBeforeObserveContext = ObserveContext<g::ContextCompactBeforeEvent>;
+pub type ContextCompactAfterObserveContext = ObserveContext<g::ContextCompactAfterEvent>;
+pub type TaskChangeBeforeObserveContext = ObserveContext<g::TaskChangeBeforeEvent>;
+pub type TaskChangeAfterObserveContext = ObserveContext<g::TaskChangeAfterEvent>;
+pub type UserAttentionObserveContext = ObserveContext<g::UserAttentionEvent>;
+pub type UserElicitationRequestObserveContext = ObserveContext<g::UserElicitationRequestEvent>;
+pub type UserElicitationResultObserveContext = ObserveContext<g::UserElicitationResultEvent>;
+pub type UserMessageInboundObserveContext = ObserveContext<g::UserMessageInboundEvent>;
+pub type UserMessageOutboundObserveContext = ObserveContext<g::UserMessageOutboundEvent>;
+pub type WorkspaceChangeBeforeObserveContext = ObserveContext<g::WorkspaceChangeBeforeEvent>;
+pub type WorkspaceChangeAfterObserveContext = ObserveContext<g::WorkspaceChangeAfterEvent>;
+pub type FileChangedObserveContext = ObserveContext<g::FileChangedEvent>;
+pub type HookFailureObserveContext = ObserveContext<g::HookFailureEvent>;
+type Callback<C, E, R> = Arc<dyn Fn(C, E) -> ServerFuture<R> + Send + Sync>;
+#[derive(Default)]
+pub struct InterceptHandlers {
+    pub tool_before: Option<Callback<ToolBeforeContext, g::ToolBeforeEvent, ToolBeforeReply>>,
+    pub tool_after: Option<Callback<ToolAfterContext, g::ToolAfterEvent, ToolAfterReply>>,
+    pub session_start:
+        Option<Callback<SessionStartContext, g::SessionStartEvent, SessionStartReply>>,
+    pub config_change_before: Option<
+        Callback<ConfigChangeBeforeContext, g::ConfigChangeBeforeEvent, ConfigChangeBeforeReply>,
+    >,
+    pub turn_start: Option<Callback<TurnStartContext, g::TurnStartEvent, TurnStartReply>>,
+    pub turn_finish_before:
+        Option<Callback<TurnFinishBeforeContext, g::TurnFinishBeforeEvent, TurnFinishBeforeReply>>,
+    pub model_request_before: Option<
+        Callback<ModelRequestBeforeContext, g::ModelRequestBeforeEvent, ModelRequestBeforeReply>,
+    >,
+    pub model_response_after: Option<
+        Callback<ModelResponseAfterContext, g::ModelResponseAfterEvent, ModelResponseAfterReply>,
+    >,
+    pub model_switch_before: Option<
+        Callback<ModelSwitchBeforeContext, g::ModelSwitchBeforeEvent, ModelSwitchBeforeReply>,
+    >,
+    pub tool_permission_request: Option<
+        Callback<
+            ToolPermissionRequestContext,
+            g::ToolPermissionRequestEvent,
+            ToolPermissionRequestReply,
+        >,
+    >,
+    pub tool_batch_after:
+        Option<Callback<ToolBatchAfterContext, g::ToolBatchAfterEvent, ToolBatchAfterReply>>,
+    pub context_compact_before: Option<
+        Callback<
+            ContextCompactBeforeContext,
+            g::ContextCompactBeforeEvent,
+            ContextCompactBeforeReply,
+        >,
+    >,
+    pub context_compact_after: Option<
+        Callback<ContextCompactAfterContext, g::ContextCompactAfterEvent, ContextCompactAfterReply>,
+    >,
+    pub task_change_before:
+        Option<Callback<TaskChangeBeforeContext, g::TaskChangeBeforeEvent, TaskChangeBeforeReply>>,
+    pub user_elicitation_request: Option<
+        Callback<
+            UserElicitationRequestContext,
+            g::UserElicitationRequestEvent,
+            UserElicitationRequestReply,
+        >,
+    >,
+    pub user_elicitation_result: Option<
+        Callback<
+            UserElicitationResultContext,
+            g::UserElicitationResultEvent,
+            UserElicitationResultReply,
+        >,
+    >,
+    pub user_message_inbound: Option<
+        Callback<UserMessageInboundContext, g::UserMessageInboundEvent, UserMessageInboundReply>,
+    >,
+    pub user_message_outbound: Option<
+        Callback<UserMessageOutboundContext, g::UserMessageOutboundEvent, UserMessageOutboundReply>,
+    >,
+    pub workspace_change_before: Option<
+        Callback<
+            WorkspaceChangeBeforeContext,
+            g::WorkspaceChangeBeforeEvent,
+            WorkspaceChangeBeforeReply,
+        >,
+    >,
+}
+#[derive(Default)]
+pub struct ObserveHandlers {
+    pub tool_before: Option<Callback<ToolBeforeObserveContext, g::ToolBeforeEvent, ()>>,
+    pub tool_after: Option<Callback<ToolAfterObserveContext, g::ToolAfterEvent, ()>>,
+    pub session_start: Option<Callback<SessionStartObserveContext, g::SessionStartEvent, ()>>,
+    pub session_end: Option<Callback<SessionEndObserveContext, g::SessionEndEvent, ()>>,
+    pub config_change_before:
+        Option<Callback<ConfigChangeBeforeObserveContext, g::ConfigChangeBeforeEvent, ()>>,
+    pub config_change_after:
+        Option<Callback<ConfigChangeAfterObserveContext, g::ConfigChangeAfterEvent, ()>>,
+    pub turn_start: Option<Callback<TurnStartObserveContext, g::TurnStartEvent, ()>>,
+    pub turn_finish_before:
+        Option<Callback<TurnFinishBeforeObserveContext, g::TurnFinishBeforeEvent, ()>>,
+    pub turn_end: Option<Callback<TurnEndObserveContext, g::TurnEndEvent, ()>>,
+    pub turn_progress: Option<Callback<TurnProgressObserveContext, g::TurnProgressEvent, ()>>,
+    pub model_request_before:
+        Option<Callback<ModelRequestBeforeObserveContext, g::ModelRequestBeforeEvent, ()>>,
+    pub model_response_after:
+        Option<Callback<ModelResponseAfterObserveContext, g::ModelResponseAfterEvent, ()>>,
+    pub model_error: Option<Callback<ModelErrorObserveContext, g::ModelErrorEvent, ()>>,
+    pub model_switch_before:
+        Option<Callback<ModelSwitchBeforeObserveContext, g::ModelSwitchBeforeEvent, ()>>,
+    pub model_switch_after:
+        Option<Callback<ModelSwitchAfterObserveContext, g::ModelSwitchAfterEvent, ()>>,
+    pub tool_permission_request:
+        Option<Callback<ToolPermissionRequestObserveContext, g::ToolPermissionRequestEvent, ()>>,
+    pub tool_permission_resolved:
+        Option<Callback<ToolPermissionResolvedObserveContext, g::ToolPermissionResolvedEvent, ()>>,
+    pub tool_progress: Option<Callback<ToolProgressObserveContext, g::ToolProgressEvent, ()>>,
+    pub tool_batch_after:
+        Option<Callback<ToolBatchAfterObserveContext, g::ToolBatchAfterEvent, ()>>,
+    pub context_compact_before:
+        Option<Callback<ContextCompactBeforeObserveContext, g::ContextCompactBeforeEvent, ()>>,
+    pub context_compact_after:
+        Option<Callback<ContextCompactAfterObserveContext, g::ContextCompactAfterEvent, ()>>,
+    pub task_change_before:
+        Option<Callback<TaskChangeBeforeObserveContext, g::TaskChangeBeforeEvent, ()>>,
+    pub task_change_after:
+        Option<Callback<TaskChangeAfterObserveContext, g::TaskChangeAfterEvent, ()>>,
+    pub user_attention: Option<Callback<UserAttentionObserveContext, g::UserAttentionEvent, ()>>,
+    pub user_elicitation_request:
+        Option<Callback<UserElicitationRequestObserveContext, g::UserElicitationRequestEvent, ()>>,
+    pub user_elicitation_result:
+        Option<Callback<UserElicitationResultObserveContext, g::UserElicitationResultEvent, ()>>,
+    pub user_message_inbound:
+        Option<Callback<UserMessageInboundObserveContext, g::UserMessageInboundEvent, ()>>,
+    pub user_message_outbound:
+        Option<Callback<UserMessageOutboundObserveContext, g::UserMessageOutboundEvent, ()>>,
+    pub workspace_change_before:
+        Option<Callback<WorkspaceChangeBeforeObserveContext, g::WorkspaceChangeBeforeEvent, ()>>,
+    pub workspace_change_after:
+        Option<Callback<WorkspaceChangeAfterObserveContext, g::WorkspaceChangeAfterEvent, ()>>,
+    pub file_changed: Option<Callback<FileChangedObserveContext, g::FileChangedEvent, ()>>,
+    pub hook_failure: Option<Callback<HookFailureObserveContext, g::HookFailureEvent, ()>>,
+}
+#[derive(Default)]
+pub struct HandlerSet {
+    pub intercept: InterceptHandlers,
+    pub observe: ObserveHandlers,
+    pub discovery: Option<Callback<DiscoveryContext, g::CapabilitiesRequest, DiscoveryReply>>,
 }
 /// Verified immutable bodies, keyed by their exact JSON pointer in the request.
 /// Metadata/omit items are intentionally absent. Logical IDs may repeat across
@@ -64,15 +333,9 @@ impl ResolvedContent {
         self.bodies.is_empty()
     }
 }
-type Prepared = (
-    Principal,
-    Incoming,
-    serde_json::Value,
-    Option<ResolvedContent>,
-);
-
-pub struct Server<H, A> {
-    pub handler: H,
+type Prepared = (Principal, serde_json::Value, Option<ResolvedContent>);
+pub struct Server<A> {
+    pub handlers: HandlerSet,
     pub authenticator: A,
     pub max_body_bytes: usize,
 }
@@ -101,7 +364,218 @@ fn header<'a>(request: &'a Request, name: &str) -> Result<Option<&'a str>, ()> {
         Ok(first)
     }
 }
-impl<H: Handler, A: Authenticator> Server<H, A> {
+impl<A: Authenticator> Server<A> {
+    async fn invoke(
+        &self,
+        principal: Principal,
+        raw: &serde_json::Value,
+        content: ResolvedContent,
+    ) -> Result<Option<serde_json::Value>, String> {
+        let scope = Arc::new(());
+        let request = Arc::new(raw.clone());
+        // These macros only remove repetitive framing. Every arm still invokes
+        // a different statically typed callback with a canonical event model.
+        macro_rules! intercept {
+            ($field:ident, $event:ty) => {{
+                let event: $event = serde_json::from_value(raw["params"]["event"].clone())
+                    .map_err(|e| e.to_string())?;
+                let handler = self
+                    .handlers
+                    .intercept
+                    .$field
+                    .as_ref()
+                    .ok_or("interception not configured")?;
+                let reply = handler(
+                    InterceptContext {
+                        principal,
+                        verified_content: content,
+                        request,
+                        scope: scope.clone(),
+                        marker: std::marker::PhantomData,
+                    },
+                    event,
+                )
+                .await?;
+                if !Arc::ptr_eq(&scope, &reply.scope) {
+                    return Err("reply scope mismatch".into());
+                }
+                serde_json::to_value(reply.effects).map_err(|e| e.to_string())?
+            }};
+        }
+        macro_rules! observe {
+            ($field:ident, $event:ty) => {{
+                let event: $event = serde_json::from_value(raw["params"]["event"].clone())
+                    .map_err(|e| e.to_string())?;
+                if let Some(handler) = &self.handlers.observe.$field {
+                    handler(
+                        ObserveContext {
+                            principal,
+                            verified_content: content,
+                            request,
+                            marker: std::marker::PhantomData,
+                        },
+                        event,
+                    )
+                    .await?;
+                }
+            }};
+        }
+        match raw["method"].as_str().ok_or("missing method")? {
+            "hooks/capabilities" => {
+                let handler = self
+                    .handlers
+                    .discovery
+                    .as_ref()
+                    .ok_or("discovery not configured")?;
+                let event = serde_json::from_value(raw.clone()).map_err(|e| e.to_string())?;
+                let reply = handler(
+                    DiscoveryContext {
+                        principal,
+                        verified_content: content,
+                        scope: scope.clone(),
+                    },
+                    event,
+                )
+                .await?;
+                if !Arc::ptr_eq(&scope, &reply.scope) {
+                    return Err("reply scope mismatch".into());
+                }
+                Ok(Some(
+                    serde_json::json!({"jsonrpc":"2.0", "id":raw["id"], "result":{"protocolVersion":g::PROTOCOL_VERSION, "manifest":reply.manifest}}),
+                ))
+            }
+            "hooks/intercept" => {
+                let effects = match raw["params"]["event"]["type"]
+                    .as_str()
+                    .ok_or("missing event type")?
+                {
+                    "tool.before" => intercept!(tool_before, g::ToolBeforeEvent),
+                    "tool.after" => intercept!(tool_after, g::ToolAfterEvent),
+                    "session.start" => intercept!(session_start, g::SessionStartEvent),
+                    "config.change.before" => {
+                        intercept!(config_change_before, g::ConfigChangeBeforeEvent)
+                    }
+                    "turn.start" => intercept!(turn_start, g::TurnStartEvent),
+                    "turn.finish.before" => {
+                        intercept!(turn_finish_before, g::TurnFinishBeforeEvent)
+                    }
+                    "model.request.before" => {
+                        intercept!(model_request_before, g::ModelRequestBeforeEvent)
+                    }
+                    "model.response.after" => {
+                        intercept!(model_response_after, g::ModelResponseAfterEvent)
+                    }
+                    "model.switch.before" => {
+                        intercept!(model_switch_before, g::ModelSwitchBeforeEvent)
+                    }
+                    "tool.permission.request" => {
+                        intercept!(tool_permission_request, g::ToolPermissionRequestEvent)
+                    }
+                    "tool.batch.after" => intercept!(tool_batch_after, g::ToolBatchAfterEvent),
+                    "context.compact.before" => {
+                        intercept!(context_compact_before, g::ContextCompactBeforeEvent)
+                    }
+                    "context.compact.after" => {
+                        intercept!(context_compact_after, g::ContextCompactAfterEvent)
+                    }
+                    "task.change.before" => {
+                        intercept!(task_change_before, g::TaskChangeBeforeEvent)
+                    }
+                    "user.elicitation.request" => {
+                        intercept!(user_elicitation_request, g::UserElicitationRequestEvent)
+                    }
+                    "user.elicitation.result" => {
+                        intercept!(user_elicitation_result, g::UserElicitationResultEvent)
+                    }
+                    "user.message.inbound" => {
+                        intercept!(user_message_inbound, g::UserMessageInboundEvent)
+                    }
+                    "user.message.outbound" => {
+                        intercept!(user_message_outbound, g::UserMessageOutboundEvent)
+                    }
+                    "workspace.change.before" => {
+                        intercept!(workspace_change_before, g::WorkspaceChangeBeforeEvent)
+                    }
+                    _ => return Err("unsupported interception".into()),
+                };
+                Ok(Some(
+                    serde_json::json!({"jsonrpc":"2.0", "id":raw["id"], "result":{"protocolVersion":g::PROTOCOL_VERSION, "effects":effects}}),
+                ))
+            }
+            "hooks/observe" => {
+                match raw["params"]["event"]["type"]
+                    .as_str()
+                    .ok_or("missing event type")?
+                {
+                    "tool.before" => observe!(tool_before, g::ToolBeforeEvent),
+                    "tool.after" => observe!(tool_after, g::ToolAfterEvent),
+                    "session.start" => observe!(session_start, g::SessionStartEvent),
+                    "session.end" => observe!(session_end, g::SessionEndEvent),
+                    "config.change.before" => {
+                        observe!(config_change_before, g::ConfigChangeBeforeEvent)
+                    }
+                    "config.change.after" => {
+                        observe!(config_change_after, g::ConfigChangeAfterEvent)
+                    }
+                    "turn.start" => observe!(turn_start, g::TurnStartEvent),
+                    "turn.finish.before" => observe!(turn_finish_before, g::TurnFinishBeforeEvent),
+                    "turn.end" => observe!(turn_end, g::TurnEndEvent),
+                    "turn.progress" => observe!(turn_progress, g::TurnProgressEvent),
+                    "model.request.before" => {
+                        observe!(model_request_before, g::ModelRequestBeforeEvent)
+                    }
+                    "model.response.after" => {
+                        observe!(model_response_after, g::ModelResponseAfterEvent)
+                    }
+                    "model.error" => observe!(model_error, g::ModelErrorEvent),
+                    "model.switch.before" => {
+                        observe!(model_switch_before, g::ModelSwitchBeforeEvent)
+                    }
+                    "model.switch.after" => observe!(model_switch_after, g::ModelSwitchAfterEvent),
+                    "tool.permission.request" => {
+                        observe!(tool_permission_request, g::ToolPermissionRequestEvent)
+                    }
+                    "tool.permission.resolved" => {
+                        observe!(tool_permission_resolved, g::ToolPermissionResolvedEvent)
+                    }
+                    "tool.progress" => observe!(tool_progress, g::ToolProgressEvent),
+                    "tool.batch.after" => observe!(tool_batch_after, g::ToolBatchAfterEvent),
+                    "context.compact.before" => {
+                        observe!(context_compact_before, g::ContextCompactBeforeEvent)
+                    }
+                    "context.compact.after" => {
+                        observe!(context_compact_after, g::ContextCompactAfterEvent)
+                    }
+                    "task.change.before" => observe!(task_change_before, g::TaskChangeBeforeEvent),
+                    "task.change.after" => observe!(task_change_after, g::TaskChangeAfterEvent),
+                    "user.attention" => observe!(user_attention, g::UserAttentionEvent),
+                    "user.elicitation.request" => {
+                        observe!(user_elicitation_request, g::UserElicitationRequestEvent)
+                    }
+                    "user.elicitation.result" => {
+                        observe!(user_elicitation_result, g::UserElicitationResultEvent)
+                    }
+                    "user.message.inbound" => {
+                        observe!(user_message_inbound, g::UserMessageInboundEvent)
+                    }
+                    "user.message.outbound" => {
+                        observe!(user_message_outbound, g::UserMessageOutboundEvent)
+                    }
+                    "workspace.change.before" => {
+                        observe!(workspace_change_before, g::WorkspaceChangeBeforeEvent)
+                    }
+                    "workspace.change.after" => {
+                        observe!(workspace_change_after, g::WorkspaceChangeAfterEvent)
+                    }
+                    "file.changed" => observe!(file_changed, g::FileChangedEvent),
+                    "hook.failure" => observe!(hook_failure, g::HookFailureEvent),
+                    _ => return Err("unsupported observation".into()),
+                }
+                Ok(None)
+            }
+            _ => Err("unsupported method".into()),
+        }
+    }
     pub async fn handle(&self, request: Request) -> Response {
         self.dispatch(self.prepare(request, None)).await
     }
@@ -112,7 +586,7 @@ impl<H: Handler, A: Authenticator> Server<H, A> {
         &'a self,
         request: Request,
         store: &dyn ContentStore,
-    ) -> impl Future<Output = Response> + Send + 'a + use<'a, H, A> {
+    ) -> impl Future<Output = Response> + Send + 'a + use<'a, A> {
         let prepared = self.prepare(request, Some(store));
         self.dispatch(prepared)
     }
@@ -153,26 +627,26 @@ impl<H: Handler, A: Authenticator> Server<H, A> {
         if crate::canonical::validate(schema, &raw).is_err() {
             return Err(failure(400, "invalid canonical message"));
         }
-        let incoming = match method {
+        let parsed = match method {
             "hooks/capabilities" => g::parse_capabilities_request_value(raw.clone())
                 .into_value()
-                .map(|value| Incoming::Capabilities(Box::new(value))),
+                .is_some(),
             "hooks/intercept" => {
                 if raw["id"] != raw["params"]["event"]["id"] {
                     return Err(failure(400, "event correlation mismatch"));
                 }
                 g::parse_intercept_request_value(raw.clone())
                     .into_value()
-                    .map(|value| Incoming::Intercept(Box::new(value)))
+                    .is_some()
             }
             "hooks/observe" => g::parse_observe_notification_value(raw.clone())
                 .into_value()
-                .map(|value| Incoming::Observe(Box::new(value))),
-            _ => return Err(failure(400, "unsupported method")),
+                .is_some(),
+            _ => false,
         };
-        let Some(incoming) = incoming else {
+        if !parsed {
             return Err(failure(400, "invalid protocol message"));
-        };
+        }
 
         let content = if let Some(store) = store {
             let context = ContentContext {
@@ -186,30 +660,21 @@ impl<H: Handler, A: Authenticator> Server<H, A> {
         } else {
             None
         };
-        Ok((principal, incoming, raw, content))
+        Ok((principal, raw, content))
     }
     async fn dispatch(&self, prepared: Result<Prepared, Response>) -> Response {
-        let (principal, incoming, raw, content) = match prepared {
+        let (principal, raw, content) = match prepared {
             Ok(prepared) => prepared,
             Err(response) => return response,
         };
         let method = raw["method"].as_str().unwrap_or("");
-        let future = match content {
-            Some(content) => self.handler.handle_verified(principal, incoming, content),
-            None => self.handler.handle(principal, incoming),
-        };
-        let outgoing = match future.await {
-            Ok(v) => v,
-            Err(_) => return failure(500, "handler failed"),
-        };
-        let value = match (method, outgoing) {
-            ("hooks/observe", Outgoing::Observed) => return response(204, Vec::new()),
-            ("hooks/intercept", Outgoing::Intercept(v)) => serde_json::to_value(v),
-            ("hooks/capabilities", Outgoing::Capabilities(v)) => serde_json::to_value(v),
-            _ => return failure(500, "response kind mismatch"),
-        };
-        let Ok(value) = value else {
-            return failure(500, "response serialization failed");
+        let value = match self
+            .invoke(principal, &raw, content.unwrap_or_default())
+            .await
+        {
+            Ok(Some(value)) => value,
+            Ok(None) => return response(204, Vec::new()),
+            Err(_) => return failure(500, "handler failed or reply scope mismatch"),
         };
         let valid = match method {
             "hooks/intercept" => contextual_response(&raw, &value).is_ok(),
@@ -240,9 +705,10 @@ pub(crate) fn contextual_response(
     request: &serde_json::Value,
     response: &serde_json::Value,
 ) -> Result<g::ContextualResponse, String> {
-    let event_type = request["params"]["event"]["type"]
-        .as_str()
-        .ok_or("missing originating event type")?;
+    // This is an external originating envelope, not typed declaration transfer.
+    let event_type: g::EventType =
+        serde_json::from_value(request["params"]["event"]["type"].clone())
+            .map_err(|cause| format!("invalid originating event type: {cause}"))?;
     crate::canonical::validate("intercept-response", response)?;
     crate::protocol::parse(event_type, response).map_err(|e| e.to_string())
 }
@@ -444,7 +910,7 @@ mod contextual_response_tests {
             "target":"input", "operation":"replace", "value":{"type":"modify"}
         }]));
         let original = response.clone();
-        let typed = crate::protocol::parse("tool.before", &response).unwrap();
+        let typed = crate::protocol::parse(g::EventType::ToolBefore, &response).unwrap();
         assert!(
             crate::protocol::effects(&typed)
                 .unwrap()

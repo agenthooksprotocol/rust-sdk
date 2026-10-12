@@ -20,16 +20,15 @@ pub struct HookError {
     code: Option<crate::generated::DeliveryDiagnosticCode>,
     accepted_settlement: Option<Value>,
 }
-/// Compatibility constructor for an unclassified transport failure.
-#[allow(non_snake_case)]
-pub fn HookError(message: String) -> HookError {
-    HookError {
-        message,
-        code: None,
-        accepted_settlement: None,
-    }
-}
 impl HookError {
+    /// Construct an unclassified transport failure.
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: None,
+            accepted_settlement: None,
+        }
+    }
     /// Raw canonical evidence retained when the consumer cannot decode an accepted settlement.
     /// This is not execution authorization and does not roll back accepted protocol effects.
     pub fn accepted_settlement(&self) -> Option<&Value> {
@@ -37,7 +36,7 @@ impl HookError {
     }
     pub(crate) fn with_settlement(
         mut self,
-        outcome: &ProtocolOutcome,
+        outcome: &RawProtocolOutcome,
         effective: &Value,
         candidate: &Value,
     ) -> Self {
@@ -83,7 +82,6 @@ pub trait Hook: Send + Sync {
 }
 /// Shared generated permission vocabulary; no independent settlement state.
 pub use crate::generated::Permission;
-pub use crate::generated::Permission as Decision;
 // The permission enum is generated; keep its runtime default without editing artifacts.
 #[allow(clippy::derivable_impls)]
 impl Default for Permission {
@@ -104,6 +102,7 @@ pub enum Mode {
 /// Distinct subscriptions remain independent even when sharing a backend.
 pub struct Subscription {
     pub id: String,
+    /// Wire subscription selectors, including `*` and dotted-prefix wildcards.
     pub events: Vec<String>,
     pub mode: Mode,
     pub hook: Box<dyn Hook>,
@@ -173,7 +172,7 @@ impl Client {
     /// Bind a complete event to an expected canonical name (checked on await).
     pub fn event_for<T: Serialize + DeserializeOwned>(
         &self,
-        name: &'static str,
+        name: crate::generated::EventType,
         event: T,
     ) -> crate::runtime::EventBoundary<'_, T> {
         crate::runtime::EventBoundary::new(self, Some(name), event)
@@ -213,7 +212,7 @@ impl Client {
         ToolBefore {
             client: self,
             input,
-            initial: Decision::None,
+            initial: Permission::None,
             initial_candidate: None,
             initial_snapshot: None,
             state_present: false,
@@ -235,7 +234,7 @@ pub struct ToolBefore<'a, T> {
     admission: crate::contracts::Admission,
     client: &'a Client,
     input: T,
-    initial: Decision,
+    initial: Permission,
     initial_candidate: Option<Value>,
     initial_snapshot: Option<Value>,
     state_present: bool,
@@ -257,8 +256,8 @@ impl<T> ToolBefore<'_, T> {
     }
     /// Ordinary permission for this occurrence only, never persistent client state.
     /// Calling this explicitly includes canonical state on the first request,
-    /// even for `Decision::None`; otherwise native state is absent by default.
-    pub fn initial_state(mut self, decision: Decision) -> Self {
+    /// even for `Permission::None`; otherwise native state is absent by default.
+    pub fn initial_state(mut self, decision: Permission) -> Self {
         self.initial = decision;
         if let Some(snapshot) = self
             .initial_snapshot
@@ -328,8 +327,8 @@ impl std::error::Error for InputDecodeError {
     }
 }
 #[derive(Debug, Clone)]
-pub struct ProtocolOutcome {
-    pub decision: Decision,
+pub(crate) struct RawProtocolOutcome {
+    pub decision: Permission,
     pub stopped: bool,
     /// Requested continuation only; never evidence that a step ran.
     pub continuation_requested: bool,
@@ -345,40 +344,22 @@ pub struct ProtocolOutcome {
     /// Their presence is not authorization or evidence of host execution.
     pub responses: Vec<Value>,
 }
-impl ProtocolOutcome {
-    /// Settled protocol permission, not proof that all host execution gates passed.
-    pub fn permission(&self) -> Decision {
-        self.decision
-    }
-    pub fn is_denied(&self) -> bool {
-        self.decision == Decision::Deny
-    }
-    pub fn requires_approval(&self) -> bool {
-        matches!(self.decision, Decision::None | Decision::Ask) && !self.stopped
-    }
-    pub fn candidate(&self) -> Option<&Value> {
-        self.candidate.as_ref()
-    }
-    pub fn can_execute(&self) -> bool {
-        self.authorized && !self.stopped && self.candidate.is_none()
-    }
-    pub fn supplied_result(&self) -> Option<&Value> {
-        if self.authorized && !self.stopped {
-            self.candidate.as_ref()
-        } else {
-            None
-        }
-    }
-}
 /// Schema-owned settlement data for the high-level consumer facade.
-/// The raw reducer outcome remains available explicitly through `raw()`.
 #[derive(Debug, Clone)]
-pub struct ConsumerProtocolOutcome {
+pub struct ProtocolOutcome<C = SettledCandidate, P = Value> {
     pub messages: Vec<crate::generated::MessageEffect>,
     pub injections: Vec<crate::generated::InjectEffect>,
     pub responses: Vec<crate::generated::InterceptResponse>,
-    pub settled_candidate: Option<crate::generated::Candidate<SettledCandidate>>,
-    raw: ProtocolOutcome,
+    pub settled_candidate: Option<crate::generated::Candidate<C, P>>,
+    pub decision: Permission,
+    pub stopped: bool,
+    /// Requested continuation only; never evidence that a step ran.
+    pub continuation_requested: bool,
+    pub instructions: Vec<String>,
+    pub approval_invalidated: bool,
+    /// Permission is allow and all mandatory gates passed. No execution occurred.
+    pub authorized: bool,
+    pub failures: Vec<SubscriptionFailure>,
 }
 
 /// Returned values whose ownership is determined by the originating event.
@@ -392,20 +373,33 @@ pub enum SettledCandidate {
     Opaque(Value),
 }
 
-impl ConsumerProtocolOutcome {
-    pub fn raw(&self) -> &ProtocolOutcome {
-        &self.raw
+impl<C, P> ProtocolOutcome<C, P> {
+    pub fn permission(&self) -> Permission {
+        self.decision
     }
-    pub fn candidate(&self) -> Option<&SettledCandidate> {
+    pub fn is_denied(&self) -> bool {
+        self.decision == Permission::Deny
+    }
+    pub fn requires_approval(&self) -> bool {
+        matches!(self.decision, Permission::None | Permission::Ask) && !self.stopped
+    }
+    pub fn can_execute(&self) -> bool {
+        self.authorized && !self.stopped && self.settled_candidate.is_none()
+    }
+    pub fn candidate(&self) -> Option<&C> {
         self.settled_candidate
             .as_ref()
             .map(|candidate| &candidate.value)
     }
     /// Decode a caller-owned candidate and provenance without erasing its envelope.
     /// Use a boundary contract to validate these types atomically before acceptance.
-    pub fn candidate_as<R: DeserializeOwned, P: DeserializeOwned>(
+    pub fn candidate_as<R: DeserializeOwned, Q: DeserializeOwned>(
         &self,
-    ) -> Result<Option<crate::generated::Candidate<R, P>>, HookError> {
+    ) -> Result<Option<crate::generated::Candidate<R, Q>>, HookError>
+    where
+        C: Serialize,
+        P: Serialize,
+    {
         self.settled_candidate
             .as_ref()
             .map(|candidate| {
@@ -414,15 +408,40 @@ impl ConsumerProtocolOutcome {
             })
             .transpose()
     }
-    pub fn supplied_result(&self) -> Option<&SettledCandidate> {
+    pub fn supplied_result(&self) -> Option<&C> {
         if self.authorized && !self.stopped {
             self.candidate()
         } else {
             None
         }
     }
+    /// Convert the caller-owned candidate contract without duplicating settlement data.
+    pub(crate) fn retype<R: DeserializeOwned, Q: DeserializeOwned>(
+        self,
+    ) -> Result<ProtocolOutcome<R, Q>, HookError>
+    where
+        C: Serialize,
+        P: Serialize,
+    {
+        let settled_candidate = self.candidate_as()?;
+        Ok(ProtocolOutcome {
+            decision: self.decision,
+            stopped: self.stopped,
+            continuation_requested: self.continuation_requested,
+            instructions: self.instructions,
+            approval_invalidated: self.approval_invalidated,
+            authorized: self.authorized,
+            failures: self.failures,
+            messages: self.messages,
+            injections: self.injections,
+            responses: self.responses,
+            settled_candidate,
+        })
+    }
+}
+impl ProtocolOutcome {
     pub(crate) fn decode(
-        raw: ProtocolOutcome,
+        raw: RawProtocolOutcome,
         event_type: &str,
         descriptor: &Value,
     ) -> Result<Self, HookError> {
@@ -464,17 +483,16 @@ impl ConsumerProtocolOutcome {
             injections,
             responses,
             settled_candidate,
-            raw,
+            decision: raw.decision,
+            stopped: raw.stopped,
+            continuation_requested: raw.continuation_requested,
+            instructions: raw.instructions,
+            approval_invalidated: raw.approval_invalidated,
+            authorized: raw.authorized,
+            failures: raw.failures,
         })
     }
 }
-impl std::ops::Deref for ConsumerProtocolOutcome {
-    type Target = ProtocolOutcome;
-    fn deref(&self) -> &Self::Target {
-        &self.raw
-    }
-}
-
 /// Lifecycle of local evidence, not a wire disposition or execution receipt.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum BoundaryStatus {
@@ -491,7 +509,7 @@ pub enum BoundaryStatus {
 #[derive(Debug, Clone)]
 pub struct BoundaryPartial {
     pub outcome: ProtocolOutcome,
-    pub effective_input: Value,
+    pub event: crate::generated::Event,
 }
 #[derive(Debug, Clone, Default)]
 pub struct BoundarySnapshot {
@@ -543,17 +561,25 @@ impl BoundaryProgress {
             .status
             == BoundaryStatus::Interrupted
     }
-    pub(crate) fn publish(&self, outcome: &ProtocolOutcome, input: &Value) {
-        let mut outcome = outcome.clone();
+    pub(crate) fn publish(
+        &self,
+        raw: &RawProtocolOutcome,
+        input: &Value,
+        descriptor: &Value,
+        event_type: &str,
+    ) -> Result<(), HookError> {
+        let event = serde_json::from_value(input.clone()).map_err(|cause| {
+            crate::protocol::failure(cause).with_settlement(raw, input, descriptor)
+        })?;
+        let mut outcome = ProtocolOutcome::decode(raw.clone(), event_type, descriptor)
+            .map_err(|cause| cause.with_settlement(raw, input, descriptor))?;
         outcome.authorized = false;
         self.0
             .lock()
             .expect("progress lock poisoned")
             .snapshot
-            .partial = Some(BoundaryPartial {
-            outcome,
-            effective_input: input.clone(),
-        });
+            .partial = Some(BoundaryPartial { outcome, event });
+        Ok(())
     }
 }
 /// Outer failures are distinct from accepted-protocol input decoding failures.
@@ -657,47 +683,28 @@ pub struct Observation<'a> {
 impl Observation<'_> {
     pub async fn deliver(self) -> Result<(), HookError> {
         crate::canonical::validate("observe-notification", &self.notification)
-            .map_err(HookError)?;
+            .map_err(HookError::new)?;
         self.hook.call(self.notification).await.map(|_| ())
     }
 }
 pub struct BoundaryResult<'a, T> {
-    pub(crate) candidate_descriptor: Value,
     pub outcome: ProtocolOutcome,
-    pub effective_input: Value,
-    /// Complete effective event from the settled request, including opaque host facts.
-    pub effective_event: Value,
+    /// Complete schema-owned effective event, including opaque host facts.
+    pub event: crate::generated::Event,
+    pub(crate) raw_outcome: RawProtocolOutcome,
+    pub(crate) candidate_descriptor: Value,
+    pub(crate) effective_input: Value,
     /// Freshly decoded after protocol acceptance; failure never rolls back effects.
     pub input: Result<T, InputDecodeError>,
     pub observations: Vec<Observation<'a>>,
     pub diagnostics: Vec<DeliveryDiagnostic>,
 }
 impl<T> BoundaryResult<'_, T> {
-    /// Decode the complete settled event without reconstructing it from input.
-    pub fn settled_event(&self) -> Result<crate::generated::Event, HookError> {
-        serde_json::from_value(self.effective_event.clone()).map_err(|error| {
-            crate::protocol::failure(error).with_settlement(
-                &self.outcome,
-                &self.effective_event,
-                &self.candidate_descriptor,
-            )
-        })
-    }
-
-    /// Decode schema-owned messages, complete injections and accepted responses.
-    pub fn typed_outcome(&self) -> Result<ConsumerProtocolOutcome, HookError> {
-        ConsumerProtocolOutcome::decode(
-            self.outcome.clone(),
-            "tool.before",
-            &self.candidate_descriptor,
-        )
-    }
-
-    pub fn permission(&self) -> Decision {
+    pub fn permission(&self) -> Permission {
         self.outcome.permission()
     }
 }
-pub(crate) fn delivery_diagnostics(state: &ProtocolOutcome) -> Vec<DeliveryDiagnostic> {
+pub(crate) fn delivery_diagnostics(state: &RawProtocolOutcome) -> Vec<DeliveryDiagnostic> {
     state
         .failures
         .iter()
@@ -717,15 +724,15 @@ pub(crate) fn delivery_diagnostics(state: &ProtocolOutcome) -> Vec<DeliveryDiagn
         .collect()
 }
 
-pub(crate) fn native_outcome(native: &Value) -> Result<(ProtocolOutcome, Value), HookError> {
+pub(crate) fn native_outcome(native: &Value) -> Result<(RawProtocolOutcome, Value), HookError> {
     use crate::generated as g;
     let typed: g::InterceptRequestParamsState =
         serde_json::from_value(native.clone()).map_err(crate::protocol::failure)?;
     let decision = match typed.permission {
-        g::InterceptRequestParamsStatePermission::None => Decision::None,
-        g::InterceptRequestParamsStatePermission::Allow => Decision::Allow,
-        g::InterceptRequestParamsStatePermission::Ask => Decision::Ask,
-        g::InterceptRequestParamsStatePermission::Deny => Decision::Deny,
+        g::InterceptRequestParamsStatePermission::None => Permission::None,
+        g::InterceptRequestParamsStatePermission::Allow => Permission::Allow,
+        g::InterceptRequestParamsStatePermission::Ask => Permission::Ask,
+        g::InterceptRequestParamsStatePermission::Deny => Permission::Deny,
         g::InterceptRequestParamsStatePermission::Unknown(_) => {
             return Err(error("invalid native permission"));
         }
@@ -757,7 +764,7 @@ pub(crate) fn native_outcome(native: &Value) -> Result<(ProtocolOutcome, Value),
             .collect::<Result<_, _>>()?,
     };
     Ok((
-        ProtocolOutcome {
+        RawProtocolOutcome {
             decision,
             stopped,
             continuation_requested,
@@ -774,15 +781,19 @@ pub(crate) fn native_outcome(native: &Value) -> Result<(ProtocolOutcome, Value),
     ))
 }
 
-pub(crate) fn snapshot_value(native: &Value, state: &ProtocolOutcome, candidate: &Value) -> Value {
+pub(crate) fn snapshot_value(
+    native: &Value,
+    state: &RawProtocolOutcome,
+    candidate: &Value,
+) -> Value {
     use crate::generated as g;
     let mut snapshot: g::InterceptRequestParamsState =
         serde_json::from_value(native.clone()).expect("validated native state");
     snapshot.permission = match state.decision {
-        Decision::None => g::InterceptRequestParamsStatePermission::None,
-        Decision::Allow => g::InterceptRequestParamsStatePermission::Allow,
-        Decision::Ask => g::InterceptRequestParamsStatePermission::Ask,
-        Decision::Deny => g::InterceptRequestParamsStatePermission::Deny,
+        Permission::None => g::InterceptRequestParamsStatePermission::None,
+        Permission::Allow => g::InterceptRequestParamsStatePermission::Allow,
+        Permission::Ask => g::InterceptRequestParamsStatePermission::Ask,
+        Permission::Deny => g::InterceptRequestParamsStatePermission::Deny,
     };
     snapshot.candidate =
         serde_json::from_value(candidate.clone()).expect("validated candidate descriptor");
@@ -807,7 +818,7 @@ pub(crate) fn snapshot_value(native: &Value, state: &ProtocolOutcome, candidate:
 }
 
 pub(crate) fn error(message: impl Into<String>) -> HookError {
-    HookError(message.into())
+    HookError::new(message)
 }
 /// Classify a remote JSON-RPC error only after validating its envelope.
 /// Backend message/data are intentionally excluded from diagnostics.
@@ -830,7 +841,7 @@ pub(crate) fn check_rpc_error(response: &Value, expected_id: &Value) -> Result<(
     Ok(())
 }
 pub(crate) fn validate_request(request: &Value) -> Result<(), HookError> {
-    crate::canonical::validate("intercept-request", request).map_err(HookError)?;
+    crate::canonical::validate("intercept-request", request).map_err(HookError::new)?;
     match crate::generated::parse_intercept_request_value(request.clone()) {
         crate::generated::ParseResult::Success { .. } => Ok(()),
         crate::generated::ParseResult::Failure { diagnostics, .. } => {
@@ -855,18 +866,18 @@ pub(crate) fn has(caps: &Value, key: &str, value: &Value) -> bool {
 fn stage(
     request: &Value,
     response: &Value,
-    prior: &ProtocolOutcome,
+    prior: &RawProtocolOutcome,
     admission: &crate::contracts::Admission,
-) -> Result<(Value, ProtocolOutcome, bool), HookError> {
+) -> Result<(Value, RawProtocolOutcome, bool), HookError> {
     use crate::protocol::Kind;
     check_rpc_error(response, &request["id"])?;
-    crate::canonical::validate("intercept-response", response).map_err(HookError)?;
+    crate::canonical::validate("intercept-response", response).map_err(HookError::new)?;
     if response["id"] != request["id"] {
         return Err(error("response correlation mismatch"));
     }
     let mut typed_request: crate::generated::InterceptRequest =
         serde_json::from_value(request.clone()).map_err(crate::protocol::failure)?;
-    let typed_response = crate::protocol::parse("tool.before", response)?;
+    let typed_response = crate::protocol::parse(crate::generated::EventType::ToolBefore, response)?;
     crate::server::validate_effect_capabilities(request, response).map_err(error)?;
     let effects = crate::protocol::effects(&typed_response)?;
     let original = match typed_request.params.event.as_ref() {
@@ -896,18 +907,18 @@ fn stage(
     validate_request(&crate::protocol::value(&typed_request)?)?;
     if input != original {
         state.candidate = None;
-        if state.decision == Decision::Allow {
-            state.decision = Decision::None;
+        if state.decision == Permission::Allow {
+            state.decision = Permission::None;
             state.approval_invalidated = true;
         }
     }
     let mut replaced_candidate = false;
     for effect in &effects {
         match &effect.kind {
-            Kind::Deny => state.decision = Decision::Deny,
-            Kind::Ask if state.decision != Decision::Deny => state.decision = Decision::Ask,
-            Kind::Allow if !matches!(state.decision, Decision::Deny | Decision::Ask) => {
-                state.decision = Decision::Allow
+            Kind::Deny => state.decision = Permission::Deny,
+            Kind::Ask if state.decision != Permission::Deny => state.decision = Permission::Ask,
+            Kind::Allow if !matches!(state.decision, Permission::Deny | Permission::Ask) => {
+                state.decision = Permission::Allow
             }
             Kind::ReturnTool(value) => {
                 state.candidate = Some(value.value.clone());
@@ -915,11 +926,14 @@ fn stage(
             }
             Kind::Message(message) => state.messages.push(crate::protocol::value(message)?),
             Kind::Inject(injection) => state.injections.push(crate::protocol::value(injection)?),
-            Kind::Stop => state.stopped = true,
+            Kind::Stop => {
+                state.stopped = true;
+                state.continuation_requested = false;
+            }
             _ => {}
         }
     }
-    if matches!(state.decision, Decision::Deny | Decision::Ask) || state.stopped {
+    if matches!(state.decision, Permission::Deny | Permission::Ask) || state.stopped {
         state.candidate = None;
     }
     Ok((input, state, replaced_candidate))
@@ -960,11 +974,11 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
             validate_request(&request)?;
             self.admission.event(&request["params"]["event"])?;
             self.admission.candidate(&candidate_descriptor)?;
-            if state.decision == Decision::Deny { state.candidate = None; candidate_descriptor = Value::Null; }
-            self.progress.publish(&state, &input);
+            if state.decision == Permission::Deny { state.candidate = None; candidate_descriptor = Value::Null; }
+            self.progress.publish(&state, &request["params"]["event"], &candidate_descriptor, "tool.before")?;
             let mut called = vec![false; self.client.subscriptions.len()];
             for (index, subscription) in self.client.subscriptions.iter().enumerate() {
-                if state.decision == Decision::Deny || state.stopped {
+                if state.decision == Permission::Deny || state.stopped {
                     break;
                 }
                 if !subscription.matches() {
@@ -1017,10 +1031,10 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
                         if let Some(response) = raw_response { state.responses.push(response); }
                         request["params"]["event"]["tool"]["input"] = input.clone();
                         if state.approval_invalidated
-                            && state.decision == Decision::None
+                            && state.decision == Permission::None
                             && !self.reauthorization
                         {
-                            state.decision = Decision::Deny;
+                            state.decision = Permission::Deny;
                             state.candidate = None;
                             candidate_descriptor = Value::Null;
                         }
@@ -1032,32 +1046,39 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for ToolBefore<
                             policy,
                         });
                         if policy == FailurePolicy::Closed {
-                            state.decision = Decision::Deny;
+                            state.decision = Permission::Deny;
                             state.candidate = None;
                             candidate_descriptor = Value::Null;
                         }
                     }
                 }
-                self.progress.publish(&state, &input);
+                self.progress.publish(&state, &request["params"]["event"], &candidate_descriptor, "tool.before")?;
             }
             if !self.gates_passed {
-                state.decision = Decision::Deny;
+                state.decision = Permission::Deny;
                 state.candidate = None;
                 candidate_descriptor = Value::Null;
             }
             state.authorized =
-                state.decision == Decision::Allow && !state.stopped && self.gates_passed;
+                state.decision == Permission::Allow && !state.stopped && self.gates_passed;
             let observations = self.client.subscriptions.iter().enumerate().filter(|(i,s)| s.matches() && (s.mode == Mode::Observe || !called[*i])).map(|(_,s)| Observation {
             subscription_id: &s.id, hook: s.hook.as_ref(), notification: json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":request["params"]["event"]}}),
         }).collect();
-            self.progress.publish(&state, &input);
+            self.progress.publish(&state, &request["params"]["event"], &candidate_descriptor, "tool.before")?;
             let decoded = serde_json::from_value(input.clone()).map_err(InputDecodeError);
+            let effective_event = request["params"]["event"].clone();
+            let event = serde_json::from_value(effective_event.clone()).map_err(|cause| {
+                crate::protocol::failure(cause).with_settlement(&state, &effective_event, &candidate_descriptor)
+            })?;
+            let outcome = ProtocolOutcome::decode(state.clone(), "tool.before", &candidate_descriptor)
+                .map_err(|cause| cause.with_settlement(&state, &effective_event, &candidate_descriptor))?;
             Ok(BoundaryResult {
                 candidate_descriptor,
                 diagnostics: delivery_diagnostics(&state),
-                outcome: state,
+                outcome,
+                event,
+                raw_outcome: state,
                 effective_input: input,
-                effective_event: request["params"]["event"].clone(),
                 input: decoded,
                 observations,
             })
@@ -1104,7 +1125,7 @@ mod consumer_outcome_tests {
         Candidate, CanonicalMessages, InjectEffect, InterceptResponse, MessageEffect, Presence,
     };
 
-    fn outcome(candidate: Value) -> (ProtocolOutcome, Value) {
+    fn outcome(candidate: Value) -> (RawProtocolOutcome, Value) {
         native_outcome(&json!({"permission":"allow", "candidate":candidate})).unwrap()
     }
 
@@ -1120,8 +1141,7 @@ mod consumer_outcome_tests {
         raw.injections.push(injection.clone());
         let response = json!({"jsonrpc":"2.0","id":"accepted","result":{"protocolVersion":"draft","effects":[injection.clone()],"extensions":{"vendor":{"opaque":[null,1]}}},"vendor":{"envelope":true}});
         raw.responses.push(response.clone());
-        let typed =
-            ConsumerProtocolOutcome::decode(raw, "model.request.before", &candidate).unwrap();
+        let typed = ProtocolOutcome::decode(raw, "model.request.before", &candidate).unwrap();
         let _: &Vec<MessageEffect> = &typed.messages;
         let _: &Vec<InjectEffect> = &typed.injections;
         let _: &Vec<InterceptResponse> = &typed.responses;
@@ -1146,32 +1166,46 @@ mod consumer_outcome_tests {
         };
         let _: &CanonicalMessages = value;
         assert_eq!(serde_json::to_value(value).unwrap(), messages);
+        let retyped: ProtocolOutcome<Value, Value> = typed.retype().unwrap();
+        assert!(retyped.authorized);
+        assert_eq!(retyped.permission(), Permission::Allow);
+        assert_eq!(
+            serde_json::to_value(retyped.settled_candidate.unwrap()).unwrap(),
+            descriptor
+        );
+        assert_eq!(
+            serde_json::to_value(&retyped.responses[0]).unwrap(),
+            response
+        );
+        assert_eq!(
+            serde_json::to_value(&retyped.injections[0]).unwrap(),
+            injection
+        );
     }
 
     #[test]
     fn absence_and_supplied_null_remain_distinct_and_invalid_owned_candidates_fail() {
         let (raw, candidate) = outcome(Value::Null);
         assert!(
-            ConsumerProtocolOutcome::decode(raw, "tool.before", &candidate)
+            ProtocolOutcome::decode(raw, "tool.before", &candidate)
                 .unwrap()
                 .candidate()
                 .is_none()
         );
         let (raw, candidate) = outcome(json!({"value":null}));
-        let typed =
-            ConsumerProtocolOutcome::decode(raw.clone(), "tool.before", &candidate).unwrap();
+        let typed = ProtocolOutcome::decode(raw.clone(), "tool.before", &candidate).unwrap();
         let decoded: Option<Candidate<Option<String>, Value>> = typed.candidate_as().unwrap();
         assert_eq!(decoded.unwrap().value, None);
         assert!(matches!(
-            ConsumerProtocolOutcome::decode(raw.clone(), "tool.before", &candidate)
+            ProtocolOutcome::decode(raw.clone(), "tool.before", &candidate)
                 .unwrap()
                 .candidate(),
             Some(SettledCandidate::Opaque(Value::Null))
         ));
-        assert!(ConsumerProtocolOutcome::decode(raw, "model.request.before", &candidate).is_err());
+        assert!(ProtocolOutcome::decode(raw, "model.request.before", &candidate).is_err());
         let (mut raw, candidate) = outcome(Value::Null);
         raw.messages.push(json!({"type":"message", "text":42}));
-        assert!(ConsumerProtocolOutcome::decode(raw, "tool.before", &candidate).is_err());
+        assert!(ProtocolOutcome::decode(raw, "tool.before", &candidate).is_err());
     }
 
     #[test]
@@ -1180,8 +1214,7 @@ mod consumer_outcome_tests {
         let descriptor =
             json!({"value":value,"provenance":{"vendor":"source"},"vendor":{"extra":1}});
         let (raw, candidate) = outcome(descriptor.clone());
-        let typed =
-            ConsumerProtocolOutcome::decode(raw, "context.compact.before", &candidate).unwrap();
+        let typed = ProtocolOutcome::decode(raw, "context.compact.before", &candidate).unwrap();
         let SettledCandidate::Summary(parts) = typed.candidate().unwrap() else {
             panic!("summary must be text parts")
         };
@@ -1196,8 +1229,7 @@ mod consumer_outcome_tests {
     fn elicitation_retains_action_meta_and_open_answer_payload() {
         let value = json!({"action":"accept","content":{"anything":"opaque","flags":["one","two"]},"_meta":{"vendor":{"keep":1}}});
         let (raw, candidate) = outcome(json!({"value":value}));
-        let typed =
-            ConsumerProtocolOutcome::decode(raw, "user.elicitation.request", &candidate).unwrap();
+        let typed = ProtocolOutcome::decode(raw, "user.elicitation.request", &candidate).unwrap();
         let SettledCandidate::Elicitation(answer) = typed.candidate().unwrap() else {
             panic!("complete form answer")
         };

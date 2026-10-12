@@ -1,7 +1,7 @@
 //! Offline host fixture; no oracle or expected outcome is sent to this receiver.
 use agenthooksprotocol::{
     client::{
-        Client, Decision, FailurePolicy, Hook, HookError, LocalFuture, Mode, Subscription,
+        Client, FailurePolicy, Hook, HookError, LocalFuture, Mode, Permission, Subscription,
         ToolContext,
     },
     compaction::{capabilities, selected_text},
@@ -23,11 +23,11 @@ impl Hook for EffectsHook {
     fn call(&self, request: Value) -> LocalFuture<'_, Result<Value, HookError>> {
         Box::pin(async move {
             if self.0["throw"] == true {
-                return Err(HookError("hook failed".into()));
+                return Err(HookError::new("hook failed"));
             }
             let effects = self.0["effects"]
                 .as_array()
-                .ok_or_else(|| HookError("effects".into()))?;
+                .ok_or_else(|| HookError::new("effects"))?;
             Ok(
                 json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","effects":effects}}),
             )
@@ -110,14 +110,8 @@ pub fn fixture_subscription(
         timeout: std::time::Duration::from_secs(30),
     })
 }
-fn content_item(
-    _content: &ContentContext<'_>,
-    id: &str,
-    _kind: &str,
-    _role: &str,
-    text: &str,
-) -> Result<Value, String> {
-    Ok(json!([{"id":id,"kind":"text","mediaType":"text/plain","selection":"body","text":text}]))
+fn text_parts(id: &str, text: &str) -> Value {
+    json!([{"id":id,"kind":"text","mediaType":"text/plain","selection":"body","text":text}])
 }
 /// Host fixture only: protocol settlement runs through Client::event. Generation,
 /// permissive host policy and legacy report shaping are application responsibilities.
@@ -152,17 +146,18 @@ pub fn run_public_fixture(
             )
         };
         let before_client = make_client(before);
-        let before_event = json!({"id":format!("{name}:before"),"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","session":{"id":name},"type":"context.compact.before","trigger":"manual","items":[{"id":format!("{name}:context"),"role":"user","parts":content_item(&content,&format!("{name}:context:text"),"text","user","conversation")?}],"instructions":instructions});
+        let before_event = json!({"id":format!("{name}:before"),"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","session":{"id":name},"type":"context.compact.before","trigger":"manual","items":[{"id":format!("{name}:context"),"role":"user","parts":text_parts(&format!("{name}:context:text"),"conversation")}],"instructions":instructions});
         let settled = futures::executor::block_on(async {
             before_client
                 .event(before_event)
                 .content(content.clone())
                 .capabilities(capabilities("before", false)?)
-                .initial_state(Decision::Allow)
+                .initial_state(Permission::Allow)
                 .await
                 .map_err(|e| e.to_string())
         })?;
-        let instructions = settled.effective_event["instructions"].clone();
+        let event = serde_json::to_value(&settled.event)?;
+        let instructions = event["instructions"].clone();
         log.lock().unwrap().instructions = instructions.clone();
         let mut failures: Vec<Value> = settled
             .outcome
@@ -174,7 +169,7 @@ pub fn run_public_fixture(
             .outcome
             .messages
             .iter()
-            .map(|message| message["text"].clone())
+            .map(|message| json!(message.text))
             .collect();
         let mut injections = settled.outcome.injections.clone();
         let mut denied = settled.outcome.is_denied();
@@ -186,7 +181,8 @@ pub fn run_public_fixture(
         if !denied {
             // The fixture's host explicitly allows the effective input. This is
             // not evidence of model consumption or an SDK authorization default.
-            let item = if let Some(value) = settled.outcome.candidate.as_ref() {
+            let item = if let Some(value) = settled.outcome.candidate() {
+                let value = serde_json::to_value(value)?;
                 let supplier = log
                     .lock()
                     .unwrap()
@@ -194,7 +190,7 @@ pub fn run_public_fixture(
                     .iter()
                     .rev()
                     .find(|(id, v)| {
-                        v == value
+                        v == &value
                             && !settled
                                 .outcome
                                 .failures
@@ -210,15 +206,9 @@ pub fn run_public_fixture(
                 generated = true;
                 provenance = json!({"kind":"generated"});
                 let text = selected_text(&instructions, &content)?;
-                content_item(
-                    &content,
-                    summary_id,
-                    "summary",
-                    "assistant",
-                    &format!("summary:{text}"),
-                )?
+                text_parts(summary_id, &format!("summary:{text}"))
             };
-            let after_event = json!({"id":format!("{name}:after"),"source":settled.effective_event["source"],"time":settled.effective_event["time"],"session":settled.effective_event["session"],"parentEventId":settled.effective_event["id"],"type":"context.compact.after","summary":item,"removed":[{"id":format!("{name}:context")}],"execution":if generated {json!({"status":"executed"})} else {json!({"status":"skipped","reason":"supplied_result"})}});
+            let after_event = json!({"id":format!("{name}:after"),"source":event["source"],"time":event["time"],"session":event["session"],"parentEventId":event["id"],"type":"context.compact.after","summary":item,"removed":[{"id":format!("{name}:context")}],"execution":if generated {json!({"status":"executed"})} else {json!({"status":"skipped","reason":"supplied_result"})}});
             let after_client = make_client(after);
             let observe = p["observeOnly"] == true;
             let settled_after = futures::executor::block_on(async {
@@ -233,7 +223,7 @@ pub fn run_public_fixture(
                     } else {
                         capabilities("after", false)?
                     })
-                    .initial_state(Decision::Allow)
+                    .initial_state(Permission::Allow)
                     .await
                     .map_err(|e| e.to_string())
             })?;
@@ -249,12 +239,12 @@ pub fn run_public_fixture(
                     .outcome
                     .messages
                     .iter()
-                    .map(|message| message["text"].clone()),
+                    .map(|message| json!(message.text)),
             );
             injections.extend(settled_after.outcome.injections.clone());
             denied = settled_after.outcome.is_denied();
             applied = !denied;
-            summary = settled_after.effective_event["summary"].clone();
+            summary = serde_json::to_value(&settled_after.event)?["summary"].clone();
             // The fixture explicitly schedules observations after settlement;
             // returned effects have no authority and delivery is best effort.
             if observe {

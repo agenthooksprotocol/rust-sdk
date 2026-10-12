@@ -15,9 +15,9 @@ use std::{future::IntoFuture, task::Poll, time::Instant};
 pub struct EventBoundary<'a, T> {
     admission: crate::contracts::Admission,
     client: &'a Client,
-    name: Option<&'static str>,
+    name: Option<crate::generated::EventType>,
     event: T,
-    initial: Decision,
+    initial: Permission,
     initial_candidate: Option<Value>,
     initial_snapshot: Option<Value>,
     state_present: bool,
@@ -36,13 +36,17 @@ impl<'a, T> EventBoundary<'a, T> {
         self.admission = admission;
         self
     }
-    pub(crate) fn new(client: &'a Client, name: Option<&'static str>, event: T) -> Self {
+    pub(crate) fn new(
+        client: &'a Client,
+        name: Option<crate::generated::EventType>,
+        event: T,
+    ) -> Self {
         Self {
             admission: Default::default(),
             client,
             name,
             event,
-            initial: Decision::None,
+            initial: Permission::None,
             initial_candidate: None,
             initial_snapshot: None,
             state_present: false,
@@ -65,7 +69,7 @@ impl<'a, T> EventBoundary<'a, T> {
     pub fn progress(&self) -> BoundaryProgress {
         self.progress.clone()
     }
-    pub fn initial_state(mut self, decision: Decision) -> Self {
+    pub fn initial_state(mut self, decision: Permission) -> Self {
         self.initial = decision;
         if let Some(snapshot) = self
             .initial_snapshot
@@ -109,7 +113,7 @@ impl<'a, T> EventBoundary<'a, T> {
         self.reauthorization = available;
         self
     }
-    /// Retain an advanced host mapping for compatibility.
+    /// Supply an explicit host content mapping outside canonical attachment slots.
     /// Canonical inline edits address the complete message list for their target;
     /// this mapping does not select a part or trigger attachment reads.
     pub fn content_target(mut self, target: impl Into<String>, pointer: impl Into<String>) -> Self {
@@ -132,31 +136,16 @@ impl<'a, T> EventBoundary<'a, T> {
 /// A settled protocol outcome and a fresh decode of its complete effective event.
 pub struct EventResult<'a, T> {
     pub outcome: ProtocolOutcome,
-    pub effective_event: Value,
-    /// Complete settled candidate descriptor; null means absent, not a supplied null value.
-    pub candidate_descriptor: Value,
-    pub event: Result<T, InputDecodeError>,
+    /// Complete schema-owned effective event, including opaque host facts.
+    pub event: crate::generated::Event,
+    /// Caller-owned projection decoded after acceptance; failure does not roll back effects.
+    pub decoded_event: Result<T, InputDecodeError>,
+    pub(crate) effective_event: Value,
     pub observations: Vec<Observation<'a>>,
     pub diagnostics: Vec<DeliveryDiagnostic>,
 }
 impl<T> EventResult<'_, T> {
-    /// Typed view of the complete effective event; the reducer itself stays raw.
-    pub fn settled_event(&self) -> Result<crate::generated::Event, HookError> {
-        serde_json::from_value(self.effective_event.clone()).map_err(crate::protocol::failure)
-    }
-    /// Decode schema-owned settlement data with this boundary's event context.
-    pub fn typed_outcome(&self) -> Result<crate::client::ConsumerProtocolOutcome, HookError> {
-        let name = self.effective_event["type"]
-            .as_str()
-            .ok_or_else(|| error("missing event type"))?;
-        crate::client::ConsumerProtocolOutcome::decode(
-            self.outcome.clone(),
-            name,
-            &self.candidate_descriptor,
-        )
-    }
-
-    pub fn permission(&self) -> Decision {
+    pub fn permission(&self) -> Permission {
         self.outcome.permission()
     }
 }
@@ -180,8 +169,15 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
             let result: Result<EventResult<'a, T>, HookError> = async move {
             if self.progress.interrupted() { return Err(error("boundary interrupted")); }
             let mut input = serde_json::to_value(self.event).map_err(|e| error(e.to_string()))?;
-            let name = input["type"].as_str().ok_or_else(|| error("missing canonical event type"))?.to_owned();
-            if self.name.is_some_and(|expected| expected != name) { return Err(error("event name mismatch")); }
+            let event_type = if let Some(expected) = self.name {
+                if input["type"].as_str() != Some(expected.as_str()) { return Err(error("event name mismatch")); }
+                expected
+            } else {
+                // Explicit complete-event wire input: unknown names fail decoding.
+                serde_json::from_value::<crate::generated::EventType>(input["type"].clone())
+                    .map_err(|cause| error(format!("invalid canonical event type: {cause}")))?
+            };
+            let name = event_type.as_str().to_owned();
             let inline_attachments = InvocationAttachments::bind(&mut input, vec![],
                 crate::attachment::Budget::new(usize::MAX, usize::MAX), usize::MAX)
                 .map_err(|e| error(e.to_string()))?;
@@ -210,7 +206,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
             // Validate the full native descriptor even if initial denial skips all hooks.
             if state_present { request["params"]["state"] = snapshot_value(&native, &state, &candidate_descriptor); }
             if interceptable { validate_request(&request)?; } else {
-                crate::canonical::validate("observe-notification", &json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":input}})).map_err(HookError)?;
+                crate::canonical::validate("observe-notification", &json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":input}})).map_err(HookError::new)?;
             }
             self.admission.event(&request["params"]["event"])?;
             self.admission.candidate(&candidate_descriptor)?;
@@ -228,11 +224,11 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     crate::compaction::stage_boundary(&request, &[], content).map_err(|e| error(e.to_string()))?;
                 }
             }
-            if state.decision == Decision::Deny { state.candidate = None; candidate_descriptor = Value::Null; }
-            self.progress.publish(&state, &input);
+            if state.decision == Permission::Deny { state.candidate = None; candidate_descriptor = Value::Null; }
+            self.progress.publish(&state, &input, &candidate_descriptor, &name)?;
             let mut called = vec![false; self.client.subscriptions.len()];
             for (index, subscription) in self.client.subscriptions.iter().enumerate() {
-                if state.decision == Decision::Deny || state.stopped {
+                if state.decision == Permission::Deny || state.stopped {
                     break;
                 }
                 if !interceptable || !matches_event(subscription, &name) {
@@ -298,10 +294,10 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                         if let Some(response) = raw_response { state.responses.push(response); }
                         request["params"]["event"] = input.clone();
                         if state.approval_invalidated
-                            && state.decision == Decision::None
+                            && state.decision == Permission::None
                             && !self.reauthorization
                         {
-                            state.decision = Decision::Deny;
+                            state.decision = Permission::Deny;
                             state.candidate = None;
                             candidate_descriptor = Value::Null;
                         }
@@ -313,31 +309,36 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                             policy,
                         });
                         if policy == FailurePolicy::Closed {
-                            state.decision = Decision::Deny;
+                            state.decision = Permission::Deny;
                             state.candidate = None;
                             candidate_descriptor = Value::Null;
                         }
                     }
                 }
-                self.progress.publish(&state, &input);
+                self.progress.publish(&state, &input, &candidate_descriptor, &name)?;
             }
             if !self.gates_passed {
-                state.decision = Decision::Deny;
+                state.decision = Permission::Deny;
                 state.candidate = None;
             }
             state.authorized =
-                interceptable && state.decision == Decision::Allow && !state.stopped && self.gates_passed;
+                interceptable && state.decision == Permission::Allow && !state.stopped && self.gates_passed;
             let observations = self.client.subscriptions.iter().enumerate().filter(|(i,s)| matches_event(s, &name) && (s.mode == Mode::Observe || !called[*i])).map(|(_,s)| Observation {
             subscription_id: &s.id, hook: s.hook.as_ref(), notification: json!({"jsonrpc":"2.0","method":"hooks/observe","params":{"protocolVersion":"draft","event":request["params"]["event"]}}),
         }).collect();
-            self.progress.publish(&state, &input);
+            self.progress.publish(&state, &input, &candidate_descriptor, &name)?;
             let decoded = serde_json::from_value(input.clone()).map_err(InputDecodeError);
+            let event = serde_json::from_value(input.clone()).map_err(|cause| {
+                crate::protocol::failure(cause).with_settlement(&state, &input, &candidate_descriptor)
+            })?;
+            let outcome = ProtocolOutcome::decode(state.clone(), &name, &candidate_descriptor)
+                .map_err(|cause| cause.with_settlement(&state, &input, &candidate_descriptor))?;
             Ok(EventResult {
                 diagnostics: delivery_diagnostics(&state),
-                outcome: state,
+                outcome,
+                event,
                 effective_event: input,
-                candidate_descriptor,
-                event: decoded,
+                decoded_event: decoded,
                 observations,
             })
             }.await;
@@ -389,7 +390,7 @@ fn supported_capabilities(
     let Some(schema_ref) = descriptor.capability_schema else {
         return Ok(None);
     };
-    let schema = crate::canonical::schema(schema_ref).map_err(HookError)?;
+    let schema = crate::canonical::schema(schema_ref).map_err(HookError::new)?;
     let properties = &schema["allOf"][1]["properties"];
     let mut caps = json!({"effects":properties["effects"]["items"]["enum"]});
     if has(&caps, "effects", &json!("modify")) {
@@ -435,24 +436,26 @@ fn supported_capabilities(
 fn stage(
     request: &Value,
     response: &Value,
-    prior: &ProtocolOutcome,
+    prior: &RawProtocolOutcome,
     content: Option<&(dyn ContentAccess + Sync)>,
     exchange: Option<&Exchange>,
     _targets: &std::collections::BTreeMap<String, String>,
     admission: &crate::contracts::Admission,
-) -> Result<(Value, ProtocolOutcome, bool), HookError> {
+) -> Result<(Value, RawProtocolOutcome, bool), HookError> {
     use crate::protocol::Kind;
     crate::client::check_rpc_error(response, &request["id"])?;
-    crate::canonical::validate("intercept-response", response).map_err(HookError)?;
+    crate::canonical::validate("intercept-response", response).map_err(HookError::new)?;
     if response["id"] != request["id"] {
         return Err(error("response correlation mismatch"));
     }
     let mut typed_request: crate::generated::InterceptRequest =
         serde_json::from_value(request.clone()).map_err(crate::protocol::failure)?;
-    let name = request["params"]["event"]["type"]
-        .as_str()
-        .ok_or_else(|| error("missing originating event type"))?;
-    let typed_response = crate::protocol::parse(name, response)?;
+    // The originating envelope is a wire input, so decode its canonical name fallibly.
+    let event_type: crate::generated::EventType =
+        serde_json::from_value(request["params"]["event"]["type"].clone())
+            .map_err(crate::protocol::failure)?;
+    let typed_response = crate::protocol::parse(event_type, response)?;
+    let name = event_type.as_str();
     crate::server::validate_effect_capabilities(request, response).map_err(error)?;
     let effects = crate::protocol::effects(&typed_response)?;
     let original = typed_request.params.event.as_ref().clone();
@@ -514,8 +517,8 @@ fn stage(
     let mut state = prior.clone();
     if *typed_request.params.event != original {
         state.candidate = None;
-        if state.decision == Decision::Allow {
-            state.decision = Decision::None;
+        if state.decision == Permission::Allow {
+            state.decision = Permission::None;
             state.approval_invalidated = true;
         }
     }
@@ -541,10 +544,10 @@ fn stage(
             replaced = true;
         }
         match &effect.kind {
-            Kind::Deny => state.decision = Decision::Deny,
-            Kind::Ask if state.decision != Decision::Deny => state.decision = Decision::Ask,
-            Kind::Allow if !matches!(state.decision, Decision::Deny | Decision::Ask) => {
-                state.decision = Decision::Allow
+            Kind::Deny => state.decision = Permission::Deny,
+            Kind::Ask if state.decision != Permission::Deny => state.decision = Permission::Ask,
+            Kind::Allow if !matches!(state.decision, Permission::Deny | Permission::Ask) => {
+                state.decision = Permission::Allow
             }
             Kind::Message(message) => state.messages.push(crate::protocol::value(message)?),
             Kind::Inject(injection) => state.injections.push(crate::protocol::value(injection)?),
@@ -561,7 +564,7 @@ fn stage(
     if state.stopped {
         state.continuation_requested = false;
     }
-    if matches!(state.decision, Decision::Deny | Decision::Ask) || state.stopped {
+    if matches!(state.decision, Permission::Deny | Permission::Ask) || state.stopped {
         state.candidate = None;
     }
     Ok((
@@ -777,12 +780,12 @@ mod inline_tests {
     fn apply(
         event: &Value,
         effects: &[Value],
-    ) -> Result<(Value, ProtocolOutcome, bool), HookError> {
+    ) -> Result<(Value, RawProtocolOutcome, bool), HookError> {
         let caps = json!({"effects":["modify"],"modify":{"content":{"replace":true,"merge":true}}});
         let request = json!({"jsonrpc":"2.0","id":"event","method":"hooks/intercept",
             "params":{"protocolVersion":"draft","event":event,"capabilities":caps}});
-        let state = ProtocolOutcome {
-            decision: Decision::Allow,
+        let state = RawProtocolOutcome {
+            decision: Permission::Allow,
             candidate: Some(json!("candidate")),
             stopped: false,
             continuation_requested: false,
@@ -811,7 +814,7 @@ mod inline_tests {
         let (next, state, _) = apply(&original, &[effect("replace", messages("changed"))]).unwrap();
         assert_eq!(next["message"]["messages"], messages("changed"));
         assert_eq!(original["message"]["messages"], messages("original"));
-        assert_eq!(state.decision, Decision::None);
+        assert_eq!(state.decision, Permission::None);
         assert!(state.candidate.is_none());
         assert!(state.approval_invalidated);
     }
@@ -842,7 +845,7 @@ mod inline_tests {
         )
         .unwrap();
         assert_eq!(next, original);
-        assert_eq!(state.decision, Decision::Allow);
+        assert_eq!(state.decision, Permission::Allow);
         assert_eq!(state.candidate, Some(json!("candidate")));
         assert!(!state.approval_invalidated);
     }

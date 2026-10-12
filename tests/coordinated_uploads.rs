@@ -1,4 +1,5 @@
 #![cfg(feature = "reqwest")]
+use agenthooksprotocol::capability;
 
 use agenthooksprotocol::{
     Attachment, Hooks, Permission,
@@ -7,7 +8,7 @@ use agenthooksprotocol::{
     client::{HookError, LocalFuture},
     content::{AuthorizedScope, UploadReceiver},
     generated::CanonicalMessageRole,
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::{HostInput, MessageInput, PartInput, UserMessageOutboundInput},
     transport::Request,
 };
@@ -221,11 +222,15 @@ fn subscription(endpoint: &str, token: &str) -> Value {
 fn options() -> HooksOptions {
     HooksOptions::new(
         "urn:coordinated-uploads",
-        [(
-            "user.message.outbound".into(),
-            EventGrant::intercept(Capabilities::none().deny().modify("content", true, true)),
-        )]
-        .into(),
+        capability::HostCapabilities {
+            user_message_outbound: Some(
+                capability::user_message_outbound()
+                    .deny()
+                    .modify_content(capability::Modify::ReplaceAndMerge)
+                    .observe(),
+            ),
+            ..Default::default()
+        },
     )
 }
 fn registration(routes: Vec<(&str, Vec<Value>)>) -> Value {
@@ -491,10 +496,7 @@ async fn metadata_omit_unmatched_and_no_routes_leave_lazy_sources_unread() {
             .insert("first".into(), "first".into());
         if mode == "no-routes" {
             route["events"] = json!(["tool.before"]);
-            opts.capabilities.insert(
-                "tool.before".into(),
-                EventGrant::intercept(Capabilities::none()),
-            );
+            opts.capabilities.tool_before = Some(capability::tool_before().message());
         }
         let routes = vec![("org.example.unread", vec![route])];
         let hooks = Hooks::new(registration(routes), opts).unwrap();
@@ -712,7 +714,7 @@ async fn fail_closed_upload_is_applied_at_its_route_after_earlier_interception()
     assert_eq!(earlier.requests.lock().unwrap().len(), 1);
     assert!(failing.requests.lock().unwrap().is_empty());
     assert_eq!(
-        result.effective_event["message"]["messages"][0]["parts"][0]["text"],
+        serde_json::to_value(&result.event).unwrap()["message"]["messages"][0]["parts"][0]["text"],
         "earlier interceptor ran"
     );
     assert_eq!(result.diagnostics.len(), 1);

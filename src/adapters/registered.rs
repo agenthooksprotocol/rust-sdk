@@ -61,9 +61,6 @@ pub struct BackendOptions {
     pub auth_provider: Option<Arc<dyn AuthProvider>>,
     /// Explicit bearer references. `tokenEnv` authorizes an environment lookup.
     pub credentials: BTreeMap<String, String>,
-    /// Retained for compatibility. Absent authentication permits anonymous delivery;
-    /// configured authentication always fails closed if its credential is unavailable.
-    pub allow_anonymous_http: bool,
     pub allow_loopback_http: bool,
     pub max_frame_bytes: usize,
 }
@@ -72,7 +69,6 @@ impl Default for BackendOptions {
         Self {
             auth_provider: None,
             credentials: BTreeMap::new(),
-            allow_anonymous_http: false,
             allow_loopback_http: false,
             max_frame_bytes: 1024 * 1024,
         }
@@ -98,7 +94,7 @@ fn error(message: &str) -> HookError {
     } else {
         DeliveryDiagnosticCode::Transport
     };
-    HookError(message.into()).classified(code)
+    HookError::new(message).classified(code)
 }
 
 /// Validate configuration without opening sockets or spawning children.

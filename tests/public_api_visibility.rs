@@ -118,7 +118,33 @@ use agenthooksprotocol::{Hooks, inputs::ToolBeforeInput, generated::{Candidate,J
 pub fn boundary<'a>(hooks:&'a Hooks,input:ToolBeforeInput<JsonValue>)->ToolBoundary<'a,JsonValue,String> {
     hooks.tool_before(input).result_type::<String>()
 }
-pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.candidate }
+pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.outcome.settled_candidate }
+pub fn input(outcome:ToolOutcome<JsonValue,String>)->JsonValue { outcome.input }
+pub fn subscribes(hooks:&Hooks,event:agenthooksprotocol::generated::EventType)->bool { hooks.subscribes(event) }
+pub fn declared_events(hooks:&Hooks, client:&agenthooksprotocol::client::Client, event:agenthooksprotocol::generated::EventType, payload:JsonValue) {
+    let _ = hooks.event_for(event, payload.clone());
+    let _ = client.event_for(event, payload);
+    let _ = agenthooksprotocol::interop::capabilities_for(event);
+    let _ = agenthooksprotocol::generated::response_for_request(event, "{}");
+    let _ = agenthooksprotocol::generated::stage_response_for_request(event, "{}", |_| Ok(()));
+    let _: &[agenthooksprotocol::generated::EventType] = agenthooksprotocol::hooks::NAMED_BOUNDARIES;
+    let _: std::collections::BTreeMap<agenthooksprotocol::generated::EventType, agenthooksprotocol::capability::WireDeclaration> = agenthooksprotocol::capability::HostCapabilities::default().to_wire();
+}
+pub fn typed_options()->agenthooksprotocol::hooks::HooksOptions {
+    use agenthooksprotocol::capability::{self, HostCapabilities, Modify};
+    agenthooksprotocol::hooks::HooksOptions::new("urn:test:typed", HostCapabilities {
+        tool_before: Some(capability::tool_before().allow().deny().return_result().modify_input(Modify::ReplaceAndMerge)),
+        user_elicitation_request: Some(capability::user_elicitation_request().elicitation_form()),
+        ..Default::default()
+    })
+}
+pub fn typed_handlers()->agenthooksprotocol::server::HandlerSet {
+    let mut handlers = agenthooksprotocol::server::HandlerSet::default();
+    handlers.intercept.tool_before = Some(std::sync::Arc::new(|ctx, _event| Box::pin(async move {Ok(ctx.reply())})));
+    handlers.observe.tool_before = Some(std::sync::Arc::new(|_ctx, _event| Box::pin(async move {Ok(())})));
+    handlers
+}
+
 pub fn contract()->Contract<JsonValue> {Contract::new()}
 #[cfg(feature="typed-form")]
 pub fn form() {
@@ -139,6 +165,206 @@ pub fn form() {
 fn assembly_and_provisional_helpers_are_not_public_consumer_apis() {
     let consumer = Consumer::new();
     for (name, source, diagnostic) in [
+        (
+            "stringly_declaration_keys",
+            "fn wrong(key: String) {let declarations = agenthooksprotocol::capability::HostCapabilities::default().to_wire(); let _ = declarations.get(&key);}",
+            "String",
+        ),
+        (
+            "stringly_response_context",
+            r#"fn wrong(name: &str) {let _ = agenthooksprotocol::generated::response_for_request(name, "{}");}"#,
+            "EventType",
+        ),
+        (
+            "stringly_staged_context",
+            r#"fn wrong(name: &str) {let _ = agenthooksprotocol::generated::stage_response_for_request(name, "{}", |_| Ok(()));}"#,
+            "EventType",
+        ),
+        (
+            "stringly_hooks_event_for",
+            "fn wrong(hooks: &agenthooksprotocol::Hooks, name: &str, payload: agenthooksprotocol::generated::JsonValue) {let _ = hooks.event_for(name, payload);}",
+            "EventType",
+        ),
+        (
+            "stringly_client_event_for",
+            "fn wrong(client: &agenthooksprotocol::client::Client, name: &str, payload: agenthooksprotocol::generated::JsonValue) {let _ = client.event_for(name, payload);}",
+            "EventType",
+        ),
+        (
+            "stringly_fixture_grants",
+            "fn wrong(name: &str) {let _ = agenthooksprotocol::interop::capabilities_for(name);}",
+            "EventType",
+        ),
+        (
+            "stringly_subscription_interest",
+            "fn interest(hooks: &agenthooksprotocol::Hooks, event: String) { let _ = hooks.subscribes(event); }",
+            "EventType",
+        ),
+        (
+            "borrowed_string_subscription_interest",
+            "fn interest(hooks: &agenthooksprotocol::Hooks, event: &str) { let _ = hooks.subscribes(event); }",
+            "EventType",
+        ),
+        (
+            "metadata_has_no_events",
+            "fn wrong() {let _ = agenthooksprotocol::hooks::ManifestMetadata {events: vec![], ..Default::default()};}",
+            "events",
+        ),
+        (
+            "observe_only_intercept_slot",
+            "fn wrong(handlers: &mut agenthooksprotocol::server::HandlerSet) { handlers.intercept.file_changed = None; }",
+            "file_changed",
+        ),
+        (
+            "broad_server_handler",
+            "use agenthooksprotocol::server::Handler;",
+            "Handler",
+        ),
+        (
+            "broad_server_incoming",
+            "use agenthooksprotocol::server::Incoming;",
+            "Incoming",
+        ),
+        (
+            "broad_server_outgoing",
+            "use agenthooksprotocol::server::Outgoing;",
+            "Outgoing",
+        ),
+        (
+            "broad_server_future",
+            "use agenthooksprotocol::server::HandlerFuture;",
+            "HandlerFuture",
+        ),
+        (
+            "observe_control",
+            "fn wrong(ctx: agenthooksprotocol::server::ToolBeforeObserveContext) {let _ = ctx.reply();}",
+            "reply",
+        ),
+        (
+            "wrong_reply_event",
+            "fn wrong(ctx: agenthooksprotocol::server::ToolAfterContext)->agenthooksprotocol::server::ToolBeforeReply {ctx.reply()}",
+            "ToolAfterEffect",
+        ),
+        (
+            "wrong_effect_event",
+            "fn wrong(ctx: agenthooksprotocol::server::ToolBeforeContext, effect: agenthooksprotocol::generated::ToolAfterEffect) {let _ = ctx.reply().effect(effect);}",
+            "ToolAfterEffect",
+        ),
+        (
+            "forge_reply",
+            "fn wrong() {let _ = agenthooksprotocol::server::ToolBeforeReply {scope: std::sync::Arc::new(()), effects: vec![]};}",
+            "private",
+        ),
+        (
+            "generic_host_caps",
+            "use agenthooksprotocol::hooks::Capabilities;",
+            "Capabilities",
+        ),
+        (
+            "generic_event_grant",
+            "use agenthooksprotocol::hooks::EventGrant;",
+            "EventGrant",
+        ),
+        (
+            "generic_host_map",
+            "use agenthooksprotocol::hooks::EventCapabilities;",
+            "EventCapabilities",
+        ),
+        (
+            "empty_declaration",
+            "fn empty() { let _ = agenthooksprotocol::capability::HostCapabilities {tool_before: Some(agenthooksprotocol::capability::tool_before()), ..Default::default()}; }",
+            "ToolBeforeInitial",
+        ),
+        (
+            "wrong_event_declaration",
+            "fn wrong() { let _ = agenthooksprotocol::capability::HostCapabilities {tool_before: Some(agenthooksprotocol::capability::tool_after().message()), ..Default::default()}; }",
+            "ToolAfter",
+        ),
+        (
+            "unsupported_target",
+            "fn wrong() { let _ = agenthooksprotocol::capability::tool_before().modify_output(agenthooksprotocol::capability::Modify::Replace); }",
+            "modify_output",
+        ),
+        (
+            "unsupported_flow",
+            "fn wrong() { let _ = agenthooksprotocol::capability::tool_before().flow(agenthooksprotocol::capability::Flow::Continue {remaining_continuations: 1, continuation_count: 0, max_continuations: None}); }",
+            "ToolBeforeFlow",
+        ),
+        (
+            "capability_build",
+            "fn old() { let _ = agenthooksprotocol::capability::tool_before().allow().build(); }",
+            "build",
+        ),
+        (
+            "capability_intercept",
+            "fn old() { let _ = agenthooksprotocol::capability::tool_before().intercept(); }",
+            "intercept",
+        ),
+        (
+            "raw_manifest_options",
+            r#"fn old() { let _ = agenthooksprotocol::hooks::HooksOptions::from_manifest("urn:test", ()); }"#,
+            "from_manifest",
+        ),
+        (
+            "raw_declaration_options",
+            r#"fn old() { let _ = agenthooksprotocol::hooks::HooksOptions::from_declarations("urn:test", ()); }"#,
+            "from_declarations",
+        ),
+        (
+            "decision_alias",
+            "use agenthooksprotocol::client::Decision;",
+            "Decision",
+        ),
+        (
+            "consumer_wrapper",
+            "use agenthooksprotocol::client::ConsumerProtocolOutcome;",
+            "ConsumerProtocolOutcome",
+        ),
+        (
+            "error_function",
+            "fn old_error() { let _ = agenthooksprotocol::client::HookError(String::new()); }",
+            "HookError",
+        ),
+        (
+            "raw_outcome",
+            "fn raw(o: agenthooksprotocol::client::ProtocolOutcome) { let _ = o.raw(); }",
+            "raw",
+        ),
+        (
+            "duplicate_event",
+            "fn duplicate(o: agenthooksprotocol::hooks::EventOutcome) { let _ = o.effective_event; }",
+            "effective_event",
+        ),
+        (
+            "duplicate_settled_event",
+            "fn duplicate(o: agenthooksprotocol::hooks::EventOutcome) { let _ = o.settled_event; }",
+            "settled_event",
+        ),
+        (
+            "runtime_raw_event",
+            "fn duplicate(o: agenthooksprotocol::runtime::EventResult<'_, serde_json::Value>) { let _ = o.effective_event; }",
+            "effective_event",
+        ),
+        (
+            "client_raw_input",
+            "fn duplicate(o: agenthooksprotocol::client::BoundaryResult<'_, serde_json::Value>) { let _ = o.effective_input; }",
+            "effective_input",
+        ),
+        (
+            "consumer_typed_wrapper",
+            "fn wrapper(o: agenthooksprotocol::runtime::EventResult<'_, serde_json::Value>) { let _ = o.typed_outcome(); }",
+            "typed_outcome",
+        ),
+        (
+            "duplicate_candidate",
+            "fn duplicate(o: agenthooksprotocol::hooks::ToolOutcome<serde_json::Value>) { let _ = o.candidate; }",
+            "candidate",
+        ),
+        (
+            "legacy_compaction",
+            "use agenthooksprotocol::compaction::run_compaction;",
+            "run_compaction",
+        ),
         (
             "assembly_macro",
             "agenthooksprotocol::ahp_hooks_boundary_methods!(inventory);",

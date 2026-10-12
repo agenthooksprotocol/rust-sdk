@@ -1,16 +1,17 @@
 //! Send a file through an application-owned hook boundary without staging handles.
 //! Run: cargo run --example file_attachment -- path/to/report.pdf
+use agenthooksprotocol::capability;
 use agenthooksprotocol::{
     Attachment, Hooks,
     adapters::registered::ManagedBackend,
     body::{BodyChunkFuture, BodyError, BodyStream},
     client::{HookError, LocalFuture},
     generated::{CanonicalMessageRole, UserMessageOutboundInputMessage},
-    hooks::{Capabilities, EventGrant, HooksOptions},
+    hooks::HooksOptions,
     inputs::{MessageInput, PartInput, UserMessageOutboundInput},
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, io::Read, path::PathBuf, sync::Arc, time::Duration};
+use std::{io::Read, path::PathBuf, sync::Arc, time::Duration};
 
 // This standalone example uses blocking file I/O. In an async application use
 // the runtime's file reader/offload facility in your BodyStream implementation.
@@ -56,10 +57,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     futures::executor::block_on(async move {
         let options = HooksOptions::new(
             "urn:example:document-assistant",
-            BTreeMap::from([(
-                "user.message.outbound".into(),
-                EventGrant::intercept(Capabilities::none()),
-            )]),
+            capability::HostCapabilities {
+                user_message_outbound: Some(capability::user_message_outbound().message()),
+                ..Default::default()
+            },
         )
         .with_backend("org.example.audit", Arc::new(Audit));
         let hooks = Hooks::new(

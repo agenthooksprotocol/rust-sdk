@@ -125,13 +125,16 @@ pub fn capabilities() -> Value {
     json!({"effects":["deny","allow","ask","modify","message","return","flow","inject"],"modify":{"input":{"replace":true,"merge":true}},"flow":{"operations":["stop"]},"inject":{"context":{"append":true,"deliverAt":["now","next_turn"]}}})
 }
 /// Advertise only operations the synthetic boundary can enforce.
-pub fn capabilities_for(event: &str) -> Result<Value> {
+pub fn capabilities_for(event: crate::generated::EventType) -> Result<Value> {
     Ok(match event {
-        "tool.before" => capabilities(),
-        "turn.finish.before" => {
+        crate::generated::EventType::ToolBefore => capabilities(),
+        crate::generated::EventType::TurnFinishBefore => {
             json!({"effects":["flow","message"],"flow":{"operations":["stop","continue"],"remainingContinuations":2,"maxContinuations":2,"continuationCount":0}})
         }
-        "task.change.before" | "workspace.change.before" => json!({"effects":["deny","message"]}),
+        crate::generated::EventType::TaskChangeBefore
+        | crate::generated::EventType::WorkspaceChangeBefore => {
+            json!({"effects":["deny","message"]})
+        }
         _ => return Err("unsupported synthetic boundary".into()),
     })
 }

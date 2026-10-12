@@ -1,4 +1,5 @@
 #![cfg(feature = "typed-form")]
+use agenthooksprotocol::capability;
 
 use agenthooksprotocol::form::{Form, FormAnswer, decode_url_result};
 use agenthooksprotocol::generated::{ElicitResult, McpElicitationElicitResult};
@@ -240,10 +241,9 @@ fn declared_form_answers_are_admitted_atomically_through_public_hooks() {
         Hooks,
         adapters::registered::ManagedBackend,
         client::{HookError, LocalFuture},
-        hooks::{Capabilities, EventGrant, HooksOptions},
+        hooks::HooksOptions,
     };
     use std::{
-        collections::BTreeMap,
         sync::{Arc, Mutex},
         time::Duration,
     };
@@ -284,10 +284,9 @@ fn declared_form_answers_are_admitted_atomically_through_public_hooks() {
     futures::executor::block_on(async {
         let form = Form::<Count>::new().unwrap();
         let requests = Arc::new(Mutex::new(vec![]));
-        let caps = json!({"effects":["return","message"],"elicitation":{"form":{}}});
         let sub = json!({"events":["user.elicitation.request"],"mode":"intercept","failurePolicy":"fail-open","timeoutMs":1000,"content":{"default":"body"}});
         let hooks=Hooks::new(json!({"protocolVersion":"draft","hooks":[{"id":"org.example.form","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[sub.clone(),sub]}]}),
-            HooksOptions::new("urn:test:form",BTreeMap::from([("user.elicitation.request".into(),EventGrant::intercept(Capabilities::from_value(caps).unwrap()))]))
+            HooksOptions::new("urn:test:form",capability::HostCapabilities { user_elicitation_request: Some(capability::user_elicitation_request().return_result().message().elicitation_form()), ..Default::default() })
             .with_backend("org.example.form",Arc::new(Replies {requests:requests.clone()}))).unwrap();
         let event = json!({"id":"evt","source":"urn:test:form","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},
             "elicitation":{"server":"mcp","mode":"form","request":{"id":"form","kind":"text","mediaType":"text/plain","selection":"body","text":serde_json::to_string(&form.request("Count?")).unwrap()}}});
@@ -297,9 +296,9 @@ fn declared_form_answers_are_admitted_atomically_through_public_hooks() {
             .await
             .unwrap();
         assert_eq!(outcome.outcome.failures.len(), 1);
-        assert!(outcome.outcome.candidate.is_none());
+        assert!(outcome.outcome.settled_candidate.is_none());
         assert!(outcome.outcome.messages.is_empty());
-        assert_eq!(outcome.effective_event, event);
+        assert_eq!(serde_json::to_value(&outcome.event).unwrap(), event);
         assert_eq!(requests.lock().unwrap().len(), 2);
 
         let contract: agenthooksprotocol::contracts::Contract<
@@ -315,8 +314,8 @@ fn declared_form_answers_are_admitted_atomically_through_public_hooks() {
             "{:?}",
             valid.outcome.failures
         );
-        let candidate = valid.outcome.candidate.as_ref().unwrap();
-        let result = contract.decode(candidate).unwrap();
+        let candidate = serde_json::to_value(valid.outcome.candidate().unwrap()).unwrap();
+        let result = contract.decode(&candidate).unwrap();
         let FormAnswer::Accepted(answer) = form.decode(&result).unwrap() else {
             panic!("expected accepted answer")
         };
@@ -376,10 +375,9 @@ fn modified_form_answer_contract_rejects_dropped_fields_before_later_interceptor
         client::{HookError, LocalFuture},
         content::{AuthorizedScope, ContentContext, MemoryContentStore},
         elicitation::Exchange,
-        hooks::{Capabilities, EventGrant, HooksOptions},
+        hooks::HooksOptions,
     };
     use std::{
-        collections::BTreeMap,
         sync::{Arc, Mutex},
         time::Duration,
     };
@@ -428,9 +426,8 @@ fn modified_form_answer_contract_rejects_dropped_fields_before_later_interceptor
             "elicitation":{"server":"mcp","mode":"form","action":"accept","result":{"id":"result-part","kind":"text","mediaType":"text/plain","selection":"body","text":original_answer.to_string()}}});
         let requests = Arc::new(Mutex::new(vec![]));
         let sub = json!({"events":["user.elicitation.result"],"mode":"intercept","failurePolicy":"fail-open","timeoutMs":1000,"content":{"default":"body"}});
-        let caps = json!({"effects":["modify"],"elicitation":{"form":{}},"modify":{"content":{"replace":true,"merge":true}}});
         let hooks=Hooks::new(json!({"protocolVersion":"draft","hooks":[{"id":"org.example.form","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[sub.clone(),sub]}]}),
-            HooksOptions::new("urn:test:form",BTreeMap::from([("user.elicitation.result".into(),EventGrant::intercept(Capabilities::from_value(caps).unwrap()))]))
+            HooksOptions::new("urn:test:form",capability::HostCapabilities { user_elicitation_result: Some(capability::user_elicitation_result().modify_content(capability::Modify::ReplaceAndMerge).elicitation_form()), ..Default::default() })
             .with_backend("org.example.form",Arc::new(Replies(requests.clone())))).unwrap();
         let outcome = hooks
             .event(event.clone())
@@ -439,7 +436,7 @@ fn modified_form_answer_contract_rejects_dropped_fields_before_later_interceptor
             .await
             .unwrap();
         assert_eq!(outcome.outcome.failures.len(), 1);
-        assert_eq!(outcome.effective_event, event);
+        assert_eq!(serde_json::to_value(&outcome.event).unwrap(), event);
         let requests = requests.lock().unwrap();
         assert_eq!(requests.len(), 2);
         let next: serde_json::Value = serde_json::from_str(
@@ -460,10 +457,9 @@ fn invalid_intermediate_form_answer_cannot_be_repaired_later_in_same_response() 
         client::{HookError, LocalFuture},
         content::{AuthorizedScope, ContentContext, MemoryContentStore},
         elicitation::Exchange,
-        hooks::{Capabilities, EventGrant, HooksOptions},
+        hooks::HooksOptions,
     };
     use std::{
-        collections::BTreeMap,
         sync::{Arc, Mutex},
         time::Duration,
     };
@@ -523,9 +519,8 @@ fn invalid_intermediate_form_answer_cannot_be_repaired_later_in_same_response() 
             "elicitation":{"server":"mcp","mode":"form","action":"accept","result":{"id":"result-part","kind":"text","mediaType":"text/plain","selection":"body","text":original_answer.to_string()}}});
             let requests = Arc::new(Mutex::new(vec![]));
             let sub = json!({"events":["user.elicitation.result"],"mode":"intercept","failurePolicy":"fail-open","timeoutMs":1000,"content":{"default":"body"}});
-            let caps = json!({"effects":["modify"],"elicitation":{"form":{}},"modify":{"content":{"replace":true,"merge":true}}});
             let hooks=Hooks::new(json!({"protocolVersion":"draft","hooks":[{"id":"org.example.form","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[sub.clone(),sub.clone(),sub]}]}),
-            HooksOptions::new("urn:test:form",BTreeMap::from([("user.elicitation.result".into(),EventGrant::intercept(Capabilities::from_value(caps).unwrap()))]))
+            HooksOptions::new("urn:test:form",capability::HostCapabilities { user_elicitation_result: Some(capability::user_elicitation_result().modify_content(capability::Modify::ReplaceAndMerge).elicitation_form()), ..Default::default() })
             .with_backend("org.example.form",Arc::new(Replies(requests.clone(),invalid)))).unwrap();
             let outcome = hooks
                 .event(event.clone())
@@ -539,7 +534,10 @@ fn invalid_intermediate_form_answer_cannot_be_repaired_later_in_same_response() 
                 json!({"action":"accept","content":{"count":3}})
                     .to_string()
                     .into();
-            assert_eq!(outcome.effective_event, retained_event);
+            assert_eq!(
+                serde_json::to_value(&outcome.event).unwrap(),
+                retained_event
+            );
             let requests = requests.lock().unwrap();
             assert_eq!(requests.len(), 3);
             let next: serde_json::Value = serde_json::from_str(

@@ -1,9 +1,10 @@
 #![cfg(feature = "reqwest")]
+use agenthooksprotocol::capability;
 
 use agenthooksprotocol::{
-    client::{Decision, ToolContext},
+    client::{Permission, ToolContext},
     generated::Registration,
-    hooks::{Capabilities, EventGrant, Hooks, HooksOptions},
+    hooks::{Hooks, HooksOptions},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -110,18 +111,17 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
         ]
     }]}).to_string();
     let registration = serde_json::from_str::<Registration>(&config).unwrap();
-    let grants = [(
-        "tool.before".into(),
-        EventGrant::intercept(
-            Capabilities::none()
+    let grants = capability::HostCapabilities {
+        tool_before: Some(
+            capability::tool_before()
                 .allow()
                 .deny()
-                .return_value()
-                .modify_input(),
-        )
-        .with_observe(),
-    )]
-    .into();
+                .return_result()
+                .modify_input(capability::Modify::ReplaceAndMerge)
+                .observe(),
+        ),
+        ..Default::default()
+    };
     let mut options = HooksOptions::new("https://host.test/http", grants);
     options.backend.allow_loopback_http = true;
     options
@@ -136,7 +136,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
             timeout_ms: 100,
         })
         .context(context())
-        .initial_state(Decision::Allow);
+        .initial_state(Permission::Allow);
     assert!(requests.lock().unwrap().is_empty());
     let modified = lazy.await.unwrap();
     assert!(
@@ -145,7 +145,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
         modified.outcome.failures
     );
     assert!(modified.outcome.can_execute());
-    let effective = modified.input.unwrap();
+    let effective = modified.input;
     assert_eq!(effective.command, "safe");
     assert_eq!(effective.timeout_ms, 25);
     let cached = hooks
@@ -153,15 +153,13 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
             command: "cached".into(),
             timeout_ms: 100,
         })
-        .capabilities(Capabilities::none().allow().return_value())
+        .capabilities(capability::tool_before().allow().return_result())
         .context(context())
-        .initial_state(Decision::Allow)
+        .initial_state(Permission::Allow)
         .await
         .unwrap();
-    let Some(agenthooksprotocol::client::SettledCandidate::Opaque(value)) =
-        cached.outcome.supplied_result()
-    else {
-        panic!("opaque tool result")
+    let Some(value) = cached.outcome.supplied_result() else {
+        panic!("missing caller-owned tool result")
     };
     assert_eq!(value, &json!({"cached":true}));
     assert!(!cached.outcome.can_execute());
@@ -171,7 +169,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
             timeout_ms: 100,
         })
         .context(context())
-        .initial_state(Decision::Allow)
+        .initial_state(Permission::Allow)
         .await
         .unwrap();
     assert!(denied.outcome.is_denied());
@@ -185,7 +183,7 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
                 timeout_ms: 1
             })
             .context(context())
-            .capabilities(Capabilities::none().ask())
+            .capabilities(capability::tool_before().ask())
             .await
             .is_err()
     );

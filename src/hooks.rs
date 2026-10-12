@@ -4,9 +4,8 @@ use crate::{
     adapters::registered::{self, BackendOptions, ManagedBackend},
     attachment::{Budget, InvocationAttachments},
     client::{
-        Client, ConsumerProtocolOutcome, Decision, DeliveryDiagnostic, DeliveryStage,
-        FailurePolicy, Hook, HookError, InputDecodeError, LocalFuture, Mode, Subscription,
-        ToolContext,
+        Client, DeliveryDiagnostic, DeliveryStage, FailurePolicy, Hook, HookError, LocalFuture,
+        Mode, Permission, ProtocolOutcome, Subscription, ToolContext,
     },
     content::OwnedContent,
     elicitation::Exchange,
@@ -25,154 +24,92 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Explicit effect/operation grants. No constructor infers elicitation modes.
-#[derive(Clone, Debug, Serialize)]
-#[serde(transparent)]
-pub struct Capabilities(Value);
-impl Default for Capabilities {
-    fn default() -> Self {
-        Self::none()
-    }
-}
-impl Capabilities {
-    pub fn none() -> Self {
-        Self(json!({"effects":[]}))
-    }
-    /// Accept generated capability models or ordinary JSON; canonical validation
-    /// runs here and event-specific validation runs in Hooks::new.
-    pub fn from_value(value: impl Serialize) -> Result<Self, HookError> {
-        let value = serde_json::to_value(value).map_err(err)?;
-        crate::canonical::validate("capabilities", &value).map_err(HookError)?;
-        Ok(Self(value))
-    }
-    fn effect(mut self, name: &str) -> Self {
-        let effects = self.0["effects"]
-            .as_array_mut()
-            .expect("capabilities effects");
-        if !effects.contains(&json!(name)) {
-            effects.push(json!(name));
-        }
-        self
-    }
-    pub fn allow(self) -> Self {
-        self.effect("allow")
-    }
-    pub fn deny(self) -> Self {
-        self.effect("deny")
-    }
-    pub fn ask(self) -> Self {
-        self.effect("ask")
-    }
-    pub fn message(self) -> Self {
-        self.effect("message")
-    }
-    pub fn return_value(self) -> Self {
-        self.effect("return")
-    }
-    pub fn modify(mut self, target: &str, replace: bool, merge: bool) -> Self {
-        self = self.effect("modify");
-        if self.0.get("modify").is_none() {
-            self.0["modify"] = json!({});
-        }
-        self.0["modify"][target] = json!({"replace":replace,"merge":merge});
-        self
-    }
-    pub fn modify_input(self) -> Self {
-        self.modify("input", true, true)
-    }
-    pub fn elicitation_form(mut self) -> Self {
-        if self.0.get("elicitation").is_none() {
-            self.0["elicitation"] = json!({});
-        }
-        self.0["elicitation"]["form"] = json!({});
-        self
-    }
-    pub fn elicitation_url(mut self) -> Self {
-        if self.0.get("elicitation").is_none() {
-            self.0["elicitation"] = json!({});
-        }
-        self.0["elicitation"]["url"] = json!({});
-        self
-    }
-    pub fn flow_stop(mut self) -> Self {
-        self = self.effect("flow");
-        self.0["flow"] = json!({"operations":["stop"]});
-        self
-    }
-    pub fn as_value(&self) -> &Value {
-        &self.0
-    }
-}
-/// A missing entry grants neither mode. The interception convenience grants both;
-/// exact independent mode declarations are preserved by `HooksOptions::from_manifest`.
+use crate::generated::capability::HostCapabilities;
+
+/// Non-event session-start manifest metadata. Event authority belongs exclusively
+/// to `capability::HostCapabilities`. Opaque extras cannot replace known members.
 #[derive(Clone, Debug)]
-pub struct EventGrant {
-    intercept: Option<Capabilities>,
-    observe: bool,
+pub struct ManifestMetadata {
+    pub authentication: Vec<generated::StaticCapabilityManifestAuthenticationItem>,
+    pub content_categories: Vec<String>,
+    pub correlation_identity_fields: Vec<String>,
+    pub gaps: Vec<generated::StaticCapabilityManifestGapsItem>,
+    pub limits: generated::StaticCapabilityManifestLimits,
+    pub managed_policy: generated::StaticCapabilityManifestManagedPolicy,
+    pub tool_paths: Vec<String>,
+    pub transports: Vec<generated::StaticCapabilityManifestTransportsItem>,
+    pub additional_properties: BTreeMap<String, generated::JsonValue>,
 }
-impl EventGrant {
-    /// Admit a generated capability declaration without inferring omitted modes.
-    pub fn from_declaration(declaration: impl Serialize) -> Result<Self, HookError> {
-        let value = serde_json::to_value(declaration).map_err(err)?;
-        let modes = value["modes"]
-            .as_array()
-            .ok_or_else(|| err("declaration requires modes"))?;
-        if modes.is_empty()
-            || modes
-                .iter()
-                .any(|mode| mode != "intercept" && mode != "observe")
-            || modes
-                .iter()
-                .map(Value::as_str)
-                .collect::<BTreeSet<_>>()
-                .len()
-                != modes.len()
-        {
-            return Err(err("invalid declaration modes"));
-        }
-        let intercept = modes.contains(&json!("intercept"));
-        let capabilities = value.get("capabilities");
-        if intercept != capabilities.is_some() {
-            return Err(err(
-                "interception mode requires exactly its capability block",
-            ));
-        }
-        Ok(Self {
-            intercept: capabilities.map(Capabilities::from_value).transpose()?,
-            observe: modes.contains(&json!("observe")),
-        })
-    }
-    /// Grant interception and observation together.
-    pub fn intercept(capabilities: Capabilities) -> Self {
+impl Default for ManifestMetadata {
+    fn default() -> Self {
         Self {
-            intercept: Some(capabilities),
-            observe: true,
+            authentication: Vec::new(),
+            content_categories: Vec::new(),
+            correlation_identity_fields: Vec::new(),
+            gaps: Vec::new(),
+            limits: generated::StaticCapabilityManifestLimits::new(),
+            managed_policy: generated::StaticCapabilityManifestManagedPolicy::new(true, vec![]),
+            tool_paths: Vec::new(),
+            transports: vec![generated::StaticCapabilityManifestTransportsItem::InProcess],
+            additional_properties: BTreeMap::new(),
         }
-    }
-    pub fn observe() -> Self {
-        Self {
-            intercept: None,
-            observe: true,
-        }
-    }
-    pub fn with_observe(mut self) -> Self {
-        self.observe = true;
-        self
     }
 }
-pub type EventCapabilities = BTreeMap<String, EventGrant>;
+impl ManifestMetadata {
+    fn wire(&self) -> Value {
+        let mut limits = self.limits.clone();
+        for key in [
+            "maxContinuations",
+            "maxTimeoutMs",
+            "maxUploadBytes",
+            "minTimeoutMs",
+        ] {
+            limits.additional_properties.remove(key);
+        }
+        let mut policy = self.managed_policy.clone();
+        for key in ["disableable", "scopes"] {
+            policy.additional_properties.remove(key);
+        }
+        let gaps: Vec<_> = self
+            .gaps
+            .iter()
+            .cloned()
+            .map(|mut gap| {
+                gap.additional_properties.remove("path");
+                gap.additional_properties.remove("reason");
+                gap
+            })
+            .collect();
+        let mut wire = json!({
+            "authentication": self.authentication,
+            "contentCategories": self.content_categories,
+            "correlationIdentityFields": self.correlation_identity_fields,
+            "gaps": gaps,
+            "limits": limits,
+            "managedPolicy": policy,
+            "toolPaths": self.tool_paths,
+            "transports": self.transports,
+        });
+        for (key, value) in &self.additional_properties {
+            if key != "events" && wire.get(key).is_none() {
+                wire[key] = value.clone();
+            }
+        }
+        wire
+    }
+}
 
 /// Host authority, not registration data. Ordinary callers supply a source and
 /// explicit per-event grants; registration still owns routing and transport.
 pub struct HooksOptions {
     pub source: String,
-    pub capabilities: EventCapabilities,
+    pub capabilities: HostCapabilities,
+    pub manifest_metadata: ManifestMetadata,
     pub backend: BackendOptions,
     pub observation_timeout: Duration,
     pub max_observations: usize,
     /// Maximum simultaneous upload transfers across active Hooks operations.
     pub max_concurrent_uploads: usize,
-    manifest: Option<Value>,
     pub max_body_bytes: usize,
     /// Active attachment byte budget. Historical name; no harness store exists.
     pub max_stored_bytes: usize,
@@ -181,36 +118,15 @@ pub struct HooksOptions {
     backends: BTreeMap<String, Arc<dyn ManagedBackend>>,
 }
 impl HooksOptions {
-    /// Compose generated event keys and immutable declarations into host authority.
-    /// Boundary-specific admission still occurs in `Hooks::new` before delivery.
-    pub fn from_declarations<K: Serialize, D: Serialize>(
-        source: impl Into<String>,
-        declarations: impl IntoIterator<Item = (K, D)>,
-    ) -> Result<Self, HookError> {
-        let mut grants = BTreeMap::new();
-        for (event, declaration) in declarations {
-            let event = serde_json::to_value(event).map_err(err)?;
-            let name = event
-                .as_str()
-                .ok_or_else(|| err("event key must be a canonical string"))?;
-            if grants
-                .insert(name.to_owned(), EventGrant::from_declaration(declaration)?)
-                .is_some()
-            {
-                return Err(err("duplicate event declaration"));
-            }
-        }
-        Ok(Self::new(source, grants))
-    }
-    pub fn new(source: impl Into<String>, capabilities: EventCapabilities) -> Self {
+    pub fn new(source: impl Into<String>, capabilities: HostCapabilities) -> Self {
         Self {
             source: source.into(),
             capabilities,
+            manifest_metadata: ManifestMetadata::default(),
             backend: BackendOptions::default(),
             observation_timeout: Duration::from_secs(30),
             max_observations: 1024,
             max_concurrent_uploads: 8,
-            manifest: None,
             max_body_bytes: 4 * 1024 * 1024,
             max_stored_bytes: 64 * 1024 * 1024,
             max_stored_entries: 4096,
@@ -223,56 +139,19 @@ impl HooksOptions {
         self.backends.insert(id.into(), backend);
         self
     }
-    /// Alternative to the event map, using a complete generated manifest.
-    pub fn from_manifest(
-        source: impl Into<String>,
-        manifest: generated::StaticCapabilityManifest,
-    ) -> Result<Self, HookError> {
-        let manifest = serde_json::to_value(manifest).map_err(err)?;
-        crate::canonical::validate("capabilities-response", &json!({"jsonrpc":"2.0","id":"manifest","result":{"protocolVersion":"draft","manifest":manifest}})).map_err(HookError)?;
-        let mut grants = BTreeMap::new();
-        for entry in manifest["events"]
-            .as_array()
-            .ok_or_else(|| err("manifest events"))?
-        {
-            let name = entry["event"]
-                .as_str()
-                .ok_or_else(|| err("manifest event"))?;
-            let modes = entry["modes"]
-                .as_array()
-                .ok_or_else(|| err("manifest modes"))?;
-            let intercept = if modes.contains(&json!("intercept")) {
-                Some(Capabilities::from_value(
-                    entry
-                        .get("capabilities")
-                        .ok_or_else(|| err("interception requires explicit capabilities"))?,
-                )?)
-            } else {
-                None
-            };
-            if grants
-                .insert(
-                    name.into(),
-                    EventGrant {
-                        intercept,
-                        observe: modes.contains(&json!("observe")),
-                    },
-                )
-                .is_some()
-            {
-                return Err(err("duplicate manifest event"));
-            }
-        }
-        let mut options = Self::new(source, grants);
-        options.manifest = Some(manifest);
-        Ok(options)
-    }
 }
+
+fn observes(grant: &Value) -> bool {
+    grant["modes"]
+        .as_array()
+        .is_some_and(|modes| modes.iter().any(|mode| mode.as_str() == Some("observe")))
+}
+
 #[derive(Clone)]
 struct Route {
     id: String,
     backend_id: String,
-    events: Vec<String>,
+    events: Vec<generated::EventType>,
     mode: Mode,
     timeout: Duration,
     configuration: Value,
@@ -381,7 +260,10 @@ fn restore_effect_attachment_refs(
             }
         })
         .collect();
-    let mut typed = crate::protocol::parse(original["type"].as_str().unwrap_or(""), response)?;
+    // Decode the event name at this explicit wire-envelope negotiation boundary.
+    let event_type: generated::EventType =
+        serde_json::from_value(original["type"].clone()).map_err(err)?;
+    let mut typed = crate::protocol::parse(event_type, response)?;
     crate::protocol::visit_messages_mut(&mut typed, |messages| {
         for message in &mut messages.0 {
             for part in &mut message.parts {
@@ -411,7 +293,7 @@ fn restore_effect_attachment_refs(
     Ok(())
 }
 fn err(value: impl std::fmt::Display) -> HookError {
-    HookError(value.to_string())
+    HookError::new(value.to_string())
 }
 fn matches(pattern: &str, name: &str) -> bool {
     pattern == name
@@ -591,6 +473,7 @@ impl Drop for Delivery<'_> {
 pub struct Hooks {
     options: HooksOptions,
     routes: Vec<Route>,
+    grants: BTreeMap<generated::EventType, Value>,
     backends: Vec<Arc<dyn ManagedBackend>>,
     budget: Arc<Budget>,
     life: Arc<Lifecycle>,
@@ -617,19 +500,20 @@ impl Hooks {
             return Err(err("Hooks bounds must be positive"));
         }
         let registration = serde_json::to_value(registration).map_err(err)?;
-        crate::canonical::validate("registration", &registration).map_err(HookError)?;
-        for (name, grant) in &options.capabilities {
-            let descriptor = generated::boundary::ALL_BOUNDARIES
-                .iter()
-                .find(|b| b.name == name)
-                .ok_or_else(|| err(format!("unknown event grant: {name}")))?;
-            if let Some(caps) = &grant.intercept {
-                let schema = descriptor
-                    .capability_schema
-                    .ok_or_else(|| err(format!("{name} is observation-only")))?;
-                crate::canonical::validate(schema, &caps.0).map_err(HookError)?;
-            }
-        }
+        crate::canonical::validate("registration", &registration).map_err(HookError::new)?;
+        // Render owned wire data once. Typed declarations are already valid; this
+        // does not parse, hydrate, or schema-validate host authority.
+        let grants: BTreeMap<generated::EventType, Value> = options
+            .capabilities
+            .to_wire()
+            .into_iter()
+            .map(|(name, grant)| {
+                (
+                    name,
+                    serde_json::to_value(grant).expect("typed capability serialization"),
+                )
+            })
+            .collect();
         let mut ids = BTreeSet::new();
         let mut routes = vec![];
         let mut backends = vec![];
@@ -668,18 +552,17 @@ impl Hooks {
                     .ok_or_else(|| err("events"))?
                 {
                     let selector = selector.as_str().ok_or_else(|| err("event selector"))?;
-                    let matched: Vec<_> = options
-                        .capabilities
+                    let matched: Vec<_> = grants
                         .iter()
                         .filter(|(name, grant)| {
-                            matches(selector, name)
+                            matches(selector, name.as_str())
                                 && if intercept {
-                                    grant.intercept.is_some()
+                                    grant.get("capabilities").is_some()
                                 } else {
-                                    grant.observe
+                                    observes(grant)
                                 }
                         })
-                        .map(|(name, _)| name.clone())
+                        .map(|(name, _)| *name)
                         .collect();
                     if matched.is_empty() {
                         return Err(err(format!(
@@ -717,13 +600,32 @@ impl Hooks {
             upload_limiter: crate::upload_plan::UploadLimiter::new(options.max_concurrent_uploads),
             options,
             routes,
+            grants,
             backends,
             budget,
             life: Arc::new(Lifecycle::default()),
             next_id: AtomicU64::new(0),
         })
     }
-    pub fn event<T: Serialize + DeserializeOwned>(&self, event: T) -> EventBoundary<'_, T> {
+    /// Static subscription interest for a canonical event.
+    /// Includes interception and observation routes eligible under host grants.
+    /// Payload-dependent filters are not evaluated, so true is not permission
+    /// or a guarantee of delivery. This lookup performs no input preparation,
+    /// transport, authentication, uploads, or mutation.
+    pub fn subscribes(&self, event: generated::EventType) -> bool {
+        let Some(grant) = self.grants.get(&event) else {
+            return false;
+        };
+        self.routes.iter().any(|route| {
+            route.events.contains(&event)
+                && match route.mode {
+                    Mode::Intercept(_) => grant.get("capabilities").is_some(),
+                    Mode::Observe => observes(grant),
+                }
+        })
+    }
+
+    pub fn event<T: Serialize>(&self, event: T) -> EventBoundary<'_, T> {
         EventBoundary {
             hooks: self,
             event,
@@ -731,9 +633,9 @@ impl Hooks {
             settings: Settings::default(),
         }
     }
-    pub fn event_for<T: Serialize + DeserializeOwned>(
+    pub fn event_for<T: Serialize>(
         &self,
-        name: &'static str,
+        name: generated::EventType,
         event: T,
     ) -> EventBoundary<'_, T> {
         EventBoundary {
@@ -749,7 +651,7 @@ impl Hooks {
         T: generated::inputs::__support::ProjectHostInput<crate::Attachment>,
     >(
         &self,
-        name: &'static str,
+        name: generated::EventType,
         input: T,
     ) -> InputBoundary<'_, T> {
         InputBoundary {
@@ -780,7 +682,7 @@ impl Hooks {
         &self,
         input: I,
     ) -> InputBoundary<'_, I> {
-        self.host_input_for("tool.before", input)
+        self.host_input_for(generated::EventType::ToolBefore, input)
     }
     /// Advanced application-input API; provide canonical context with `.context(...)`.
     pub fn tool_input<T: Serialize + DeserializeOwned>(&self, input: T) -> ToolBoundary<'_, T> {
@@ -793,7 +695,7 @@ impl Hooks {
             settings: Settings::default(),
         }
     }
-    fn prepare(&self, mut event: Value) -> Result<(Value, String, Capabilities), HookError> {
+    fn prepare(&self, mut event: Value) -> Result<(Value, generated::EventType, Value), HookError> {
         let event_object = event
             .as_object_mut()
             .ok_or_else(|| err("event must be an object"))?;
@@ -829,11 +731,10 @@ impl Hooks {
                 )),
             );
         }
-        let name = event["type"]
-            .as_str()
-            .ok_or_else(|| err("missing event type"))?
-            .to_owned();
-        if name == "session.start" {
+        // Complete-event input is an explicit wire boundary; decode unknown names fallibly.
+        let name: generated::EventType =
+            serde_json::from_value(event["type"].clone()).map_err(err)?;
+        if name == generated::EventType::SessionStart {
             let manifest = self.manifest();
             if event
                 .get("manifest")
@@ -844,47 +745,37 @@ impl Hooks {
             event["manifest"] = manifest;
         }
         let grant = self
-            .options
-            .capabilities
+            .grants
             .get(&name)
-            .ok_or_else(|| err(format!("event not explicitly granted: {name}")))?;
+            .ok_or_else(|| err(format!("event not explicitly granted: {}", name.as_str())))?;
         Ok((
             event,
             name,
-            grant.intercept.clone().unwrap_or_else(Capabilities::none),
+            grant
+                .get("capabilities")
+                .cloned()
+                .unwrap_or_else(|| json!({"effects": []})),
         ))
     }
     /// Canonical static host declaration used by session.start.
     pub fn manifest(&self) -> Value {
-        self.options.manifest.clone().unwrap_or_else(|| {
-            let events: Vec<_> = self
-                .options
-                .capabilities
-                .iter()
-                .map(|(name, grant)| {
-                    let mut modes = Vec::new();
-                    let mut entry = json!({"event":name});
-                    if let Some(caps) = &grant.intercept {
-                        modes.push("intercept");
-                        entry["capabilities"] = caps.0.clone();
-                    }
-                    if grant.observe {
-                        modes.push("observe");
-                    }
-                    entry["modes"] = json!(modes);
-                    entry
-                })
-                .collect();
-            json!({"events":events,"gaps":[],"transports":["in_process"],
-                "authentication":[],"toolPaths":[],"contentCategories":[],
-                "limits":{},"managedPolicy":{"scopes":[],"disableable":true},
-                "correlationIdentityFields":[]})
-        })
+        let events: Vec<_> = self
+            .grants
+            .iter()
+            .map(|(name, grant)| {
+                let mut entry = grant.clone();
+                entry["event"] = json!(name.as_str());
+                entry
+            })
+            .collect();
+        let mut manifest = self.options.manifest_metadata.wire();
+        manifest["events"] = json!(events);
+        manifest
     }
     async fn plan_uploads(
         &self,
         event: &Value,
-        name: &str,
+        name: &generated::EventType,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
     ) -> Arc<UploadPlans> {
@@ -894,9 +785,9 @@ impl Hooks {
             LocalFuture<'static, (String, Result<crate::hooks_content::Receipts, HookError>)>,
         > = Vec::new();
         for route in self.routes.iter().filter(|route| {
-            route.events.iter().any(|e| e == name)
+            route.events.contains(name)
                 && !filtered(&route.configuration, event)
-                && (route.mode != Mode::Observe || self.options.capabilities[name].observe)
+                && (route.mode != Mode::Observe || observes(&self.grants[name]))
         }) {
             let route = route.clone();
             let id = route.id.clone();
@@ -943,22 +834,20 @@ impl Hooks {
     fn client(
         &self,
         event: &Value,
-        name: &str,
+        name: &generated::EventType,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
         uploads: &Arc<UploadPlans>,
     ) -> Client {
         self.routes
             .iter()
-            .filter(|route| {
-                route.events.iter().any(|e| e == name) && !filtered(&route.configuration, event)
-            })
+            .filter(|route| route.events.contains(name) && !filtered(&route.configuration, event))
             .fold(
                 Client::new(ToolContext::new(event.clone())),
                 |client, route| {
                     client.with_subscription(Subscription {
                         id: route.id.clone(),
-                        events: vec![name.into()],
+                        events: vec![name.as_str().into()],
                         mode: route.mode,
                         timeout: route.timeout,
                         hook: Box::new(self.route_hook(route, deadline, attachments, uploads)),
@@ -983,7 +872,7 @@ impl Hooks {
     }
     async fn prepare_observations<'a>(
         &'a self,
-        name: &str,
+        name: &generated::EventType,
         observations: Vec<crate::client::Observation<'_>>,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
@@ -991,7 +880,7 @@ impl Hooks {
     ) -> (Vec<PreparedObservation<'a>>, Vec<DeliveryDiagnostic>) {
         let mut prepared = Vec::new();
         let mut diagnostics = vec![];
-        if !self.options.capabilities[name].observe {
+        if !observes(&self.grants[name]) {
             return (prepared, diagnostics);
         }
         for (index, observation) in observations.into_iter().enumerate() {
@@ -1028,7 +917,7 @@ impl Hooks {
                 match crate::canonical::validate("observe-notification", &observation.notification)
                 {
                     Ok(()) => hook.call(observation.notification).await,
-                    Err(e) => Err(HookError(e)
+                    Err(e) => Err(HookError::new(e)
                         .classified(generated::DeliveryDiagnosticCode::ProtocolRejection)),
                 };
             match result {
@@ -1145,9 +1034,9 @@ struct Settings<'a> {
     deadline: Option<Instant>,
     budget: Option<LocalFuture<'a, ()>>,
     cancellation: Option<LocalFuture<'a, ()>>,
-    initial: Option<Decision>,
+    initial: Option<Permission>,
     candidate: Option<Value>,
-    capabilities: Option<Capabilities>,
+    capabilities: Option<generated::capability::ToolBefore>,
     gates: Option<bool>,
     reauthorization: Option<bool>,
     continuation: Option<(u64, u64, u64)>,
@@ -1203,16 +1092,12 @@ macro_rules! settings_methods {
             self.settings.cancellation = Some(Box::pin(signal));
             self
         }
-        pub fn initial_state(mut self, decision: Decision) -> Self {
+        pub fn initial_state(mut self, decision: Permission) -> Self {
             self.settings.initial = Some(decision);
             self
         }
         pub fn initial_candidate(mut self, candidate: Value) -> Self {
             self.settings.candidate = Some(candidate);
-            self
-        }
-        pub fn capabilities(mut self, capabilities: Capabilities) -> Self {
-            self.settings.capabilities = Some(capabilities);
             self
         }
         pub fn mandatory_gates_passed(mut self, passed: bool) -> Self {
@@ -1230,7 +1115,7 @@ macro_rules! settings_methods {
 pub struct InputBoundary<'a, T> {
     hooks: &'a Hooks,
     input: T,
-    name: &'static str,
+    name: generated::EventType,
     settings: Settings<'a>,
 }
 impl<'a, T> InputBoundary<'a, T> {
@@ -1253,7 +1138,7 @@ impl<'a, T> InputBoundary<'a, T> {
 impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + Send + 'a>
     IntoFuture for InputBoundary<'a, T>
 {
-    type Output = Result<EventOutcome<generated::Event>, HookError>;
+    type Output = Result<EventOutcome, HookError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(mut self) -> Self::IntoFuture {
         let budget = self.settings.budget.take();
@@ -1277,9 +1162,7 @@ impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + 
                 }
                 .await?;
                 Ok(EventOutcome {
-                    event: Ok(result.settled_event.clone()),
-                    settled_event: result.settled_event,
-                    effective_event: result.effective_event,
+                    event: result.event,
                     content: result.content,
                     diagnostics: result.diagnostics,
                     outcome: result.outcome,
@@ -1294,7 +1177,7 @@ impl<'a, T: generated::inputs::__support::ProjectHostInput<crate::Attachment> + 
 pub struct EventBoundary<'a, T> {
     hooks: &'a Hooks,
     event: T,
-    name: Option<&'static str>,
+    name: Option<generated::EventType>,
     settings: Settings<'a>,
 }
 impl<'a, T> EventBoundary<'a, T> {
@@ -1314,24 +1197,21 @@ impl<'a, T> EventBoundary<'a, T> {
         self
     }
 }
-pub struct EventOutcome<T> {
+pub struct EventOutcome {
     /// Payloads in schema-owned event slots and explicitly declared content targets.
     pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
-    pub outcome: ConsumerProtocolOutcome,
-    /// Lossless JSON view retained for compatibility and raw pointer access.
-    pub effective_event: Value,
-    /// Complete schema-owned effective event, decoded before returning settlement.
-    pub settled_event: generated::Event,
-    pub event: Result<T, InputDecodeError>,
+    pub outcome: ProtocolOutcome,
+    /// Complete schema-owned effective event, retaining unknown fields losslessly.
+    pub event: generated::Event,
 }
-impl<T> EventOutcome<T> {
-    pub fn permission(&self) -> Decision {
+impl EventOutcome {
+    pub fn permission(&self) -> Permission {
         self.outcome.permission()
     }
 }
-impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBoundary<'a, T> {
-    type Output = Result<EventOutcome<T>, HookError>;
+impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
+    type Output = Result<EventOutcome, HookError>;
     type IntoFuture = LocalFuture<'a, Self::Output>;
     fn into_future(mut self) -> Self::IntoFuture {
         let budget = self.settings.budget.take();
@@ -1347,10 +1227,13 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     let object = event
                         .as_object_mut()
                         .ok_or_else(|| err("event must be an object"))?;
-                    if object.get("type").is_some_and(|actual| actual != expected) {
+                    if object
+                        .get("type")
+                        .is_some_and(|actual| actual != expected.as_str())
+                    {
                         return Err(err("event name mismatch"));
                     }
-                    object.insert("type".into(), json!(expected));
+                    object.insert("type".into(), json!(expected.as_str()));
                 }
                 let content = InvocationAttachments::bind(
                     &mut event,
@@ -1362,7 +1245,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     err(error).classified(generated::DeliveryDiagnosticCode::Preparation)
                 })?;
                 let (event, name, granted) = self.hooks.prepare(event)?;
-                let caps = narrow(self.settings.capabilities, granted)?;
+                let caps = granted;
                 let uploads = self
                     .hooks
                     .plan_uploads(&event, &name, self.settings.deadline, &content)
@@ -1372,7 +1255,7 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                         .client(&event, &name, self.settings.deadline, &content, &uploads);
                 let mut boundary = client
                     .event(event)
-                    .capabilities(caps.0)
+                    .capabilities(caps)
                     .attachments(content.clone())
                     .admission(self.settings.admission);
                 if let Some(snapshot) = self.settings.snapshot {
@@ -1407,16 +1290,11 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                 let crate::runtime::EventResult {
                     outcome,
                     effective_event,
-                    event: _,
-                    candidate_descriptor,
+                    event,
                     observations,
                     mut diagnostics,
+                    ..
                 } = result;
-                let outcome =
-                    ConsumerProtocolOutcome::decode(outcome.clone(), &name, &candidate_descriptor)
-                        .map_err(|error| {
-                            error.with_settlement(&outcome, &effective_event, &candidate_descriptor)
-                        })?;
                 for diagnostic in &mut diagnostics {
                     diagnostic.backend_id = self
                         .hooks
@@ -1425,16 +1303,6 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                         .find(|route| route.id == diagnostic.subscription_id)
                         .map(|route| route.backend_id.clone());
                 }
-                let settled_event = serde_json::from_value::<generated::Event>(
-                    effective_event.clone(),
-                )
-                .map_err(|error| {
-                    err(error).with_settlement(
-                        outcome.raw(),
-                        &effective_event,
-                        &candidate_descriptor,
-                    )
-                })?;
                 let (observations, preparation_diagnostics) = self
                     .hooks
                     .prepare_observations(
@@ -1454,21 +1322,10 @@ impl<'a, T: Serialize + DeserializeOwned + Send + 'a> IntoFuture for EventBounda
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let event = Ok(serde_json::from_value(effective_event.clone()).map_err(
-                    |error| {
-                        err(error).with_settlement(
-                            outcome.raw(),
-                            &effective_event,
-                            &candidate_descriptor,
-                        )
-                    },
-                )?);
                 Ok(EventOutcome {
                     content: retained,
                     outcome,
                     diagnostics,
-                    effective_event,
-                    settled_event,
                     event,
                 })
             }),
@@ -1513,31 +1370,41 @@ pub struct ToolBoundary<'a, T, R = Value, P = Value> {
 }
 impl<'a, T, R, P> ToolBoundary<'a, T, R, P> {
     settings_methods!();
+    pub fn capabilities(mut self, capabilities: generated::capability::ToolBefore) -> Self {
+        self.settings.capabilities = Some(capabilities);
+        self
+    }
     pub fn context(mut self, context: ToolContext) -> Self {
         self.context = context.event;
         self
     }
 }
 pub struct ToolOutcome<T, R = Value, P = Value> {
-    pub candidate: Option<generated::Candidate<R, P>>,
     /// Schema-owned returned payloads. Opaque application input, candidates, and
     /// effect values do not confer ownership of reference-shaped data.
     pub content: OwnedContent,
     pub diagnostics: Vec<DeliveryDiagnostic>,
-    pub outcome: ConsumerProtocolOutcome,
-    pub effective_input: Value,
+    pub outcome: ProtocolOutcome<R, P>,
     /// Complete schema-owned settled event, retaining opaque host event facts.
-    pub settled_event: generated::Event,
-    pub input: Result<T, InputDecodeError>,
+    pub event: generated::Event,
+    pub input: T,
 }
 impl<T, R, P> ToolOutcome<T, R, P> {
-    pub fn permission(&self) -> Decision {
+    pub fn permission(&self) -> Permission {
         self.outcome.permission()
     }
 }
-fn narrow(caps: Option<Capabilities>, granted: Capabilities) -> Result<Capabilities, HookError> {
+fn narrow(
+    caps: Option<generated::capability::ToolBefore>,
+    granted: Value,
+) -> Result<Value, HookError> {
     if let Some(caps) = caps {
-        if !crate::client::subset(&caps.0, &granted.0) {
+        let declaration = serde_json::to_value(caps).map_err(err)?;
+        let caps = declaration["capabilities"].clone();
+        if caps.is_null() {
+            return Err(err("per-occurrence tool capabilities require interception"));
+        }
+        if !crate::client::subset(&caps, &granted) {
             return Err(err(
                 "per-occurrence capabilities may only narrow explicit host grants",
             ));
@@ -1604,7 +1471,7 @@ where
                         .client(&context, &name, self.settings.deadline, &content, &uploads);
                 let mut boundary = client
                     .tool_before(input)
-                    .capabilities(caps.0)
+                    .capabilities(caps)
                     .admission(self.settings.admission);
                 if let Some(snapshot) = self.settings.snapshot {
                     boundary = boundary.initial_snapshot(snapshot)?;
@@ -1628,38 +1495,22 @@ where
                 }
                 let crate::client::BoundaryResult {
                     outcome,
+                    raw_outcome,
                     candidate_descriptor,
                     effective_input,
-                    effective_event,
+                    event,
                     input,
                     observations,
                     mut diagnostics,
+                    ..
                 } = result;
-                let outcome = ConsumerProtocolOutcome::decode(
-                    outcome.clone(),
-                    "tool.before",
-                    &candidate_descriptor,
-                )
-                .map_err(|error| {
-                    error.with_settlement(&outcome, &effective_input, &candidate_descriptor)
-                })?;
-                let settled_event = serde_json::from_value::<generated::Event>(
-                    effective_event.clone(),
-                )
-                .map_err(|error| {
+                let input = input.map_err(|error| {
                     err(error).with_settlement(
-                        outcome.raw(),
-                        &effective_event,
-                        &candidate_descriptor,
-                    )
-                })?;
-                let input = Ok(input.map_err(|error| {
-                    err(error).with_settlement(
-                        outcome.raw(),
+                        &raw_outcome,
                         &effective_input,
                         &candidate_descriptor,
                     )
-                })?);
+                })?;
                 for diagnostic in &mut diagnostics {
                     diagnostic.backend_id = self
                         .hooks
@@ -1689,26 +1540,14 @@ where
                     return Err(err("Hooks is shutting down")
                         .classified(generated::DeliveryDiagnosticCode::Cancelled));
                 }
-                let candidate = if candidate_descriptor.is_null() {
-                    None
-                } else {
-                    Some(
-                        serde_json::from_value(candidate_descriptor.clone()).map_err(|error| {
-                            err(error).with_settlement(
-                                outcome.raw(),
-                                &effective_input,
-                                &candidate_descriptor,
-                            )
-                        })?,
-                    )
-                };
+                let outcome = outcome.retype::<R, P>().map_err(|error| {
+                    error.with_settlement(&raw_outcome, &effective_input, &candidate_descriptor)
+                })?;
                 Ok(ToolOutcome {
-                    candidate,
                     content: retained,
                     outcome,
                     diagnostics,
-                    effective_input,
-                    settled_event,
+                    event,
                     input,
                 })
             }),
@@ -1717,7 +1556,8 @@ where
 }
 
 // Both the named methods and their inventory are generated from the schema catalogue.
-pub const NAMED_BOUNDARIES: &[&str] = crate::generated::ahp_hooks_boundary_methods!(inventory);
+pub const NAMED_BOUNDARIES: &[generated::EventType] =
+    crate::generated::ahp_hooks_boundary_methods!(inventory);
 impl<T: Serialize> generated::inputs::__support::ProjectHostInput<crate::Attachment>
     for generated::inputs::ToolBeforeInput<T>
 {
@@ -1738,7 +1578,7 @@ impl<T: Serialize> generated::inputs::__support::ProjectHostInput<crate::Attachm
 }
 // Named methods accept either canonical generated facts or direct owned host inputs.
 macro_rules! host_methods {
-    ($(($method:ident, $input:ident, $name:literal)),* $(,)?) => {
+    ($(($method:ident, $input:ident, $name:path)),* $(,)?) => {
         $(impl generated::inputs::__support::ProjectHostInput<crate::Attachment>
             for generated::inputs::$input {
             fn into_host_event(self) -> Result<(Value, Vec<generated::inputs::__support::ContentSourceBinding<crate::Attachment>>), serde_json::Error> {
@@ -1753,33 +1593,56 @@ macro_rules! host_methods {
     };
 }
 host_methods! {
-    (config_change_after, ConfigChangeAfterInput, "config.change.after"),
-    (config_change_before, ConfigChangeBeforeInput, "config.change.before"),
-    (context_compact_after, ContextCompactAfterInput, "context.compact.after"),
-    (context_compact_before, ContextCompactBeforeInput, "context.compact.before"),
-    (file_changed, FileChangedInput, "file.changed"),
-    (hook_failure, HookFailureInput, "hook.failure"),
-    (model_error, ModelErrorInput, "model.error"),
-    (model_request_before, ModelRequestBeforeInput, "model.request.before"),
-    (model_response_after, ModelResponseAfterInput, "model.response.after"),
-    (model_switch_after, ModelSwitchAfterInput, "model.switch.after"),
-    (model_switch_before, ModelSwitchBeforeInput, "model.switch.before"),
-    (session_end, SessionEndInput, "session.end"),
-    (session_start, SessionStartInput, "session.start"),
-    (task_change_after, TaskChangeAfterInput, "task.change.after"),
-    (task_change_before, TaskChangeBeforeInput, "task.change.before"),
-    (tool_batch_after, ToolBatchAfterInput, "tool.batch.after"),
-    (turn_end, TurnEndInput, "turn.end"),
-    (turn_finish_before, TurnFinishBeforeInput, "turn.finish.before"),
-    (turn_progress, TurnProgressInput, "turn.progress"),
-    (turn_start, TurnStartInput, "turn.start"),
-    (user_attention, UserAttentionInput, "user.attention"),
-    (user_elicitation_request, UserElicitationRequestInput, "user.elicitation.request"),
-    (user_elicitation_result, UserElicitationResultInput, "user.elicitation.result"),
-    (user_message_inbound, UserMessageInboundInput, "user.message.inbound"),
-    (user_message_outbound, UserMessageOutboundInput, "user.message.outbound"),
-    (workspace_change_after, WorkspaceChangeAfterInput, "workspace.change.after"),
-    (workspace_change_before, WorkspaceChangeBeforeInput, "workspace.change.before"),
+    (config_change_after, ConfigChangeAfterInput, generated::EventType::ConfigChangeAfter),
+    (config_change_before, ConfigChangeBeforeInput, generated::EventType::ConfigChangeBefore),
+    (context_compact_after, ContextCompactAfterInput, generated::EventType::ContextCompactAfter),
+    (context_compact_before, ContextCompactBeforeInput, generated::EventType::ContextCompactBefore),
+    (file_changed, FileChangedInput, generated::EventType::FileChanged),
+    (hook_failure, HookFailureInput, generated::EventType::HookFailure),
+    (model_error, ModelErrorInput, generated::EventType::ModelError),
+    (model_request_before, ModelRequestBeforeInput, generated::EventType::ModelRequestBefore),
+    (model_response_after, ModelResponseAfterInput, generated::EventType::ModelResponseAfter),
+    (model_switch_after, ModelSwitchAfterInput, generated::EventType::ModelSwitchAfter),
+    (model_switch_before, ModelSwitchBeforeInput, generated::EventType::ModelSwitchBefore),
+    (session_end, SessionEndInput, generated::EventType::SessionEnd),
+    (session_start, SessionStartInput, generated::EventType::SessionStart),
+    (task_change_after, TaskChangeAfterInput, generated::EventType::TaskChangeAfter),
+    (task_change_before, TaskChangeBeforeInput, generated::EventType::TaskChangeBefore),
+    (tool_batch_after, ToolBatchAfterInput, generated::EventType::ToolBatchAfter),
+    (turn_end, TurnEndInput, generated::EventType::TurnEnd),
+    (turn_finish_before, TurnFinishBeforeInput, generated::EventType::TurnFinishBefore),
+    (turn_progress, TurnProgressInput, generated::EventType::TurnProgress),
+    (turn_start, TurnStartInput, generated::EventType::TurnStart),
+    (user_attention, UserAttentionInput, generated::EventType::UserAttention),
+    (user_elicitation_request, UserElicitationRequestInput, generated::EventType::UserElicitationRequest),
+    (user_elicitation_result, UserElicitationResultInput, generated::EventType::UserElicitationResult),
+    (user_message_inbound, UserMessageInboundInput, generated::EventType::UserMessageInbound),
+    (user_message_outbound, UserMessageOutboundInput, generated::EventType::UserMessageOutbound),
+    (workspace_change_after, WorkspaceChangeAfterInput, generated::EventType::WorkspaceChangeAfter),
+    (workspace_change_before, WorkspaceChangeBeforeInput, generated::EventType::WorkspaceChangeBefore),
+}
+
+// Tool facts retain caller-owned arguments while the event envelope is SDK-owned.
+macro_rules! generic_host_methods {
+    ($(($method:ident, $input:ident, $name:path)),* $(,)?) => {
+        $(impl<T: Serialize> generated::inputs::__support::ProjectHostInput<crate::Attachment>
+            for generated::inputs::$input<T> {
+            fn into_host_event(self) -> Result<(Value, Vec<generated::inputs::__support::ContentSourceBinding<crate::Attachment>>), serde_json::Error> {
+                Ok((generated::inputs::__support::project_event(&self)?, Vec::new()))
+            }
+        })*
+        impl Hooks {
+            $(pub fn $method<I: generated::inputs::__support::ProjectHostInput<crate::Attachment>>(&self, input: I) -> InputBoundary<'_, I> {
+                self.host_input_for($name, input)
+            })*
+        }
+    };
+}
+generic_host_methods! {
+    (tool_after, ToolAfterInput, generated::EventType::ToolAfter),
+    (tool_permission_request, ToolPermissionRequestInput, generated::EventType::ToolPermissionRequest),
+    (tool_permission_resolved, ToolPermissionResolvedInput, generated::EventType::ToolPermissionResolved),
+    (tool_progress, ToolProgressInput, generated::EventType::ToolProgress),
 }
 
 fn bounded<'a, T: Send + 'a>(

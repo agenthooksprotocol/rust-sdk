@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, sync::Arc};
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let server = Arc::new(Server {
-        handler: demo::Policy,
+        handlers: demo::handlers(),
         authenticator: demo::Credentials,
         max_body_bytes: 65536,
     });

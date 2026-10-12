@@ -21,7 +21,7 @@ where
     N: Fn(Value) -> Result<(), String>,
 {
     /// Deliver once when polled by the caller. Preparation and notification use
-    /// the legacy synchronous callbacks on that polling thread; adapters must
+    /// synchronous callbacks on that polling thread; adapters must
     /// bound their own I/O. No `Send`, `Sync`, or `'static` captures are required.
     /// Errors and callback panics affect only this observation, never settlement
     /// or sibling observations. Dropping this future before polling does nothing.
@@ -51,10 +51,9 @@ where
 /// Identifiers stay harness-local and never enter notifications. `prepare` must
 /// apply existing content permissions/selections and confirm selected uploads.
 ///
-/// Unlike the former fire-and-forget helper, this function starts no delivery.
+/// This function starts no delivery.
 /// The caller must explicitly await each desired `DeferredObservation::deliver`
-/// after settlement; it may also discard observations. Callback signatures are
-/// retained, but their former thread-related bounds are no longer necessary.
+/// after settlement; it may also discard observations.
 #[must_use = "collect or schedule the returned deferred observations explicitly"]
 pub fn dispatch_observations<P, N>(
     event: Value,

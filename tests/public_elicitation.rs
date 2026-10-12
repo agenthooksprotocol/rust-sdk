@@ -228,7 +228,7 @@ fn inline_payloads_are_validated_and_rewritten_after_modify() {
 fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization() {
     use agenthooksprotocol::{
         client::{
-            Client, Decision, FailurePolicy, Hook, HookError, LocalFuture, Subscription,
+            Client, FailurePolicy, Hook, HookError, LocalFuture, Permission, Subscription,
             ToolContext,
         },
         content::{ContentReference, ContentStore, UploadError},
@@ -315,13 +315,16 @@ fn noop_modifications_preserve_exact_descriptor_without_puts_or_reauthorization(
                 .capabilities(result["params"]["capabilities"].clone())
                 .content(context.clone())
                 .elicitation_exchange(&exchange)
-                .initial_state(Decision::Allow)
+                .initial_state(Permission::Allow)
                 .await
                 .unwrap()
         });
         assert!(settled.outcome.failures.is_empty());
-        assert_eq!(settled.effective_event, result["params"]["event"]);
-        assert_eq!(settled.outcome.decision, Decision::Allow);
+        assert_eq!(
+            serde_json::to_value(&settled.event).unwrap(),
+            result["params"]["event"]
+        );
+        assert_eq!(settled.outcome.decision, Permission::Allow);
         assert!(settled.outcome.authorized);
         assert!(!settled.outcome.approval_invalidated);
         assert_eq!(store.puts.load(Ordering::Relaxed), before);
