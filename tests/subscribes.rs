@@ -1,3 +1,4 @@
+use agenthooksprotocol::generated::EventType;
 use agenthooksprotocol::{
     Hooks,
     adapters::registered::ManagedBackend,
@@ -72,26 +73,26 @@ fn unrelated_and_unconfigured_events_skip_expensive_preparation() {
     let (hooks, backend) = hooks("session.end", "observe", grants(), Value::Null);
     let preparations = AtomicUsize::new(0);
     for _ in 0..3 {
-        if hooks.subscribes("tool.before") {
+        if hooks.subscribes(EventType::ToolBefore) {
             preparations.fetch_add(1, Ordering::SeqCst);
         }
-        assert!(!hooks.subscribes("tool.after"));
-        assert!(!hooks.subscribes("session.start"));
-        assert!(!hooks.subscribes("tool.unknown"));
-        assert!(!hooks.subscribes("unknown"));
-        assert!(!hooks.subscribes(""));
+        assert!(!hooks.subscribes(EventType::ToolAfter));
+        assert!(!hooks.subscribes(EventType::SessionStart));
     }
     assert_eq!(preparations.load(Ordering::SeqCst), 0);
-    assert!(hooks.subscribes("session.end"));
+    assert!(hooks.subscribes(EventType::SessionEnd));
     finish(hooks, &backend);
 }
 
 #[test]
 fn exact_interception_and_observe_only_interest_are_both_visible() {
-    for (event, mode) in [("tool.before", "intercept"), ("tool.after", "observe")] {
-        let (hooks, backend) = hooks(event, mode, grants(), Value::Null);
+    for (event, mode) in [
+        (EventType::ToolBefore, "intercept"),
+        (EventType::ToolAfter, "observe"),
+    ] {
+        let (hooks, backend) = hooks(event.as_str(), mode, grants(), Value::Null);
         assert!(hooks.subscribes(event));
-        assert!(!hooks.subscribes("session.end"));
+        assert!(!hooks.subscribes(EventType::SessionEnd));
         finish(hooks, &backend);
     }
 }
@@ -100,20 +101,19 @@ fn exact_interception_and_observe_only_interest_are_both_visible() {
 fn wildcard_prefixes_follow_validated_selector_and_host_mode_eligibility() {
     for selector in ["tool.*", "*"] {
         let (hooks, backend) = hooks(selector, "observe", grants(), Value::Null);
-        assert!(hooks.subscribes("tool.before"));
-        assert!(hooks.subscribes("tool.after"));
-        assert!(hooks.subscribes("tool.permission.resolved"));
-        assert_eq!(hooks.subscribes("session.end"), selector == "*");
-        assert!(!hooks.subscribes("tool.unknown"));
-        assert!(!hooks.subscribes("tools.before"));
+        assert!(hooks.subscribes(EventType::ToolBefore));
+        assert!(hooks.subscribes(EventType::ToolAfter));
+        assert!(hooks.subscribes(EventType::ToolPermissionResolved));
+        assert_eq!(hooks.subscribes(EventType::SessionEnd), selector == "*");
+
         finish(hooks, &backend);
     }
     // An intercept selector maps only to intercept-eligible host entries;
     // observation authority alone does not add a route for that event.
     let (hooks, backend) = hooks("*", "intercept", grants(), Value::Null);
-    assert!(hooks.subscribes("tool.before"));
-    assert!(!hooks.subscribes("tool.after"));
-    assert!(!hooks.subscribes("session.end"));
+    assert!(hooks.subscribes(EventType::ToolBefore));
+    assert!(!hooks.subscribes(EventType::ToolAfter));
+    assert!(!hooks.subscribes(EventType::SessionEnd));
     finish(hooks, &backend);
 }
 
@@ -126,7 +126,7 @@ fn payload_filters_do_not_turn_potential_interest_into_a_false_negative() {
             grants(),
             json!({"paths":["restricted/**"],"toolKinds":["shell"]}),
         );
-        assert!(hooks.subscribes("tool.before"));
+        assert!(hooks.subscribes(EventType::ToolBefore));
         finish(hooks, &backend);
     }
 }
@@ -140,7 +140,91 @@ fn observation_selector_does_not_claim_intercept_only_host_entries() {
         ..HostCapabilities::default()
     };
     let (hooks, backend) = hooks("*", "observe", grants, Value::Null);
-    assert!(!hooks.subscribes("tool.before"));
-    assert!(hooks.subscribes("session.end"));
+    assert!(!hooks.subscribes(EventType::ToolBefore));
+    assert!(hooks.subscribes(EventType::SessionEnd));
+    finish(hooks, &backend);
+}
+
+#[test]
+fn every_canonical_event_accepts_typed_interest_without_preparation() {
+    let events = [
+        EventType::ConfigChangeAfter,
+        EventType::ConfigChangeBefore,
+        EventType::ContextCompactAfter,
+        EventType::ContextCompactBefore,
+        EventType::FileChanged,
+        EventType::HookFailure,
+        EventType::ModelError,
+        EventType::ModelRequestBefore,
+        EventType::ModelResponseAfter,
+        EventType::ModelSwitchAfter,
+        EventType::ModelSwitchBefore,
+        EventType::SessionEnd,
+        EventType::SessionStart,
+        EventType::TaskChangeAfter,
+        EventType::TaskChangeBefore,
+        EventType::ToolAfter,
+        EventType::ToolBatchAfter,
+        EventType::ToolBefore,
+        EventType::ToolPermissionRequest,
+        EventType::ToolPermissionResolved,
+        EventType::ToolProgress,
+        EventType::TurnEnd,
+        EventType::TurnFinishBefore,
+        EventType::TurnProgress,
+        EventType::TurnStart,
+        EventType::UserAttention,
+        EventType::UserElicitationRequest,
+        EventType::UserElicitationResult,
+        EventType::UserMessageInbound,
+        EventType::UserMessageOutbound,
+        EventType::WorkspaceChangeAfter,
+        EventType::WorkspaceChangeBefore,
+    ];
+    let capabilities = HostCapabilities {
+        config_change_after: Some(Observe),
+        config_change_before: Some(capability::config_change_before().observe()),
+        context_compact_after: Some(capability::context_compact_after().observe()),
+        context_compact_before: Some(capability::context_compact_before().observe()),
+        file_changed: Some(Observe),
+        hook_failure: Some(Observe),
+        model_error: Some(Observe),
+        model_request_before: Some(capability::model_request_before().observe()),
+        model_response_after: Some(capability::model_response_after().observe()),
+        model_switch_after: Some(Observe),
+        model_switch_before: Some(capability::model_switch_before().observe()),
+        session_end: Some(Observe),
+        session_start: Some(capability::session_start().observe()),
+        task_change_after: Some(Observe),
+        task_change_before: Some(capability::task_change_before().observe()),
+        tool_after: Some(capability::tool_after().observe()),
+        tool_batch_after: Some(capability::tool_batch_after().observe()),
+        tool_before: Some(capability::tool_before().observe()),
+        tool_permission_request: Some(capability::tool_permission_request().observe()),
+        tool_permission_resolved: Some(Observe),
+        tool_progress: Some(Observe),
+        turn_end: Some(Observe),
+        turn_finish_before: Some(capability::turn_finish_before().observe()),
+        turn_progress: Some(Observe),
+        turn_start: Some(capability::turn_start().observe()),
+        user_attention: Some(Observe),
+        user_elicitation_request: Some(capability::user_elicitation_request().observe()),
+        user_elicitation_result: Some(capability::user_elicitation_result().observe()),
+        user_message_inbound: Some(capability::user_message_inbound().observe()),
+        user_message_outbound: Some(capability::user_message_outbound().observe()),
+        workspace_change_after: Some(Observe),
+        workspace_change_before: Some(capability::workspace_change_before().observe()),
+    };
+    assert_eq!(
+        events.len(),
+        agenthooksprotocol::generated::boundary::ALL_BOUNDARIES.len()
+    );
+    for boundary in agenthooksprotocol::generated::boundary::ALL_BOUNDARIES {
+        assert!(events.iter().any(|event| event.as_str() == boundary.name));
+    }
+    let (hooks, backend) = hooks("*", "observe", capabilities, Value::Null);
+    for event in events {
+        assert!(hooks.subscribes(event), "{}", event.as_str());
+    }
     finish(hooks, &backend);
 }

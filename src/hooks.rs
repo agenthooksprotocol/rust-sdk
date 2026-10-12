@@ -604,12 +604,13 @@ impl Hooks {
             next_id: AtomicU64::new(0),
         })
     }
-    /// Static subscription interest for a configured canonical event name.
+    /// Static subscription interest for a canonical event.
     /// Includes interception and observation routes eligible under host grants.
     /// Payload-dependent filters are not evaluated, so true is not permission
     /// or a guarantee of delivery. This lookup performs no input preparation,
     /// transport, authentication, uploads, or mutation.
-    pub fn subscribes(&self, event: &str) -> bool {
+    pub fn subscribes(&self, event: generated::EventType) -> bool {
+        let event = event.as_str();
         let Some(grant) = self.grants.get(event) else {
             return false;
         };

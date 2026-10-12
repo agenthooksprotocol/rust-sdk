@@ -35,17 +35,20 @@ canonical event; `tool_before` preserves the application argument type in
 `capability`; the fields of `capability::HostCapabilities` accept only matching
 event declarations.
 
-Use `hooks.subscribes("tool.before")` before expensive input preparation when
-only subscribed consumers need that input. This synchronous lookup includes
+Use `hooks.subscribes(EventType::ToolBefore)` before expensive input preparation
+when only subscribed consumers need that input. This synchronous lookup includes
 eligible interception and observe-only routes, using registration's exact, `*`,
-and dotted-prefix selectors. It returns `false` for unknown or unconfigured event
-names and for configured events with no eligible matching route. Payload-dependent
-filters are not evaluated: a matching filtered route remains potentially interested.
+and dotted-prefix selectors. The argument is the generated `EventType`;
+registration selectors remain wire strings. It returns `false` for unconfigured
+events and events with no eligible matching route. Payload-dependent filters are
+not evaluated: a matching filtered route remains potentially interested.
 The lookup performs no input preparation, transport, authentication, uploads, or
 mutation. It reports static interest, not permission or guaranteed delivery.
 
 ```rust,ignore
-if hooks.subscribes("tool.before") {
+use agenthooksprotocol::generated::EventType;
+
+if hooks.subscribes(EventType::ToolBefore) {
     let input = prepare_tool_facts();
     let outcome = hooks.tool_before(input).await?;
     // Apply host policy to the settlement before executing the tool.

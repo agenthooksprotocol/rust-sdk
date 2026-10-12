@@ -120,7 +120,7 @@ pub fn boundary<'a>(hooks:&'a Hooks,input:ToolBeforeInput<JsonValue>)->ToolBound
 }
 pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.outcome.settled_candidate }
 pub fn input(outcome:ToolOutcome<JsonValue,String>)->JsonValue { outcome.input }
-pub fn subscribes(hooks:&Hooks,event:&str)->bool { hooks.subscribes(event) }
+pub fn subscribes(hooks:&Hooks,event:agenthooksprotocol::generated::EventType)->bool { hooks.subscribes(event) }
 pub fn typed_options()->agenthooksprotocol::hooks::HooksOptions {
     use agenthooksprotocol::capability::{self, HostCapabilities, Modify};
     agenthooksprotocol::hooks::HooksOptions::new("urn:test:typed", HostCapabilities {
@@ -156,6 +156,16 @@ pub fn form() {
 fn assembly_and_provisional_helpers_are_not_public_consumer_apis() {
     let consumer = Consumer::new();
     for (name, source, diagnostic) in [
+        (
+            "stringly_subscription_interest",
+            "fn interest(hooks: &agenthooksprotocol::Hooks, event: String) { let _ = hooks.subscribes(event); }",
+            "EventType",
+        ),
+        (
+            "borrowed_string_subscription_interest",
+            "fn interest(hooks: &agenthooksprotocol::Hooks, event: &str) { let _ = hooks.subscribes(event); }",
+            "EventType",
+        ),
         (
             "metadata_has_no_events",
             "fn wrong() {let _ = agenthooksprotocol::hooks::ManifestMetadata {events: vec![], ..Default::default()};}",

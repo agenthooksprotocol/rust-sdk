@@ -1,4 +1,5 @@
 use agenthooksprotocol::capability;
+use agenthooksprotocol::generated::EventType;
 use agenthooksprotocol::{
     adapters::registered::ManagedBackend,
     client::{HookError, LocalFuture},
@@ -176,7 +177,7 @@ fn metadata_is_preserved_without_replacing_typed_event_authority() {
     );
     assert_eq!(manifest["vendor.example"], json!({"preserved":true}));
     assert_eq!(manifest["events"][0]["event"], json!("session.start"));
-    assert!(!hooks.subscribes("tool.before"));
+    assert!(!hooks.subscribes(EventType::ToolBefore));
     let result = pool
         .run_until(hooks.session_start(facts()).into_future())
         .unwrap();

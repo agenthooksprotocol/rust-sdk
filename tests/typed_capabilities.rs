@@ -1,3 +1,4 @@
+use agenthooksprotocol::generated::EventType;
 use agenthooksprotocol::{
     Hooks,
     capability::{self, HostCapabilities, InjectContext, Modify, Observe},
@@ -92,7 +93,7 @@ fn facility_only_interception_and_observation_render_without_artificial_effects(
                 .unwrap()
                 .contains(&json!("intercept"))
         );
-        assert!(hooks.subscribes("user.elicitation.request"));
+        assert!(hooks.subscribes(EventType::UserElicitationRequest));
     }
     let observe = serde_json::to_value(capability::user_elicitation_request().observe()).unwrap();
     assert_eq!(observe, json!({"modes":["observe"]}));
