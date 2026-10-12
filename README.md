@@ -18,6 +18,8 @@ Install from [crates.io](https://crates.io/crates/agenthooksprotocol):
 agenthooksprotocol = "0.5"
 ```
 
+Upgrading from 0.4? See [MIGRATING.md](MIGRATING.md) for removed APIs and their replacements.
+
 ## Registration-driven hooks
 
 `Hooks` accepts an ordinary `Registration` and `HooksOptions` with
