@@ -1006,3 +1006,123 @@ fn empty_reply_is_correlated_noop_even_with_empty_dynamic_grants() {
     assert_eq!(wire["id"], raw["id"]);
     assert_eq!(wire["result"]["effects"], serde_json::json!([]));
 }
+
+fn serve_input() -> Vec<u8> {
+    let mut input = demo::request_body();
+    input.push(b'\n');
+    input.extend_from_slice(&with_body(as_notification).body);
+    input.extend_from_slice(b"\n{\n");
+    input.extend_from_slice(&vec![b' '; 70000]);
+    input.extend_from_slice(b"{}\n");
+    input.extend_from_slice(&demo::request_body());
+    input.push(b'\n');
+    input
+}
+fn assert_served(output: &[u8]) {
+    let lines: Vec<serde_json::Value> = output
+        .split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 4, "{lines:?}");
+    assert_eq!(lines[0]["id"], "evt_demo");
+    assert!(lines[0]["result"].is_object());
+    assert_eq!(lines[1]["error"]["code"], -32700);
+    assert!(lines[1]["id"].is_null());
+    assert_eq!(lines[2]["error"]["code"], -32600);
+    assert!(lines[2]["id"].is_null());
+    assert_eq!(lines[3]["id"], "evt_demo");
+}
+#[test]
+fn stdio_serve_loop_answers_requests_and_survives_malformed_frames() {
+    let mut output = Vec::new();
+    block_on(stdio::serve(
+        &server(),
+        Cursor::new(serve_input()),
+        &mut output,
+        Some("Bearer local-demo".into()),
+        65536,
+    ))
+    .unwrap();
+    assert_served(&output);
+    // An unterminated final line is reported, not dispatched.
+    let mut output = Vec::new();
+    assert!(
+        block_on(stdio::serve(
+            &server(),
+            Cursor::new(demo::request_body()),
+            &mut output,
+            Some("Bearer local-demo".into()),
+            65536,
+        ))
+        .is_err()
+    );
+    assert!(output.is_empty());
+}
+#[cfg(feature = "tokio-process")]
+#[tokio::test(flavor = "current_thread")]
+async fn tokio_stdio_serve_loop_matches_blocking_loop() {
+    let mut output = Vec::new();
+    stdio::serve_tokio(
+        &server(),
+        tokio::io::BufReader::new(std::io::Cursor::new(serve_input())),
+        &mut output,
+        Some("Bearer local-demo".into()),
+        65536,
+    )
+    .await
+    .unwrap();
+    assert_served(&output);
+}
+#[test]
+fn catch_all_observer_sees_only_events_without_a_specific_observer() {
+    use std::sync::{Arc, Mutex};
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mut handlers = HandlerSet::default();
+    handlers.observe.any = Some(with_state(
+        seen.clone(),
+        |seen, ctx: AnyObserveContext, notification| async move {
+            assert_eq!(ctx.principal.subject, "local-demo-user");
+            assert_eq!(serde_json::to_value(&notification).unwrap(), *ctx.request());
+            seen.lock().unwrap().push(ctx.event_type());
+            Ok(())
+        },
+    ));
+    let server = Server {
+        handlers,
+        authenticator: demo::Credentials,
+        max_body_bytes: 65536,
+    };
+    let response = block_on(server.handle(with_body(as_notification)));
+    assert_eq!(response.status, 204);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [Some(agenthooksprotocol::generated::EventType::ToolBefore)]
+    );
+    // A per-event observer takes precedence over the catch-all.
+    let mut server = server;
+    let specific = Arc::new(Mutex::new(0));
+    server.handlers.observe.tool_before = Some(with_state(
+        specific.clone(),
+        |specific, _ctx, _event| async move {
+            *specific.lock().unwrap() += 1;
+            Ok(())
+        },
+    ));
+    block_on(server.handle(with_body(as_notification)));
+    assert_eq!(*specific.lock().unwrap(), 1);
+    assert_eq!(seen.lock().unwrap().len(), 1);
+}
+#[test]
+fn callback_helpers_build_handlers_without_boilerplate() {
+    let mut handlers = HandlerSet::default();
+    handlers.intercept.tool_before = Some(callback(|ctx: ToolBeforeContext, _event| async move {
+        Ok(ctx.reply())
+    }));
+    let server = Server {
+        handlers,
+        authenticator: demo::Credentials,
+        max_body_bytes: 65536,
+    };
+    assert_eq!(block_on(server.handle(request())).status, 200);
+}
