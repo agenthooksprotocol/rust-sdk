@@ -36081,8 +36081,6 @@ pub mod capability {
     use super::EventType;
     use serde::Serialize;
     use std::collections::{BTreeMap, BTreeSet};
-    #[derive(Clone, Copy, Debug)]
-    pub struct Observe;
     #[derive(Clone, Debug, Serialize)]
     pub struct WireDeclaration {
         modes: Vec<&'static str>,
@@ -36373,217 +36371,165 @@ pub mod capability {
     }
     #[derive(Clone, Debug, Default)]
     pub struct HostCapabilities {
-        pub config_change_after: Option<Observe>,
+        pub config_change_after: Option<ConfigChangeAfter>,
         pub config_change_before: Option<ConfigChangeBefore>,
         pub context_compact_after: Option<ContextCompactAfter>,
         pub context_compact_before: Option<ContextCompactBefore>,
-        pub file_changed: Option<Observe>,
-        pub hook_failure: Option<Observe>,
-        pub model_error: Option<Observe>,
+        pub file_changed: Option<FileChanged>,
+        pub hook_failure: Option<HookFailure>,
+        pub model_error: Option<ModelError>,
         pub model_request_before: Option<ModelRequestBefore>,
         pub model_response_after: Option<ModelResponseAfter>,
-        pub model_switch_after: Option<Observe>,
+        pub model_switch_after: Option<ModelSwitchAfter>,
         pub model_switch_before: Option<ModelSwitchBefore>,
-        pub session_end: Option<Observe>,
+        pub session_end: Option<SessionEnd>,
         pub session_start: Option<SessionStart>,
-        pub task_change_after: Option<Observe>,
+        pub task_change_after: Option<TaskChangeAfter>,
         pub task_change_before: Option<TaskChangeBefore>,
         pub tool_after: Option<ToolAfter>,
         pub tool_batch_after: Option<ToolBatchAfter>,
         pub tool_before: Option<ToolBefore>,
         pub tool_permission_request: Option<ToolPermissionRequest>,
-        pub tool_permission_resolved: Option<Observe>,
-        pub tool_progress: Option<Observe>,
-        pub turn_end: Option<Observe>,
+        pub tool_permission_resolved: Option<ToolPermissionResolved>,
+        pub tool_progress: Option<ToolProgress>,
+        pub turn_end: Option<TurnEnd>,
         pub turn_finish_before: Option<TurnFinishBefore>,
-        pub turn_progress: Option<Observe>,
+        pub turn_progress: Option<TurnProgress>,
         pub turn_start: Option<TurnStart>,
-        pub user_attention: Option<Observe>,
+        pub user_attention: Option<UserAttention>,
         pub user_elicitation_request: Option<UserElicitationRequest>,
         pub user_elicitation_result: Option<UserElicitationResult>,
         pub user_message_inbound: Option<UserMessageInbound>,
         pub user_message_outbound: Option<UserMessageOutbound>,
-        pub workspace_change_after: Option<Observe>,
+        pub workspace_change_after: Option<WorkspaceChangeAfter>,
         pub workspace_change_before: Option<WorkspaceChangeBefore>,
     }
     impl HostCapabilities {
         pub fn to_wire(&self) -> BTreeMap<EventType, WireDeclaration> {
             let mut wire = BTreeMap::new();
-            if let Some(_declaration) = &self.config_change_after {
-                wire.insert(
-                    EventType::ConfigChangeAfter,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.config_change_after {
+                wire.insert(EventType::ConfigChangeAfter, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.config_change_before {
-                wire.insert(EventType::ConfigChangeBefore, _declaration.0.wire());
+            if let Some(declaration) = &self.config_change_before {
+                wire.insert(EventType::ConfigChangeBefore, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.context_compact_after {
-                wire.insert(EventType::ContextCompactAfter, _declaration.0.wire());
+            if let Some(declaration) = &self.context_compact_after {
+                wire.insert(EventType::ContextCompactAfter, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.context_compact_before {
-                wire.insert(EventType::ContextCompactBefore, _declaration.0.wire());
+            if let Some(declaration) = &self.context_compact_before {
+                wire.insert(EventType::ContextCompactBefore, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.file_changed {
-                wire.insert(
-                    EventType::FileChanged,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.file_changed {
+                wire.insert(EventType::FileChanged, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.hook_failure {
-                wire.insert(
-                    EventType::HookFailure,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.hook_failure {
+                wire.insert(EventType::HookFailure, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.model_error {
-                wire.insert(
-                    EventType::ModelError,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.model_error {
+                wire.insert(EventType::ModelError, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.model_request_before {
-                wire.insert(EventType::ModelRequestBefore, _declaration.0.wire());
+            if let Some(declaration) = &self.model_request_before {
+                wire.insert(EventType::ModelRequestBefore, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.model_response_after {
-                wire.insert(EventType::ModelResponseAfter, _declaration.0.wire());
+            if let Some(declaration) = &self.model_response_after {
+                wire.insert(EventType::ModelResponseAfter, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.model_switch_after {
-                wire.insert(
-                    EventType::ModelSwitchAfter,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.model_switch_after {
+                wire.insert(EventType::ModelSwitchAfter, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.model_switch_before {
-                wire.insert(EventType::ModelSwitchBefore, _declaration.0.wire());
+            if let Some(declaration) = &self.model_switch_before {
+                wire.insert(EventType::ModelSwitchBefore, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.session_end {
-                wire.insert(
-                    EventType::SessionEnd,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.session_end {
+                wire.insert(EventType::SessionEnd, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.session_start {
-                wire.insert(EventType::SessionStart, _declaration.0.wire());
+            if let Some(declaration) = &self.session_start {
+                wire.insert(EventType::SessionStart, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.task_change_after {
-                wire.insert(
-                    EventType::TaskChangeAfter,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.task_change_after {
+                wire.insert(EventType::TaskChangeAfter, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.task_change_before {
-                wire.insert(EventType::TaskChangeBefore, _declaration.0.wire());
+            if let Some(declaration) = &self.task_change_before {
+                wire.insert(EventType::TaskChangeBefore, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.tool_after {
-                wire.insert(EventType::ToolAfter, _declaration.0.wire());
+            if let Some(declaration) = &self.tool_after {
+                wire.insert(EventType::ToolAfter, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.tool_batch_after {
-                wire.insert(EventType::ToolBatchAfter, _declaration.0.wire());
+            if let Some(declaration) = &self.tool_batch_after {
+                wire.insert(EventType::ToolBatchAfter, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.tool_before {
-                wire.insert(EventType::ToolBefore, _declaration.0.wire());
+            if let Some(declaration) = &self.tool_before {
+                wire.insert(EventType::ToolBefore, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.tool_permission_request {
-                wire.insert(EventType::ToolPermissionRequest, _declaration.0.wire());
+            if let Some(declaration) = &self.tool_permission_request {
+                wire.insert(EventType::ToolPermissionRequest, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.tool_permission_resolved {
-                wire.insert(
-                    EventType::ToolPermissionResolved,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.tool_permission_resolved {
+                wire.insert(EventType::ToolPermissionResolved, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.tool_progress {
-                wire.insert(
-                    EventType::ToolProgress,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.tool_progress {
+                wire.insert(EventType::ToolProgress, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.turn_end {
-                wire.insert(
-                    EventType::TurnEnd,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.turn_end {
+                wire.insert(EventType::TurnEnd, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.turn_finish_before {
-                wire.insert(EventType::TurnFinishBefore, _declaration.0.wire());
+            if let Some(declaration) = &self.turn_finish_before {
+                wire.insert(EventType::TurnFinishBefore, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.turn_progress {
-                wire.insert(
-                    EventType::TurnProgress,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.turn_progress {
+                wire.insert(EventType::TurnProgress, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.turn_start {
-                wire.insert(EventType::TurnStart, _declaration.0.wire());
+            if let Some(declaration) = &self.turn_start {
+                wire.insert(EventType::TurnStart, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.user_attention {
-                wire.insert(
-                    EventType::UserAttention,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.user_attention {
+                wire.insert(EventType::UserAttention, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.user_elicitation_request {
-                wire.insert(EventType::UserElicitationRequest, _declaration.0.wire());
+            if let Some(declaration) = &self.user_elicitation_request {
+                wire.insert(EventType::UserElicitationRequest, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.user_elicitation_result {
-                wire.insert(EventType::UserElicitationResult, _declaration.0.wire());
+            if let Some(declaration) = &self.user_elicitation_result {
+                wire.insert(EventType::UserElicitationResult, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.user_message_inbound {
-                wire.insert(EventType::UserMessageInbound, _declaration.0.wire());
+            if let Some(declaration) = &self.user_message_inbound {
+                wire.insert(EventType::UserMessageInbound, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.user_message_outbound {
-                wire.insert(EventType::UserMessageOutbound, _declaration.0.wire());
+            if let Some(declaration) = &self.user_message_outbound {
+                wire.insert(EventType::UserMessageOutbound, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.workspace_change_after {
-                wire.insert(
-                    EventType::WorkspaceChangeAfter,
-                    WireDeclaration {
-                        modes: vec!["observe"],
-                        capabilities: None,
-                    },
-                );
+            if let Some(declaration) = &self.workspace_change_after {
+                wire.insert(EventType::WorkspaceChangeAfter, declaration.0.wire());
             }
-            if let Some(_declaration) = &self.workspace_change_before {
-                wire.insert(EventType::WorkspaceChangeBefore, _declaration.0.wire());
+            if let Some(declaration) = &self.workspace_change_before {
+                wire.insert(EventType::WorkspaceChangeBefore, declaration.0.wire());
             }
             wire
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ConfigChangeAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ConfigChangeAfterInitial(());
+    pub fn config_change_after() -> ConfigChangeAfterInitial {
+        ConfigChangeAfterInitial(())
+    }
+    impl Serialize for ConfigChangeAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ConfigChangeAfterInitial {
+        pub fn observe(&self) -> ConfigChangeAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ConfigChangeAfter(state)
+        }
+    }
+    impl ConfigChangeAfter {
+        pub fn observe(&self) -> ConfigChangeAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ConfigChangeAfter(state)
         }
     }
     #[derive(Clone, Debug)]
@@ -36901,6 +36847,84 @@ pub mod capability {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct FileChanged(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct FileChangedInitial(());
+    pub fn file_changed() -> FileChangedInitial {
+        FileChangedInitial(())
+    }
+    impl Serialize for FileChanged {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl FileChangedInitial {
+        pub fn observe(&self) -> FileChanged {
+            let mut state = State::default();
+            state.observe = true;
+            FileChanged(state)
+        }
+    }
+    impl FileChanged {
+        pub fn observe(&self) -> FileChanged {
+            let mut state = self.0.clone();
+            state.observe = true;
+            FileChanged(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct HookFailure(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct HookFailureInitial(());
+    pub fn hook_failure() -> HookFailureInitial {
+        HookFailureInitial(())
+    }
+    impl Serialize for HookFailure {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl HookFailureInitial {
+        pub fn observe(&self) -> HookFailure {
+            let mut state = State::default();
+            state.observe = true;
+            HookFailure(state)
+        }
+    }
+    impl HookFailure {
+        pub fn observe(&self) -> HookFailure {
+            let mut state = self.0.clone();
+            state.observe = true;
+            HookFailure(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ModelError(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ModelErrorInitial(());
+    pub fn model_error() -> ModelErrorInitial {
+        ModelErrorInitial(())
+    }
+    impl Serialize for ModelError {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ModelErrorInitial {
+        pub fn observe(&self) -> ModelError {
+            let mut state = State::default();
+            state.observe = true;
+            ModelError(state)
+        }
+    }
+    impl ModelError {
+        pub fn observe(&self) -> ModelError {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ModelError(state)
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct ModelRequestBefore(State);
     #[derive(Clone, Copy, Debug)]
     pub struct ModelRequestBeforeInitial(());
@@ -37147,6 +37171,32 @@ pub mod capability {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct ModelSwitchAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ModelSwitchAfterInitial(());
+    pub fn model_switch_after() -> ModelSwitchAfterInitial {
+        ModelSwitchAfterInitial(())
+    }
+    impl Serialize for ModelSwitchAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ModelSwitchAfterInitial {
+        pub fn observe(&self) -> ModelSwitchAfter {
+            let mut state = State::default();
+            state.observe = true;
+            ModelSwitchAfter(state)
+        }
+    }
+    impl ModelSwitchAfter {
+        pub fn observe(&self) -> ModelSwitchAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ModelSwitchAfter(state)
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct ModelSwitchBefore(State);
     #[derive(Clone, Copy, Debug)]
     pub struct ModelSwitchBeforeInitial(());
@@ -37235,6 +37285,32 @@ pub mod capability {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct SessionEnd(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct SessionEndInitial(());
+    pub fn session_end() -> SessionEndInitial {
+        SessionEndInitial(())
+    }
+    impl Serialize for SessionEnd {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl SessionEndInitial {
+        pub fn observe(&self) -> SessionEnd {
+            let mut state = State::default();
+            state.observe = true;
+            SessionEnd(state)
+        }
+    }
+    impl SessionEnd {
+        pub fn observe(&self) -> SessionEnd {
+            let mut state = self.0.clone();
+            state.observe = true;
+            SessionEnd(state)
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct SessionStart(State);
     #[derive(Clone, Copy, Debug)]
     pub struct SessionStartInitial(());
@@ -37310,6 +37386,32 @@ pub mod capability {
                 .elicitation
                 .insert("url".into(), BTreeMap::new());
             SessionStart(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TaskChangeAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TaskChangeAfterInitial(());
+    pub fn task_change_after() -> TaskChangeAfterInitial {
+        TaskChangeAfterInitial(())
+    }
+    impl Serialize for TaskChangeAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TaskChangeAfterInitial {
+        pub fn observe(&self) -> TaskChangeAfter {
+            let mut state = State::default();
+            state.observe = true;
+            TaskChangeAfter(state)
+        }
+    }
+    impl TaskChangeAfter {
+        pub fn observe(&self) -> TaskChangeAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TaskChangeAfter(state)
         }
     }
     #[derive(Clone, Debug)]
@@ -37883,6 +37985,84 @@ pub mod capability {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct ToolPermissionResolved(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolPermissionResolvedInitial(());
+    pub fn tool_permission_resolved() -> ToolPermissionResolvedInitial {
+        ToolPermissionResolvedInitial(())
+    }
+    impl Serialize for ToolPermissionResolved {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolPermissionResolvedInitial {
+        pub fn observe(&self) -> ToolPermissionResolved {
+            let mut state = State::default();
+            state.observe = true;
+            ToolPermissionResolved(state)
+        }
+    }
+    impl ToolPermissionResolved {
+        pub fn observe(&self) -> ToolPermissionResolved {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolPermissionResolved(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ToolProgress(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct ToolProgressInitial(());
+    pub fn tool_progress() -> ToolProgressInitial {
+        ToolProgressInitial(())
+    }
+    impl Serialize for ToolProgress {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl ToolProgressInitial {
+        pub fn observe(&self) -> ToolProgress {
+            let mut state = State::default();
+            state.observe = true;
+            ToolProgress(state)
+        }
+    }
+    impl ToolProgress {
+        pub fn observe(&self) -> ToolProgress {
+            let mut state = self.0.clone();
+            state.observe = true;
+            ToolProgress(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TurnEnd(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TurnEndInitial(());
+    pub fn turn_end() -> TurnEndInitial {
+        TurnEndInitial(())
+    }
+    impl Serialize for TurnEnd {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TurnEndInitial {
+        pub fn observe(&self) -> TurnEnd {
+            let mut state = State::default();
+            state.observe = true;
+            TurnEnd(state)
+        }
+    }
+    impl TurnEnd {
+        pub fn observe(&self) -> TurnEnd {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TurnEnd(state)
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct TurnFinishBefore(State);
     #[derive(Clone, Copy, Debug)]
     pub struct TurnFinishBeforeInitial(());
@@ -37988,6 +38168,32 @@ pub mod capability {
                 .elicitation
                 .insert("url".into(), BTreeMap::new());
             TurnFinishBefore(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TurnProgress(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct TurnProgressInitial(());
+    pub fn turn_progress() -> TurnProgressInitial {
+        TurnProgressInitial(())
+    }
+    impl Serialize for TurnProgress {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl TurnProgressInitial {
+        pub fn observe(&self) -> TurnProgress {
+            let mut state = State::default();
+            state.observe = true;
+            TurnProgress(state)
+        }
+    }
+    impl TurnProgress {
+        pub fn observe(&self) -> TurnProgress {
+            let mut state = self.0.clone();
+            state.observe = true;
+            TurnProgress(state)
         }
     }
     #[derive(Clone, Debug)]
@@ -38116,6 +38322,32 @@ pub mod capability {
                 .elicitation
                 .insert("url".into(), BTreeMap::new());
             TurnStart(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct UserAttention(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct UserAttentionInitial(());
+    pub fn user_attention() -> UserAttentionInitial {
+        UserAttentionInitial(())
+    }
+    impl Serialize for UserAttention {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl UserAttentionInitial {
+        pub fn observe(&self) -> UserAttention {
+            let mut state = State::default();
+            state.observe = true;
+            UserAttention(state)
+        }
+    }
+    impl UserAttention {
+        pub fn observe(&self) -> UserAttention {
+            let mut state = self.0.clone();
+            state.observe = true;
+            UserAttention(state)
         }
     }
     #[derive(Clone, Debug)]
@@ -38518,6 +38750,32 @@ pub mod capability {
                 .elicitation
                 .insert("url".into(), BTreeMap::new());
             UserMessageOutbound(state)
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct WorkspaceChangeAfter(State);
+    #[derive(Clone, Copy, Debug)]
+    pub struct WorkspaceChangeAfterInitial(());
+    pub fn workspace_change_after() -> WorkspaceChangeAfterInitial {
+        WorkspaceChangeAfterInitial(())
+    }
+    impl Serialize for WorkspaceChangeAfter {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.wire().serialize(serializer)
+        }
+    }
+    impl WorkspaceChangeAfterInitial {
+        pub fn observe(&self) -> WorkspaceChangeAfter {
+            let mut state = State::default();
+            state.observe = true;
+            WorkspaceChangeAfter(state)
+        }
+    }
+    impl WorkspaceChangeAfter {
+        pub fn observe(&self) -> WorkspaceChangeAfter {
+            let mut state = self.0.clone();
+            state.observe = true;
+            WorkspaceChangeAfter(state)
         }
     }
     #[derive(Clone, Debug)]

@@ -2,7 +2,7 @@ use agenthooksprotocol::generated::EventType;
 use agenthooksprotocol::{
     Hooks,
     adapters::registered::ManagedBackend,
-    capability::{self, HostCapabilities, Observe},
+    capability::{self, HostCapabilities},
     client::{HookError, LocalFuture},
     hooks::HooksOptions,
 };
@@ -56,8 +56,8 @@ fn grants() -> HostCapabilities {
     HostCapabilities {
         tool_before: Some(capability::tool_before().allow().observe()),
         tool_after: Some(capability::tool_after().observe()),
-        session_end: Some(Observe),
-        tool_permission_resolved: Some(Observe),
+        session_end: Some(capability::session_end().observe()),
+        tool_permission_resolved: Some(capability::tool_permission_resolved().observe()),
         ..HostCapabilities::default()
     }
 }
@@ -135,8 +135,8 @@ fn payload_filters_do_not_turn_potential_interest_into_a_false_negative() {
 fn observation_selector_does_not_claim_intercept_only_host_entries() {
     let grants = HostCapabilities {
         tool_before: Some(capability::tool_before().allow()),
-        session_end: Some(Observe),
-        tool_permission_resolved: Some(Observe),
+        session_end: Some(capability::session_end().observe()),
+        tool_permission_resolved: Some(capability::tool_permission_resolved().observe()),
         ..HostCapabilities::default()
     };
     let (hooks, backend) = hooks("*", "observe", grants, Value::Null);
@@ -182,37 +182,37 @@ fn every_canonical_event_accepts_typed_interest_without_preparation() {
         EventType::WorkspaceChangeBefore,
     ];
     let capabilities = HostCapabilities {
-        config_change_after: Some(Observe),
+        config_change_after: Some(capability::config_change_after().observe()),
         config_change_before: Some(capability::config_change_before().observe()),
         context_compact_after: Some(capability::context_compact_after().observe()),
         context_compact_before: Some(capability::context_compact_before().observe()),
-        file_changed: Some(Observe),
-        hook_failure: Some(Observe),
-        model_error: Some(Observe),
+        file_changed: Some(capability::file_changed().observe()),
+        hook_failure: Some(capability::hook_failure().observe()),
+        model_error: Some(capability::model_error().observe()),
         model_request_before: Some(capability::model_request_before().observe()),
         model_response_after: Some(capability::model_response_after().observe()),
-        model_switch_after: Some(Observe),
+        model_switch_after: Some(capability::model_switch_after().observe()),
         model_switch_before: Some(capability::model_switch_before().observe()),
-        session_end: Some(Observe),
+        session_end: Some(capability::session_end().observe()),
         session_start: Some(capability::session_start().observe()),
-        task_change_after: Some(Observe),
+        task_change_after: Some(capability::task_change_after().observe()),
         task_change_before: Some(capability::task_change_before().observe()),
         tool_after: Some(capability::tool_after().observe()),
         tool_batch_after: Some(capability::tool_batch_after().observe()),
         tool_before: Some(capability::tool_before().observe()),
         tool_permission_request: Some(capability::tool_permission_request().observe()),
-        tool_permission_resolved: Some(Observe),
-        tool_progress: Some(Observe),
-        turn_end: Some(Observe),
+        tool_permission_resolved: Some(capability::tool_permission_resolved().observe()),
+        tool_progress: Some(capability::tool_progress().observe()),
+        turn_end: Some(capability::turn_end().observe()),
         turn_finish_before: Some(capability::turn_finish_before().observe()),
-        turn_progress: Some(Observe),
+        turn_progress: Some(capability::turn_progress().observe()),
         turn_start: Some(capability::turn_start().observe()),
-        user_attention: Some(Observe),
+        user_attention: Some(capability::user_attention().observe()),
         user_elicitation_request: Some(capability::user_elicitation_request().observe()),
         user_elicitation_result: Some(capability::user_elicitation_result().observe()),
         user_message_inbound: Some(capability::user_message_inbound().observe()),
         user_message_outbound: Some(capability::user_message_outbound().observe()),
-        workspace_change_after: Some(Observe),
+        workspace_change_after: Some(capability::workspace_change_after().observe()),
         workspace_change_before: Some(capability::workspace_change_before().observe()),
     };
     assert_eq!(

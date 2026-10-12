@@ -153,7 +153,7 @@ fn generated_capability_declarations_are_immutable_and_boundary_checked() {
     let invalid = HooksOptions::new(
         "urn:typed-host",
         capability::HostCapabilities {
-            session_end: Some(capability::Observe),
+            session_end: Some(capability::session_end().observe()),
             ..Default::default()
         },
     );
