@@ -543,6 +543,12 @@ cargo run --no-default-features --example neutral_server
 cargo run --features reqwest,axum --example http_roundtrip
 ```
 
+`adapters::process::Process` runs one background reader per child that owns its
+stdout and routes each frame to the in-flight request by JSON-RPC `id`. Frames that
+answer nothing, such as a reply to a notification, are discarded and reported via
+`Process::on_discard`; they never fail a later request or respawn the child.
+Repeated malformed output, an oversized frame, or stdout EOF retires the child.
+
 The subprocess adapter is deliberately not claimed to work on every executor.
 Dropping an in-flight subprocess future retires that stream, starts termination,
 and prevents reuse; `shutdown().await` deterministically kills and reaps. `Drop`
