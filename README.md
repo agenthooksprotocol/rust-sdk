@@ -216,6 +216,25 @@ policy process (Python 3 is required):
 cargo run --example registered_hooks --features reqwest,tokio-process -- examples/stdio_registration.json
 ```
 
+Registered stdio children do not inherit the full host environment. They get a
+minimal base: `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LC_*`, `TZ`,
+and the temp-directory variables, plus the Windows system variables. The
+transport's `env` object is applied on top, and its entries replace base values
+with the same name:
+
+```json
+{"type": "stdio", "command": "python3", "args": ["policy.py"],
+ "lifecycle": "persistent", "env": {"POLICY_MODE": "strict"}}
+```
+
+`env` values are literal strings: they are not expanded, interpolated, or
+resolved as secrets, and they never appear in diagnostics. `env` is not an
+authentication binding. `tokenEnv` is still read from the host's own
+environment, and endpoint credentials are never copied into the child.
+
+`BackendOptions::inherit_environment = true` is an SDK-level migration opt-out
+that passes the full host environment, with `env` applied on top.
+
 For HTTP, start the local fixture in one terminal:
 
 ```sh

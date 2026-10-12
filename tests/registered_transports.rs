@@ -276,6 +276,62 @@ mod stdio {
             );
         }
     }
+    async fn child_environment(inherit_environment: bool) -> serde_json::Value {
+        let path = std::env::temp_dir().join(format!(
+            "ahp-env-{}-{inherit_environment}.json",
+            std::process::id()
+        ));
+        let script = "import sys,json,os\nnames=['AHP_CHILD','HOME','PATH','CARGO_MANIFEST_DIR']\njson.dump({n:os.environ.get(n) for n in names},open(sys.argv[1],'w'))\nfor line in sys.stdin:\n r=json.loads(line)\n print(json.dumps({'jsonrpc':'2.0','id':r['id'],'result':{'protocolVersion':'draft','effects':[]}}),flush=True)\n";
+        let backend = from_registration(
+            &json!({"transport":{"type":"stdio","command":"python3","args":["-u","-c",script,path],
+                "lifecycle":"per_event","env":{"AHP_CHILD":"literal $HOME","HOME":"/ahp-override"}}}),
+            &BackendOptions {
+                inherit_environment,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        backend
+            .call(request(), Duration::from_secs(3))
+            .await
+            .unwrap();
+        backend.shutdown().await.unwrap();
+        let seen = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let _ = std::fs::remove_file(path);
+        seen
+    }
+    #[tokio::test]
+    async fn registration_env_reaches_child_over_a_minimal_base_environment() {
+        // Cargo sets CARGO_MANIFEST_DIR for the test process; it is not a base variable.
+        assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some());
+        let seen = child_environment(false).await;
+        assert_eq!(seen["AHP_CHILD"], "literal $HOME");
+        assert_eq!(seen["HOME"], "/ahp-override");
+        assert!(seen["PATH"].is_string());
+        assert!(seen["CARGO_MANIFEST_DIR"].is_null());
+        let seen = child_environment(true).await;
+        assert_eq!(seen["AHP_CHILD"], "literal $HOME");
+        assert_eq!(seen["HOME"], "/ahp-override");
+        assert!(seen["CARGO_MANIFEST_DIR"].is_string());
+    }
+    #[test]
+    fn invalid_env_entries_are_rejected_without_echoing_values() {
+        for env in [
+            json!({"BAD=NAME":"x"}),
+            json!({"":"x"}),
+            json!({"NAME":"secret\u{0}value"}),
+            json!({"NAME":1}),
+            json!(["NAME"]),
+        ] {
+            let error = from_registration(
+                &json!({"transport":{"type":"stdio","command":"python3","lifecycle":"persistent","env":env}}),
+                &BackendOptions::default(),
+            )
+            .err()
+            .unwrap();
+            assert!(!error.to_string().contains("secret"));
+        }
+    }
     #[tokio::test]
     async fn queued_calls_have_their_own_deadline_and_shutdown_reaps() {
         let backend = backend(

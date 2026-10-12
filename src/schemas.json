@@ -11099,6 +11099,13 @@
           },
           "cwd": {
             "type": "string"
+          },
+          "env": {
+            "type": "object",
+            "description": "Additional environment variables for the backend process, as literal name-to-value strings. Entries override the harness's minimal base environment. Values are never interpolated and are not an authentication binding. Semantics are defined in spec/draft/base/transports/stdio.md.",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         }
       },
