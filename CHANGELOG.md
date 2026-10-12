@@ -2,7 +2,6 @@
 
 ## Unreleased
 
-- **Breaking:** every event now has its own capability declaration type, and the shared `capability::Observe` marker is removed. Declare observe-only events with the event builder instead: `session_end: Some(capability::Observe)` becomes `session_end: Some(capability::session_end().observe())`. The `HostCapabilities` fields for observe-only events change from `Option<Observe>` to `Option<capability::SessionEnd>` (and so on for each event).
 - Check original structural descriptors at generated Serde decode boundaries, preserving the richer `parse_*` diagnostics API. Direct decoding is stricter; primitive constrained aliases can become transparent newtypes.
 - Add schema-derived `EffectId` and typed, allocation-free `Capabilities::supports` effect-family membership queries, including custom identifiers, without changing authorization or admission policy. `capability::EffectType` aliases `EffectId`; `as_str()` is retained, but the identifier is no longer a closed `Copy` enum.
 
