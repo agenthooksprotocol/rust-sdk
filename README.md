@@ -15,7 +15,7 @@ Install from [crates.io](https://crates.io/crates/agenthooksprotocol):
 
 ```toml
 [dependencies]
-agenthooksprotocol = "0.4"
+agenthooksprotocol = "0.5"
 ```
 
 ## Registration-driven hooks
