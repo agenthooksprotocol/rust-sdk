@@ -603,7 +603,7 @@ fn core_handlers(
     // These are the four events advertised by the synthetic adapter manifest.
     // Each expansion has a distinct generated event/effect callback signature.
     macro_rules! intercept {
-        ($slot:ident, $effect:ty) => {{
+        ($slot:ident, $response:ty) => {{
             let cases = cases.clone();
             let schemas = schemas.clone();
             let receipts = receipts.clone();
@@ -623,32 +623,38 @@ fn core_handlers(
                     if response["id"] != ctx.request()["id"] {
                         return Err("uncorrelated fixture response".into());
                     }
-                    let effects = response["result"]["effects"]
-                        .as_array()
-                        .ok_or("invalid fixture effects")?;
+                    // Decode the original canonical envelope: missing effects are
+                    // neutral, but explicit null is not an empty effect batch.
+                    let response: $response =
+                        serde_json::from_value(response).map_err(|e| e.to_string())?;
                     let mut reply = ctx.reply();
-                    for effect in effects {
-                        let effect: $effect =
-                            serde_json::from_value(effect.clone()).map_err(|e| e.to_string())?;
-                        reply = reply.effect(effect);
+                    if let agenthooksprotocol::generated::Presence::Present(effects) =
+                        response.result.effects
+                    {
+                        for effect in effects {
+                            reply = reply.effect(*effect);
+                        }
                     }
                     Ok(reply)
                 })
             }));
         }};
     }
-    intercept!(tool_before, agenthooksprotocol::generated::ToolBeforeEffect);
+    intercept!(
+        tool_before,
+        agenthooksprotocol::generated::ToolBeforeInterceptResponse
+    );
     intercept!(
         turn_finish_before,
-        agenthooksprotocol::generated::TurnFinishBeforeEffect
+        agenthooksprotocol::generated::TurnFinishBeforeInterceptResponse
     );
     intercept!(
         task_change_before,
-        agenthooksprotocol::generated::TaskChangeBeforeEffect
+        agenthooksprotocol::generated::TaskChangeBeforeInterceptResponse
     );
     intercept!(
         workspace_change_before,
-        agenthooksprotocol::generated::WorkspaceChangeBeforeEffect
+        agenthooksprotocol::generated::WorkspaceChangeBeforeInterceptResponse
     );
     handlers
 }
@@ -1365,5 +1371,50 @@ mod tests {
             &json!({"auth":{"mode":"bearer","token":""}}),
             "Bearer "
         ));
+    }
+
+    #[test]
+    fn omitted_fixture_effects_preserve_all_incoming_states() {
+        let schema_dir = std::env::var("AHP_SCHEMA_DIR").expect("AHP_SCHEMA_DIR");
+        let fixture_root =
+            std::env::var("AHP_INTEROP_FIXTURE_ROOT").expect("AHP_INTEROP_FIXTURE_ROOT");
+        let schemas = Arc::new(Schemas::load(Path::new(&schema_dir)).unwrap());
+        let fixtures = read(&format!("{fixture_root}/scenarios.json")).unwrap();
+        let mut tested = 0;
+        for case in fixtures["scenarios"].as_array().unwrap() {
+            if !string(case, "id").starts_with("omitted-effects-preserves-") {
+                continue;
+            }
+            tested += 1;
+            let request = &case["request"];
+            let before = request.clone();
+            let dispatch = |case: Value| {
+                reply(
+                    request,
+                    &Arc::new(vec![case]),
+                    &schemas,
+                    &Arc::new(Mutex::new(Vec::new())),
+                    &Arc::new((Mutex::new(Vec::new()), Condvar::new())),
+                    (&json!({}), ""),
+                )
+            };
+            let omitted = dispatch(case.clone()).unwrap();
+            assert!(omitted.get("error").is_none(), "{}: {omitted}", case["id"]);
+            let mut empty_case = case.clone();
+            empty_case["response"]["result"]["effects"] = json!([]);
+            let empty = dispatch(empty_case).unwrap();
+            assert_eq!(omitted, empty, "{}", case["id"]);
+            let expected = interop::apply(request, &case["response"], &schemas).unwrap();
+            let actual = interop::apply(request, &omitted, &schemas).unwrap();
+            assert_eq!(actual, expected, "{}", case["id"]);
+            for (key, value) in case["expected"].as_object().unwrap() {
+                assert_eq!(&actual[key], value, "{}: {key}", case["id"]);
+            }
+            assert_eq!(request, &before);
+            let mut null_case = case.clone();
+            null_case["response"]["result"]["effects"] = Value::Null;
+            assert!(dispatch(null_case).is_err(), "{}", case["id"]);
+        }
+        assert_eq!(tested, 5);
     }
 }
