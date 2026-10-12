@@ -63,7 +63,7 @@ pub struct BackendOptions {
     pub credentials: BTreeMap<String, String>,
     pub allow_loopback_http: bool,
     pub max_frame_bytes: usize,
-    /// SDK-level migration opt-out, not a protocol setting. When `false` (the
+    /// SDK-level opt-out, not a protocol setting. When `false` (the
     /// default), stdio children receive only a minimal base environment
     /// (`PATH`, `HOME`, locale, temp-directory and similar variables) plus
     /// the registration's `env` entries. When `true`, children inherit the

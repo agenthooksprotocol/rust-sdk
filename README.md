@@ -232,7 +232,7 @@ resolved as secrets, and they never appear in diagnostics. `env` is not an
 authentication binding. `tokenEnv` is still read from the host's own
 environment, and endpoint credentials are never copied into the child.
 
-`BackendOptions::inherit_environment = true` is an SDK-level migration opt-out
+`BackendOptions::inherit_environment = true` is an SDK-level opt-out (not a protocol setting)
 that passes the full host environment, with `env` applied on top.
 
 For HTTP, start the local fixture in one terminal:
