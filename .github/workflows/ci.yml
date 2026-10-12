@@ -30,3 +30,6 @@ jobs:
       - run: cargo test --locked --no-default-features
       - run: cargo test --locked --features reqwest,axum,tokio-process
       - run: cargo test --locked --features interop
+        env:
+          AHP_SCHEMA_DIR: ../agent-hooks-protocol/schema/draft
+          AHP_INTEROP_FIXTURE_ROOT: ../agent-hooks-protocol/interop
