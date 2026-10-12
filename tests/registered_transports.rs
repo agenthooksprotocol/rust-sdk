@@ -332,6 +332,43 @@ mod stdio {
             assert!(!error.to_string().contains("secret"));
         }
     }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unsolicited_frame_after_notification_does_not_fail_next_request() {
+        let path =
+            std::env::temp_dir().join(format!("ahp-unsolicited-{}.pids", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        // Every spawn appends its pid; the child also answers notifications.
+        let script = format!(
+            "import os,sys,json\nopen({},'a').write(str(os.getpid())+'\\n')\nfor line in sys.stdin:\n r=json.loads(line)\n i=r.get('id','unsolicited')\n print(json.dumps({{'jsonrpc':'2.0','id':i,'result':{{'protocolVersion':'draft','effects':[]}}}}),flush=True)\n",
+            serde_json::to_string(path.to_str().unwrap()).unwrap()
+        );
+        let backend = backend(&script, "persistent");
+        for _ in 0..3 {
+            assert!(
+                backend
+                    .call(notification(), Duration::from_secs(3))
+                    .await
+                    .unwrap()
+                    .is_null()
+            );
+            assert_eq!(
+                backend
+                    .call(request(), Duration::from_secs(3))
+                    .await
+                    .unwrap()["id"],
+                "evt_demo"
+            );
+        }
+        backend.shutdown().await.unwrap();
+        let spawns = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            spawns.lines().count(),
+            1,
+            "unsolicited frames must not respawn"
+        );
+        std::fs::remove_file(path).unwrap();
+    }
     #[tokio::test]
     async fn queued_calls_have_their_own_deadline_and_shutdown_reaps() {
         let backend = backend(
