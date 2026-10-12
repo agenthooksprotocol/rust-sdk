@@ -534,7 +534,26 @@ the storage scope; arbitrary open payload fields are not
 scanned for references. Plain `handle()` performs protocol validation without
 automatic content resolution.
 The bounded stdio adapter frames the **same** server handler rather than maintaining
-a separate dispatcher. Notification completion is silent. HTTP errors retain bodies.
+a separate dispatcher.
+
+Request failures are JSON-RPC error envelopes with fixed messages; handler error
+strings never reach the wire. Caller errors use HTTP 400 and server errors 500:
+
+| Failure | Code |
+| --- | --- |
+| Unparseable JSON | `-32700` (id `null`) |
+| Not a JSON-RPC request object | `-32600` |
+| Unknown method; `hooks/capabilities` without a discovery handler | `-32601` |
+| Schema, correlation, or selected-content validation failure | `-32602` |
+| Unsupported `protocolVersion` (`data.supported` lists the SDK version) | `-32001` |
+| Intercept event that is unknown or has no intercept handler | `-32002` |
+| Callback error, or effects outside the request's grants | `-32004` |
+| Reply from another context or an invalid SDK-built response | `-32603` |
+
+Notifications (no `id`) never receive a body or stdio frame: accepted, rejected,
+and unobserved notifications return an empty 204, and an observer error returns
+an empty 500. Method, credential, size, and media-type rejections are bodyless
+HTTP 405/401/413/415; on stdio a rejected request instead gets a `-32600` frame.
 
 ```sh
 cargo run --no-default-features --example generated_models

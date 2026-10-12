@@ -38,6 +38,10 @@ pub fn read_frame(reader: &mut impl BufRead, max_bytes: usize) -> io::Result<Opt
     }
 }
 /// Credentials must come from trusted transport configuration, never message fields.
+///
+/// A notification (a frame without `id`) always yields an empty 204, whatever
+/// the outcome, so it can never produce an output frame. A request rejected
+/// before JSON-RPC processing (credentials, size) yields a JSON-RPC error.
 pub async fn dispatch<A: Authenticator>(
     server: &Server<A>,
     frame: Vec<u8>,
@@ -47,17 +51,27 @@ pub async fn dispatch<A: Authenticator>(
     if let Some(value) = authorization {
         headers.insert("authorization".into(), value);
     }
-    server
+    let notification = serde_json::from_slice::<serde_json::Value>(&frame)
+        .is_ok_and(|message| crate::server::is_notification(&message));
+    let response = server
         .handle(Request {
             method: "POST".into(),
             uri: String::new(),
             headers,
-            body: frame,
+            body: frame.clone(),
         })
-        .await
+        .await;
+    if notification {
+        return Response {
+            status: 204,
+            ..Default::default()
+        };
+    }
+    crate::server::frame_rejection(&frame, response)
 }
-/// Preserve JSON error bodies irrespective of HTTP status. Empty successful
-/// notification acknowledgments emit no frame. Diagnostics are never accepted.
+/// Preserve JSON-RPC error bodies irrespective of HTTP status. Empty successful
+/// notification acknowledgments emit no frame. Diagnostics and objects that are
+/// not JSON-RPC responses (no `id` member) are never written.
 pub fn write_frame(
     writer: &mut impl Write,
     response: &Response,
@@ -69,7 +83,7 @@ pub fn write_frame(
     if response.body.len() > max_bytes
         || response.body.contains(&b'\n')
         || !serde_json::from_slice::<serde_json::Value>(&response.body)
-            .is_ok_and(|value| value.is_object())
+            .is_ok_and(|value| value.get("id").is_some())
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,

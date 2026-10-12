@@ -339,6 +339,86 @@ pub struct Server<A> {
     pub authenticator: A,
     pub max_body_bytes: usize,
 }
+/// Server-side JSON-RPC failure classes. Messages are fixed strings: handler
+/// errors and validation diagnostics never reach the wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RpcError {
+    Parse,
+    InvalidRequest,
+    MethodNotFound,
+    InvalidParams,
+    /// Invalid params: selected content could not be verified for this principal.
+    ContentUnavailable,
+    Internal,
+    UnsupportedProtocolVersion,
+    UnsupportedEvent,
+    BackendInternal,
+}
+impl RpcError {
+    fn code(self) -> i64 {
+        match self {
+            Self::Parse => -32700,
+            Self::InvalidRequest => -32600,
+            Self::MethodNotFound => -32601,
+            Self::InvalidParams | Self::ContentUnavailable => -32602,
+            Self::Internal => -32603,
+            Self::UnsupportedProtocolVersion => -32001,
+            Self::UnsupportedEvent => -32002,
+            Self::BackendInternal => -32004,
+        }
+    }
+    fn message(self) -> &'static str {
+        match self {
+            Self::Parse => "Parse error",
+            Self::InvalidRequest => "Invalid Request",
+            Self::MethodNotFound => "Method not found",
+            Self::InvalidParams => "Invalid params",
+            Self::ContentUnavailable => "Selected content unavailable or invalid",
+            Self::Internal => "Internal error",
+            Self::UnsupportedProtocolVersion => "Unsupported AHP protocol version",
+            Self::UnsupportedEvent => "Unsupported event",
+            Self::BackendInternal => "Backend internal error",
+        }
+    }
+    /// HTTP status carrying the envelope: caller errors are 400, server errors 500.
+    fn status(self) -> u16 {
+        match self {
+            Self::Internal | Self::BackendInternal => 500,
+            _ => 400,
+        }
+    }
+}
+/// Why a message was not dispatched to a callback.
+enum Rejection {
+    /// Transport-level rejection before any JSON-RPC message is known.
+    Transport(u16),
+    /// A notification never receives a JSON-RPC response of any kind.
+    Notification,
+    /// A request receives a correlated (or null-id) JSON-RPC error.
+    Request(serde_json::Value, RpcError),
+}
+/// Events that `hooks/intercept` can deliver. Must match the `invoke` match arms.
+const INTERCEPT_EVENTS: &[&str] = &[
+    "tool.before",
+    "tool.after",
+    "session.start",
+    "config.change.before",
+    "turn.start",
+    "turn.finish.before",
+    "model.request.before",
+    "model.response.after",
+    "model.switch.before",
+    "tool.permission.request",
+    "tool.batch.after",
+    "context.compact.before",
+    "context.compact.after",
+    "task.change.before",
+    "user.elicitation.request",
+    "user.elicitation.result",
+    "user.message.inbound",
+    "user.message.outbound",
+    "workspace.change.before",
+];
 fn response(status: u16, body: Vec<u8>) -> Response {
     Response {
         status,
@@ -346,11 +426,56 @@ fn response(status: u16, body: Vec<u8>) -> Response {
         headers: BTreeMap::from([("content-type".into(), "application/json".into())]),
     }
 }
-fn failure(status: u16, message: &str) -> Response {
-    response(
+/// Bodyless status: transport rejections and notification acknowledgments.
+fn empty(status: u16) -> Response {
+    Response {
         status,
-        serde_json::to_vec(&serde_json::json!({"error":message})).expect("JSON string"),
+        ..Default::default()
+    }
+}
+/// Build a JSON-RPC error envelope. `data` never carries handler diagnostics.
+fn rpc_error(id: &serde_json::Value, error: RpcError) -> Response {
+    let mut body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {"code": error.code(), "message": error.message()},
+    });
+    if error == RpcError::UnsupportedProtocolVersion {
+        body["error"]["data"] = serde_json::json!({"supported": [g::PROTOCOL_VERSION]});
+    }
+    response(
+        error.status(),
+        serde_json::to_vec(&body).expect("JSON value"),
     )
+}
+/// JSON-RPC notification: a request object (string `method`) without an `id` member.
+pub(crate) fn is_notification(message: &serde_json::Value) -> bool {
+    message.as_object().is_some_and(|object| {
+        !object.contains_key("id")
+            && object
+                .get("method")
+                .is_some_and(serde_json::Value::is_string)
+    })
+}
+/// A transport-level rejection for a framed request, expressed as a JSON-RPC error.
+/// Notifications and unparseable frames are left untouched.
+pub(crate) fn frame_rejection(frame: &[u8], response: Response) -> Response {
+    if !response.body.is_empty() || (200..300).contains(&response.status) {
+        return response;
+    }
+    match serde_json::from_slice::<serde_json::Value>(frame) {
+        Ok(message) if is_notification(&message) => empty(204),
+        Ok(message) => {
+            let id = match message.get("id") {
+                Some(id @ (serde_json::Value::String(_) | serde_json::Value::Number(_))) => {
+                    id.clone()
+                }
+                _ => serde_json::Value::Null,
+            };
+            rpc_error(&id, RpcError::InvalidRequest)
+        }
+        Err(_) => rpc_error(&serde_json::Value::Null, RpcError::Parse),
+    }
 }
 fn header<'a>(request: &'a Request, name: &str) -> Result<Option<&'a str>, ()> {
     let mut matches = request
@@ -370,21 +495,21 @@ impl<A: Authenticator> Server<A> {
         principal: Principal,
         raw: &serde_json::Value,
         content: ResolvedContent,
-    ) -> Result<Option<serde_json::Value>, String> {
+    ) -> Result<Option<serde_json::Value>, RpcError> {
         let scope = Arc::new(());
         let request = Arc::new(raw.clone());
         // These macros only remove repetitive framing. Every arm still invokes
         // a different statically typed callback with a canonical event model.
         macro_rules! intercept {
             ($field:ident, $event:ty) => {{
-                let event: $event = serde_json::from_value(raw["params"]["event"].clone())
-                    .map_err(|e| e.to_string())?;
                 let handler = self
                     .handlers
                     .intercept
                     .$field
                     .as_ref()
-                    .ok_or("interception not configured")?;
+                    .ok_or(RpcError::UnsupportedEvent)?;
+                let event: $event = serde_json::from_value(raw["params"]["event"].clone())
+                    .map_err(|_| RpcError::Internal)?;
                 let reply = handler(
                     InterceptContext {
                         principal,
@@ -395,18 +520,20 @@ impl<A: Authenticator> Server<A> {
                     },
                     event,
                 )
-                .await?;
+                .await
+                .map_err(|_| RpcError::BackendInternal)?;
                 if !Arc::ptr_eq(&scope, &reply.scope) {
-                    return Err("reply scope mismatch".into());
+                    return Err(RpcError::Internal);
                 }
-                serde_json::to_value(reply.effects).map_err(|e| e.to_string())?
+                serde_json::to_value(reply.effects).map_err(|_| RpcError::Internal)?
             }};
         }
         macro_rules! observe {
             ($field:ident, $event:ty) => {{
-                let event: $event = serde_json::from_value(raw["params"]["event"].clone())
-                    .map_err(|e| e.to_string())?;
+                // A missing observer is a silent no-op, never a protocol failure.
                 if let Some(handler) = &self.handlers.observe.$field {
+                    let event: $event = serde_json::from_value(raw["params"]["event"].clone())
+                        .map_err(|_| RpcError::Internal)?;
                     handler(
                         ObserveContext {
                             principal,
@@ -416,18 +543,19 @@ impl<A: Authenticator> Server<A> {
                         },
                         event,
                     )
-                    .await?;
+                    .await
+                    .map_err(|_| RpcError::BackendInternal)?;
                 }
             }};
         }
-        match raw["method"].as_str().ok_or("missing method")? {
+        match raw["method"].as_str().ok_or(RpcError::InvalidRequest)? {
             "hooks/capabilities" => {
                 let handler = self
                     .handlers
                     .discovery
                     .as_ref()
-                    .ok_or("discovery not configured")?;
-                let event = serde_json::from_value(raw.clone()).map_err(|e| e.to_string())?;
+                    .ok_or(RpcError::MethodNotFound)?;
+                let event = serde_json::from_value(raw.clone()).map_err(|_| RpcError::Internal)?;
                 let reply = handler(
                     DiscoveryContext {
                         principal,
@@ -436,9 +564,10 @@ impl<A: Authenticator> Server<A> {
                     },
                     event,
                 )
-                .await?;
+                .await
+                .map_err(|_| RpcError::BackendInternal)?;
                 if !Arc::ptr_eq(&scope, &reply.scope) {
-                    return Err("reply scope mismatch".into());
+                    return Err(RpcError::Internal);
                 }
                 Ok(Some(
                     serde_json::json!({"jsonrpc":"2.0", "id":raw["id"], "result":{"protocolVersion":g::PROTOCOL_VERSION, "manifest":reply.manifest}}),
@@ -447,7 +576,7 @@ impl<A: Authenticator> Server<A> {
             "hooks/intercept" => {
                 let effects = match raw["params"]["event"]["type"]
                     .as_str()
-                    .ok_or("missing event type")?
+                    .ok_or(RpcError::InvalidParams)?
                 {
                     "tool.before" => intercept!(tool_before, g::ToolBeforeEvent),
                     "tool.after" => intercept!(tool_after, g::ToolAfterEvent),
@@ -496,7 +625,7 @@ impl<A: Authenticator> Server<A> {
                     "workspace.change.before" => {
                         intercept!(workspace_change_before, g::WorkspaceChangeBeforeEvent)
                     }
-                    _ => return Err("unsupported interception".into()),
+                    _ => return Err(RpcError::UnsupportedEvent),
                 };
                 Ok(Some(
                     serde_json::json!({"jsonrpc":"2.0", "id":raw["id"], "result":{"protocolVersion":g::PROTOCOL_VERSION, "effects":effects}}),
@@ -505,7 +634,7 @@ impl<A: Authenticator> Server<A> {
             "hooks/observe" => {
                 match raw["params"]["event"]["type"]
                     .as_str()
-                    .ok_or("missing event type")?
+                    .ok_or(RpcError::InvalidParams)?
                 {
                     "tool.before" => observe!(tool_before, g::ToolBeforeEvent),
                     "tool.after" => observe!(tool_after, g::ToolAfterEvent),
@@ -569,11 +698,12 @@ impl<A: Authenticator> Server<A> {
                     }
                     "file.changed" => observe!(file_changed, g::FileChangedEvent),
                     "hook.failure" => observe!(hook_failure, g::HookFailureEvent),
-                    _ => return Err("unsupported observation".into()),
+                    // Unknown observations are dropped silently; notifications never reply.
+                    _ => {}
                 }
                 Ok(None)
             }
-            _ => Err("unsupported method".into()),
+            _ => Err(RpcError::MethodNotFound),
         }
     }
     pub async fn handle(&self, request: Request) -> Response {
@@ -594,38 +724,68 @@ impl<A: Authenticator> Server<A> {
         &self,
         request: Request,
         store: Option<&dyn ContentStore>,
-    ) -> Result<Prepared, Response> {
+    ) -> Result<Prepared, Rejection> {
         if request.method != "POST" {
-            return Err(failure(405, "POST required"));
+            return Err(Rejection::Transport(405));
         }
         if request.body.len() > self.max_body_bytes {
-            return Err(failure(413, "body too large"));
+            return Err(Rejection::Transport(413));
         }
-        let authorization = match header(&request, "authorization") {
-            Ok(v) => v,
-            Err(_) => return Err(failure(401, "ambiguous credentials")),
-        };
-        let principal = match self.authenticator.authenticate(authorization) {
-            Ok(p) => p,
-            Err(_) => return Err(failure(401, "authentication failed")),
-        };
+        let authorization =
+            header(&request, "authorization").map_err(|_| Rejection::Transport(401))?;
+        let principal = self
+            .authenticator
+            .authenticate(authorization)
+            .map_err(|_| Rejection::Transport(401))?;
         if !matches!(header(&request, "content-type"), Ok(Some(v)) if v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json"))
         {
-            return Err(failure(415, "application/json required"));
+            return Err(Rejection::Transport(415));
         }
-        let raw: serde_json::Value = match serde_json::from_slice(&request.body) {
-            Ok(v) => v,
-            Err(_) => return Err(failure(400, "invalid JSON")),
+        let raw: serde_json::Value = serde_json::from_slice(&request.body)
+            .map_err(|_| Rejection::Request(serde_json::Value::Null, RpcError::Parse))?;
+        // Classify notification-ness first: every later failure for a
+        // notification is silent, whatever its cause.
+        let notification = is_notification(&raw);
+        let id = match raw.get("id") {
+            None | Some(serde_json::Value::Null) => serde_json::Value::Null,
+            Some(id @ (serde_json::Value::String(_) | serde_json::Value::Number(_))) => id.clone(),
+            Some(_) => {
+                return Err(Rejection::Request(
+                    serde_json::Value::Null,
+                    RpcError::InvalidRequest,
+                ));
+            }
         };
+        let reject = |error: RpcError| {
+            if notification {
+                Rejection::Notification
+            } else {
+                Rejection::Request(id.clone(), error)
+            }
+        };
+        if !raw.is_object() || raw["jsonrpc"] != "2.0" || !raw["method"].is_string() {
+            return Err(reject(RpcError::InvalidRequest));
+        }
         let method = raw["method"].as_str().unwrap_or("");
         let schema = match method {
             "hooks/intercept" => "intercept-request",
             "hooks/observe" => "observe-notification",
             "hooks/capabilities" => "capabilities-request",
-            _ => return Err(failure(400, "unsupported method")),
+            _ => return Err(reject(RpcError::MethodNotFound)),
         };
+        if let Some(version) = raw["params"]["protocolVersion"].as_str()
+            && version != g::PROTOCOL_VERSION
+        {
+            return Err(reject(RpcError::UnsupportedProtocolVersion));
+        }
+        if method == "hooks/intercept"
+            && let Some(event_type) = raw["params"]["event"]["type"].as_str()
+            && !INTERCEPT_EVENTS.contains(&event_type)
+        {
+            return Err(reject(RpcError::UnsupportedEvent));
+        }
         if crate::canonical::validate(schema, &raw).is_err() {
-            return Err(failure(400, "invalid canonical message"));
+            return Err(reject(RpcError::InvalidParams));
         }
         let parsed = match method {
             "hooks/capabilities" => g::parse_capabilities_request_value(raw.clone())
@@ -633,7 +793,7 @@ impl<A: Authenticator> Server<A> {
                 .is_some(),
             "hooks/intercept" => {
                 if raw["id"] != raw["params"]["event"]["id"] {
-                    return Err(failure(400, "event correlation mismatch"));
+                    return Err(reject(RpcError::InvalidParams));
                 }
                 g::parse_intercept_request_value(raw.clone())
                     .into_value()
@@ -645,7 +805,7 @@ impl<A: Authenticator> Server<A> {
             _ => false,
         };
         if !parsed {
-            return Err(failure(400, "invalid protocol message"));
+            return Err(reject(RpcError::InvalidParams));
         }
 
         let content = if let Some(store) = store {
@@ -655,26 +815,32 @@ impl<A: Authenticator> Server<A> {
             };
             Some(
                 resolve_event_content(&raw, &context)
-                    .map_err(|_| failure(400, "selected content unavailable or invalid"))?,
+                    .map_err(|_| reject(RpcError::ContentUnavailable))?,
             )
         } else {
             None
         };
         Ok((principal, raw, content))
     }
-    async fn dispatch(&self, prepared: Result<Prepared, Response>) -> Response {
+    async fn dispatch(&self, prepared: Result<Prepared, Rejection>) -> Response {
         let (principal, raw, content) = match prepared {
             Ok(prepared) => prepared,
-            Err(response) => return response,
+            Err(Rejection::Transport(status)) => return empty(status),
+            Err(Rejection::Notification) => return empty(204),
+            Err(Rejection::Request(id, error)) => return rpc_error(&id, error),
         };
+        let notification = is_notification(&raw);
         let method = raw["method"].as_str().unwrap_or("");
         let value = match self
             .invoke(principal, &raw, content.unwrap_or_default())
             .await
         {
-            Ok(Some(value)) => value,
-            Ok(None) => return response(204, Vec::new()),
-            Err(_) => return failure(500, "handler failed or reply scope mismatch"),
+            Ok(Some(value)) if !notification => value,
+            Ok(_) if notification => return empty(204),
+            // An observer failure is a bodyless transport signal, never a JSON-RPC reply.
+            Err(_) if notification => return empty(500),
+            Ok(_) => return rpc_error(&raw["id"], RpcError::Internal),
+            Err(error) => return rpc_error(&raw["id"], error),
         };
         let valid = match method {
             "hooks/intercept" => contextual_response(&raw, &value).is_ok(),
@@ -691,10 +857,11 @@ impl<A: Authenticator> Server<A> {
             || (method != "hooks/intercept" && crate::canonical::validate(schema, &value).is_err())
             || value["id"] != raw["id"]
         {
-            return failure(500, "invalid or uncorrelated response");
+            return rpc_error(&raw["id"], RpcError::Internal);
         }
         if method == "hooks/intercept" && validate_effect_capabilities(&raw, &value).is_err() {
-            return failure(500, "response exceeds advertised capabilities");
+            // The callback returned effects the harness did not grant.
+            return rpc_error(&raw["id"], RpcError::BackendInternal);
         }
         response(200, serde_json::to_vec(&value).expect("JSON value"))
     }
