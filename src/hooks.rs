@@ -24,6 +24,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub use crate::generated::Harness;
 use crate::generated::capability::HostCapabilities;
 
 /// Non-event session-start manifest metadata. Event authority belongs exclusively
@@ -100,9 +101,11 @@ impl ManifestMetadata {
 }
 
 /// Host authority, not registration data. Ordinary callers supply a source and
-/// explicit per-event grants; registration still owns routing and transport.
+/// harness identity and explicit per-event grants; registration still owns routing
+/// and transport.
 pub struct HooksOptions {
     pub source: String,
+    pub harness: Harness,
     pub capabilities: HostCapabilities,
     pub manifest_metadata: ManifestMetadata,
     pub backend: BackendOptions,
@@ -118,9 +121,14 @@ pub struct HooksOptions {
     backends: BTreeMap<String, Arc<dyn ManagedBackend>>,
 }
 impl HooksOptions {
-    pub fn new(source: impl Into<String>, capabilities: HostCapabilities) -> Self {
+    pub fn new(
+        source: impl Into<String>,
+        harness: Harness,
+        capabilities: HostCapabilities,
+    ) -> Self {
         Self {
             source: source.into(),
+            harness,
             capabilities,
             manifest_metadata: ManifestMetadata::default(),
             backend: BackendOptions::default(),
@@ -472,6 +480,7 @@ impl Drop for Delivery<'_> {
 /// network I/O or subprocess spawning. Dispatch is lazy; shutdown is explicit.
 pub struct Hooks {
     options: HooksOptions,
+    harness: Value,
     routes: Vec<Route>,
     grants: BTreeMap<generated::EventType, Value>,
     backends: Vec<Arc<dyn ManagedBackend>>,
@@ -491,6 +500,8 @@ impl Hooks {
         if options.source.is_empty() || url::Url::parse(&options.source).is_err() {
             return Err(err("source must be an absolute URI"));
         }
+        let harness = serde_json::to_value(&options.harness).map_err(err)?;
+        crate::canonical::validate("common#harness", &harness).map_err(HookError::new)?;
         if options.observation_timeout.is_zero()
             || options.max_observations == 0
             || options.max_concurrent_uploads == 0
@@ -599,6 +610,7 @@ impl Hooks {
         Ok(Self {
             upload_limiter: crate::upload_plan::UploadLimiter::new(options.max_concurrent_uploads),
             options,
+            harness,
             routes,
             grants,
             backends,
@@ -706,6 +718,13 @@ impl Hooks {
             return Err(err("event source differs from configured source"));
         }
         event_object.insert("source".into(), json!(self.options.source));
+        if event_object
+            .get("harness")
+            .is_some_and(|harness| harness != &self.harness)
+        {
+            return Err(err("event harness differs from configured harness"));
+        }
+        event_object.insert("harness".into(), self.harness.clone());
         if !event_object.contains_key("time") {
             event_object.insert(
                 "time".into(),

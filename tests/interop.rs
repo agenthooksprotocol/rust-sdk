@@ -5,7 +5,7 @@ fn schemas() -> Schemas {
     Schemas::bundled().unwrap()
 }
 fn request() -> Value {
-    json!({"jsonrpc":"2.0","id":"test","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"test","source":"urn:rust:test","type":"tool.before","time":"2026-09-01T00:00:00Z","session":{"id":"s"},"call":{"id":"c"},"path":"native","tool":{"origin":"native","name":"task","kind":"task","input":{"task":1,"nested":{"a":1,"b":2}}}},"capabilities":capabilities()}})
+    json!({"jsonrpc":"2.0","id":"test","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"test","harness":{"name":"test","version":"1"},"source":"urn:rust:test","type":"tool.before","time":"2026-09-01T00:00:00Z","session":{"id":"s"},"call":{"id":"c"},"path":"native","tool":{"origin":"native","name":"task","kind":"task","input":{"task":1,"nested":{"a":1,"b":2}}}},"capabilities":capabilities()}})
 }
 fn response(effects: Value) -> Value {
     json!({"jsonrpc":"2.0","id":"test","result":{"protocolVersion":"draft","effects":effects}})
@@ -144,7 +144,7 @@ fn task_workspace_payloads_and_capabilities_are_enforced() {
         ),
     ] {
         let mut req = request();
-        req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","time":"2026-09-01T00:00:00Z","type":event.as_str(),kind:payload});
+        req["params"]["event"] = json!({"id":"test","harness":{"name":"test","version":"1"},"source":"urn:rust:test","time":"2026-09-01T00:00:00Z","type":event.as_str(),kind:payload});
         req["params"]["capabilities"] =
             agenthooksprotocol::interop::capabilities_for(event).unwrap();
         let actual = apply(
@@ -198,7 +198,7 @@ fn prior_stop_injections_and_instructions_survive_later_serial_responses() {
 fn prior_continuation_consumes_no_second_allowance_and_stop_is_sticky() {
     let schemas = schemas();
     let mut req = request();
-    req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","type":"turn.finish.before","time":"2026-09-01T00:00:00Z","turn":{"id":"turn"},"outcome":"completed","items":[],"continuationCount":0});
+    req["params"]["event"] = json!({"id":"test","harness":{"name":"test","version":"1"},"source":"urn:rust:test","type":"turn.finish.before","time":"2026-09-01T00:00:00Z","turn":{"id":"turn"},"outcome":"completed","items":[],"continuationCount":0});
     req["params"]["capabilities"] = agenthooksprotocol::interop::capabilities_for(
         agenthooksprotocol::generated::EventType::TurnFinishBefore,
     )
@@ -354,7 +354,7 @@ fn bundled_schemas_enforce_strict_effect_fields_beyond_structural_parsing() {
 fn continuation_without_instruction_does_not_invent_one() {
     let schemas = schemas();
     let mut req = request();
-    req["params"]["event"] = json!({"id":"test","source":"urn:rust:test","type":"turn.finish.before","time":"2026-09-01T00:00:00Z","turn":{"id":"turn"},"outcome":"completed","items":[],"continuationCount":0});
+    req["params"]["event"] = json!({"id":"test","harness":{"name":"test","version":"1"},"source":"urn:rust:test","type":"turn.finish.before","time":"2026-09-01T00:00:00Z","turn":{"id":"turn"},"outcome":"completed","items":[],"continuationCount":0});
     req["params"]["capabilities"] = agenthooksprotocol::interop::capabilities_for(
         agenthooksprotocol::generated::EventType::TurnFinishBefore,
     )

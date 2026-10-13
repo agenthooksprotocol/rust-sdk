@@ -46,6 +46,7 @@ fn registration() -> Value {
 fn options(backend: Arc<Backend>) -> HooksOptions {
     HooksOptions::new(
         "urn:test:host",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             session_start: Some(capability::session_start().message().observe()),
             ..Default::default()
@@ -58,7 +59,7 @@ fn facts() -> agenthooksprotocol::inputs::SessionStartInput {
 }
 fn canonical_facts() -> Value {
     json!({"session":{"id":"session_1"},"trigger":"startup",
-        "harness":{"name":"test","version":"1"},"permissionMode":"ask","items":[]})
+        "permissionMode":"ask","items":[]})
 }
 #[test]
 fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
@@ -90,6 +91,7 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
     let mut same = canonical_facts();
     same["type"] = json!("session.start");
     same["manifest"] = hooks.manifest();
+    same["harness"] = json!({"name":"test","version":"1"});
     same["extensions"] = json!({"org.example.vendor":{"data":[null,42]}});
     let settled = pool
         .run_until(
@@ -121,6 +123,9 @@ fn named_event_supplies_type_and_manifest_and_rejects_conflicts() {
         ("type", json!("session.end")),
         ("type", Value::Null),
         ("manifest", json!({})),
+        ("harness", json!({"name":"other","version":"1"})),
+        ("harness", json!({"name":"test","version":"2"})),
+        ("harness", Value::Null),
     ] {
         let mut event = canonical_facts();
         event[field] = wrong;
@@ -328,4 +333,39 @@ async fn runtime_native_timeout_cancels_observation_and_allows_shutdown() {
     assert!(backend.calls.lock().unwrap().is_empty());
     assert_eq!(hooks.shutdown().await.unwrap().delivered, 0);
     assert!(backend.closed.get());
+}
+
+#[test]
+fn configured_harness_is_validated_and_snapshotted() {
+    for (name, version) in [("", "1"), ("test", "")] {
+        let mut opts = options(Arc::new(Backend::default()));
+        opts.harness = agenthooksprotocol::hooks::Harness::new(name, version);
+        assert!(Hooks::new(registration(), opts).is_err());
+    }
+    let backend = Arc::new(Backend::default());
+    let mut identity = agenthooksprotocol::hooks::Harness::new("test", "1");
+    let mut opts = options(backend.clone());
+    opts.harness = identity.clone();
+    let hooks = Hooks::new(registration(), opts).unwrap();
+    identity.name = "changed".into();
+    let mut pool = LocalPool::new();
+    let result = pool
+        .run_until(hooks.session_start(facts()).into_future())
+        .unwrap();
+    let mut event = serde_json::to_value(result.event).unwrap();
+    assert_eq!(event["harness"], json!({"name":"test","version":"1"}));
+    event["harness"]["name"] = json!("changed");
+    let next = pool
+        .run_until(hooks.session_start(facts()).into_future())
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(next.event).unwrap()["harness"],
+        json!({"name":"test","version":"1"})
+    );
+    for request in backend.calls.lock().unwrap().iter() {
+        assert_eq!(
+            request["params"]["event"]["harness"],
+            json!({"name":"test","version":"1"})
+        );
+    }
 }

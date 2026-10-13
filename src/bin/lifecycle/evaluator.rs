@@ -102,7 +102,7 @@ mod tests {
             "params": {
                 "protocolVersion":"draft",
                 "event": {
-                    "id":"native", "source":"urn:rust:test", "type":"tool.before",
+                    "id":"native", "harness":{"name":"test","version":"1"},"source":"urn:rust:test", "type":"tool.before",
                     "time":"2026-09-01T00:00:00Z", "path":"native",
                     "call":{"id":"call"},
                     "tool":{"origin":"native", "name":"task", "input":{}}
@@ -144,7 +144,7 @@ mod tests {
                 "protocolVersion": "draft",
                 "event": {
                     "id": "test",
-                    "source": "urn:rust:test",
+                    "harness":{"name":"test","version":"1"},"source": "urn:rust:test",
                     "type": "tool.before",
                     "time": "2026-09-01T00:00:00Z",
                     "session": {

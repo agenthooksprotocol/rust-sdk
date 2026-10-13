@@ -41,7 +41,7 @@ fn intercept_and_observe_expose_the_same_shared_event() {
         serde_json::to_value(event).unwrap()
     }
     let event = json!({
-        "id":"shared", "source":"urn:test", "time":"2026-09-01T00:00:00Z",
+        "id":"shared", "harness":{"name":"test","version":"1"},"source":"urn:test", "time":"2026-09-01T00:00:00Z",
         "type":"tool.before", "path":"native", "call":{"id":"call"},
         "tool":{"name":"read", "origin":"native", "input":{}},
         "items":[{"id":"body", "kind":"attachment", "mediaType":"application/octet-stream",
@@ -75,7 +75,7 @@ fn shared_event_does_not_widen_the_intercept_event_subset() {
         ParseResult, parse_intercept_request_value, parse_observe_notification_value,
     };
     use serde_json::json;
-    let event = json!({"id":"settled", "source":"urn:test", "time":"2026-09-01T00:00:00Z",
+    let event = json!({"id":"settled", "harness":{"name":"test","version":"1"},"source":"urn:test", "time":"2026-09-01T00:00:00Z",
         "type":"session.end", "session":{"id":"session"}, "outcome":"completed", "reason":"done"});
     let observe = json!({"jsonrpc":"2.0", "method":"hooks/observe", "params":{"protocolVersion":"draft", "event":event}});
     let observed = parse_observe_notification_value(observe);

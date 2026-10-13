@@ -771,7 +771,7 @@ mod inline_tests {
         json!([{"id":"message","role":"assistant","parts":parts(text)}])
     }
     fn event() -> Value {
-        json!({"id":"event","source":"urn:test","time":"2026-09-15T12:00:00Z",
+        json!({"id":"event","harness":{"name":"test","version":"1"},"source":"urn:test","time":"2026-09-15T12:00:00Z",
             "type":"user.message.outbound","message":{"channel":"test","messages":messages("original")}})
     }
     fn effect(operation: &str, value: Value) -> Value {
@@ -883,7 +883,7 @@ mod inline_tests {
     #[test]
     fn object_merge_is_shallow_and_keeps_literal_null() {
         use crate::generated as g;
-        let mut event:g::Event=serde_json::from_value(json!({"id":"event","source":"urn:test:typed","time":"2026-09-15T12:00:00Z","type":"tool.before",
+        let mut event:g::Event=serde_json::from_value(json!({"id":"event","harness":{"name":"test","version":"1"},"source":"urn:test:typed","time":"2026-09-15T12:00:00Z","type":"tool.before",
             "path":"native","call":{"id":"call"},"tool":{"name":"test","origin":"native","input":{"nested":{"before":1},"keep":true}}})).unwrap();
         let patch = std::collections::BTreeMap::from([
             ("nested".into(), json!({"after":2})),

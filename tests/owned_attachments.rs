@@ -55,6 +55,7 @@ fn source() -> (Attachment, Arc<AtomicUsize>, Arc<AtomicUsize>) {
 fn hooks(limit: usize) -> Hooks {
     let mut options = HooksOptions::new(
         "urn:test:attachments",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             user_message_outbound: Some(capability::user_message_outbound().message()),
             ..Default::default()
@@ -280,6 +281,7 @@ fn no_match_typed_input_is_not_mutated_and_sources_remain_unread() {
         config["hooks"][0]["subscriptions"][0]["filters"] = json!({"paths":["/unrelated/**"]});
         let options = HooksOptions::new(
             "urn:test:attachments",
+            agenthooksprotocol::hooks::Harness::new("test", "1"),
             capability::HostCapabilities {
                 user_message_outbound: Some(capability::user_message_outbound().message()),
                 ..Default::default()
@@ -522,8 +524,12 @@ fn inline_instructions_and_elicitation_exchange_outlive_hooks() {
                     ..Default::default()
                 }
             };
-            let options = HooksOptions::new("urn:test:inline", caps)
-                .with_backend("org.example.attachments", Arc::new(Noop));
+            let options = HooksOptions::new(
+                "urn:test:inline",
+                agenthooksprotocol::hooks::Harness::new("test", "1"),
+                caps,
+            )
+            .with_backend("org.example.attachments", Arc::new(Noop));
             let hooks = Hooks::new(config, options).unwrap();
             let result = hooks.event(event).await.unwrap();
             assert!(

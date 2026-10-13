@@ -142,6 +142,7 @@ async fn named_source_snapshots_once_and_uploads_to_each_independently_authorize
     let registration = json!({"protocolVersion":"draft","hooks":[{"id":"org.example.upload","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":subscriptions}]});
     let mut options = HooksOptions::new(
         "urn:source-test",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             tool_before: Some(capability::tool_before().allow().deny()),
             ..Default::default()

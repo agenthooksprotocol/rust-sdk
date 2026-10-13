@@ -110,6 +110,7 @@ fn configured(log: &Log, lifecycle: &str, observe: bool) -> Hooks {
     let registration = serde_json::from_str::<Registration>(&config).unwrap();
     let mut options = HooksOptions::new(
         "https://host.test/stdio",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             tool_before: Some(grant),
             ..Default::default()

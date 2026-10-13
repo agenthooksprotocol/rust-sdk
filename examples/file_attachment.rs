@@ -57,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     futures::executor::block_on(async move {
         let options = HooksOptions::new(
             "urn:example:document-assistant",
+            agenthooksprotocol::hooks::Harness::new("file-attachment", "1.0.0"),
             capability::HostCapabilities {
                 user_message_outbound: Some(capability::user_message_outbound().message()),
                 ..Default::default()

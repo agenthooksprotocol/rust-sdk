@@ -122,7 +122,11 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
         ),
         ..Default::default()
     };
-    let mut options = HooksOptions::new("https://host.test/http", grants);
+    let mut options = HooksOptions::new(
+        "https://host.test/http",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
+        grants,
+    );
     options.backend.allow_loopback_http = true;
     options
         .backend

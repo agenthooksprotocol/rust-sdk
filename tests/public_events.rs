@@ -19,7 +19,7 @@ impl Hook for HookFn {
     }
 }
 fn event() -> Value {
-    json!({"id":"evt_1","source":"https://example.test/runtime","type":"tool.before","time":"2026-08-24T08:51:14Z","path":"native","call":{"id":"call_1"},"tool":{"name":"counter","kind":"file_read","origin":"native","input":{"count":1}}})
+    json!({"id":"evt_1","harness":{"name":"test","version":"1"},"source":"https://example.test/runtime","type":"tool.before","time":"2026-08-24T08:51:14Z","path":"native","call":{"id":"call_1"},"tool":{"name":"counter","kind":"file_read","origin":"native","input":{"count":1}}})
 }
 fn client() -> Client {
     Client::new(ToolContext::new(json!({})))
@@ -109,7 +109,7 @@ fn observe_only_event_is_deferred_and_one_way() {
         json!([{"type":"deny","reason":"ignored"}]),
         &calls,
     ));
-    let e = json!({"id":"end","source":"https://example.test/runtime","type":"session.end","time":"2026-08-24T08:51:14Z","session":{"id":"s"},"outcome":"completed","reason":"done"});
+    let e = json!({"id":"end","harness":{"name":"test","version":"1"},"source":"https://example.test/runtime","type":"session.end","time":"2026-08-24T08:51:14Z","session":{"id":"s"},"outcome":"completed","reason":"done"});
     let result = block_on(async { c.session_end_event(e).await.unwrap() });
     assert!(calls.lock().unwrap().is_empty());
     assert_eq!(result.observations.len(), 1);
@@ -187,7 +187,7 @@ fn missing_content_resolver_rejects_whole_body_response() {
         ]),
         &calls,
     ));
-    let e = json!({"id":"turn","source":"https://example.test/runtime","type":"turn.start","time":"2026-08-24T08:51:14Z","turn":{"id":"t"},"trigger":"user","items":[]});
+    let e = json!({"id":"turn","harness":{"name":"test","version":"1"},"source":"https://example.test/runtime","type":"turn.start","time":"2026-08-24T08:51:14Z","turn":{"id":"t"},"trigger":"user","items":[]});
     let result = block_on(async { c.turn_start_event(e.clone()).await.unwrap() });
     assert_eq!(serde_json::to_value(&result.event).unwrap(), e);
     assert_eq!(result.outcome.decision, Permission::None);
@@ -205,7 +205,7 @@ fn continuation_is_one_requested_step_with_ordered_instructions() {
         ]),
         &calls,
     ));
-    let e = json!({"id":"finish","source":"https://example.test/runtime","type":"turn.finish.before","time":"2026-08-24T08:51:14Z","turn":{"id":"t"},"outcome":"completed","continuationCount":0,"items":[]});
+    let e = json!({"id":"finish","harness":{"name":"test","version":"1"},"source":"https://example.test/runtime","type":"turn.finish.before","time":"2026-08-24T08:51:14Z","turn":{"id":"t"},"outcome":"completed","continuationCount":0,"items":[]});
     let result = block_on(async {
         c.turn_finish_before_event(e)
             .continuation_budget(1, 0, 1)
@@ -223,7 +223,7 @@ fn continuation_is_one_requested_step_with_ordered_instructions() {
 }
 
 fn specialized_event(name: &str) -> Value {
-    let mut event = json!({"id":"specialized","source":"urn:test:runtime","type":name,"time":"2026-09-15T12:00:00Z","session":{"id":"session"}});
+    let mut event = json!({"id":"specialized","harness":{"name":"test","version":"1"},"source":"urn:test:runtime","type":name,"time":"2026-09-15T12:00:00Z","session":{"id":"session"}});
     match name {
         "context.compact.before" => {
             event["trigger"] = json!("manual");
@@ -312,7 +312,7 @@ fn elicitation_modes_can_be_narrowed_independently() {
 }
 
 fn outbound(items: Value) -> Value {
-    json!({"id":"outbound","source":"urn:test:runtime","type":"user.message.outbound","time":"2026-09-15T12:00:00Z","message":{"channel":"chat","messages":[{"id":"message","role":"assistant","parts":items}]}})
+    json!({"id":"outbound","harness":{"name":"test","version":"1"},"source":"urn:test:runtime","type":"user.message.outbound","time":"2026-09-15T12:00:00Z","message":{"channel":"chat","messages":[{"id":"message","role":"assistant","parts":items}]}})
 }
 fn selected_item(
     content: &agenthooksprotocol::content::ContentContext<'_>,
@@ -618,5 +618,23 @@ fn elicitation_result_modify_requires_both_original_request_and_current_result_b
                 .unwrap()
                 .contains(&json!("message"))
         );
+    }
+}
+
+#[test]
+fn complete_events_require_harness_identity() {
+    let client = client();
+    let mut missing = event();
+    missing.as_object_mut().unwrap().remove("harness");
+    assert!(serde_json::from_value::<agenthooksprotocol::Event>(missing.clone()).is_err());
+    assert!(block_on(async { client.event(missing).await }).is_err());
+    for identity in [
+        json!({"name":"", "version":"1"}),
+        json!({"name":"test"}),
+        Value::Null,
+    ] {
+        let mut invalid = event();
+        invalid["harness"] = identity;
+        assert!(block_on(async { client.event(invalid).await }).is_err());
     }
 }

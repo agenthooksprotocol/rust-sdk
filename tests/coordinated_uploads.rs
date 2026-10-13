@@ -222,6 +222,7 @@ fn subscription(endpoint: &str, token: &str) -> Value {
 fn options() -> HooksOptions {
     HooksOptions::new(
         "urn:coordinated-uploads",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             user_message_outbound: Some(
                 capability::user_message_outbound()

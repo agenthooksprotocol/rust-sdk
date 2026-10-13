@@ -1,11 +1,11 @@
 {
   "sourceRepository": "agenthooksprotocol/agent-hooks-protocol",
-  "sourceCommit": "e0fc643045b848ee98a92c6d618179194d88267a",
+  "sourceCommit": "d883764118a3fc7006abdb2fe6ace574f92dff68",
   "schemaRevision": "draft",
   "protocolVersion": "draft",
   "generatorVersion": "0.1.0",
   "language": "rust",
-  "schemaManifestSha256": "44fb51c58d08888e003924b71093ba42c364d5d0dd7f7a4de02eed5e058e8578",
+  "schemaManifestSha256": "a16ede8ea0a617f391c98e6c827582d3930e82aaad6d937f5559dea7d0bd75e6",
   "documents": [
     {
       "path": "schema/draft/capabilities-request.schema.json",
@@ -21,11 +21,11 @@
     },
     {
       "path": "schema/draft/catalogue-event.schema.json",
-      "sha256": "06ed4bc91478a93c8edc3b454d58e18e581f537c65fd1688f1533bd058bdbf4e"
+      "sha256": "b712962cb0a1cdd03c3f468ec01938a985142c8eb7822a60201582bc8d70f05f"
     },
     {
       "path": "schema/draft/common.schema.json",
-      "sha256": "9c4167616d7d8415481937b91a9f99a2ae37c075bab7519df6d8e98b9edd51c5"
+      "sha256": "504508d3a5b912de2b149e2bda2012a5f869352a11414443c3dbced5852e5859"
     },
     {
       "path": "schema/draft/content-item.schema.json",
@@ -61,7 +61,7 @@
     },
     {
       "path": "schema/draft/execution-event.schema.json",
-      "sha256": "eeba0d02b87ea03526ead14b56fe2611176cfc0bc60991244be68e5f4d59e1b2"
+      "sha256": "ecc2ba8ab3b4f62e45377fc6f6281f2f5435fd885412afd6c3c3920cbfb86538"
     },
     {
       "path": "schema/draft/extensions.schema.json",
@@ -109,23 +109,23 @@
     },
     {
       "path": "schema/draft/session-end.schema.json",
-      "sha256": "9d42bb96f2114e6b31db34f2fc1f40244c45e259c0dd27d2e3d1ea85bdc98cbc"
+      "sha256": "1538154e58e740c369820968fac0f9107c789df8313d7c4a7b59e147b6d7c0c4"
     },
     {
       "path": "schema/draft/session-start.schema.json",
-      "sha256": "11da44d294f939941f19caa4b614a0e48743ceafdb3da70a5eb020a003bc3580"
+      "sha256": "b8c20a1f52058b93159539f45c2bf23ca284818ee88dd1d8a1b26c29ccc1e518"
     },
     {
       "path": "schema/draft/task-workspace-event.schema.json",
-      "sha256": "9252e94a60ba9a545c7a4a02aa57371af7bb4f4f09719efd191a789bf169dd53"
+      "sha256": "ca9262590914be68e1b52f3e2f7f826fe3115429bba06c1ef860886686fdc40e"
     },
     {
       "path": "schema/draft/tool-after.schema.json",
-      "sha256": "a5f110d150df12ed4bb0ae7e4b8fd7b5dbb3973da7499a8f9931184c6824408a"
+      "sha256": "bc838194096cbce7325d514b60cb7937d9b7f4c5c3684063f5340234b8dbb5d6"
     },
     {
       "path": "schema/draft/tool-before.schema.json",
-      "sha256": "8edb0bb32cd96b3e15e7a82d64f964b746cd51e3d98b0270d55a3e30ac57aef6"
+      "sha256": "ae9563c83d7e333b77e9896167312deddd1f089b95a3ddca5b5928928352dc4a"
     }
   ]
 }

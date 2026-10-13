@@ -141,7 +141,7 @@ fn lifecycle_scenario(effects: Value) -> Value {
         "requests":{"a":{
             "jsonrpc":"2.0","id":"sdk-process:a","method":"hooks/intercept",
             "params":{"protocolVersion":"draft","event":{
-                "id":"sdk-process:a","source":"urn:rust:test","type":"tool.before",
+                "id":"sdk-process:a","harness":{"name":"test","version":"1"},"source":"urn:rust:test","type":"tool.before",
                 "time":"2026-09-01T00:00:00Z","session":{"id":"s"},"call":{"id":"c"},
                 "path":"native","tool":{"origin":"native","name":"arbitrary","kind":"task","input":{"value":"original"}}
             },"capabilities":{"effects":["modify","message","deny"],"modify":{"input":{"replace":true,"merge":true}}}}

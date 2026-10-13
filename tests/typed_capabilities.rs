@@ -81,7 +81,7 @@ fn facility_only_interception_and_observation_render_without_artificial_effects(
                 "transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},
                 "subscriptions":[{"events":["user.elicitation.request"],"mode":"intercept",
                     "failurePolicy":"fail-closed","timeoutMs":1000,"content":{"default":"metadata"}}]}]}),
-            HooksOptions::new("urn:test:typed-facilities", caps).with_backend("org.example.facilities", Arc::new(UnusedBackend)),
+            HooksOptions::new("urn:test:typed-facilities", agenthooksprotocol::hooks::Harness::new("test", "1"), caps).with_backend("org.example.facilities", Arc::new(UnusedBackend)),
         )
         .unwrap();
         let event = hooks.manifest()["events"][0].clone();

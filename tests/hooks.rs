@@ -160,6 +160,7 @@ fn options(backend: Arc<dyn ManagedBackend>, observe: bool) -> HooksOptions {
         .modify_input(capability::Modify::ReplaceAndMerge);
     HooksOptions::new(
         "urn:example:host",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             tool_before: Some(if observe { grant.observe() } else { grant }),
             ..Default::default()
@@ -196,11 +197,19 @@ fn ordinary_json_registration_typed_modification_return_deny_and_shutdown() {
     assert_eq!(backend.messages.lock().unwrap().len(), 2);
     let first = backend.messages.lock().unwrap()[0].clone();
     assert_eq!(first["params"]["event"]["source"], "urn:example:host");
+    assert_eq!(
+        first["params"]["event"]["harness"],
+        json!({"name":"test","version":"1"})
+    );
     assert!(first["params"]["event"].get("native").is_none());
     assert!(first["params"]["capabilities"].get("elicitation").is_none());
     assert_eq!(block_on(hooks.wait_until_idle()).delivered, 1);
     let notification = backend.messages.lock().unwrap()[1].clone();
     assert_eq!(notification["method"], "hooks/observe");
+    assert_eq!(
+        notification["params"]["event"]["harness"],
+        first["params"]["event"]["harness"]
+    );
     assert!(notification.get("id").is_none());
     assert!(notification["params"].get("capabilities").is_none());
     assert_eq!(

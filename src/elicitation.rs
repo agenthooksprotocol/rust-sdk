@@ -308,11 +308,11 @@ mod tests {
     #[test]
     fn unknown_operations_are_not_enabled_by_capability_extensions() {
         let request = json!({"id":"request","params":{"event":{
-            "id":"request","source":"source","session":{"id":"session"},
+            "id":"request","harness":{"name":"test","version":"1"},"source":"source","session":{"id":"session"},
             "type":"user.elicitation.request","elicitation":{"mode":"form","server":"server",
                 "request":{"id":"request","kind":"text","mediaType":"text/plain","selection":"body","text":"{\"requestedSchema\":{}}"}}}}});
         let result = json!({"id":"result","params":{"capabilities":{"effects":["modify"],"modify":{"content":{"replace":true,"future":true}}},
-            "event":{"id":"result","source":"source","session":{"id":"session"},"parentEventId":"request",
+            "event":{"id":"result","harness":{"name":"test","version":"1"},"source":"source","session":{"id":"session"},"parentEventId":"request",
                 "type":"user.elicitation.result","elicitation":{"mode":"form","server":"server","action":"accept",
                     "result":{"id":"result","kind":"text","mediaType":"text/plain","selection":"body","text":"{\"action\":\"accept\",\"content\":{\"original\":true}}"}}}}});
         // A permissive callback isolates semantic enforcement from schema checks.
@@ -715,7 +715,7 @@ mod typed_boundary_tests {
         };
         let request = json!({"jsonrpc":"2.0","id":"request","method":"hooks/intercept",
             "params":{"protocolVersion":"draft","capabilities":{"effects":["message","modify","future.effect"],"elicitation":{"form":{}}},
-                "event":{"id":"request","source":"urn:test:host","time":"2026-09-15T12:00:00Z",
+                "event":{"id":"request","harness":{"name":"test","version":"1"},"source":"urn:test:host","time":"2026-09-15T12:00:00Z",
                     "type":"user.elicitation.request","elicitation":{"server":"mcp","mode":"form"}}}});
         let original = request.clone();
         for invalid in [

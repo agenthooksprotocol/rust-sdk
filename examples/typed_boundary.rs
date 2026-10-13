@@ -26,7 +26,7 @@ impl Hook for Policy {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new(ToolContext::new(json!({
-        "id":"evt_example_1", "source":"urn:example:rust", "type":"tool.before",
+        "id":"evt_example_1", "harness":{"name":"test","version":"1"},"source":"urn:example:rust", "type":"tool.before",
         "time":"2026-09-01T00:00:00Z", "session":{"id":"session_example"},
         "call":{"id":"call_example_1"}, "path":"native",
         "tool":{"origin":"native","name":"shell","kind":"shell","input":{}}

@@ -146,7 +146,7 @@ pub fn run_public_fixture(
             )
         };
         let before_client = make_client(before);
-        let before_event = json!({"id":format!("{name}:before"),"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","session":{"id":name},"type":"context.compact.before","trigger":"manual","items":[{"id":format!("{name}:context"),"role":"user","parts":text_parts(&format!("{name}:context:text"),"conversation")}],"instructions":instructions});
+        let before_event = json!({"id":format!("{name}:before"),"harness":{"name":"test","version":"1"},"source":"urn:ahp:compaction-host","time":"2026-09-15T12:00:00Z","session":{"id":name},"type":"context.compact.before","trigger":"manual","items":[{"id":format!("{name}:context"),"role":"user","parts":text_parts(&format!("{name}:context:text"),"conversation")}],"instructions":instructions});
         let settled = futures::executor::block_on(async {
             before_client
                 .event(before_event)
@@ -208,7 +208,7 @@ pub fn run_public_fixture(
                 let text = selected_text(&instructions, &content)?;
                 text_parts(summary_id, &format!("summary:{text}"))
             };
-            let after_event = json!({"id":format!("{name}:after"),"source":event["source"],"time":event["time"],"session":event["session"],"parentEventId":event["id"],"type":"context.compact.after","summary":item,"removed":[{"id":format!("{name}:context")}],"execution":if generated {json!({"status":"executed"})} else {json!({"status":"skipped","reason":"supplied_result"})}});
+            let after_event = json!({"id":format!("{name}:after"),"harness":{"name":"test","version":"1"},"source":event["source"],"time":event["time"],"session":event["session"],"parentEventId":event["id"],"type":"context.compact.after","summary":item,"removed":[{"id":format!("{name}:context")}],"execution":if generated {json!({"status":"executed"})} else {json!({"status":"skipped","reason":"supplied_result"})}});
             let after_client = make_client(after);
             let observe = p["observeOnly"] == true;
             let settled_after = futures::executor::block_on(async {

@@ -261,17 +261,17 @@ credentials are never an implicit fallback for independently bound uploads.
 ### Event envelopes, manifests, and bodies
 
 Named boundaries such as `hooks.session_start(facts).await` supply their event
-`type`, identity, time, and configured source. Session start also supplies the
-configured manifest; do not duplicate those fields in `facts`. Conflicting
-caller values are rejected. `HooksOptions::new(source, HostCapabilities)` stores
+`type`, identity, time, configured source, and configured harness identity.
+Session start also supplies the configured manifest; do not duplicate these
+fields in `facts`. Conflicting caller values are rejected. `HooksOptions::new(source, harness, HostCapabilities)` stores
 typed authority without network I/O or JSON parsing. Each omitted field grants
 nothing. A declaration explicitly opts into observation with `.observe()`;
 interception selects supported controls or an elicitation facility.
 
 ```rust
-use agenthooksprotocol::{capability::{self, HostCapabilities, Modify}, hooks::HooksOptions};
+use agenthooksprotocol::{capability::{self, HostCapabilities, Modify}, hooks::{Harness, HooksOptions}};
 
-let options = HooksOptions::new("urn:example:host", HostCapabilities {
+let options = HooksOptions::new("urn:example:host", Harness::new("example-host", "1.0.0"), HostCapabilities {
     tool_before: Some(capability::tool_before()
         .allow().deny().return_result().modify_input(Modify::ReplaceAndMerge)
         .observe()),
@@ -282,8 +282,9 @@ let options = HooksOptions::new("urn:example:host", HostCapabilities {
 `Hooks::manifest()` renders the configured event/mode/capability subset for
 session start. Set `HooksOptions::manifest_metadata` to customize typed transport,
 authentication, tool-path, scope, limit, and other non-event metadata. Its opaque
-extras cannot replace known fields or event authority. External registration and transport configuration are validated
-by `Hooks::new`.
+extras cannot replace known fields or event authority. `Hooks::new` validates
+registration, transport configuration, and harness name/version. Harness identity
+is required and is not inferred from the SDK.
 
 Use generated host inputs with `PartInput::inline_text(...)` and
 `PartInput::owned(Attachment::lazy(source), media_type)` in canonical message

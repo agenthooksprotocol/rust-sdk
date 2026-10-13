@@ -64,6 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }]});
         let options = HooksOptions::new(
             "urn:example:contracts",
+            agenthooksprotocol::hooks::Harness::new("tool-contracts", "1.0.0"),
             capability::HostCapabilities {
                 tool_before: Some(
                     capability::tool_before()

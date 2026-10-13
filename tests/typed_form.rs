@@ -286,9 +286,9 @@ fn declared_form_answers_are_admitted_atomically_through_public_hooks() {
         let requests = Arc::new(Mutex::new(vec![]));
         let sub = json!({"events":["user.elicitation.request"],"mode":"intercept","failurePolicy":"fail-open","timeoutMs":1000,"content":{"default":"body"}});
         let hooks=Hooks::new(json!({"protocolVersion":"draft","hooks":[{"id":"org.example.form","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[sub.clone(),sub]}]}),
-            HooksOptions::new("urn:test:form",capability::HostCapabilities { user_elicitation_request: Some(capability::user_elicitation_request().return_result().message().elicitation_form()), ..Default::default() })
+            HooksOptions::new("urn:test:form",agenthooksprotocol::hooks::Harness::new("test", "1"),capability::HostCapabilities { user_elicitation_request: Some(capability::user_elicitation_request().return_result().message().elicitation_form()), ..Default::default() })
             .with_backend("org.example.form",Arc::new(Replies {requests:requests.clone()}))).unwrap();
-        let event = json!({"id":"evt","source":"urn:test:form","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},
+        let event = json!({"id":"evt","harness":{"name":"test","version":"1"},"source":"urn:test:form","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},
             "elicitation":{"server":"mcp","mode":"form","request":{"id":"form","kind":"text","mediaType":"text/plain","selection":"body","text":serde_json::to_string(&form.request("Count?")).unwrap()}}});
         let outcome = hooks
             .event(event.clone())
@@ -417,17 +417,17 @@ fn modified_form_answer_contract_rejects_dropped_fields_before_later_interceptor
             store: &store,
             scope: AuthorizedScope::new("form"),
         };
-        let request_event = json!({"id":"request","source":"urn:test:form","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},
+        let request_event = json!({"id":"request","harness":{"name":"test","version":"1"},"source":"urn:test:form","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},
             "elicitation":{"server":"mcp","mode":"form","request":{"id":"request-part","kind":"text","mediaType":"text/plain","selection":"body","text":serde_json::to_string(&form.request("Count?")).unwrap()}}});
         let request = json!({"jsonrpc":"2.0","id":"request","method":"hooks/intercept","params":{"protocolVersion":"draft","event":request_event,"capabilities":{"effects":[],"elicitation":{"form":{}}}}});
         let exchange = Exchange::new(&request, &content).unwrap();
         let original_answer = json!({"action":"accept","content":{"count":1}});
-        let event = json!({"id":"result","source":"urn:test:form","parentEventId":"request","time":"2026-09-15T12:00:00Z","type":"user.elicitation.result","session":{"id":"session"},
+        let event = json!({"id":"result","harness":{"name":"test","version":"1"},"source":"urn:test:form","parentEventId":"request","time":"2026-09-15T12:00:00Z","type":"user.elicitation.result","session":{"id":"session"},
             "elicitation":{"server":"mcp","mode":"form","action":"accept","result":{"id":"result-part","kind":"text","mediaType":"text/plain","selection":"body","text":original_answer.to_string()}}});
         let requests = Arc::new(Mutex::new(vec![]));
         let sub = json!({"events":["user.elicitation.result"],"mode":"intercept","failurePolicy":"fail-open","timeoutMs":1000,"content":{"default":"body"}});
         let hooks=Hooks::new(json!({"protocolVersion":"draft","hooks":[{"id":"org.example.form","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[sub.clone(),sub]}]}),
-            HooksOptions::new("urn:test:form",capability::HostCapabilities { user_elicitation_result: Some(capability::user_elicitation_result().modify_content(capability::Modify::ReplaceAndMerge).elicitation_form()), ..Default::default() })
+            HooksOptions::new("urn:test:form",agenthooksprotocol::hooks::Harness::new("test", "1"),capability::HostCapabilities { user_elicitation_result: Some(capability::user_elicitation_result().modify_content(capability::Modify::ReplaceAndMerge).elicitation_form()), ..Default::default() })
             .with_backend("org.example.form",Arc::new(Replies(requests.clone())))).unwrap();
         let outcome = hooks
             .event(event.clone())
@@ -510,17 +510,17 @@ fn invalid_intermediate_form_answer_cannot_be_repaired_later_in_same_response() 
                 store: &store,
                 scope: AuthorizedScope::new("form"),
             };
-            let request_event = json!({"id":"request","source":"urn:test:form","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},
+            let request_event = json!({"id":"request","harness":{"name":"test","version":"1"},"source":"urn:test:form","time":"2026-09-15T12:00:00Z","type":"user.elicitation.request","session":{"id":"session"},
             "elicitation":{"server":"mcp","mode":"form","request":{"id":"request-part","kind":"text","mediaType":"text/plain","selection":"body","text":serde_json::to_string(&form.request("Count?")).unwrap()}}});
             let request = json!({"jsonrpc":"2.0","id":"request","method":"hooks/intercept","params":{"protocolVersion":"draft","event":request_event,"capabilities":{"effects":[],"elicitation":{"form":{}}}}});
             let exchange = Exchange::new(&request, &content).unwrap();
             let original_answer = json!({"action":"accept","content":{"count":1}});
-            let event = json!({"id":"result","source":"urn:test:form","parentEventId":"request","time":"2026-09-15T12:00:00Z","type":"user.elicitation.result","session":{"id":"session"},
+            let event = json!({"id":"result","harness":{"name":"test","version":"1"},"source":"urn:test:form","parentEventId":"request","time":"2026-09-15T12:00:00Z","type":"user.elicitation.result","session":{"id":"session"},
             "elicitation":{"server":"mcp","mode":"form","action":"accept","result":{"id":"result-part","kind":"text","mediaType":"text/plain","selection":"body","text":original_answer.to_string()}}});
             let requests = Arc::new(Mutex::new(vec![]));
             let sub = json!({"events":["user.elicitation.result"],"mode":"intercept","failurePolicy":"fail-open","timeoutMs":1000,"content":{"default":"body"}});
             let hooks=Hooks::new(json!({"protocolVersion":"draft","hooks":[{"id":"org.example.form","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[sub.clone(),sub.clone(),sub]}]}),
-            HooksOptions::new("urn:test:form",capability::HostCapabilities { user_elicitation_result: Some(capability::user_elicitation_result().modify_content(capability::Modify::ReplaceAndMerge).elicitation_form()), ..Default::default() })
+            HooksOptions::new("urn:test:form",agenthooksprotocol::hooks::Harness::new("test", "1"),capability::HostCapabilities { user_elicitation_result: Some(capability::user_elicitation_result().modify_content(capability::Modify::ReplaceAndMerge).elicitation_form()), ..Default::default() })
             .with_backend("org.example.form",Arc::new(Replies(requests.clone(),invalid)))).unwrap();
             let outcome = hooks
                 .event(event.clone())

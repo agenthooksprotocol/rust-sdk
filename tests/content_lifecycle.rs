@@ -22,6 +22,7 @@ use std::{
 fn options() -> HooksOptions {
     HooksOptions::new(
         "urn:test:content-lifecycle",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             user_message_outbound: Some(capability::user_message_outbound().message()),
             ..Default::default()
@@ -605,6 +606,7 @@ mod chained_replacements {
         })).collect();
         let mut options = HooksOptions::new(
             "urn:test:content-lifecycle",
+            agenthooksprotocol::hooks::Harness::new("test", "1"),
             capability::HostCapabilities {
                 user_message_outbound: Some(
                     capability::user_message_outbound()
@@ -750,6 +752,7 @@ mod chained_replacements {
             json!({"endpoint":endpoint,"maxBytes":64,"timeoutMs":5000});
         let mut options = HooksOptions::new(
             "urn:test:content-lifecycle",
+            agenthooksprotocol::hooks::Harness::new("test", "1"),
             capability::HostCapabilities {
                 user_message_outbound: Some(
                     capability::user_message_outbound().modify_content(capability::Modify::Replace),
@@ -1242,6 +1245,7 @@ fn opaque_tool_input_candidates_and_accepted_effects_do_not_root_content() {
         .return_result();
     let mut options = HooksOptions::new(
         "urn:test:content-lifecycle",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             tool_before: Some(caps),
             ..Default::default()

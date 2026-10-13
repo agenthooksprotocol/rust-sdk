@@ -1184,7 +1184,7 @@ mod tests {
     fn null_effects_negative_fixture_preserves_invalid_wire_for_client_validation() {
         let schemas = Arc::new(Schemas::bundled().unwrap());
         let request = json!({"jsonrpc":"2.0","id":"null-effects-array","method":"hooks/intercept",
-            "params":{"protocolVersion":"draft","event":{"id":"null-effects-array","source":"urn:test:interop",
+            "params":{"protocolVersion":"draft","event":{"id":"null-effects-array","harness":{"name":"test","version":"1"},"source":"urn:test:interop",
                 "type":"tool.before","time":"2026-09-01T00:00:00Z","call":{"id":"call"},"path":"native",
                 "tool":{"name":"task","origin":"native","input":{"task":1}}},"capabilities":interop::capabilities()}});
         let response = json!({"jsonrpc":"2.0","id":"null-effects-array","result":{"protocolVersion":"draft","effects":null}});
@@ -1264,7 +1264,7 @@ mod tests {
                 "protocolVersion": "draft",
                 "event": {
                     "id": "receipt",
-                    "source": "urn:rust:receipts",
+                    "harness":{"name":"test","version":"1"},"source": "urn:rust:receipts",
                     "type": "tool.before",
                     "time": "2026-09-01T00:00:00Z",
                     "call": {
