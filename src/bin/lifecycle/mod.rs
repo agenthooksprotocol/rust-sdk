@@ -641,8 +641,6 @@ impl ServerState {
             return self.protocol_fixture(v);
         }
         let error = Arc::new(Mutex::new(None));
-        // Rejected notifications are silent on the wire; the fixture detects
-        // rejection by the observer never being reached.
         let observed = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let state = Arc::new(self.clone());
         let mut handlers = agenthooksprotocol::server::HandlerSet::default();
@@ -781,15 +779,21 @@ impl ServerState {
             headers: BTreeMap::from([("content-type".into(), "application/json".into())]),
             body: serde_json::to_vec(v)?,
         };
-        let response = if diagnostic_gap_notification(v) {
-            futures::executor::block_on(server.handle(request))
-        } else {
+        let with_content = !diagnostic_gap_notification(v);
+        let response = if with_content {
             let store = self.content_store();
-            futures::executor::block_on(server.handle_with_content(request, &store))
+            futures::executor::block_on(server.handle_with_content(request.clone(), &store))
+        } else {
+            futures::executor::block_on(server.handle(request.clone()))
         };
         if response.status == 204 && !observed.load(std::sync::atomic::Ordering::SeqCst) {
+            let kind = if with_content && self.observable_without_content(request) {
+                "content"
+            } else {
+                "schema"
+            };
             return Err(format!(
-                "schema: SDK server rejected notification {}",
+                "{kind}: SDK server rejected notification {}",
                 s(&v["params"]["event"], "id")
             )
             .into());
@@ -830,6 +834,24 @@ impl ServerState {
             .into());
         }
         Ok(serde_json::from_slice(&response.body)?)
+    }
+    fn observable_without_content(&self, request: agenthooksprotocol::transport::Request) -> bool {
+        let observed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut handlers = agenthooksprotocol::server::HandlerSet::default();
+        handlers.observe.any = Some(agenthooksprotocol::server::with_state(
+            observed.clone(),
+            |observed, _ctx, _event| async move {
+                observed.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        ));
+        let server = agenthooksprotocol::server::Server {
+            handlers,
+            authenticator: FixturePrincipal(self.event_scope().to_owned()),
+            max_body_bytes: 16 * 1024 * 1024,
+        };
+        futures::executor::block_on(server.handle(request));
+        observed.load(std::sync::atomic::Ordering::SeqCst)
     }
     fn protocol_fixture(&self, v: &Value) -> Result<Value> {
         if self.catalogue && v["method"] == "hooks/capabilities" {
