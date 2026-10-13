@@ -55,6 +55,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // No wildcard grants or implicit elicitation modes are enabled.
     let mut options = HooksOptions::new(
         "https://example.test/registered-hooks-demo",
+        agenthooksprotocol::hooks::Harness::new("registered-hooks", "1.0.0"),
         capability::HostCapabilities {
             tool_before: Some(
                 capability::tool_before()

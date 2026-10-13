@@ -132,7 +132,7 @@ pub fn declared_events(hooks:&Hooks, client:&agenthooksprotocol::client::Client,
 }
 pub fn typed_options()->agenthooksprotocol::hooks::HooksOptions {
     use agenthooksprotocol::capability::{self, HostCapabilities, Modify};
-    agenthooksprotocol::hooks::HooksOptions::new("urn:test:typed", HostCapabilities {
+    agenthooksprotocol::hooks::HooksOptions::new("urn:test:typed", agenthooksprotocol::hooks::Harness::new("test", "1"), HostCapabilities {
         tool_before: Some(capability::tool_before().allow().deny().return_result().modify_input(Modify::ReplaceAndMerge)),
         user_elicitation_request: Some(capability::user_elicitation_request().elicitation_form()),
         ..Default::default()

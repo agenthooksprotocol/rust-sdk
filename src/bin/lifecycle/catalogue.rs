@@ -307,7 +307,7 @@ mod tests {
         }
     }
     fn progress_event() -> Value {
-        json!({"id":"progress","source":"urn:catalogue-test","time":"2026-09-01T00:00:00Z",
+        json!({"id":"progress","harness":{"name":"test","version":"1"},"source":"urn:catalogue-test","time":"2026-09-01T00:00:00Z",
             "type":"turn.progress","turn":{"id":"turn"},"item":{"id":"item"},"final":false,
             "delta":{"id":"item","role":"assistant","parts":[{"id":"part","kind":"text","mediaType":"text/plain","selection":"body","text":"Progress"}]}})
     }
@@ -354,8 +354,8 @@ mod tests {
     fn inline_compaction_uses_explicit_content_context() {
         let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
-        let before = json!({"id":"compact-before","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.before","trigger":"auto","items":[],"instructions":[{"id":"instructions","kind":"text","mediaType":"text/plain","selection":"body","text":"Summarize the context"}]});
-        let after = json!({"id":"compact-after","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":[{"id":"summary","kind":"text","mediaType":"text/plain","selection":"body","text":"Context summary"}],"removed":[],"execution":{"status":"executed"}});
+        let before = json!({"id":"compact-before","harness":{"name":"test","version":"1"},"source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.before","trigger":"auto","items":[],"instructions":[{"id":"instructions","kind":"text","mediaType":"text/plain","selection":"body","text":"Summarize the context"}]});
+        let after = json!({"id":"compact-after","harness":{"name":"test","version":"1"},"source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":[{"id":"summary","kind":"text","mediaType":"text/plain","selection":"body","text":"Context summary"}],"removed":[],"execution":{"status":"executed"}});
         for event in [before, after] {
             let emitted =
                 futures::executor::block_on(deliver_event(&client, event.clone())).unwrap();
@@ -367,7 +367,7 @@ mod tests {
     fn catalogue_rejects_referenced_text_summary() {
         let messages = Arc::new(Mutex::new(Vec::new()));
         let client = event_client(RecordingObserver(messages.clone()));
-        let event = json!({"id":"compact-body","source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":[{"id":"summary","kind":"text","mediaType":"text/plain","selection":"body","body":{"ref":"not-authorized"}}],"removed":[],"execution":{"status":"executed"}});
+        let event = json!({"id":"compact-body","harness":{"name":"test","version":"1"},"source":"urn:catalogue-test","time":"2026-09-15T12:00:00Z","type":"context.compact.after","summary":[{"id":"summary","kind":"text","mediaType":"text/plain","selection":"body","body":{"ref":"not-authorized"}}],"removed":[],"execution":{"status":"executed"}});
         assert!(futures::executor::block_on(deliver_event(&client, event)).is_err());
         assert!(messages.lock().unwrap().is_empty());
     }
@@ -619,7 +619,7 @@ mod tests {
                     "protocolVersion": "draft",
                     "event": {
                         "id": id,
-                        "source": "urn:catalogue-test",
+                        "harness":{"name":"test","version":"1"},"source": "urn:catalogue-test",
                         "time": "2026-09-01T00:00:00Z",
                         "type": "task.change.after",
                         "parentEventId": parent,

@@ -11,7 +11,7 @@ use std::{
 
 fn context() -> ToolContext {
     ToolContext::new(
-        json!({"id":"evt_native","source":"https://example.test/runtime","type":"tool.before","time":"2026-08-24T08:51:14Z","path":"native","session":{"id":"s"},"call":{"id":"c"},"tool":{"name":"counter","kind":"file_read","origin":"native","input":{}}}),
+        json!({"id":"evt_native","harness":{"name":"test","version":"1"},"source":"https://example.test/runtime","type":"tool.before","time":"2026-08-24T08:51:14Z","path":"native","session":{"id":"s"},"call":{"id":"c"},"tool":{"name":"counter","kind":"file_read","origin":"native","input":{}}}),
     )
 }
 struct Capture(Arc<Mutex<Vec<Value>>>);
@@ -133,6 +133,7 @@ fn generated_capability_declarations_are_immutable_and_boundary_checked() {
     let registration = json!({"protocolVersion":"draft","hooks":[{"id":"org.example.capabilities","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[{"events":["tool.before"],"mode":"intercept","timeoutMs":1000,"failurePolicy":"fail-closed","content":{"default":"metadata"}}]}]});
     let options = HooksOptions::new(
         "urn:typed-host",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             tool_before: Some(modified),
             ..Default::default()
@@ -152,6 +153,7 @@ fn generated_capability_declarations_are_immutable_and_boundary_checked() {
     );
     let invalid = HooksOptions::new(
         "urn:typed-host",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             session_end: Some(capability::session_end().observe()),
             ..Default::default()
@@ -267,6 +269,7 @@ fn generated_named_tool_event_is_lazy_and_accepts_serialize_only_arguments() {
     let registration = json!({"protocolVersion":"draft","hooks":[{"id":"org.example.lazy","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[{"events":["tool.before"],"mode":"intercept","timeoutMs":1000,"failurePolicy":"fail-closed","content":{"default":"metadata"}}]}]});
     let options = HooksOptions::new(
         "urn:lazy",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             tool_before: Some(capability::tool_before().allow().deny()),
             ..Default::default()

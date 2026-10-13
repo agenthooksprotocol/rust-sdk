@@ -2258,7 +2258,7 @@ mod lifecycle_tests {
         let notification = |id: &str, kind: &str, payload: Value, parent: Option<&str>| {
             let mut event = json!({
                 "id": id,
-                "source": "urn:tasks",
+                "harness":{"name":"test","version":"1"},"source": "urn:tasks",
                 "time": "2026-09-01T00:00:00Z",
                 "type": format!("{kind}.change.after"),
                 kind: payload
@@ -2366,7 +2366,7 @@ mod lifecycle_tests {
                 "protocolVersion": "draft",
                 "event": {
                     "id": "test",
-                    "source": "urn:rust:test",
+                    "harness":{"name":"test","version":"1"},"source": "urn:rust:test",
                     "type": "tool.before",
                     "time": "2026-09-01T00:00:00Z",
                     "session": {
@@ -2427,7 +2427,7 @@ mod hardening_tests {
                 "protocolVersion": "draft",
                 "event": {
                     "id": "hardening",
-                    "source": "urn:rust:test",
+                    "harness":{"name":"test","version":"1"},"source": "urn:rust:test",
                     "type": "tool.before",
                     "time": "2026-09-01T00:00:00Z",
                     "session": {

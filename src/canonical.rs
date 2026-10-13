@@ -179,7 +179,7 @@ mod content_reference_tests {
                     parse_content_item_value(legacy_item.clone()),
                     ParseResult::Success { .. }
                 ));
-                let event = json!({"id":"event", "source":"urn:test", "time":"2026-09-01T00:00:00Z", "type":"tool.before", "path":"native", "call":{"id":"call"}, "tool":{"name":"read", "origin":"native", "input":{}}, "items":[legacy_item]});
+                let event = json!({"id":"event", "harness":{"name":"test","version":"1"},"source":"urn:test", "time":"2026-09-01T00:00:00Z", "type":"tool.before", "path":"native", "call":{"id":"call"}, "tool":{"name":"read", "origin":"native", "input":{}}, "items":[legacy_item]});
                 let intercept = json!({"jsonrpc":"2.0", "id":"rpc", "method":"hooks/intercept", "params":{"protocolVersion":"draft", "capabilities":{"effects":[]}, "event":event}});
                 let observe = json!({"jsonrpc":"2.0", "method":"hooks/observe", "params":{"protocolVersion":"draft", "event":event}});
                 assert!(validate("intercept-request", &intercept).is_err());

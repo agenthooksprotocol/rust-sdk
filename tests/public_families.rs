@@ -42,7 +42,7 @@ fn client(effects: Value, calls: &Arc<Mutex<Vec<Value>>>) -> Client {
 }
 // Fixtures follow the canonical draft schemas, with an open-envelope host field.
 fn event(name: &str, fields: Value) -> Value {
-    let mut event = json!({"id":"evt_family","source":"https://example.test/runtime",
+    let mut event = json!({"id":"evt_family","harness":{"name":"test","version":"1"},"source":"https://example.test/runtime",
         "type":name,"time":"2026-08-24T08:51:14Z","hostMetadata":{"trace":"retained"}});
     event
         .as_object_mut()

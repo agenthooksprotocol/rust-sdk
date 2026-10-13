@@ -96,7 +96,7 @@ fn missing_tool_methods_settle_typed_generic_host_facts() {
         ];
         let hooks = Hooks::new(
             json!({"protocolVersion":"draft","hooks":[{"id":"org.example.coverage","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[{"events":["tool.*"],"mode":"observe","filters":{"paths":["unmatched/**"]},"content":{"default":"metadata"}}]}]}),
-            HooksOptions::new("urn:test:coverage", capability::HostCapabilities { tool_after: Some(capability::tool_after().observe()), tool_permission_request: Some(capability::tool_permission_request().observe()), tool_permission_resolved: Some(capability::tool_permission_resolved().observe()), tool_progress: Some(capability::tool_progress().observe()), ..Default::default() }).with_backend("org.example.coverage", std::sync::Arc::new(Noop)),
+            HooksOptions::new("urn:test:coverage", agenthooksprotocol::hooks::Harness::new("test", "1"), capability::HostCapabilities { tool_after: Some(capability::tool_after().observe()), tool_permission_request: Some(capability::tool_permission_request().observe()), tool_permission_resolved: Some(capability::tool_permission_resolved().observe()), tool_progress: Some(capability::tool_progress().observe()), ..Default::default() }).with_backend("org.example.coverage", std::sync::Arc::new(Noop)),
         ).unwrap();
         let after = ToolAfterInput::new(
             "call".into(),

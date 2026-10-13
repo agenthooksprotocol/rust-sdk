@@ -91,7 +91,7 @@ mod tests {
     use std::cell::{Cell, RefCell};
 
     fn event() -> Value {
-        json!({"id":"same","source":"urn:test","type":"tool.before","secret":"effective"})
+        json!({"id":"same","harness":{"name":"test","version":"1"},"source":"urn:test","type":"tool.before","secret":"effective"})
     }
     #[test]
     fn remaining_interceptors_receive_filtered_effective_notifications_lazily() {

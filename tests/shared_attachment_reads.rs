@@ -20,6 +20,7 @@ use std::{
 fn hooks(limit: usize) -> Hooks {
     let mut options = HooksOptions::new(
         "urn:test:attachments",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             user_message_outbound: Some(capability::user_message_outbound().message()),
             ..Default::default()

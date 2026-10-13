@@ -10,7 +10,7 @@ fn envelope(_context: &ContentContext<'_>, stage: &str, body: &Value) -> Value {
     if stage == "result" {
         meta["action"] = body["action"].clone();
     }
-    let mut event = json!({"id":stage,"source":"urn:test:host","time":"2026-09-15T12:00:00Z","type":format!("user.elicitation.{stage}"),"session":{"id":"session"},"elicitation":meta});
+    let mut event = json!({"id":stage,"harness":{"name":"test","version":"1"},"source":"urn:test:host","time":"2026-09-15T12:00:00Z","type":format!("user.elicitation.{stage}"),"session":{"id":"session"},"elicitation":meta});
     if stage == "result" {
         event["parentEventId"] = json!("request");
     }

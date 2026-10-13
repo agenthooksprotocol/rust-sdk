@@ -27,7 +27,7 @@ impl Hook for Fake {
 }
 fn context() -> ToolContext {
     ToolContext::new(
-        json!({"id":"evt_public_1","source":"https://example.test/runtime","type":"tool.before","time":"2026-08-24T08:51:14Z","path":"native","session":{"id":"session_1"},"call":{"id":"call_1"},"tool":{"name":"counter","kind":"file_read","origin":"native","input":{}}}),
+        json!({"id":"evt_public_1","harness":{"name":"test","version":"1"},"source":"https://example.test/runtime","type":"tool.before","time":"2026-08-24T08:51:14Z","path":"native","session":{"id":"session_1"},"call":{"id":"call_1"},"tool":{"name":"counter","kind":"file_read","origin":"native","input":{}}}),
     )
 }
 fn hook(

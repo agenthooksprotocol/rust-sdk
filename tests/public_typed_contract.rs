@@ -24,13 +24,17 @@ fn hooks(name: &str, caps: capability::HostCapabilities, result: Value) -> Hooks
         "transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},
         "subscriptions":[{"events":[name],"mode":"intercept","failurePolicy":"fail-open",
         "timeoutMs":1000,"content":{"default":"body"}}]}]}),
-        HooksOptions::new("urn:test:typed", caps)
-            .with_backend("org.example.typed", Arc::new(Reply(result))),
+        HooksOptions::new(
+            "urn:test:typed",
+            agenthooksprotocol::hooks::Harness::new("test", "1"),
+            caps,
+        )
+        .with_backend("org.example.typed", Arc::new(Reply(result))),
     )
     .unwrap()
 }
 fn event(name: &str, fields: Value) -> Value {
-    let mut event = json!({"id":"evt","session":{"id":"session"},"source":"urn:test:typed","time":"2026-09-15T12:00:00Z",
+    let mut event = json!({"id":"evt","session":{"id":"session"},"harness":{"name":"test","version":"1"},"source":"urn:test:typed","time":"2026-09-15T12:00:00Z",
         "type":name,"unknown":{"parts":[{"kind":"attachment","body":{"ref":"opaque"}}]}});
     event
         .as_object_mut()

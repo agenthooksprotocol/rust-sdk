@@ -30,7 +30,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -71,7 +75,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -116,7 +124,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -163,7 +175,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -210,7 +226,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -257,7 +277,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -304,7 +328,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -351,7 +379,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -396,7 +428,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -440,7 +476,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -484,7 +524,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -516,7 +560,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [
@@ -593,6 +641,10 @@
                 0,
                 false
               ]
+            },
+            "harness": {
+              "name": "test",
+              "version": "1"
             }
           },
           "capabilities": {
@@ -634,7 +686,11 @@
             "call": {
               "id": "call_http_456"
             },
-            "path": "example"
+            "path": "example",
+            "harness": {
+              "name": "test",
+              "version": "1"
+            }
           },
           "capabilities": {
             "effects": [

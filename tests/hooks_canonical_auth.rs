@@ -31,6 +31,7 @@ fn registration() -> Value {
 fn options() -> HooksOptions {
     let mut options = HooksOptions::new(
         "urn:example:comparison",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             tool_before: Some(capability::tool_before().message()),
             ..Default::default()
@@ -329,7 +330,7 @@ mod provider_auth {
     }
     #[tokio::test]
     async fn intercept_challenge_does_not_authorize_replay() {
-        exercise(json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}}), 1,
+        exercise(json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","harness":{"name":"test","version":"1"},"source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}}), 1,
             Some(json!({"type":"bearer","tokenRef":"host-reference"}))).await;
     }
     #[tokio::test]

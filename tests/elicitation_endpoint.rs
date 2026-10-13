@@ -122,7 +122,7 @@ fn check_summaries_use_modified_effective_result_not_preflight_answer() {
     let make = |stage: &str, body: &Value| {
         let mut meta = json!({"server":"server","mode":"form"});
         meta[stage] = json!({"id":format!("{stage}-item"),"kind":"text","mediaType":"text/plain","selection":"body","text":serde_json::to_string(body).unwrap()});
-        let mut event = json!({"id":stage,"source":"urn:test:host","time":"2026-09-15T12:00:00Z","type":format!("user.elicitation.{stage}"),"session":{"id":"session"},"elicitation":meta});
+        let mut event = json!({"id":stage,"harness":{"name":"test","version":"1"},"source":"urn:test:host","time":"2026-09-15T12:00:00Z","type":format!("user.elicitation.{stage}"),"session":{"id":"session"},"elicitation":meta});
         if stage == "result" {
             event["parentEventId"] = json!("request");
             event["elicitation"]["action"] = body["action"].clone();

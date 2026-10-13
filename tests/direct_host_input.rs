@@ -38,6 +38,7 @@ fn primary_typed_tool_hook_owns_direct_binary_parts() {
             json!({"protocolVersion":"draft","hooks":[{"id":"org.example.direct", "transport":{"type":"stdio","command":"unused","lifecycle":"persistent"}, "subscriptions":[{"events":["tool.before"],"mode":"intercept","failurePolicy":"fail-closed","timeoutMs":1000,"filters":{"paths":["unmatched/**"]},"content":{"default":"metadata"}}]}]}),
             HooksOptions::new(
                 "urn:test:direct-tool",
+                agenthooksprotocol::hooks::Harness::new("test", "1"),
                 capability::HostCapabilities { tool_before: Some(capability::tool_before().message()), ..Default::default() },
             ).with_backend("org.example.direct", Arc::new(Unreachable)),
         )

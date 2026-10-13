@@ -48,7 +48,7 @@ fn hooks(
     }
     let hooks = Hooks::new(
         json!({"protocolVersion":"draft","hooks":[{"id":"org.example.interest","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[subscription]}]}),
-        HooksOptions::new("urn:test:interest", grants).with_backend("org.example.interest", backend.clone()),
+        HooksOptions::new("urn:test:interest", agenthooksprotocol::hooks::Harness::new("test", "1"), grants).with_backend("org.example.interest", backend.clone()),
     ).unwrap();
     (hooks, backend)
 }

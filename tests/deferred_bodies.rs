@@ -63,6 +63,7 @@ fn hooks_with_upload_timeout(
     let registration = json!({"protocolVersion":"draft","hooks":[{"id":"org.example.deferred","transport":{"type":"stdio","command":"never-started","lifecycle":"persistent"},"subscriptions":[subscription]}]});
     let mut options = HooksOptions::new(
         "urn:example:host",
+        agenthooksprotocol::hooks::Harness::new("test", "1"),
         capability::HostCapabilities {
             tool_before: Some(capability::tool_before().allow().deny()),
             ..Default::default()

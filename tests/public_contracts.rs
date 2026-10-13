@@ -49,7 +49,7 @@ fn hooks(replies: Vec<Value>) -> (Hooks, Arc<Mutex<Vec<Value>>>) {
     });
     let hooks=Hooks::new(json!({"protocolVersion":"draft","hooks":[{"id":"org.example.contracts",
         "transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":subscriptions}]}),
-        HooksOptions::new("urn:test:contracts",capability::HostCapabilities { tool_before: Some(
+        HooksOptions::new("urn:test:contracts",agenthooksprotocol::hooks::Harness::new("test", "1"),capability::HostCapabilities { tool_before: Some(
             capability::tool_before().return_result().modify_input(capability::Modify::ReplaceAndMerge)), ..Default::default() })
         .with_backend("org.example.contracts",backend)).unwrap();
     (hooks, requests)
@@ -301,7 +301,7 @@ fn host_owned_native_codec_is_opt_in_and_retains_opaque_extra_bags() {
         for declared in [false, true] {
             let (hooks, _) = hooks(vec![json!([])]);
             let context = agenthooksprotocol::client::ToolContext::new(
-                json!({"id":"evt","source":"urn:test:contracts",
+                json!({"id":"evt","harness":{"name":"test","version":"1"},"source":"urn:test:contracts",
                 "time":"2026-09-15T12:00:00Z","type":"tool.before","call":{"id":"call"},"path":"native",
                 "tool":{"name":"counter","origin":"native"},"native":{"host":"host","opaque":{"parts":[{"body":{"ref":"no-grant"}}]}}}),
             );
@@ -314,7 +314,7 @@ fn host_owned_native_codec_is_opt_in_and_retains_opaque_extra_bags() {
         }
         let (hooks, requests) = hooks(vec![json!([])]);
         let context = agenthooksprotocol::client::ToolContext::new(
-            json!({"id":"evt","source":"urn:test:contracts",
+            json!({"id":"evt","harness":{"name":"test","version":"1"},"source":"urn:test:contracts",
             "time":"2026-09-15T12:00:00Z","type":"tool.before","call":{"id":"call"},"path":"native",
             "tool":{"name":"counter","origin":"native"},"native":{"host":"host"}}),
         );

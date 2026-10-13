@@ -51,7 +51,7 @@ impl Drop for Fixture {
 }
 fn case(id: &str, effects: Value) -> Value {
     json!({"id":id,"request":{"jsonrpc":"2.0","id":id,"method":"hooks/intercept",
-        "params":{"protocolVersion":"draft","event":{"id":id,"source":"urn:rust:core-test",
+        "params":{"protocolVersion":"draft","event":{"id":id,"harness":{"name":"test","version":"1"},"source":"urn:rust:core-test",
             "type":"tool.before","time":"2026-09-01T00:00:00Z","call":{"id":"call"},"path":"native",
             "tool":{"name":"task","origin":"native","input":{"task":1}}},
             "capabilities":{"effects":["message","modify","return"],"modify":{"input":{"merge":true,"replace":true}}},

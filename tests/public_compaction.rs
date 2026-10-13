@@ -63,6 +63,7 @@ fn facade_compaction_host_contract_rejects_repaired_intermediate_atomically() {
                     "subscriptions":subscriptions}]}),
                 HooksOptions::new(
                     "urn:test:compaction",
+                    agenthooksprotocol::hooks::Harness::new("test", "1"),
                     if after {
                         capability::HostCapabilities {
                             context_compact_after: Some(
@@ -134,7 +135,7 @@ fn request(content: &ContentContext<'_>, after: bool) -> Value {
     let boundary = if after { "after" } else { "before" };
     let target = if after { "summary" } else { "instructions" };
     let _ = content;
-    let mut event = json!({"id":boundary,"source":"urn:test:compaction","time":"2026-09-15T12:00:00Z","type":format!("context.compact.{boundary}"),"session":{"id":"session"},"parentEventId":"original-exchange","native":{"host":"test"}});
+    let mut event = json!({"id":boundary,"harness":{"name":"test","version":"1"},"source":"urn:test:compaction","time":"2026-09-15T12:00:00Z","type":format!("context.compact.{boundary}"),"session":{"id":"session"},"parentEventId":"original-exchange","native":{"host":"test"}});
     event[target] = parts("original\r\nλ");
     if after {
         event["removed"] = json!([{"id":"context-item"}]);

@@ -290,7 +290,7 @@ mod typed_boundary_tests {
         };
         let request = json!({"jsonrpc":"2.0","id":"before","method":"hooks/intercept",
             "params":{"protocolVersion":"draft","capabilities":capabilities("before", false).unwrap(),
-                "event":{"id":"before","source":"urn:test:host","time":"2026-09-15T12:00:00Z",
+                "event":{"id":"before","harness":{"name":"test","version":"1"},"source":"urn:test:host","time":"2026-09-15T12:00:00Z",
                     "type":"context.compact.before","trigger":"manual","items":[],
                     "instructions":[{"id":"text","kind":"text","mediaType":"text/plain","selection":"body","text":"original"}]}}});
         let original = request.clone();

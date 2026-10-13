@@ -335,7 +335,7 @@ mod omitted_effects_tests {
         let schemas = Schemas::bundled().unwrap();
         for permission in ["none", "ask", "deny"] {
             let request = json!({"jsonrpc":"2.0","id":"omitted","method":"hooks/intercept",
-                "params":{"protocolVersion":"draft","event":{"id":"omitted","source":"urn:test:interop",
+                "params":{"protocolVersion":"draft","event":{"id":"omitted","harness":{"name":"test","version":"1"},"source":"urn:test:interop",
                     "type":"tool.before","time":"2026-09-01T00:00:00Z","call":{"id":"call"},"path":"native",
                     "tool":{"name":"task","origin":"native","input":{"task":1}}},
                     "capabilities":capabilities(),"state":{"permission":permission,"candidate":null}}});
