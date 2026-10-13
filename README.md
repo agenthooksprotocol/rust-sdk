@@ -216,6 +216,25 @@ policy process (Python 3 is required):
 cargo run --example registered_hooks --features reqwest,tokio-process -- examples/stdio_registration.json
 ```
 
+Registered stdio children do not inherit the full host environment. They get a
+minimal base: `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LC_*`, `TZ`,
+and the temp-directory variables, plus the Windows system variables. The
+transport's `env` object is applied on top, and its entries replace base values
+with the same name:
+
+```json
+{"type": "stdio", "command": "python3", "args": ["policy.py"],
+ "lifecycle": "persistent", "env": {"POLICY_MODE": "strict"}}
+```
+
+`env` values are literal strings: they are not expanded, interpolated, or
+resolved as secrets, and they never appear in diagnostics. `env` is not an
+authentication binding. `tokenEnv` is still read from the host's own
+environment, and endpoint credentials are never copied into the child.
+
+`BackendOptions::inherit_environment = true` is an SDK-level opt-out (not a protocol setting)
+that passes the full host environment, with `env` applied on top.
+
 For HTTP, start the local fixture in one terminal:
 
 ```sh
@@ -525,6 +544,32 @@ maps. Each event slot receives its matching generated event type and an
 authenticated context. Interception returns `ctx.reply().effect(effect)` with
 matching canonical effects; `ctx.reply()` alone is a valid no-op. Observation
 returns `Ok(())` and cannot return controls. Both maps can handle the same event.
+`observe.any` is an optional catch-all observer. It runs only for events whose
+per-event observer is `None`, receives the validated `ObserveNotification`, and
+reads the event type through `ctx.event_type()`.
+
+`server::callback` wraps an async closure without manual `Arc::new`/`Box::pin`.
+`server::with_state` also hands each invocation a clone of shared state.
+Annotate the context type when the closure calls methods on it:
+
+```rust
+use agenthooksprotocol::server::{HandlerSet, ToolBeforeContext, with_state};
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+let calls = Arc::new(AtomicUsize::new(0));
+let mut handlers = HandlerSet::default();
+handlers.intercept.tool_before = Some(with_state(
+    calls.clone(),
+    |calls, ctx: ToolBeforeContext, _event| async move {
+        calls.fetch_add(1, Ordering::Relaxed);
+        Ok(ctx.reply())
+    },
+));
+handlers.observe.any = Some(with_state(calls, |calls, _ctx, _notification| async move {
+    calls.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+}));
+```
 The server owns envelope correlation. Request IDs, event IDs, and content
 references are correlation, not authorization.
 Use `Server::handle_with_content(request, &store)` to verify schema-defined
@@ -534,7 +579,38 @@ the storage scope; arbitrary open payload fields are not
 scanned for references. Plain `handle()` performs protocol validation without
 automatic content resolution.
 The bounded stdio adapter frames the **same** server handler rather than maintaining
-a separate dispatcher. Notification completion is silent. HTTP errors retain bodies.
+a separate dispatcher. `adapters::stdio::serve` runs a complete backend loop.
+It reads one frame per line until EOF, dispatches each frame, and writes replies.
+Malformed and oversized lines get null-id `-32700`/`-32600` frames, and serving
+continues:
+
+```rust,ignore
+use agenthooksprotocol::adapters::stdio;
+let stdin = std::io::stdin().lock();
+futures::executor::block_on(stdio::serve(&server, stdin, std::io::stdout(), None, 1 << 20))?;
+```
+
+On Tokio, `stdio::serve_tokio` (feature `tokio-process`) takes `AsyncBufRead`
+and `AsyncWrite` and behaves the same way.
+
+Request failures are JSON-RPC error envelopes with fixed messages; handler error
+strings never reach the wire. Caller errors use HTTP 400 and server errors 500:
+
+| Failure | Code |
+| --- | --- |
+| Unparseable JSON | `-32700` (id `null`) |
+| Not a JSON-RPC request object | `-32600` |
+| Unknown method; `hooks/capabilities` without a discovery handler | `-32601` |
+| Schema, correlation, or selected-content validation failure | `-32602` |
+| Unsupported `protocolVersion` (`data.supported` lists the SDK version) | `-32001` |
+| Intercept event that is unknown or has no intercept handler | `-32002` |
+| Callback error, or effects outside the request's grants | `-32004` |
+| Reply from another context or an invalid SDK-built response | `-32603` |
+
+Notifications (no `id`) never receive a body or stdio frame: accepted, rejected,
+and unobserved notifications return an empty 204, and an observer error returns
+an empty 500. Method, credential, size, and media-type rejections are bodyless
+HTTP 405/401/413/415; on stdio a rejected request instead gets a `-32600` frame.
 
 ```sh
 cargo run --no-default-features --example generated_models
@@ -542,6 +618,12 @@ cargo run --no-default-features --example typed_boundary
 cargo run --no-default-features --example neutral_server
 cargo run --features reqwest,axum --example http_roundtrip
 ```
+
+`adapters::process::Process` runs one background reader per child that owns its
+stdout and routes each frame to the in-flight request by JSON-RPC `id`. Frames that
+answer nothing, such as a reply to a notification, are discarded and reported via
+`Process::on_discard`; they never fail a later request or respawn the child.
+Repeated malformed output, an oversized frame, or stdout EOF retires the child.
 
 The subprocess adapter is deliberately not claimed to work on every executor.
 Dropping an in-flight subprocess future retires that stream, starts termination,

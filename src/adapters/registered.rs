@@ -63,6 +63,12 @@ pub struct BackendOptions {
     pub credentials: BTreeMap<String, String>,
     pub allow_loopback_http: bool,
     pub max_frame_bytes: usize,
+    /// SDK-level opt-out, not a protocol setting. When `false` (the
+    /// default), stdio children receive only a minimal base environment
+    /// (`PATH`, `HOME`, locale, temp-directory and similar variables) plus
+    /// the registration's `env` entries. When `true`, children inherit the
+    /// full host environment, with `env` entries applied on top.
+    pub inherit_environment: bool,
 }
 impl Default for BackendOptions {
     fn default() -> Self {
@@ -71,6 +77,7 @@ impl Default for BackendOptions {
             credentials: BTreeMap::new(),
             allow_loopback_http: false,
             max_frame_bytes: 1024 * 1024,
+            inherit_environment: false,
         }
     }
 }
@@ -237,12 +244,34 @@ pub fn from_registration(
                         .ok_or_else(|| error("stdio cwd must be a string"))
                 })
                 .transpose()?;
+            // Literal values: no expansion, interpolation or secret resolution.
+            // Diagnostics never include values.
+            let env = match transport.get("env") {
+                None => Vec::new(),
+                Some(value) => value
+                    .as_object()
+                    .ok_or_else(|| error("stdio env must be an object"))?
+                    .iter()
+                    .map(|(name, value)| match value.as_str() {
+                        Some(value)
+                            if !name.is_empty()
+                                && !name.contains(['=', '\0'])
+                                && !value.contains('\0') =>
+                        {
+                            Ok((name.clone(), value.to_owned()))
+                        }
+                        _ => Err(error("stdio env entries must be valid name/string pairs")),
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            };
             #[cfg(feature = "tokio-process")]
             {
                 Ok(Arc::new(StdioBackend {
                     command: command.into(),
                     args,
                     cwd,
+                    env,
+                    inherit_environment: options.inherit_environment,
                     per_event,
                     limit: options.max_frame_bytes,
                     closed: AtomicBool::new(false),
@@ -252,7 +281,7 @@ pub fn from_registration(
             }
             #[cfg(not(feature = "tokio-process"))]
             {
-                let _ = (command, args, cwd, per_event);
+                let _ = (command, args, cwd, env, per_event);
                 Err(error("stdio backend requires the tokio-process feature"))
             }
         }
@@ -465,11 +494,38 @@ impl ManagedBackend for HttpBackend {
         })
     }
 }
+/// The smallest practical base environment a stdio child receives by default.
+#[cfg(feature = "tokio-process")]
+fn base_environment_name(name: &str) -> bool {
+    const PORTABLE: &[&str] = &[
+        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TZ", "TMPDIR", "TEMP", "TMP",
+    ];
+    const WINDOWS: &[&str] = &[
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMDATA",
+    ];
+    if cfg!(windows) {
+        let upper = name.to_ascii_uppercase();
+        PORTABLE.contains(&upper.as_str())
+            || WINDOWS.contains(&upper.as_str())
+            || upper.starts_with("LC_")
+    } else {
+        PORTABLE.contains(&name) || name.starts_with("LC_")
+    }
+}
 #[cfg(feature = "tokio-process")]
 struct StdioBackend {
     command: String,
     args: Vec<String>,
     cwd: Option<String>,
+    env: Vec<(String, String)>,
+    inherit_environment: bool,
     per_event: bool,
     limit: usize,
     closed: AtomicBool,
@@ -529,6 +585,16 @@ impl ManagedBackend for StdioBackend {
                     if let Some(cwd) = &self.cwd {
                         command.current_dir(cwd);
                     }
+                    if !self.inherit_environment {
+                        command.env_clear();
+                        command.envs(
+                            std::env::vars_os().filter(|(name, _)| {
+                                name.to_str().is_some_and(base_environment_name)
+                            }),
+                        );
+                    }
+                    // Registration entries replace base values of the same name.
+                    command.envs(self.env.iter().map(|(name, value)| (name, value)));
                     // The outer deadline includes queueing and is per-call, not the
                     // first request's budget retained for the lifetime of the process.
                     let process =

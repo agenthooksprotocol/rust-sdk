@@ -1,6 +1,6 @@
 #![cfg(feature = "tokio-process")]
 use agenthooksprotocol::{
-    adapters::process::Process,
+    adapters::process::{DiscardedFrame, Process},
     transport::{Http, Request},
 };
 use std::time::Duration;
@@ -20,7 +20,7 @@ fn request() -> Request {
 
 #[tokio::test]
 async fn persistent_exchange_preserves_error_bodies_and_notification_silence() {
-    let process = child("import sys,json\nfor line in sys.stdin:\n if 'id' in json.loads(line):\n  print('{\"error\":\"denied\"}',flush=True)\n", 128, Duration::from_secs(2)).await;
+    let process = child("import sys,json\nfor line in sys.stdin:\n if 'id' in json.loads(line):\n  print('{\"id\":\"one\",\"error\":\"denied\"}',flush=True)\n", 128, Duration::from_secs(2)).await;
     process
         .notify(Request {
             body: b"{}".to_vec(),
@@ -31,7 +31,7 @@ async fn persistent_exchange_preserves_error_bodies_and_notification_silence() {
     for _ in 0..2 {
         let response = process.send(request()).await.unwrap();
         assert_eq!(response.status, 200);
-        assert_eq!(response.body, br#"{"error":"denied"}"#);
+        assert_eq!(response.body, br#"{"id":"one","error":"denied"}"#);
     }
     process.shutdown().await.unwrap();
     process.shutdown().await.unwrap();
@@ -116,15 +116,19 @@ async fn shutdown_and_drop_terminate_the_real_child() {
             .unwrap()
             .success()
     }
-    let script = "import sys,os\nfor line in sys.stdin: print(os.getpid(),flush=True)\n";
+    async fn child_pid(process: &Process) -> String {
+        let body = process.send(request()).await.unwrap().body;
+        serde_json::from_slice::<serde_json::Value>(&body).unwrap()["pid"].to_string()
+    }
+    let script = "import sys,os,json\nfor line in sys.stdin: print(json.dumps({'id':'one','pid':os.getpid()}),flush=True)\n";
     let process = child(script, 128, Duration::from_secs(2)).await;
-    let pid = String::from_utf8(process.send(request()).await.unwrap().body).unwrap();
+    let pid = child_pid(&process).await;
     assert!(alive(&pid).await);
     process.shutdown().await.unwrap();
     assert!(!alive(&pid).await);
 
     let process = child(script, 128, Duration::from_secs(2)).await;
-    let pid = String::from_utf8(process.send(request()).await.unwrap().body).unwrap();
+    let pid = child_pid(&process).await;
     drop(process);
     tokio::time::timeout(Duration::from_secs(2), async {
         while alive(&pid).await {
@@ -204,7 +208,12 @@ async fn invalid_local_frames_do_not_retire_a_healthy_child() {
         Duration::from_secs(2),
     )
     .await;
-    for body in [vec![b'x'; 33], b"{}\n{}".to_vec(), b"invalid".to_vec()] {
+    for body in [
+        vec![b'x'; 33],
+        b"{}\n{}".to_vec(),
+        b"invalid".to_vec(),
+        b"{}".to_vec(),
+    ] {
         assert!(
             process
                 .send(Request {
@@ -216,5 +225,66 @@ async fn invalid_local_frames_do_not_retire_a_healthy_child() {
         );
     }
     assert_eq!(process.send(request()).await.unwrap().body, request().body);
+    process.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn unsolicited_and_uncorrelated_frames_never_answer_the_next_request() {
+    // Replies to a notification, then precedes each real reply with a stray
+    // well-formed frame and one malformed line.
+    let script = "import sys,json\nfor line in sys.stdin:\n r=json.loads(line)\n if 'id' not in r:\n  print('{\"jsonrpc\":\"2.0\",\"id\":\"unsolicited\"}',flush=True)\n else:\n  print('{\"id\":\"stray\"}',flush=True)\n  print('garbage',flush=True)\n  print(json.dumps({'id':r['id'],'ok':True}),flush=True)\n";
+    let process = child(script, 128, Duration::from_secs(2)).await;
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    process.on_discard(move |kind| sink.lock().unwrap().push(kind));
+    for _ in 0..2 {
+        process
+            .notify(Request {
+                body: br#"{"jsonrpc":"2.0","method":"hooks/observe"}"#.to_vec(),
+                ..Request::default()
+            })
+            .await
+            .unwrap();
+        let response = process.send(request()).await.unwrap();
+        assert_eq!(response.body, br#"{"id": "one", "ok": true}"#);
+    }
+    // Two rounds of: unsolicited (or uncorrelated, if the reply raced the next
+    // request), uncorrelated stray, malformed line.
+    assert_eq!(process.discarded_frames(), 6);
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 6);
+    assert_eq!(
+        seen.iter()
+            .filter(|kind| **kind == DiscardedFrame::Malformed)
+            .count(),
+        2
+    );
+    process.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn repeated_malformed_output_retires_the_child() {
+    let process = child(
+        "import sys\nfor line in sys.stdin:\n for _ in range(3): print('garbage',flush=True)\n",
+        128,
+        Duration::from_secs(2),
+    )
+    .await;
+    assert!(
+        process
+            .send(request())
+            .await
+            .unwrap_err()
+            .0
+            .contains("malformed")
+    );
+    assert!(
+        process
+            .send(request())
+            .await
+            .unwrap_err()
+            .0
+            .contains("retired")
+    );
     process.shutdown().await.unwrap();
 }

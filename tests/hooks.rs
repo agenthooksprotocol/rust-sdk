@@ -256,7 +256,7 @@ fn unknown_events_duplicate_ids_and_mode_grants_fail_closed() {
     let mut config = registration(false);
     config["hooks"][0]["subscriptions"][0]["events"] = json!(["file.changed"]);
     let mut opts = options(backend, false);
-    opts.capabilities.file_changed = Some(capability::Observe);
+    opts.capabilities.file_changed = Some(capability::file_changed().observe());
     assert!(Hooks::new(config, opts).is_err());
     let caps = capability::tool_before().return_result();
     assert!(

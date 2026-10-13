@@ -1,7 +1,7 @@
 use agenthooksprotocol::generated::EventType;
 use agenthooksprotocol::{
     Hooks,
-    capability::{self, HostCapabilities, InjectContext, Modify, Observe},
+    capability::{self, HostCapabilities, InjectContext, Modify},
     hooks::HooksOptions,
 };
 use agenthooksprotocol::{
@@ -32,7 +32,7 @@ fn typed_capabilities_render_exact_grants_and_explicit_observation() {
                 .observe(),
         ),
         tool_after: Some(capability::tool_after().inject_context(InjectContext::NowAndNextTurn)),
-        session_end: Some(Observe),
+        session_end: Some(capability::session_end().observe()),
         ..Default::default()
     };
     let declarations = capabilities.to_wire();
