@@ -13,7 +13,10 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fmt, sync::Arc};
 
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 fn header<'a>(request: &'a BTreeMap<String, String>, key: &str) -> Option<&'a str> {
     request

@@ -561,7 +561,10 @@ fn interception_http_response(response: &Value) -> tiny_http::Response<std::io::
 
 fn sha256(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(bytes))
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]

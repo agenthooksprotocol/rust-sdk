@@ -47,7 +47,9 @@ def reject_bad_http_bodies(root, scenario, case):
                 assert select.select([process.stdout], [], [], 15)[0], 'readiness timeout'
                 endpoint = json.loads(process.stdout.readline())['endpoint']
                 valid = dict(jsonrpc='2.0', id='survival', method='compaction/run',
-                             params={'instructions':'summarize'})
+                             params={'instructions':[{'id':'instructions', 'kind':'text',
+                                 'mediaType':'text/plain', 'selection':'body',
+                                 'text':'summarize'}]})
             malformed = [b'\xff', b'{']
             if kind == 'compaction': malformed.append(b' ' * (4 * 1024 * 1024 + 1))
             for body in malformed:

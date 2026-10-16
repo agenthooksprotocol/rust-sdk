@@ -91,9 +91,9 @@ fn http_client(c: &Value) -> Result<(reqwest::blocking::Client, String)> {
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(15));
     if string(a, "mode") == "mtls" {
-        builder = builder.add_root_certificate(reqwest::Certificate::from_pem(&fs::read(
-            string(a, "caFile"),
-        )?)?);
+        builder = builder.tls_certs_only([reqwest::Certificate::from_pem(&fs::read(string(
+            a, "caFile",
+        ))?)?]);
         let mut identity = fs::read(string(a, "certFile"))?;
         identity.extend(fs::read(string(a, "keyFile"))?);
         builder = builder.identity(reqwest::Identity::from_pem(&identity)?);
