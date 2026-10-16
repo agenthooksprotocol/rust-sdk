@@ -1,12 +1,14 @@
 name: CI
 
 on:
-  push:
   pull_request:
-  workflow_call:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   test:
