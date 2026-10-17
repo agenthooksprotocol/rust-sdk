@@ -258,6 +258,50 @@ OAuth discovery/trust, consent, token acquisition/refresh, and provider lifecycl
 Configured unsupported mechanisms and missing credentials fail closed. Event
 credentials are never an implicit fallback for independently bound uploads.
 
+### Registered HTTP headers
+
+AHP-0002 adds `transport.headers` to backend HTTP requests and content uploads:
+
+```json
+{
+  "headers": {
+    "Authorization": "Bearer abc123",
+    "Cookie": "session=example",
+    "X-Api-Key": { "valueEnv": "POLICY_API_KEY" },
+    "X-Gateway": { "valueRef": "policy-gateway" }
+  }
+}
+```
+
+Literals are used verbatim, including credentials, without interpolation or
+trimming. `valueEnv` uses the harness environment and `valueRef` uses
+`BackendOptions::credentials`, sharing the existing credential lookup helper.
+`BackendOptions::header_resolver` optionally resolves sources through a host-owned
+provider with backend identity, exact destination, event/upload purpose, source,
+and operation deadline. Dropping the operation cancels resolution. Each event
+or upload operation resolves its header set once; subsequent operations resolve
+again to permit rotation. Missing sources or invalid resolved values fail the
+operation without fallback; errors do not include values or references.
+
+The native HTTP library validates field names and values, including rejection of
+CR/LF/NUL injection. Legal non-ASCII values and tabs are supported. All valid names
+are allowed, including authentication, cookie, origin, and protocol headers.
+Case-insensitive duplicate names use the last property in configuration-map
+iteration order; parsed JSON objects retain their input property order. Unknown
+source-object extension fields are ignored; exactly one of `valueEnv` or
+`valueRef` must still be present.
+Configured values are applied last over transport defaults and authentication,
+including `Authorization` and `Content-Type`. A configured `Authorization` of any
+casing or source suppresses OAuth acquisition, discovery, challenges, and retries
+for that backend's event and upload operations, even with an auth binding present.
+
+The same configuration applies to backend content uploads, with the upload
+endpoint and purpose supplied to resolution. It is not installed as global client
+defaults and does not reach unrelated backends or discovery/token endpoints.
+Existing transport redirect behavior is unchanged: the registered Rust event and
+upload adapters already disabled redirects before header configuration existed.
+Low-level programmatic `ReqwestHttp` configuration remains unchanged.
+
 ### Event envelopes, manifests, and bodies
 
 Named boundaries such as `hooks.session_start(facts).await` supply their event

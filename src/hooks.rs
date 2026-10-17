@@ -163,6 +163,7 @@ struct Route {
     mode: Mode,
     timeout: Duration,
     configuration: Value,
+    headers: Option<Value>,
     backend: Arc<dyn ManagedBackend>,
 }
 impl Route {
@@ -511,7 +512,8 @@ impl Hooks {
             return Err(err("Hooks bounds must be positive"));
         }
         let registration = serde_json::to_value(registration).map_err(err)?;
-        crate::canonical::validate("registration", &registration).map_err(HookError::new)?;
+        crate::canonical::validate("registration", &registration)
+            .map_err(|_| HookError::new("invalid registration"))?;
         // Render owned wire data once. Typed declarations are already valid; this
         // does not parse, hydrate, or schema-validate host authority.
         let grants: BTreeMap<generated::EventType, Value> = options
@@ -535,6 +537,9 @@ impl Hooks {
             let id = backend["id"].as_str().ok_or_else(|| err("backend id"))?;
             if !ids.insert(id.to_owned()) {
                 return Err(err("duplicate backend id"));
+            }
+            if backend["transport"]["type"] == "http" {
+                crate::adapters::registered_headers::parse(backend["transport"].get("headers"))?;
             }
             let transport = if let Some(custom) = options.backends.get(id) {
                 Arc::clone(custom)
@@ -601,6 +606,9 @@ impl Hooks {
                     mode,
                     timeout,
                     configuration: subscription.clone(),
+                    headers: (backend["transport"]["type"] == "http")
+                        .then(|| backend["transport"].get("headers").cloned())
+                        .flatten(),
                     backend: Arc::clone(&transport),
                 });
             }
@@ -825,6 +833,7 @@ impl Hooks {
                     request,
                     &route.configuration["content"],
                     route.configuration.get("upload"),
+                    route.headers.as_ref(),
                     &owners,
                     &options,
                     &route.backend_id,

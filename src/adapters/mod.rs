@@ -11,3 +11,5 @@ pub mod process;
 
 /// Lazy owned registration transports.
 pub mod registered;
+
+pub(crate) mod registered_headers;

@@ -4,6 +4,8 @@ use crate::adapters::registered::{AuthContext, AuthPurpose};
 use crate::content::ContentContext;
 use crate::{adapters::registered::BackendOptions, client::HookError, content::ContentAccess};
 use serde_json::Value;
+#[cfg(any(feature = "reqwest", test))]
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 fn error(message: impl ToString) -> HookError {
@@ -164,7 +166,15 @@ fn upload_credential(
         .credentials
         .get(key)
         .cloned()
-        .or_else(|| if env { std::env::var(key).ok() } else { None })
+        .or_else(|| {
+            if env {
+                options.resolve_secret(&crate::adapters::registered::HeaderSource::Environment(
+                    key.into(),
+                ))
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| error("upload credential unavailable"))?;
     crate::content::UploadCredential::bearer(token)
         .map(Some)
@@ -264,6 +274,7 @@ struct ChallengeHttp<'a, H> {
     provider: Option<&'a dyn crate::adapters::registered::AuthProvider>,
     context: &'a AuthContext,
     attempt_id: Option<&'a str>,
+    headers: &'a BTreeMap<String, String>,
 }
 #[cfg(any(feature = "reqwest", test))]
 impl<H: crate::transport::Http> crate::transport::Http for ChallengeHttp<'_, H> {
@@ -278,6 +289,11 @@ impl<H: crate::transport::Http> crate::transport::Http for ChallengeHttp<'_, H> 
             use crate::{adapters::registered::AuthChallenge, transport::TransportError};
             remaining_upload_budget(self.context.deadline)
                 .map_err(|e| TransportError(e.to_string()))?;
+            let mut request = request;
+            request
+                .headers
+                .retain(|name, _| !self.headers.contains_key(&name.to_ascii_lowercase()));
+            request.headers.extend(self.headers.clone());
             let response = self.inner.send(request).await?;
             if response.status == 401
                 && let Some(provider) = self.provider
@@ -481,6 +497,7 @@ pub(crate) async fn preupload(
     request: Value,
     selection: &Value,
     upload: Option<&Value>,
+    headers: Option<&Value>,
     attachments: &crate::attachment::InvocationAttachments,
     options: &BackendOptions,
     backend_id: &str,
@@ -545,8 +562,25 @@ pub(crate) async fn preupload(
         purpose: AuthPurpose::Upload,
         deadline,
     };
-    let (credential, attempt_id) =
-        prepare_upload_credential(upload, options, &auth_context).await?;
+    let configured = crate::adapters::registered_headers::parse(headers)?;
+    let explicit_auth = configured.contains_key("authorization");
+    let headers = await_upload_phase(
+        deadline,
+        crate::adapters::registered_headers::resolve(
+            &configured,
+            backend_id,
+            endpoint,
+            deadline,
+            AuthPurpose::Upload,
+            options,
+        ),
+    )
+    .await?;
+    let (credential, attempt_id) = if explicit_auth {
+        (None, None)
+    } else {
+        prepare_upload_credential(upload, options, &auth_context).await?
+    };
     let mut bodies = Vec::new();
     for (reference, path) in selected {
         remaining_upload_budget(deadline)?;
@@ -566,7 +600,9 @@ pub(crate) async fn preupload(
     }
     #[cfg(not(feature = "reqwest"))]
     {
-        let _ = (endpoint, timeout, credential, bodies, attempt_id, limiter);
+        let _ = (
+            endpoint, timeout, credential, bodies, attempt_id, limiter, headers,
+        );
         Err(error(
             "selected body upload requires the reqwest feature, including for stdio hooks",
         ))
@@ -577,6 +613,7 @@ pub(crate) async fn preupload(
             .into_iter()
             .map(|(reference, bytes)| {
                 let auth_context = &auth_context;
+                let headers = &headers;
                 let credential = credential.clone();
                 let attempt_id = attempt_id.as_deref();
                 Box::pin(async move {
@@ -594,7 +631,8 @@ pub(crate) async fn preupload(
                     };
                     let http = ChallengeHttp {
                         inner: &limited,
-                        provider: options.auth_provider.as_deref(),
+                        provider: options.auth_provider.as_deref().filter(|_| !explicit_auth),
+                        headers,
                         context: auth_context,
                         attempt_id,
                     };
@@ -832,6 +870,7 @@ async fn project_inner(
             let http = ChallengeHttp {
                 inner: &transport,
                 provider: options.auth_provider.as_deref(),
+                headers: &BTreeMap::new(),
                 context: &auth_context,
                 attempt_id: attempt_id.as_deref(),
             };
@@ -995,6 +1034,7 @@ mod tests {
             allow_loopback_http: false,
             max_frame_bytes: 8192,
             inherit_environment: false,
+            ..Default::default()
         }
     }
     fn item() -> Value {
@@ -1099,6 +1139,7 @@ mod tests {
         let http = ChallengeHttp {
             inner: &inner,
             provider: Some(provider.as_ref()),
+            headers: &BTreeMap::new(),
             context: &context,
             attempt_id: attempt.as_deref(),
         };
