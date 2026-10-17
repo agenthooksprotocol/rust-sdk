@@ -104,14 +104,19 @@ pub(super) fn tls_frontend(
     for cert in rustls_pemfile::certs(&mut BufReader::new(fs::File::open(string(a, "caFile"))?)) {
         roots.add(cert?)?;
     }
-    let verifier = WebPkiClientVerifier::builder(Arc::new(roots)).build()?;
+    // reqwest and the interop harness can enable both rustls providers. Select
+    // the harness's provider explicitly rather than relying on process defaults.
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let verifier =
+        WebPkiClientVerifier::builder_with_provider(Arc::new(roots), provider.clone()).build()?;
     let certs = rustls_pemfile::certs(&mut BufReader::new(fs::File::open(string(a, "certFile"))?))
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let key =
         rustls_pemfile::private_key(&mut BufReader::new(fs::File::open(string(a, "keyFile"))?))?
             .ok_or("missing private key")?;
     let config = Arc::new(
-        ServerConfig::builder()
+        ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()?
             .with_client_cert_verifier(verifier)
             .with_single_cert(certs, key)?,
     );
@@ -212,6 +217,28 @@ pub(super) fn tls_frontend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mtls_frontend_does_not_require_a_process_crypto_provider() {
+        let fixtures = std::env::var_os("AHP_INTEROP_FIXTURE_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| "../agent-hooks-protocol/interop".into())
+            .join("fixtures");
+        let config = json!({"auth": {
+            "caFile": fixtures.join("ca.pem"),
+            "certFile": fixtures.join("server.pem"),
+            "keyFile": fixtures.join("server-key.pem")
+        }});
+        let stop = Arc::new(AtomicBool::new(false));
+        let endpoint = tls_frontend(
+            &config,
+            "http://127.0.0.1:1".into(),
+            "TEST-ONLY-internal-token".into(),
+            stop.clone(),
+        )
+        .expect("mTLS receiver must start with both rustls provider features enabled");
+        stop.store(true, Ordering::SeqCst);
+        assert!(endpoint.starts_with("https://127.0.0.1:"));
+    }
     #[test]
     fn signed_auth_checks_signature_issuer_audience_purpose_and_time() {
         let c = json!({
