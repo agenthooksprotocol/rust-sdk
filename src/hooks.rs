@@ -645,11 +645,8 @@ impl Hooks {
         })
     }
 
-    /// Static interception interest for a canonical event.
-    /// Includes only interception routes eligible under host grants; observation
-    /// routes never count. Payload-dependent filters are not evaluated, so true
-    /// is not permission or a guarantee of interception. This lookup performs no
-    /// input preparation, transport, authentication, uploads, or mutation.
+    /// Whether any interception route the host granted selects `event`.
+    /// Payload-dependent filters are not evaluated.
     pub fn intercepts(&self, event: generated::EventType) -> bool {
         let Some(grant) = self.grants.get(&event) else {
             return false;
