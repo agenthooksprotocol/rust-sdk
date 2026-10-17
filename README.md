@@ -260,35 +260,45 @@ credentials are never an implicit fallback for independently bound uploads.
 
 ### Registered HTTP headers
 
-AHP-0002 adds event-only `transport.headers` metadata to HTTP registrations:
+AHP-0002 adds `transport.headers` to backend HTTP requests and content uploads:
 
 ```json
-"headers": {
-  "X-Tenant": "engineering",
-  "X-Api-Key": { "valueEnv": "POLICY_API_KEY" },
-  "X-Gateway": { "valueRef": "policy-gateway" }
+{
+  "headers": {
+    "Authorization": "Bearer abc123",
+    "Cookie": "session=example",
+    "X-Api-Key": { "valueEnv": "POLICY_API_KEY" },
+    "X-Gateway": { "valueRef": "policy-gateway" }
+  }
 }
 ```
 
-Use literals only for non-secret metadata, never credentials or cookies. Literal
-strings are not interpolated or trimmed. `valueEnv` reads the harness environment;
-`valueRef` reads `BackendOptions::credentials` by default. Set
-`BackendOptions::header_resolver` to resolve sources through a host-owned provider.
-The resolver receives backend identity, exact destination, event purpose, source,
-and deadline. Dropping the operation cancels its future. Values resolve once per
-dispatch, including challenged retries, and resolve again on the next dispatch.
+Literals are used verbatim, including credentials, without interpolation or
+trimming. `valueEnv` uses the harness environment and `valueRef` uses
+`BackendOptions::credentials`, sharing the existing credential lookup helper.
+`BackendOptions::header_resolver` optionally resolves sources through a host-owned
+provider with backend identity, exact destination, event/upload purpose, source,
+and operation deadline. Dropping the operation cancels resolution. Each event
+or upload operation resolves its header set once; subsequent operations resolve
+again to permit rotation. Missing sources or invalid resolved values fail the
+operation without fallback; errors do not include values or references.
 
-Names must be ASCII HTTP tokens, with no case-insensitive duplicates or reserved
-authentication, framing, security, or AHP fields. Values must be printable ASCII;
-missing, empty, or invalid secret values fail before the event request. Empty
-literal metadata is allowed. The aggregate name/value limit defaults to 64 KiB
-and is configurable with `BackendOptions::max_header_bytes`. Errors never include
-header values or secret references. Authentication alone supplies `Authorization`.
+The native HTTP library validates field names and values, including rejection of
+CR/LF/NUL injection. Legal non-ASCII values and tabs are supported. All valid names
+are allowed, including authentication, cookie, origin, and protocol headers.
+Case-insensitive duplicate names use the last property in configuration-map
+iteration order; the default Rust JSON/map representation iterates sorted keys.
+Configured values are applied last over transport defaults and authentication,
+including `Authorization` and `Content-Type`. A configured `Authorization` of any
+casing or source suppresses OAuth acquisition, discovery, challenges, and retries
+for that backend's event and upload operations, even with an auth binding present.
 
-Headers are attached only to the configured endpoint's interception/observation
-POSTs, never capability discovery or uploads. Redirects remain disabled. The
-registered adapter owns its client; low-level `ReqwestHttp` configuration is
-unchanged and is not imported as registration defaults.
+The same configuration applies to backend content uploads, with the upload
+endpoint and purpose supplied to resolution. It is not installed as global client
+defaults and does not reach unrelated backends or discovery/token endpoints.
+Existing transport redirect behavior is unchanged: the registered Rust event and
+upload adapters already disabled redirects before header configuration existed.
+Low-level programmatic `ReqwestHttp` configuration remains unchanged.
 
 ### Event envelopes, manifests, and bodies
 

@@ -127,11 +127,57 @@ mod runtime {
     }
     #[tokio::test]
     async fn actual_upload_uses_only_upload_token_ref() {
+        actual_upload_headers(None, false).await;
+    }
+    #[tokio::test]
+    async fn actual_upload_registration_headers_override_auth_and_defaults() {
+        for value in [json!("Bearer abc123"), json!({"valueRef":"explicit"})] {
+            actual_upload_headers(Some(value), false).await;
+        }
+    }
+    #[tokio::test]
+    async fn configured_upload_authorization_suppresses_oauth_challenges() {
+        actual_upload_headers(Some(json!("Bearer abc123")), true).await;
+    }
+    struct NoUploadOAuth;
+    impl agenthooksprotocol::adapters::registered::AuthProvider for NoUploadOAuth {
+        fn credential(
+            &self,
+            _: agenthooksprotocol::adapters::registered::AuthContext,
+        ) -> LocalFuture<
+            '_,
+            Result<Option<agenthooksprotocol::adapters::registered::BearerCredential>, HookError>,
+        > {
+            panic!("configured Authorization must suppress upload acquisition")
+        }
+        fn challenge(
+            &self,
+            _: agenthooksprotocol::adapters::registered::AuthContext,
+            _: agenthooksprotocol::adapters::registered::AuthChallenge,
+        ) -> LocalFuture<'_, Result<(), HookError>> {
+            panic!("configured Authorization must suppress upload challenge")
+        }
+    }
+    async fn actual_upload_headers(explicit: Option<Value>, reject: bool) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let (hooks, backend) = configured(
-            format!("http://{}/content", listener.local_addr().unwrap()),
-            false,
-        );
+        let endpoint = format!("http://{}/content", listener.local_addr().unwrap());
+        let configured_headers = explicit.is_some();
+        let (hooks, backend) = if let Some(explicit) = explicit {
+            let backend = Arc::new(Recorded::default());
+            let mut opts = options().with_backend("org.example.review", backend.clone());
+            opts.backend.allow_loopback_http = true;
+            opts.backend.auth_provider = Some(Arc::new(NoUploadOAuth));
+            opts.backend
+                .credentials
+                .insert("explicit".into(), "Bearer abc123".into());
+            let mut registration = registration();
+            registration["hooks"][0]["transport"]["headers"] = json!({"Authorization":"discarded","authorization":explicit,"Content-Type":"application/custom","Cookie":"session=literal-secret","X-Api-Key":"literal-key","Origin":"https://origin.example","X-Text":"café"});
+            registration["hooks"][0]["subscriptions"][0]["upload"]["endpoint"] = json!(endpoint);
+            registration["hooks"][0]["subscriptions"][0]["upload"]["auth"] = json!({"type":"oauth","flow":"client_credentials","resource":"https://resource.example", "issuer":"https://issuer.example", "clientId":"client", "clientSecretRef":"unused"});
+            (Hooks::new(registration, opts).unwrap(), backend)
+        } else {
+            configured(endpoint, false)
+        };
         let server = async {
             let (socket, _) = listener.accept().await.unwrap();
             let mut reader = BufReader::new(socket);
@@ -148,7 +194,16 @@ mod runtime {
                 let (key, value) = line.split_once(':').unwrap();
                 headers.insert(key.to_ascii_lowercase(), value.trim().to_owned());
             }
-            assert_eq!(headers["authorization"], "Bearer upload-only");
+            if configured_headers {
+                assert_eq!(headers["authorization"], "Bearer abc123");
+                assert_eq!(headers["content-type"], "application/custom");
+                assert_eq!(headers["cookie"], "session=literal-secret");
+                assert_eq!(headers["x-api-key"], "literal-key");
+                assert_eq!(headers["origin"], "https://origin.example");
+                assert_eq!(headers["x-text"], "café");
+            } else {
+                assert_eq!(headers["authorization"], "Bearer upload-only");
+            }
             assert!(!headers.values().any(|value| value.contains("event-only")));
             let size: usize = headers["content-length"].parse().unwrap();
             assert!(size <= 128);
@@ -157,7 +212,12 @@ mod runtime {
             assert_eq!(body, b"upload payload");
             let descriptor = json!({"ref":"https://uploads.example/content/verified","size":size,"sha256":headers["ahp-content-sha256"]});
             let body = descriptor.to_string();
-            reader.get_mut().write_all(format!("HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).as_bytes()).await.unwrap();
+            let status = if reject {
+                "401 Unauthorized"
+            } else {
+                "201 Created"
+            };
+            reader.get_mut().write_all(format!("HTTP/1.1 {status}\r\nWWW-Authenticate: Bearer\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).as_bytes()).await.unwrap();
             descriptor
         };
         let (result, descriptor) = tokio::time::timeout(Duration::from_secs(5), async {
@@ -165,6 +225,12 @@ mod runtime {
         })
         .await
         .unwrap();
+        if reject {
+            assert!(!result.outcome.failures.is_empty());
+            assert!(backend.0.lock().unwrap().is_empty());
+            hooks.shutdown().await.unwrap();
+            return;
+        }
         assert!(
             result.outcome.failures.is_empty(),
             "{:?}",
@@ -386,7 +452,6 @@ fn registration_headers_are_validated_and_diagnostics_are_redacted() {
     let hooks = Hooks::new(value.clone(), options()).expect("canonical HTTP headers");
     futures::executor::block_on(hooks.shutdown()).unwrap();
     for headers in [
-        json!({"Authorization":"sensitive-value"}),
         json!({"X":"sensitive-value\n"}),
         json!({"X":{"valueRef":"sensitive-reference","extra":true}}),
     ] {

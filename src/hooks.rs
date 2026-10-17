@@ -163,6 +163,7 @@ struct Route {
     mode: Mode,
     timeout: Duration,
     configuration: Value,
+    headers: Option<Value>,
     backend: Arc<dyn ManagedBackend>,
 }
 impl Route {
@@ -605,6 +606,9 @@ impl Hooks {
                     mode,
                     timeout,
                     configuration: subscription.clone(),
+                    headers: (backend["transport"]["type"] == "http")
+                        .then(|| backend["transport"].get("headers").cloned())
+                        .flatten(),
                     backend: Arc::clone(&transport),
                 });
             }
@@ -829,6 +833,7 @@ impl Hooks {
                     request,
                     &route.configuration["content"],
                     route.configuration.get("upload"),
+                    route.headers.as_ref(),
                     &owners,
                     &options,
                     &route.backend_id,

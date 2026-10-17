@@ -63,8 +63,6 @@ pub struct BackendOptions {
     pub auth_provider: Option<Arc<dyn AuthProvider>>,
     /// Host-owned per-dispatch header resolution. Defaults to environment/credentials lookup.
     pub header_resolver: Option<Arc<dyn HeaderResolver>>,
-    /// Aggregate configured header name/value byte limit (default 64 KiB).
-    pub max_header_bytes: usize,
     /// Explicit bearer references. `tokenEnv` authorizes an environment lookup.
     pub credentials: BTreeMap<String, String>,
     pub allow_loopback_http: bool,
@@ -81,11 +79,18 @@ impl Default for BackendOptions {
         Self {
             auth_provider: None,
             header_resolver: None,
-            max_header_bytes: 64 * 1024,
             credentials: BTreeMap::new(),
             allow_loopback_http: false,
             max_frame_bytes: 1024 * 1024,
             inherit_environment: false,
+        }
+    }
+}
+impl BackendOptions {
+    pub(crate) fn resolve_secret(&self, source: &HeaderSource) -> Option<String> {
+        match source {
+            HeaderSource::Environment(key) => std::env::var(key).ok(),
+            HeaderSource::Reference(key) => self.credentials.get(key).cloned(),
         }
     }
 }
@@ -122,7 +127,14 @@ pub fn from_registration(
         return Err(error("frame limit must be positive"));
     }
     let transport = &backend["transport"];
-    let auth = backend.get("authentication");
+    let headers = if transport["type"] == "http" {
+        registered_headers::parse(transport.get("headers"))?
+    } else {
+        Default::default()
+    };
+    let auth = backend
+        .get("authentication")
+        .filter(|_| !headers.contains_key("authorization"));
     if let Some(auth) = auth {
         match auth["type"].as_str() {
             Some("bearer") => {}
@@ -139,7 +151,6 @@ pub fn from_registration(
     }
     match transport["type"].as_str() {
         Some("http") => {
-            let headers = registered_headers::parse(transport.get("headers"))?;
             let endpoint = transport["url"]
                 .as_str()
                 .ok_or_else(|| error("missing HTTP URL"))?;
@@ -175,8 +186,7 @@ pub fn from_registration(
                         let token = match (auth.get("tokenRef"), auth.get("tokenEnv")) {
                         (Some(reference), None) => reference
                             .as_str()
-                            .and_then(|key| options.credentials.get(key))
-                            .cloned(),
+                            .and_then(|key| options.resolve_secret(&HeaderSource::Reference(key.into()))),
                         (None, Some(env)) => env
                             .as_str()
                             .filter(|key| {
@@ -187,7 +197,7 @@ pub fn from_registration(
                                             || (i > 0 && b.is_ascii_digit())
                                     })
                             })
-                            .and_then(|key| std::env::var(key).ok()),
+                            .and_then(|key| options.resolve_secret(&HeaderSource::Environment(key.into()))),
                         _ => {
                             return Err(error(
                                 "bearer authentication requires exactly one tokenRef or tokenEnv",
@@ -365,13 +375,14 @@ impl ManagedBackend for HttpBackend {
                         .ok_or_else(|| error("invalid deadline"))?,
                 };
                 let headers = if request["method"] == "hooks/capabilities" {
-                    reqwest::header::HeaderMap::new()
+                    BTreeMap::new()
                 } else {
                     registered_headers::resolve(
                         &self.headers,
                         &self.backend_id,
                         &self.endpoint,
                         context.deadline,
+                        AuthPurpose::Event,
                         &self.options,
                     )
                     .await?
@@ -380,9 +391,15 @@ impl ManagedBackend for HttpBackend {
                     .redirect(reqwest::redirect::Policy::none())
                     .build()
                     .map_err(|_| error("HTTP client initialization failed"))?;
+                let explicit_auth = self.headers.contains_key("authorization");
+                let provider = self
+                    .options
+                    .auth_provider
+                    .as_ref()
+                    .filter(|_| !explicit_auth);
                 let mut retry = false;
                 let mut response = loop {
-                    let credential = if let Some(provider) = &self.options.auth_provider {
+                    let credential = if let Some(provider) = provider {
                         provider
                             .credential(context.clone())
                             .await
@@ -390,15 +407,11 @@ impl ManagedBackend for HttpBackend {
                     } else {
                         None
                     };
-                    if self.options.auth_provider.is_some()
-                        && credential.is_none()
-                        && self.authentication.is_some()
-                    {
+                    if provider.is_some() && credential.is_none() && self.authentication.is_some() {
                         return Err(error("configured credential unavailable"));
                     }
                     let mut outgoing = client
                         .post(&self.endpoint)
-                        .headers(headers.clone())
                         .header("content-type", "application/json")
                         .body(body.clone());
                     if let Some(credential) = &credential {
@@ -411,6 +424,16 @@ impl ManagedBackend for HttpBackend {
                     } else if let Some(auth) = &self.authorization {
                         outgoing = outgoing.header("authorization", auth);
                     }
+                    let mut configured = reqwest::header::HeaderMap::new();
+                    for (name, value) in &headers {
+                        let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                            .map_err(|_| error("invalid HTTP header name"))?;
+                        let mut value = reqwest::header::HeaderValue::from_str(value)
+                            .map_err(|_| error("invalid HTTP header value"))?;
+                        value.set_sensitive(true);
+                        configured.insert(name, value);
+                    }
+                    outgoing = outgoing.headers(configured);
                     let remaining = timeout
                         .checked_sub(started.elapsed())
                         .filter(|d| !d.is_zero())
@@ -423,7 +446,7 @@ impl ManagedBackend for HttpBackend {
                         })
                     })?;
                     if response.status().as_u16() == 401
-                        && let Some(provider) = &self.options.auth_provider
+                        && let Some(provider) = provider
                     {
                         // Only authentication metadata is exposed, never response bodies.
                         let headers = response

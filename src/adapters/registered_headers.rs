@@ -1,5 +1,4 @@
 //! Request-local registration metadata. Never put resolved values in diagnostics.
-#[cfg(feature = "reqwest")]
 use super::registered::BackendOptions;
 use super::registered::{AuthPurpose, error};
 use crate::client::{HookError, LocalFuture};
@@ -26,15 +25,11 @@ pub trait HeaderResolver: Send + Sync {
     fn resolve(&self, context: HeaderContext) -> LocalFuture<'_, Result<String, HookError>>;
 }
 #[derive(Clone)]
-#[cfg_attr(not(feature = "reqwest"), allow(dead_code))]
 pub(crate) enum ConfiguredValue {
     Literal(String),
     Source(HeaderSource),
 }
 pub(crate) type Headers = BTreeMap<String, ConfiguredValue>;
-fn printable(value: &str) -> bool {
-    value.bytes().all(|b| (0x20..=0x7e).contains(&b))
-}
 pub(crate) fn parse(value: Option<&Value>) -> Result<Headers, HookError> {
     let mut headers = BTreeMap::new();
     let Some(value) = value else {
@@ -45,39 +40,13 @@ pub(crate) fn parse(value: Option<&Value>) -> Result<Headers, HookError> {
         .ok_or_else(|| error("invalid HTTP headers"))?;
     for (name, value) in object {
         let name = name.to_ascii_lowercase();
-        if name.is_empty()
-            || !name
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+.^_`|~-".contains(&b))
-            || name.starts_with("proxy-")
-            || name.starts_with("sec-")
-            || name.starts_with("ahp-")
-            || [
-                "authorization",
-                "cookie",
-                "set-cookie",
-                "host",
-                "content-type",
-                "accept",
-                "content-length",
-                "content-encoding",
-                "connection",
-                "keep-alive",
-                "transfer-encoding",
-                "te",
-                "trailer",
-                "upgrade",
-                "expect",
-                "origin",
-                "referer",
-            ]
-            .contains(&name.as_str())
-            || headers.contains_key(&name)
-        {
-            return Err(error("invalid or reserved HTTP header name"));
-        }
+        http::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| error("invalid HTTP header name"))?;
         let configured = match value {
-            Value::String(s) if printable(s) => ConfiguredValue::Literal(s.clone()),
+            Value::String(s) => {
+                http::HeaderValue::from_str(s).map_err(|_| error("invalid HTTP header value"))?;
+                ConfiguredValue::Literal(s.clone())
+            }
             Value::Object(source) if source.len() == 1 => {
                 if let Some(Value::String(s)) = source.get("valueEnv") {
                     if s.is_empty()
@@ -103,57 +72,39 @@ pub(crate) fn parse(value: Option<&Value>) -> Result<Headers, HookError> {
     }
     Ok(headers)
 }
-#[cfg(feature = "reqwest")]
 pub(crate) async fn resolve(
     headers: &Headers,
     backend_id: &str,
     destination: &str,
     deadline: Instant,
+    purpose: AuthPurpose,
     options: &BackendOptions,
-) -> Result<reqwest::header::HeaderMap, HookError> {
-    let mut result = reqwest::header::HeaderMap::new();
-    let mut size = 0usize;
+) -> Result<BTreeMap<String, String>, HookError> {
+    let mut result = BTreeMap::new();
     for (name, configured) in headers {
         let value = match configured {
             ConfiguredValue::Literal(value) => value.clone(),
             ConfiguredValue::Source(source) => {
-                let value = if let Some(resolver) = &options.header_resolver {
+                if let Some(resolver) = &options.header_resolver {
                     resolver
                         .resolve(HeaderContext {
                             backend_id: backend_id.into(),
                             destination: destination.into(),
-                            purpose: AuthPurpose::Event,
+                            purpose,
                             deadline,
                             source: source.clone(),
                         })
                         .await
                         .map_err(|_| error("HTTP header resolution failed"))?
                 } else {
-                    match source {
-                        HeaderSource::Environment(key) => std::env::var(key).ok(),
-                        HeaderSource::Reference(key) => options.credentials.get(key).cloned(),
-                    }
-                    .ok_or_else(|| error("HTTP header source unavailable"))?
-                };
-                if value.is_empty() {
-                    return Err(error("HTTP header source unavailable"));
+                    options
+                        .resolve_secret(source)
+                        .ok_or_else(|| error("HTTP header source unavailable"))?
                 }
-                value
             }
         };
-        if !printable(&value) {
-            return Err(error("invalid resolved HTTP header value"));
-        }
-        size = size.saturating_add(name.len()).saturating_add(value.len());
-        if size > options.max_header_bytes {
-            return Err(error("HTTP headers exceed limit"));
-        }
-        let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-            .map_err(|_| error("invalid HTTP header name"))?;
-        let mut value = reqwest::header::HeaderValue::from_str(&value)
-            .map_err(|_| error("invalid HTTP header value"))?;
-        value.set_sensitive(true);
-        result.insert(name, value);
+        http::HeaderValue::from_str(&value).map_err(|_| error("invalid HTTP header value"))?;
+        result.insert(name.clone(), value);
     }
     Ok(result)
 }

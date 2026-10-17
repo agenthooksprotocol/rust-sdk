@@ -10,14 +10,11 @@ fn invalid_static_headers_fail_before_io() {
         json!(null),
         json!([]),
         json!({"X":1}),
-        json!({"X":"\t"}),
-        json!({"X":"é"}),
         json!({"X":"\r\n"}),
         json!({"X":"\u{7f}"}),
         json!({"X":"\0"}),
         json!({"bad name":"x"}),
         json!({"é":"x"}),
-        json!({"X":"a","x":"a"}),
         json!({"X":{"valueRef":""}}),
         json!({"X":{"valueEnv":"1BAD"}}),
         json!({"X":{"valueEnv":"A","valueRef":"b"}}),
@@ -27,37 +24,6 @@ fn invalid_static_headers_fail_before_io() {
         assert!(
             from_registration(
                 &config("https://example.test", headers),
-                &BackendOptions::default()
-            )
-            .is_err()
-        );
-    }
-    for name in [
-        "Authorization",
-        "Proxy-Authorization",
-        "Proxy-Anything",
-        "Cookie",
-        "Set-Cookie",
-        "Host",
-        "Content-Type",
-        "Accept",
-        "Content-Length",
-        "Content-Encoding",
-        "Connection",
-        "Keep-Alive",
-        "Transfer-Encoding",
-        "TE",
-        "Trailer",
-        "Upgrade",
-        "Expect",
-        "Origin",
-        "Referer",
-        "Sec-Test",
-        "AHP-Test",
-    ] {
-        assert!(
-            from_registration(
-                &config("https://example.test", json!({name.to_uppercase():"x"})),
                 &BackendOptions::default()
             )
             .is_err()
@@ -129,6 +95,8 @@ mod http {
                 received.push(String::from_utf8(bytes).unwrap());
                 let status = if extra.is_empty() {
                     "204 No Content"
+                } else if extra.starts_with("WWW-Authenticate:") {
+                    "401 Unauthorized"
                 } else {
                     "307 Temporary Redirect"
                 };
@@ -153,6 +121,102 @@ mod http {
                 Ok(self.value.lock().unwrap().clone())
             })
         }
+    }
+    struct NoOAuth;
+    impl agenthooksprotocol::adapters::registered::AuthProvider for NoOAuth {
+        fn credential(
+            &self,
+            _: agenthooksprotocol::adapters::registered::AuthContext,
+        ) -> LocalFuture<
+            '_,
+            Result<Option<agenthooksprotocol::adapters::registered::BearerCredential>, HookError>,
+        > {
+            panic!("explicit Authorization must suppress acquisition")
+        }
+        fn challenge(
+            &self,
+            _: agenthooksprotocol::adapters::registered::AuthContext,
+            _: agenthooksprotocol::adapters::registered::AuthChallenge,
+        ) -> LocalFuture<'_, Result<(), HookError>> {
+            panic!("explicit Authorization must suppress challenge")
+        }
+    }
+    #[tokio::test]
+    async fn configured_headers_override_defaults_and_auth_without_oauth() {
+        for auth in [json!("Bearer abc123"), json!({"valueRef":"explicit"})] {
+            let (url, task) = server(1, String::new());
+            let opts = BackendOptions {
+                auth_provider: Some(Arc::new(NoOAuth)),
+                credentials: [("explicit".into(), "Bearer abc123".into())].into(),
+                ..options()
+            };
+            let mut registration = config(
+                &url,
+                json!({"AUTHORIZATION":"discarded","authorization":auth,"Content-Type":"application/custom","Cookie":"session=literal-secret","X-Api-Key":"literal-key","Origin":"https://origin.example","AHP-Example":"allowed","X-Text":"café\tvalue","X-Duplicate":"first","x-duplicate":"last"}),
+            );
+            registration["authentication"] = json!({"type":"oauth","flow":"client_credentials"});
+            let backend = from_registration(&registration, &opts).unwrap();
+            backend
+                .call(notification(), Duration::from_secs(2))
+                .await
+                .unwrap();
+            let wire = task.join().unwrap().remove(0);
+            for header in [
+                "authorization: Bearer abc123",
+                "content-type: application/custom",
+                "cookie: session=literal-secret",
+                "x-api-key: literal-key",
+                "origin: https://origin.example",
+                "ahp-example: allowed",
+                "x-text: café\tvalue",
+                "x-duplicate: last",
+            ] {
+                assert!(wire.contains(header), "missing {header}");
+            }
+            assert_eq!(wire.matches("authorization:").count(), 1);
+            assert_eq!(wire.matches("x-duplicate:").count(), 1);
+        }
+    }
+    #[tokio::test]
+    async fn explicit_authorization_suppresses_challenge_and_retry() {
+        let (url, task) = server(1, "WWW-Authenticate: Bearer\r\n".into());
+        let opts = BackendOptions {
+            auth_provider: Some(Arc::new(NoOAuth)),
+            ..options()
+        };
+        let backend = from_registration(
+            &config(&url, json!({"Authorization":"Bearer abc123"})),
+            &opts,
+        )
+        .unwrap();
+        assert!(
+            backend
+                .call(notification(), Duration::from_secs(2))
+                .await
+                .is_err()
+        );
+        assert!(task.join().unwrap()[0].contains("authorization: Bearer abc123"));
+    }
+    #[tokio::test]
+    async fn explicit_auth_failure_does_not_fall_back_to_oauth() {
+        let opts = BackendOptions {
+            auth_provider: Some(Arc::new(NoOAuth)),
+            ..options()
+        };
+        let backend = from_registration(
+            &config(
+                "http://127.0.0.1:1",
+                json!({"Authorization":{"valueRef":"missing"}}),
+            ),
+            &opts,
+        )
+        .unwrap();
+        assert!(
+            backend
+                .call(notification(), Duration::from_secs(1))
+                .await
+                .is_err()
+        );
     }
     #[tokio::test]
     async fn emitted_headers_rotate_per_dispatch_and_remain_backend_local() {
@@ -229,14 +293,13 @@ mod http {
         assert!(received[0].contains("x-ref: complete-value\r\n"));
     }
     #[tokio::test]
-    async fn missing_invalid_and_oversize_values_send_nothing() {
+    async fn missing_and_invalid_values_send_nothing() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}/hooks", listener.local_addr().unwrap());
-        for value in ["", "private-secret\n", "é", "too-long"] {
+        for value in ["private-secret\n", "private-secret\0"] {
             let opts = BackendOptions {
                 credentials: [("key".into(), value.into())].into(),
-                max_header_bytes: 8,
                 ..options()
             };
             let backend =
@@ -305,7 +368,7 @@ mod http {
         assert!(!task.join().unwrap()[0].contains("x-secret"));
     }
     #[tokio::test]
-    async fn redirects_never_receive_configured_headers() {
+    async fn existing_no_redirect_transport_behavior_is_unchanged() {
         let target = TcpListener::bind("127.0.0.1:0").unwrap();
         target.set_nonblocking(true).unwrap();
         let (url, task) = server(
