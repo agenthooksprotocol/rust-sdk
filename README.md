@@ -55,6 +55,10 @@ if hooks.subscribes(EventType::ToolBefore) {
 }
 ```
 
+`hooks.intercepts(EventType::ModelResponseAfter)` is `subscribes` restricted to
+interception routes. Use it to decide whether to withhold streamed model output
+until interceptors settle.
+
 Enable `reqwest` for registered HTTP and `tokio-process` for registered stdio.
 Default features are empty. Construction and unpolled boundaries perform no
 transport I/O. The host supplies an executor; the SDK creates no executor or

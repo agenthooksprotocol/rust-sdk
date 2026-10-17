@@ -36,7 +36,6 @@ fn hooks(
     grants: HostCapabilities,
     filters: Value,
 ) -> (Hooks, Arc<Backend>) {
-    let backend = Arc::new(Backend::default());
     let mut subscription =
         json!({"events":[selector],"mode":mode,"content":{"default":"metadata"}});
     if mode == "intercept" {
@@ -46,8 +45,12 @@ fn hooks(
     if !filters.is_null() {
         subscription["filters"] = filters;
     }
+    registered(json!([subscription]), grants)
+}
+fn registered(subscriptions: Value, grants: HostCapabilities) -> (Hooks, Arc<Backend>) {
+    let backend = Arc::new(Backend::default());
     let hooks = Hooks::new(
-        json!({"protocolVersion":"draft","hooks":[{"id":"org.example.interest","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":[subscription]}]}),
+        json!({"protocolVersion":"draft","hooks":[{"id":"org.example.interest","transport":{"type":"stdio","command":"unused","lifecycle":"persistent"},"subscriptions":subscriptions}]}),
         HooksOptions::new("urn:test:interest", agenthooksprotocol::hooks::Harness::new("test", "1"), grants).with_backend("org.example.interest", backend.clone()),
     ).unwrap();
     (hooks, backend)
@@ -231,5 +234,83 @@ fn every_canonical_event_accepts_typed_interest_without_preparation() {
         let _ = client.event_for(event, json!({}));
         assert!(hooks.subscribes(event), "{}", event.as_str());
     }
+    finish(hooks, &backend);
+}
+
+fn intercept(selector: &str) -> Value {
+    json!({"events":[selector],"mode":"intercept","content":{"default":"metadata"},"failurePolicy":"fail-closed","timeoutMs":1000})
+}
+fn observe(selector: &str) -> Value {
+    json!({"events":[selector],"mode":"observe","content":{"default":"metadata"}})
+}
+fn model_grants() -> HostCapabilities {
+    HostCapabilities {
+        model_request_before: Some(capability::model_request_before().message().observe()),
+        model_response_after: Some(capability::model_response_after().message().observe()),
+        model_error: Some(capability::model_error().observe()),
+        tool_before: Some(capability::tool_before().allow().observe()),
+        ..HostCapabilities::default()
+    }
+}
+
+#[test]
+fn intercepts_counts_only_interception_routes() {
+    for (subscriptions, intercepts) in [
+        (json!([intercept("tool.before")]), true),
+        (json!([observe("tool.before")]), false),
+        (
+            json!([observe("tool.before"), intercept("tool.before")]),
+            true,
+        ),
+    ] {
+        let (hooks, backend) = registered(subscriptions, grants());
+        assert_eq!(hooks.intercepts(EventType::ToolBefore), intercepts);
+        assert!(hooks.subscribes(EventType::ToolBefore));
+        assert!(!hooks.intercepts(EventType::ToolAfter));
+        finish(hooks, &backend);
+    }
+}
+
+#[test]
+fn intercepts_follows_wildcard_selectors() {
+    for selector in ["model.*", "*"] {
+        let (hooks, backend) = hooks(selector, "intercept", model_grants(), Value::Null);
+        assert!(hooks.intercepts(EventType::ModelRequestBefore));
+        assert!(hooks.intercepts(EventType::ModelResponseAfter));
+        assert!(!hooks.intercepts(EventType::ModelError));
+        assert_eq!(hooks.intercepts(EventType::ToolBefore), selector == "*");
+        assert!(!hooks.intercepts(EventType::SessionEnd));
+        finish(hooks, &backend);
+    }
+    let (hooks, backend) = registered(json!([observe("model.*")]), model_grants());
+    assert!(!hooks.intercepts(EventType::ModelResponseAfter));
+    assert!(hooks.subscribes(EventType::ModelResponseAfter));
+    finish(hooks, &backend);
+}
+
+#[test]
+fn intercepts_requires_host_interception_grant() {
+    let grants = HostCapabilities {
+        tool_before: Some(capability::tool_before().allow()),
+        model_response_after: Some(capability::model_response_after().observe()),
+        ..HostCapabilities::default()
+    };
+    let (hooks, backend) = registered(json!([intercept("*"), observe("*")]), grants);
+    assert!(hooks.intercepts(EventType::ToolBefore));
+    assert!(!hooks.intercepts(EventType::ModelResponseAfter));
+    assert!(hooks.subscribes(EventType::ModelResponseAfter));
+    assert!(!hooks.intercepts(EventType::SessionEnd));
+    finish(hooks, &backend);
+}
+
+#[test]
+fn intercepts_ignores_payload_filters() {
+    let (hooks, backend) = hooks(
+        "tool.*",
+        "intercept",
+        grants(),
+        json!({"paths":["restricted/**"],"toolKinds":["shell"]}),
+    );
+    assert!(hooks.intercepts(EventType::ToolBefore));
     finish(hooks, &backend);
 }

@@ -645,6 +645,18 @@ impl Hooks {
         })
     }
 
+    /// Whether any interception route the host granted selects `event`.
+    /// Payload-dependent filters are not evaluated.
+    pub fn intercepts(&self, event: generated::EventType) -> bool {
+        let Some(grant) = self.grants.get(&event) else {
+            return false;
+        };
+        grant.get("capabilities").is_some()
+            && self.routes.iter().any(|route| {
+                route.events.contains(&event) && matches!(route.mode, Mode::Intercept(_))
+            })
+    }
+
     pub fn event<T: Serialize>(&self, event: T) -> EventBoundary<'_, T> {
         EventBoundary {
             hooks: self,
