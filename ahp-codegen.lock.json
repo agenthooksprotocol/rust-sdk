@@ -1,11 +1,11 @@
 {
   "sourceRepository": "agenthooksprotocol/agent-hooks-protocol",
-  "sourceCommit": "3646513f17aad1f9c543775dd190ec43aba0c052",
+  "sourceCommit": "6e409ee9a1670220cfa79cdc47a6df0be438bd6a",
   "schemaRevision": "draft",
   "protocolVersion": "draft",
   "generatorVersion": "0.1.0",
   "language": "rust",
-  "schemaManifestSha256": "6e6f76661fa9a512fe7aef714b61f3c34b58beffa87077064ad926165fd4ff83",
+  "schemaManifestSha256": "81d5096127d1f03d6fa3472aa7fbc64f6ec9ce0adf57b40ee9f576b092036a63",
   "documents": [
     {
       "path": "schema/draft/capabilities-request.schema.json",
@@ -101,7 +101,7 @@
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "df45a65ec35543e6af312ed7389e8d4f1a1fb614500eaa8ea22e17ca447b098f"
+      "sha256": "6144a5f9935e2b0e37006880949d1dc3304ac03baad9a2580b06d4fecb536342"
     },
     {
       "path": "schema/draft/schema.json",
