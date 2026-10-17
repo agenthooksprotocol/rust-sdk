@@ -121,6 +121,7 @@ pub fn boundary<'a>(hooks:&'a Hooks,input:ToolBeforeInput<JsonValue>)->ToolBound
 pub fn candidate(outcome:ToolOutcome<JsonValue,String>)->Option<Candidate<String,JsonValue>> { outcome.outcome.settled_candidate }
 pub fn input(outcome:ToolOutcome<JsonValue,String>)->JsonValue { outcome.input }
 pub fn subscribes(hooks:&Hooks,event:agenthooksprotocol::generated::EventType)->bool { hooks.subscribes(event) }
+pub fn intercepts(hooks:&Hooks,event:agenthooksprotocol::generated::EventType)->bool { hooks.intercepts(event) }
 pub fn declared_events(hooks:&Hooks, client:&agenthooksprotocol::client::Client, event:agenthooksprotocol::generated::EventType, payload:JsonValue) {
     let _ = hooks.event_for(event, payload.clone());
     let _ = client.event_for(event, payload);

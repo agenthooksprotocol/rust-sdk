@@ -55,6 +55,13 @@ if hooks.subscribes(EventType::ToolBefore) {
 }
 ```
 
+Use `hooks.intercepts(EventType::ModelResponseAfter)` when the host must decide
+before streaming whether any hook can intercept an event, for example to
+withhold model output until interception settles. It is the same synchronous
+lookup as `subscribes`, restricted to interception routes the host granted:
+observe-only routes never count, and payload-dependent filters are not
+evaluated. True reports potential interception, not permission or a guarantee.
+
 Enable `reqwest` for registered HTTP and `tokio-process` for registered stdio.
 Default features are empty. Construction and unpolled boundaries perform no
 transport I/O. The host supplies an executor; the SDK creates no executor or
