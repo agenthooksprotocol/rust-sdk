@@ -2,6 +2,8 @@
 //!
 //! No runtime or worker thread is created. Call `shutdown` before dropping the
 //! caller's runtime to deterministically reap children after cancellation.
+use super::registered_headers;
+pub use super::registered_headers::{HeaderContext, HeaderResolver, HeaderSource};
 use crate::client::{HookError, LocalFuture};
 use serde_json::Value;
 #[cfg(any(feature = "reqwest", feature = "tokio-process"))]
@@ -59,6 +61,10 @@ pub trait ManagedBackend: Send + Sync {
 pub struct BackendOptions {
     /// Host-owned authentication; futures are cancelled with the operation.
     pub auth_provider: Option<Arc<dyn AuthProvider>>,
+    /// Host-owned per-dispatch header resolution. Defaults to environment/credentials lookup.
+    pub header_resolver: Option<Arc<dyn HeaderResolver>>,
+    /// Aggregate configured header name/value byte limit (default 64 KiB).
+    pub max_header_bytes: usize,
     /// Explicit bearer references. `tokenEnv` authorizes an environment lookup.
     pub credentials: BTreeMap<String, String>,
     pub allow_loopback_http: bool,
@@ -74,6 +80,8 @@ impl Default for BackendOptions {
     fn default() -> Self {
         Self {
             auth_provider: None,
+            header_resolver: None,
+            max_header_bytes: 64 * 1024,
             credentials: BTreeMap::new(),
             allow_loopback_http: false,
             max_frame_bytes: 1024 * 1024,
@@ -81,7 +89,7 @@ impl Default for BackendOptions {
         }
     }
 }
-fn error(message: &str) -> HookError {
+pub(super) fn error(message: &str) -> HookError {
     use crate::generated::DeliveryDiagnosticCode;
     let code = if message.contains("deadline") {
         DeliveryDiagnosticCode::DeadlineExceeded
@@ -131,6 +139,7 @@ pub fn from_registration(
     }
     match transport["type"].as_str() {
         Some("http") => {
+            let headers = registered_headers::parse(transport.get("headers"))?;
             let endpoint = transport["url"]
                 .as_str()
                 .ok_or_else(|| error("missing HTTP URL"))?;
@@ -197,6 +206,7 @@ pub fn from_registration(
             {
                 Ok(Arc::new(HttpBackend {
                     endpoint: endpoint.into(),
+                    headers,
                     backend_id: backend["id"].as_str().unwrap_or("").into(),
                     authentication: auth.cloned(),
                     authorization,
@@ -206,7 +216,7 @@ pub fn from_registration(
             }
             #[cfg(not(feature = "reqwest"))]
             {
-                let _ = authorization;
+                let _ = (authorization, headers);
                 Err(error("HTTP backend requires the reqwest feature"))
             }
         }
@@ -323,6 +333,7 @@ fn validate_response(request: &Value, body: &[u8]) -> Result<Value, HookError> {
 }
 #[cfg(feature = "reqwest")]
 struct HttpBackend {
+    headers: registered_headers::Headers,
     backend_id: String,
     authentication: Option<Value>,
     endpoint: String,
@@ -353,6 +364,18 @@ impl ManagedBackend for HttpBackend {
                         .checked_add(timeout)
                         .ok_or_else(|| error("invalid deadline"))?,
                 };
+                let headers = if request["method"] == "hooks/capabilities" {
+                    reqwest::header::HeaderMap::new()
+                } else {
+                    registered_headers::resolve(
+                        &self.headers,
+                        &self.backend_id,
+                        &self.endpoint,
+                        context.deadline,
+                        &self.options,
+                    )
+                    .await?
+                };
                 let client = reqwest::Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
                     .build()
@@ -375,6 +398,7 @@ impl ManagedBackend for HttpBackend {
                     }
                     let mut outgoing = client
                         .post(&self.endpoint)
+                        .headers(headers.clone())
                         .header("content-type", "application/json")
                         .body(body.clone());
                     if let Some(credential) = &credential {

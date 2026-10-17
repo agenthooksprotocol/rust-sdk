@@ -64,9 +64,15 @@ pub fn validate(
     context: &Value,
     schemas: &Schemas,
 ) -> Result<()> {
-    schemas.validate("registration", registration)?;
+    schemas
+        .validate("registration", registration)
+        .map_err(|_| "invalid registration".to_string())?;
     let mut ids = BTreeSet::new();
     for hook in registration["hooks"].as_array().ok_or("missing hooks")? {
+        if hook["transport"]["type"] == "http" {
+            crate::adapters::registered_headers::parse(hook["transport"].get("headers"))
+                .map_err(|error| error.to_string())?;
+        }
         if !ids.insert(hook["id"].as_str().ok_or("missing backend id")?) {
             return Err("duplicate backend id".into());
         }

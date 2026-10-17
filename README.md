@@ -258,6 +258,38 @@ OAuth discovery/trust, consent, token acquisition/refresh, and provider lifecycl
 Configured unsupported mechanisms and missing credentials fail closed. Event
 credentials are never an implicit fallback for independently bound uploads.
 
+### Registered HTTP headers
+
+AHP-0002 adds event-only `transport.headers` metadata to HTTP registrations:
+
+```json
+"headers": {
+  "X-Tenant": "engineering",
+  "X-Api-Key": { "valueEnv": "POLICY_API_KEY" },
+  "X-Gateway": { "valueRef": "policy-gateway" }
+}
+```
+
+Use literals only for non-secret metadata, never credentials or cookies. Literal
+strings are not interpolated or trimmed. `valueEnv` reads the harness environment;
+`valueRef` reads `BackendOptions::credentials` by default. Set
+`BackendOptions::header_resolver` to resolve sources through a host-owned provider.
+The resolver receives backend identity, exact destination, event purpose, source,
+and deadline. Dropping the operation cancels its future. Values resolve once per
+dispatch, including challenged retries, and resolve again on the next dispatch.
+
+Names must be ASCII HTTP tokens, with no case-insensitive duplicates or reserved
+authentication, framing, security, or AHP fields. Values must be printable ASCII;
+missing, empty, or invalid secret values fail before the event request. Empty
+literal metadata is allowed. The aggregate name/value limit defaults to 64 KiB
+and is configurable with `BackendOptions::max_header_bytes`. Errors never include
+header values or secret references. Authentication alone supplies `Authorization`.
+
+Headers are attached only to the configured endpoint's interception/observation
+POSTs, never capability discovery or uploads. Redirects remain disabled. The
+registered adapter owns its client; low-level `ReqwestHttp` configuration is
+unchanged and is not imported as registration defaults.
+
 ### Event envelopes, manifests, and bodies
 
 Named boundaries such as `hooks.session_start(facts).await` supply their event

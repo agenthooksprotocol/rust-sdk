@@ -378,3 +378,22 @@ mod provider_auth {
         );
     }
 }
+
+#[test]
+fn registration_headers_are_validated_and_diagnostics_are_redacted() {
+    let mut value = registration();
+    value["hooks"][0]["transport"]["headers"] = json!({"X-Metadata":"tenant"});
+    let hooks = Hooks::new(value.clone(), options()).expect("canonical HTTP headers");
+    futures::executor::block_on(hooks.shutdown()).unwrap();
+    for headers in [
+        json!({"Authorization":"sensitive-value"}),
+        json!({"X":"sensitive-value\n"}),
+        json!({"X":{"valueRef":"sensitive-reference","extra":true}}),
+    ] {
+        value["hooks"][0]["transport"]["headers"] = headers;
+        let error = Hooks::new(value.clone(), options())
+            .err()
+            .expect("invalid headers rejected");
+        assert!(!error.to_string().contains("sensitive"));
+    }
+}

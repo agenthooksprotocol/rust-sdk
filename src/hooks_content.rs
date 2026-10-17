@@ -995,6 +995,7 @@ mod tests {
             allow_loopback_http: false,
             max_frame_bytes: 8192,
             inherit_environment: false,
+            ..Default::default()
         }
     }
     fn item() -> Value {
