@@ -47,7 +47,9 @@ pub(crate) fn parse(value: Option<&Value>) -> Result<Headers, HookError> {
                 http::HeaderValue::from_str(s).map_err(|_| error("invalid HTTP header value"))?;
                 ConfiguredValue::Literal(s.clone())
             }
-            Value::Object(source) if source.len() == 1 => {
+            Value::Object(source)
+                if source.contains_key("valueEnv") != source.contains_key("valueRef") =>
+            {
                 if let Some(Value::String(s)) = source.get("valueEnv") {
                     if s.is_empty()
                         || !s.bytes().enumerate().all(|(i, b)| {

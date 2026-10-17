@@ -287,7 +287,9 @@ The native HTTP library validates field names and values, including rejection of
 CR/LF/NUL injection. Legal non-ASCII values and tabs are supported. All valid names
 are allowed, including authentication, cookie, origin, and protocol headers.
 Case-insensitive duplicate names use the last property in configuration-map
-iteration order; the default Rust JSON/map representation iterates sorted keys.
+iteration order; parsed JSON objects retain their input property order. Unknown
+source-object extension fields are ignored; exactly one of `valueEnv` or
+`valueRef` must still be present.
 Configured values are applied last over transport defaults and authentication,
 including `Authorization` and `Content-Type`. A configured `Authorization` of any
 casing or source suppresses OAuth acquisition, discovery, challenges, and retries

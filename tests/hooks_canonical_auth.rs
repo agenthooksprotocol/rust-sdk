@@ -453,7 +453,7 @@ fn registration_headers_are_validated_and_diagnostics_are_redacted() {
     futures::executor::block_on(hooks.shutdown()).unwrap();
     for headers in [
         json!({"X":"sensitive-value\n"}),
-        json!({"X":{"valueRef":"sensitive-reference","extra":true}}),
+        json!({"X":{"valueRef":"sensitive-reference","valueEnv":"SENSITIVE"}}),
     ] {
         value["hooks"][0]["transport"]["headers"] = headers;
         let error = Hooks::new(value.clone(), options())

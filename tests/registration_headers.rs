@@ -219,6 +219,61 @@ mod http {
         );
     }
     #[tokio::test]
+    async fn parsed_header_duplicates_follow_input_order_without_resolving_overridden_sources() {
+        for input in [
+            r#"{"x-key":"first","X-Key":"last"}"#,
+            r#"{"X-Key":"first","x-key":"last"}"#,
+            r#"{"x-key":{"valueEnv":"AHP_NEVER_RESOLVE_OVERRIDDEN"},"X-Key":"last"}"#,
+            r#"{"X-Key":{"valueEnv":"AHP_NEVER_RESOLVE_OVERRIDDEN"},"x-key":"last"}"#,
+        ] {
+            let (url, task) = server(1, String::new());
+            let opts = BackendOptions {
+                header_resolver: Some(Arc::new(Pending)),
+                ..options()
+            };
+            let backend =
+                from_registration(&config(&url, serde_json::from_str(input).unwrap()), &opts)
+                    .unwrap();
+            backend
+                .call(notification(), Duration::from_secs(2))
+                .await
+                .unwrap();
+            let wire = task.join().unwrap().remove(0);
+            assert!(wire.contains("x-key: last\r\n"));
+            assert_eq!(wire.matches("x-key:").count(), 1);
+        }
+    }
+    #[tokio::test]
+    async fn header_sources_accept_inert_extension_properties() {
+        let (url, task) = server(1, String::new());
+        let opts = BackendOptions {
+            credentials: [("key".into(), "resolved".into())].into(),
+            ..options()
+        };
+        let backend = from_registration(
+            &config(
+                &url,
+                json!({
+                    "X-Env":{"valueEnv":"CARGO_MANIFEST_DIR","description":"metadata"},
+                    "X-Ref":{"valueRef":"key","description":"metadata","extension":{"nested":true}}
+                }),
+            ),
+            &opts,
+        )
+        .unwrap();
+        backend
+            .call(notification(), Duration::from_secs(2))
+            .await
+            .unwrap();
+        let wire = task.join().unwrap().remove(0);
+        assert!(wire.contains("x-ref: resolved\r\n"));
+        assert!(wire.contains(&format!(
+            "x-env: {}\r\n",
+            std::env::var("CARGO_MANIFEST_DIR").unwrap()
+        )));
+        assert!(!wire.contains("description"));
+    }
+    #[tokio::test]
     async fn emitted_headers_rotate_per_dispatch_and_remain_backend_local() {
         let (url, task) = server(3, String::new());
         let resolver = Arc::new(Resolver {
