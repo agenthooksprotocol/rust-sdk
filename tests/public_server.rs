@@ -1126,3 +1126,36 @@ fn callback_helpers_build_handlers_without_boilerplate() {
     };
     assert_eq!(block_on(server.handle(request())).status, 200);
 }
+
+#[test]
+fn static_configuration_discovery_is_authenticated_and_shared_with_stdio() {
+    let mut server = server();
+    let configuration = serde_json::json!({"subscriptions":[{"events":["tool.before"],"mode":"intercept","timeoutMs":750,"failurePolicy":"fail-open","content":{"default":"metadata"}}]});
+    server.handlers.configuration = Some(serde_json::from_value(configuration.clone()).unwrap());
+    let message = serde_json::json!({"jsonrpc":"2.0","id":"config-1","method":"hooks/configuration","params":{"protocolVersion":"draft"}});
+    let mut req = request();
+    req.body = serde_json::to_vec(&message).unwrap();
+    let response = block_on(server.handle(req.clone()));
+    assert_eq!(response.status, 200);
+    let value: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(value["id"], "config-1");
+    assert_eq!(value["result"]["configuration"], configuration);
+    assert!(value["result"].get("manifest").is_none());
+    let framed = block_on(stdio::dispatch(
+        &server,
+        req.body.clone(),
+        Some("Bearer local-demo".into()),
+    ));
+    assert_eq!(framed, response);
+    req.headers.remove("authorization");
+    assert_eq!(block_on(server.handle(req)).status, 401);
+}
+
+#[test]
+fn absent_configuration_returns_method_not_found_without_inference() {
+    let server = server();
+    let mut req = request();
+    req.body = serde_json::to_vec(&serde_json::json!({"jsonrpc":"2.0","id":"config-2","method":"hooks/configuration","params":{"protocolVersion":"draft"}})).unwrap();
+    let response = block_on(server.handle(req));
+    assert_rpc_error(&response, &"config-2".into(), -32601);
+}

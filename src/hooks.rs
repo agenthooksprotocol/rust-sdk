@@ -17,7 +17,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     future::{Future, IntoFuture, poll_fn},
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Mutex, OnceLock, Weak,
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     task::{Poll, Waker},
@@ -103,12 +103,21 @@ impl ManifestMetadata {
 /// Host authority, not registration data. Ordinary callers supply a source and
 /// harness identity and explicit per-event grants; registration still owns routing
 /// and transport.
+/// Explicit client approval of discovered upload endpoints, credential bindings,
+/// and forwarding of configured backend headers. The configuration is detached;
+/// mutations cannot alter the admitted declaration. Errors reject the backend.
+pub type ConfigurationAuthorizer =
+    Arc<dyn Fn(&str, crate::Configuration) -> Result<bool, HookError> + Send + Sync>;
+
 pub struct HooksOptions {
     pub source: String,
     pub harness: Harness,
     pub capabilities: HostCapabilities,
     pub manifest_metadata: ManifestMetadata,
     pub backend: BackendOptions,
+    /// Required before adopting any backend-provided upload configuration.
+    /// Explicit client subscriptions do not invoke this callback.
+    pub authorize_configuration: Option<ConfigurationAuthorizer>,
     pub observation_timeout: Duration,
     pub max_observations: usize,
     /// Maximum simultaneous upload transfers across active Hooks operations.
@@ -132,6 +141,7 @@ impl HooksOptions {
             capabilities,
             manifest_metadata: ManifestMetadata::default(),
             backend: BackendOptions::default(),
+            authorize_configuration: None,
             observation_timeout: Duration::from_secs(30),
             max_observations: 1024,
             max_concurrent_uploads: 8,
@@ -477,12 +487,98 @@ impl Drop for Delivery<'_> {
     }
 }
 
+fn routes_for(
+    backend: &Value,
+    transport: &Arc<dyn ManagedBackend>,
+    grants: &BTreeMap<generated::EventType, Value>,
+    observation_timeout: Duration,
+    discovered: bool,
+) -> Result<Vec<Route>, HookError> {
+    let id = backend["id"].as_str().ok_or_else(|| err("backend id"))?;
+    let mut routes = Vec::new();
+    for (index, subscription) in backend["subscriptions"]
+        .as_array()
+        .ok_or_else(|| err("subscriptions"))?
+        .iter()
+        .enumerate()
+    {
+        let intercept = subscription["mode"] == "intercept";
+        let mode = if intercept {
+            Mode::Intercept(if subscription["failurePolicy"] == "fail-open" {
+                FailurePolicy::Open
+            } else {
+                FailurePolicy::Closed
+            })
+        } else {
+            Mode::Observe
+        };
+        let mut events = BTreeSet::new();
+        for selector in subscription["events"]
+            .as_array()
+            .ok_or_else(|| err("events"))?
+        {
+            let selector = selector.as_str().ok_or_else(|| err("event selector"))?;
+            let matched: Vec<_> = grants
+                .iter()
+                .filter(|(name, grant)| {
+                    matches(selector, name.as_str())
+                        && if intercept {
+                            grant.get("capabilities").is_some()
+                        } else {
+                            observes(grant)
+                        }
+                })
+                .map(|(name, _)| *name)
+                .collect();
+            if matched.is_empty() && !discovered {
+                return Err(err(format!(
+                    "registration selector {selector} has no explicitly granted mode"
+                )));
+            }
+            events.extend(matched);
+        }
+        if events.is_empty() {
+            continue;
+        }
+        let timeout = if intercept {
+            Duration::from_millis(
+                subscription["timeoutMs"]
+                    .as_u64()
+                    .ok_or_else(|| err("timeoutMs"))?,
+            )
+        } else {
+            observation_timeout
+        };
+        if timeout.is_zero() {
+            return Err(err("subscription timeout must be positive"));
+        }
+        routes.push(Route {
+            id: format!("{id}:{index}"),
+            backend_id: id.into(),
+            events: events.into_iter().collect(),
+            mode,
+            timeout,
+            configuration: subscription.clone(),
+            headers: (backend["transport"]["type"] == "http")
+                .then(|| backend["transport"].get("headers").cloned())
+                .flatten(),
+            backend: Arc::clone(transport),
+        });
+    }
+    Ok(routes)
+}
+
 /// JSON-registration harness. Construction validates configuration without
 /// network I/O or subprocess spawning. Dispatch is lazy; shutdown is explicit.
 pub struct Hooks {
     options: HooksOptions,
     harness: Value,
     routes: Vec<Route>,
+    initialized_routes: OnceLock<Vec<Route>>,
+    pending: Vec<(Value, Arc<dyn ManagedBackend>)>,
+    backend_order: Vec<String>,
+    initializing: AtomicBool,
+    initialization_waiters: Mutex<Vec<Waker>>,
     grants: BTreeMap<generated::EventType, Value>,
     backends: Vec<Arc<dyn ManagedBackend>>,
     budget: Arc<Budget>,
@@ -490,6 +586,20 @@ pub struct Hooks {
     next_id: AtomicU64,
     upload_limiter: crate::upload_plan::UploadLimiter,
 }
+struct Initializing<'a>(&'a Hooks);
+impl Drop for Initializing<'_> {
+    fn drop(&mut self) {
+        let waiters = {
+            let mut waiters = self.0.initialization_waiters.lock().unwrap();
+            self.0.initializing.store(false, Ordering::SeqCst);
+            std::mem::take(&mut *waiters)
+        };
+        for waiter in waiters {
+            waiter.wake();
+        }
+    }
+}
+
 impl Drop for Hooks {
     fn drop(&mut self) {
         self.life.closing.store(true, Ordering::SeqCst);
@@ -530,6 +640,8 @@ impl Hooks {
         let mut ids = BTreeSet::new();
         let mut routes = vec![];
         let mut backends = vec![];
+        let mut pending = vec![];
+        let mut backend_order = Vec::new();
         for backend in registration["hooks"]
             .as_array()
             .ok_or_else(|| err("hooks"))?
@@ -541,76 +653,26 @@ impl Hooks {
             if backend["transport"]["type"] == "http" {
                 crate::adapters::registered_headers::parse(backend["transport"].get("headers"))?;
             }
+            backend_order.push(id.to_owned());
             let transport = if let Some(custom) = options.backends.get(id) {
                 Arc::clone(custom)
             } else {
-                registered::from_registration(backend, &options.backend)?
+                match registered::from_registration(backend, &options.backend) {
+                    Ok(transport) => transport,
+                    Err(_) if backend.get("subscriptions").is_none() => continue,
+                    Err(error) => return Err(error),
+                }
             };
-            for (index, subscription) in backend["subscriptions"]
-                .as_array()
-                .ok_or_else(|| err("subscriptions"))?
-                .iter()
-                .enumerate()
-            {
-                let intercept = subscription["mode"] == "intercept";
-                let mode = if intercept {
-                    Mode::Intercept(if subscription["failurePolicy"] == "fail-open" {
-                        FailurePolicy::Open
-                    } else {
-                        FailurePolicy::Closed
-                    })
-                } else {
-                    Mode::Observe
-                };
-                let mut events = BTreeSet::new();
-                for selector in subscription["events"]
-                    .as_array()
-                    .ok_or_else(|| err("events"))?
-                {
-                    let selector = selector.as_str().ok_or_else(|| err("event selector"))?;
-                    let matched: Vec<_> = grants
-                        .iter()
-                        .filter(|(name, grant)| {
-                            matches(selector, name.as_str())
-                                && if intercept {
-                                    grant.get("capabilities").is_some()
-                                } else {
-                                    observes(grant)
-                                }
-                        })
-                        .map(|(name, _)| *name)
-                        .collect();
-                    if matched.is_empty() {
-                        return Err(err(format!(
-                            "registration selector {selector} has no explicitly granted mode"
-                        )));
-                    }
-                    events.extend(matched);
-                }
-                let timeout = if intercept {
-                    Duration::from_millis(
-                        subscription["timeoutMs"]
-                            .as_u64()
-                            .ok_or_else(|| err("timeoutMs"))?,
-                    )
-                } else {
-                    options.observation_timeout
-                };
-                if timeout.is_zero() {
-                    return Err(err("subscription timeout must be positive"));
-                }
-                routes.push(Route {
-                    id: format!("{id}:{index}"),
-                    backend_id: id.into(),
-                    events: events.into_iter().collect(),
-                    mode,
-                    timeout,
-                    configuration: subscription.clone(),
-                    headers: (backend["transport"]["type"] == "http")
-                        .then(|| backend["transport"].get("headers").cloned())
-                        .flatten(),
-                    backend: Arc::clone(&transport),
-                });
+            if backend.get("subscriptions").is_some() {
+                routes.extend(routes_for(
+                    backend,
+                    &transport,
+                    &grants,
+                    options.observation_timeout,
+                    false,
+                )?);
+            } else {
+                pending.push((backend.clone(), Arc::clone(&transport)));
             }
             backends.push(transport);
         }
@@ -620,6 +682,11 @@ impl Hooks {
             options,
             harness,
             routes,
+            initialized_routes: OnceLock::new(),
+            pending,
+            backend_order,
+            initializing: AtomicBool::new(false),
+            initialization_waiters: Mutex::new(Vec::new()),
             grants,
             backends,
             budget,
@@ -627,16 +694,131 @@ impl Hooks {
             next_id: AtomicU64::new(0),
         })
     }
+    fn routes(&self) -> &[Route] {
+        self.initialized_routes
+            .get()
+            .map(Vec::as_slice)
+            .unwrap_or(&self.routes)
+    }
+
+    /// Resolve backend defaults once, without creating an executor or worker.
+    /// Explicit subscriptions never perform discovery. Awaited event delivery
+    /// calls this automatically; hosts may await it before inspecting interest.
+    pub async fn initialize(&self) -> Result<(), HookError> {
+        let _active = self.life.begin()?;
+        if self.pending.is_empty() || self.initialized_routes.get().is_some() {
+            return Ok(());
+        }
+        poll_fn(|cx| {
+            let mut waiters = self.initialization_waiters.lock().unwrap();
+            if self.life.closing.load(Ordering::SeqCst) {
+                return Poll::Ready(Err(err(
+                    "configuration initialization cancelled by shutdown",
+                )
+                .classified(generated::DeliveryDiagnosticCode::Cancelled)));
+            }
+            if !self.initializing.swap(true, Ordering::SeqCst) {
+                Poll::Ready(Ok(()))
+            } else {
+                if !waiters.iter().any(|w| w.will_wake(cx.waker())) {
+                    waiters.push(cx.waker().clone());
+                }
+                Poll::Pending
+            }
+        })
+        .await?;
+        let _initializing = Initializing(self);
+        if self.initialized_routes.get().is_some() {
+            return Ok(());
+        }
+        let mut routes = self.routes.clone();
+        for (backend, transport) in &self.pending {
+            let request = json!({
+                "jsonrpc": "2.0",
+                "id": format!("configuration-{}", self.next_id.fetch_add(1, Ordering::SeqCst)),
+                "method": "hooks/configuration",
+                "params": {"protocolVersion": generated::PROTOCOL_VERSION}
+            });
+            let expected_id = request["id"].clone();
+            let owned_transport = Arc::clone(transport);
+            let timeout = self.options.observation_timeout;
+            let response = self
+                .life
+                .run(Box::pin(async move {
+                    owned_transport.call(request, timeout).await
+                }))
+                .await;
+            if self.life.closing.load(Ordering::SeqCst) {
+                return Err(err("configuration discovery cancelled by shutdown")
+                    .classified(generated::DeliveryDiagnosticCode::Cancelled));
+            }
+            let response = match response {
+                Ok(response) => response,
+                Err(error) if error.code() == generated::DeliveryDiagnosticCode::Cancelled => {
+                    return Err(error);
+                }
+                Err(_) => continue,
+            };
+            if response["id"] != expected_id
+                || crate::canonical::validate("configuration-response", &response).is_err()
+            {
+                continue;
+            }
+            let configuration = &response["result"]["configuration"];
+            if configuration["subscriptions"]
+                .as_array()
+                .is_some_and(|subscriptions| {
+                    subscriptions
+                        .iter()
+                        .any(|subscription| subscription.get("upload").is_some())
+                })
+            {
+                let Some(authorize) = &self.options.authorize_configuration else {
+                    continue;
+                };
+                let Ok(detached) =
+                    serde_json::from_value::<crate::Configuration>(configuration.clone())
+                else {
+                    continue;
+                };
+                if !authorize(backend["id"].as_str().unwrap(), detached).unwrap_or(false) {
+                    continue;
+                }
+            }
+            let mut resolved = backend.clone();
+            resolved["subscriptions"] =
+                response["result"]["configuration"]["subscriptions"].clone();
+            if let Ok(discovered) = routes_for(
+                &resolved,
+                transport,
+                &self.grants,
+                self.options.observation_timeout,
+                true,
+            ) {
+                routes.extend(discovered);
+            }
+        }
+        routes.sort_by_key(|route| {
+            self.backend_order
+                .iter()
+                .position(|id| id == &route.backend_id)
+                .unwrap()
+        });
+        let _ = self.initialized_routes.set(routes);
+        Ok(())
+    }
+
     /// Static subscription interest for a canonical event.
     /// Includes interception and observation routes eligible under host grants.
     /// Payload-dependent filters are not evaluated, so true is not permission
     /// or a guarantee of delivery. This lookup performs no input preparation,
-    /// transport, authentication, uploads, or mutation.
+    /// transport, authentication, uploads, or mutation. Before initialization,
+    /// backend-provided defaults have not yet contributed subscription interest.
     pub fn subscribes(&self, event: generated::EventType) -> bool {
         let Some(grant) = self.grants.get(&event) else {
             return false;
         };
-        self.routes.iter().any(|route| {
+        self.routes().iter().any(|route| {
             route.events.contains(&event)
                 && match route.mode {
                     Mode::Intercept(_) => grant.get("capabilities").is_some(),
@@ -652,7 +834,7 @@ impl Hooks {
             return false;
         };
         grant.get("capabilities").is_some()
-            && self.routes.iter().any(|route| {
+            && self.routes().iter().any(|route| {
                 route.events.contains(&event) && matches!(route.mode, Mode::Intercept(_))
             })
     }
@@ -823,7 +1005,7 @@ impl Hooks {
         let mut jobs: Vec<
             LocalFuture<'static, (String, Result<crate::hooks_content::Receipts, HookError>)>,
         > = Vec::new();
-        for route in self.routes.iter().filter(|route| {
+        for route in self.routes().iter().filter(|route| {
             route.events.contains(name)
                 && !filtered(&route.configuration, event)
                 && (route.mode != Mode::Observe || observes(&self.grants[name]))
@@ -879,7 +1061,7 @@ impl Hooks {
         attachments: &InvocationAttachments,
         uploads: &Arc<UploadPlans>,
     ) -> Client {
-        self.routes
+        self.routes()
             .iter()
             .filter(|route| route.events.contains(name) && !filtered(&route.configuration, event))
             .fold(
@@ -925,7 +1107,7 @@ impl Hooks {
         }
         for (index, observation) in observations.into_iter().enumerate() {
             let route = self
-                .routes
+                .routes()
                 .iter()
                 .find(|r| r.id == observation.subscription_id)
                 .expect("owned route");
@@ -1038,6 +1220,10 @@ impl Hooks {
     pub async fn shutdown(&self) -> Result<ObservationReport, HookError> {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
+        let waiters = std::mem::take(&mut *self.initialization_waiters.lock().unwrap());
+        for waiter in waiters {
+            waiter.wake();
+        }
         poll_fn(|cx| {
             let mut waiters = self.life.waiters.lock().unwrap();
             if !self.life.cleaning.swap(true, Ordering::SeqCst) {
@@ -1262,6 +1448,7 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
             cancellation,
             Box::pin(async move {
                 let _active = self.hooks.life.begin()?;
+                self.hooks.initialize().await?;
                 let mut event = serde_json::to_value(self.event).map_err(err)?;
                 if let Some(expected) = self.name {
                     let object = event
@@ -1471,6 +1658,7 @@ where
             cancellation,
             Box::pin(async move {
                 let _active = self.hooks.life.begin()?;
+                self.hooks.initialize().await?;
                 let (input, mut context) = match self.input {
                     ToolInput::Host(host) => {
                         let host = *host;

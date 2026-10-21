@@ -313,6 +313,7 @@ fn validate_request(request: &Value) -> Result<bool, HookError> {
     let (schema, notification) = match request["method"].as_str() {
         Some("hooks/intercept") => ("intercept-request", false),
         Some("hooks/capabilities") => ("capabilities-request", false),
+        Some("hooks/configuration") => ("configuration-request", false),
         Some("hooks/observe") => ("observe-notification", true),
         _ => return Err(error("unsupported protocol method")),
     };
@@ -332,8 +333,15 @@ fn validate_response(request: &Value, body: &[u8]) -> Result<Value, HookError> {
     crate::client::check_rpc_error(&value, &request["id"])?;
     let intercept = request["method"] == "hooks/intercept";
     if !intercept {
-        crate::canonical::validate("capabilities-response", &value)
-            .map_err(|_| error("invalid protocol response"))?;
+        crate::canonical::validate(
+            if request["method"] == "hooks/configuration" {
+                "configuration-response"
+            } else {
+                "capabilities-response"
+            },
+            &value,
+        )
+        .map_err(|_| error("invalid protocol response"))?;
     }
     if intercept {
         crate::server::validate_effect_capabilities(request, &value)
@@ -468,7 +476,10 @@ impl ManagedBackend for HttpBackend {
                             .await
                             .map_err(|_| error("authentication challenge failed"))?;
                         // Auth recovery does not authorize replaying effectful deliveries.
-                        if !retry && request["method"] == "hooks/capabilities" {
+                        if !retry
+                            && (request["method"] == "hooks/capabilities"
+                                || request["method"] == "hooks/configuration")
+                        {
                             retry = true;
                             continue;
                         }

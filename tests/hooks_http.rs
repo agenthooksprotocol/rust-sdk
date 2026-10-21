@@ -237,3 +237,128 @@ async fn ordinary_registration_http_dispatch_and_owned_observations() {
         }
     }
 }
+
+async fn discovery_headers_case(upload: Option<Value>, authorize: bool) {
+    let expect_delivery = upload.is_none() || authorize;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/hooks", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut methods = Vec::new();
+        for _ in 0..if expect_delivery { 2 } else { 1 } {
+            let mut socket = loop {
+                match listener.accept() {
+                    Ok((socket, _)) => break socket,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "discovery fixture timed out");
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(e) => panic!("{e}"),
+                }
+            };
+            socket.set_nonblocking(false).unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            socket
+                .set_write_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut reader = BufReader::new(&socket);
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            assert_eq!(line, "POST /hooks HTTP/1.1\r\n");
+            let mut headers = std::collections::BTreeMap::new();
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                let (key, value) = line.split_once(':').unwrap();
+                headers.insert(key.to_ascii_lowercase(), value.trim().to_owned());
+            }
+            assert_eq!(headers["authorization"], "Bearer configured-token");
+            assert_eq!(headers["x-backend"], "configuration-test");
+            let mut bytes = vec![0; headers["content-length"].parse::<usize>().unwrap()];
+            reader.read_exact(&mut bytes).unwrap();
+            let request: Value = serde_json::from_slice(&bytes).unwrap();
+            methods.push(request["method"].as_str().unwrap().to_owned());
+            let result = if request["method"] == "hooks/configuration" {
+                let mut subscription = json!({"events":["tool.before"],"mode":"intercept","timeoutMs":3000,"failurePolicy":"fail-closed","content":{"default":"metadata"}});
+                if let Some(upload) = &upload {
+                    subscription["upload"] = upload.clone();
+                }
+                json!({"protocolVersion":"draft","configuration":{"subscriptions":[subscription]}})
+            } else {
+                json!({"protocolVersion":"draft","effects":[]})
+            };
+            let body =
+                serde_json::to_vec(&json!({"jsonrpc":"2.0","id":request["id"],"result":result}))
+                    .unwrap();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+            socket.write_all(&body).unwrap();
+        }
+        methods
+    });
+    let registration = json!({"protocolVersion":"draft","hooks":[{
+        "id":"com.example.configuration",
+        "transport":{"type":"http","url":url,"headers":{"Authorization":"Bearer configured-token","X-Backend":"configuration-test"}}
+    }]});
+    let mut options = HooksOptions::new(
+        "https://host.test/http",
+        agenthooksprotocol::Harness::new("test", "1"),
+        capability::HostCapabilities {
+            tool_before: Some(capability::tool_before().deny()),
+            ..Default::default()
+        },
+    );
+    options.backend.allow_loopback_http = true;
+    if authorize {
+        options.authorize_configuration = Some(Arc::new(|id, configuration| {
+            assert_eq!(id, "com.example.configuration");
+            assert!(
+                serde_json::to_value(configuration).unwrap()["subscriptions"][0]
+                    .get("upload")
+                    .is_some()
+            );
+            Ok(true)
+        }));
+    }
+    options.observation_timeout = Duration::from_secs(3);
+    let hooks = Hooks::new(registration, options).unwrap();
+    hooks
+        .tool_input(Input {
+            command: "safe".into(),
+            timeout_ms: 100,
+        })
+        .context(context())
+        .await
+        .unwrap();
+    hooks.shutdown().await.unwrap();
+    assert_eq!(
+        hooks.intercepts(agenthooksprotocol::EventType::ToolBefore),
+        expect_delivery
+    );
+    assert_eq!(
+        server.join().unwrap(),
+        if expect_delivery {
+            vec!["hooks/configuration", "hooks/intercept"]
+        } else {
+            vec!["hooks/configuration"]
+        }
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn discovery_uses_event_endpoint_authentication_and_configured_headers() {
+    discovery_headers_case(None, false).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn discovered_upload_cannot_forward_configured_secret_headers_without_approval() {
+    let upload =
+        json!({"endpoint":"https://untrusted.example/upload","timeoutMs":1000,"maxBytes":1024});
+    discovery_headers_case(Some(upload.clone()), false).await;
+    discovery_headers_case(Some(upload), true).await;
+}
