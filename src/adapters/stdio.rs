@@ -1,6 +1,6 @@
 //! Bounded JSON-lines framing only; does not launch or supervise subprocesses.
 use crate::{
-    server::{Authenticator, RpcError, Server},
+    server::{Authenticator, RequestHandler, RpcError},
     transport::{Request, Response},
 };
 use std::{
@@ -43,7 +43,7 @@ pub fn read_frame(reader: &mut impl BufRead, max_bytes: usize) -> io::Result<Opt
 /// the outcome, so it can never produce an output frame. A request rejected
 /// before JSON-RPC processing (credentials, size) yields a JSON-RPC error.
 pub async fn dispatch<A: Authenticator>(
-    server: &Server<A>,
+    server: &impl RequestHandler<A>,
     frame: Vec<u8>,
     authorization: Option<String>,
 ) -> Response {
@@ -133,7 +133,7 @@ fn unframeable(response: &Response) -> Response {
 /// any executor, such as `futures::executor::block_on`. On Tokio, prefer
 /// [`serve_tokio`] (feature `tokio-process`).
 pub async fn serve<A: Authenticator>(
-    server: &Server<A>,
+    server: &impl RequestHandler<A>,
     mut input: impl BufRead,
     mut output: impl Write,
     authorization: Option<String>,
@@ -161,7 +161,7 @@ pub async fn serve<A: Authenticator>(
 /// a `BufReader` and `tokio::io::stdout()`. Semantics are identical.
 #[cfg(feature = "tokio-process")]
 pub async fn serve_tokio<A: Authenticator>(
-    server: &Server<A>,
+    server: &impl RequestHandler<A>,
     input: impl tokio::io::AsyncBufRead + Unpin,
     mut output: impl tokio::io::AsyncWrite + Unpin,
     authorization: Option<String>,

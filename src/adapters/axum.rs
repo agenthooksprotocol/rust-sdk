@@ -1,5 +1,5 @@
 use crate::{
-    server::{Authenticator, Server},
+    server::{Authenticator, RequestHandler},
     transport,
 };
 use axum::{
@@ -8,7 +8,7 @@ use axum::{
 };
 /// Bind in an Axum route; body collection is bounded before dispatch.
 pub async fn handle<A: Authenticator>(
-    server: &Server<A>,
+    server: &impl RequestHandler<A>,
     request: Request<Body>,
 ) -> Response<Body> {
     let (parts, body) = request.into_parts();
@@ -21,7 +21,7 @@ pub async fn handle<A: Authenticator>(
             return empty(StatusCode::BAD_REQUEST);
         }
     }
-    let body = match to_bytes(body, server.max_body_bytes).await {
+    let body = match to_bytes(body, server.max_body_bytes()).await {
         Ok(v) => v.to_vec(),
         Err(_) => return empty(StatusCode::PAYLOAD_TOO_LARGE),
     };
