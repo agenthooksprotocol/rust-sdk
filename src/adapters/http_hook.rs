@@ -37,6 +37,9 @@ impl<T: Http + Send + Sync> Hook for HttpHook<T> {
                 "hooks/capabilities" => g::parse_capabilities_request_value(request.clone())
                     .into_value()
                     .is_some(),
+                "hooks/configuration" => {
+                    crate::canonical::validate("configuration-request", &request).is_ok()
+                }
                 _ => false,
             };
             if !valid {
@@ -45,6 +48,7 @@ impl<T: Http + Send + Sync> Hook for HttpHook<T> {
             let schema = match method {
                 "hooks/intercept" => "intercept-request",
                 "hooks/observe" => "observe-notification",
+                "hooks/configuration" => "configuration-request",
                 _ => "capabilities-request",
             };
             crate::canonical::validate(schema, &request)
@@ -98,7 +102,10 @@ impl<T: Http + Send + Sync> Hook for HttpHook<T> {
                 return Err(protocol_error("response correlation mismatch"));
             }
             crate::client::check_rpc_error(&value, &request["id"])?;
-            if method != "hooks/intercept" {
+            if method == "hooks/configuration" {
+                crate::canonical::validate("configuration-response", &value)
+                    .map_err(|_| protocol_error("invalid protocol response"))?;
+            } else if method != "hooks/intercept" {
                 if g::parse_capabilities_response_value(value.clone())
                     .into_value()
                     .is_none()

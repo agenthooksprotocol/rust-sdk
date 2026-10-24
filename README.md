@@ -44,9 +44,10 @@ events and events with no eligible matching route. Payload-dependent filters are
 not evaluated: a matching filtered route remains potentially interested.
 The lookup performs no input preparation, transport, authentication, uploads, or
 mutation. It reports static interest, not permission or guaranteed delivery.
+Await `hooks.initialize()` first when registration uses backend-provided defaults.
 
 ```rust,ignore
-use agenthooksprotocol::generated::EventType;
+use agenthooksprotocol::EventType;
 
 if hooks.subscribes(EventType::ToolBefore) {
     let input = prepare_tool_facts();
@@ -363,6 +364,67 @@ Selected bodies use bounded capture and size/SHA-256 verification. Configure
 upload credentials are resolved separately from event credentials. This is
 bounded in-memory capture, not unbounded or disk-backed streaming. Unused
 attachments are dropped with their boundary or result owner.
+
+## Shared subscription configuration
+
+Use typed selectors and native durations to declare subscription configuration
+for either a backend advertisement or explicit client registration:
+
+```rust
+use std::time::Duration;
+use agenthooksprotocol::{Configuration, content, event, subscription};
+use agenthooksprotocol::server::HandlerSet;
+
+let configuration = Configuration::new()
+    .subscribe(
+        subscription::intercept(event::ToolBefore)
+            .timeout(Duration::from_millis(750))
+            .fail_open()
+            .content(content::Selection::metadata()),
+    )
+    .subscribe(
+        subscription::observe(event::ToolAfter)
+            .content(content::Selection::metadata()),
+    );
+
+let handlers = HandlerSet {
+    configuration: Some(configuration),
+    ..Default::default()
+};
+```
+
+`Server` serves the declaration through authenticated `hooks/configuration`
+requests on its existing HTTP or stdio transport. It does not infer subscriptions
+from callbacks. An omitted declaration returns method-not-found. The declaration
+contains subscription defaults, not endpoint credentials or harness capabilities.
+
+Client registrations with explicit `subscriptions` use only that configuration
+and never request backend defaults. Omitting `subscriptions` requests discovery;
+an explicit empty array is invalid and never falls back to discovery. JSON files
+and typed declarations use the same canonical configuration validation.
+
+`Hooks::new` remains synchronous and transport-free. Await `hooks.initialize()`
+to resolve backend defaults before querying `subscribes` or `intercepts`. The
+first awaited event delivery also initializes automatically. Concurrent callers
+share initialization, and completed discovery is not repeated. Reconstruct the
+client to reload configuration.
+
+Discovery uses the configured event transport, authentication, and headers,
+bounded by `HooksOptions::observation_timeout`. Failed or malformed discovery
+skips that backend. Supported event/mode matches are retained without rewriting
+subscription settings; a backend with no applicable subscriptions is skipped.
+Explicit registrations retain their ordinary validation behavior. Cancellation
+propagates, and shutdown cancels owned discovery I/O. Per-interception capability
+grants remain authoritative regardless of the advertised configuration.
+
+Any discovered subscription with `upload` requires explicit client approval via
+`HooksOptions::authorize_configuration`. The callback receives the backend ID
+and a detached, validated complete `Configuration`. Return `Ok(true)` only after
+approving its upload endpoints, credential bindings, and forwarding of the
+backend's configured headers, including `Authorization`. Missing approval,
+`Ok(false)`, or an error skips the entire backend, even when `upload.auth` is
+absent. Mutating the callback's copy does not rewrite the advertisement. Explicit
+client upload configuration does not invoke this discovery authorization callback.
 
 ## Quick start
 

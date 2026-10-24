@@ -359,6 +359,8 @@ pub struct ObserveHandlers {
 }
 #[derive(Default)]
 pub struct HandlerSet {
+    /// Static subscription defaults, independent of harness capability discovery.
+    pub configuration: Option<crate::Configuration>,
     pub intercept: InterceptHandlers,
     pub observe: ObserveHandlers,
     pub discovery: Option<Callback<DiscoveryContext, g::CapabilitiesRequest, DiscoveryReply>>,
@@ -391,6 +393,7 @@ enum Message {
     Intercept(Box<g::InterceptRequest>),
     Observe(g::ObserveNotification),
     Capabilities(g::CapabilitiesRequest),
+    Configuration,
 }
 struct Prepared {
     principal: Principal,
@@ -598,6 +601,20 @@ impl<A: Authenticator> Server<A> {
             }};
         }
         match message {
+            Message::Configuration => {
+                let configuration = self
+                    .handlers
+                    .configuration
+                    .as_ref()
+                    .ok_or(RpcError::MethodNotFound)?;
+                let configuration =
+                    serde_json::to_value(configuration).map_err(|_| RpcError::Internal)?;
+                crate::canonical::validate("configuration", &configuration)
+                    .map_err(|_| RpcError::Internal)?;
+                Ok(Some(
+                    serde_json::json!({"jsonrpc":"2.0", "id":raw["id"], "result":{"protocolVersion":g::PROTOCOL_VERSION, "configuration":configuration}}),
+                ))
+            }
             Message::Capabilities(request) => {
                 let handler = self
                     .handlers
@@ -803,6 +820,7 @@ impl<A: Authenticator> Server<A> {
             "hooks/intercept" => "intercept-request",
             "hooks/observe" => "observe-notification",
             "hooks/capabilities" => "capabilities-request",
+            "hooks/configuration" => "configuration-request",
             _ => return Err(reject(RpcError::MethodNotFound)),
         };
         if let Some(version) = raw["params"]["protocolVersion"].as_str()
@@ -824,6 +842,7 @@ impl<A: Authenticator> Server<A> {
         }
         // The codec hands the validated document back, so nothing is cloned.
         let (message, raw) = match schema {
+            "configuration-request" => Some((Message::Configuration, raw)),
             "intercept-request" => parsed(g::parse_intercept_request_value(raw))
                 .map(|(value, raw)| (Message::Intercept(Box::new(value)), raw)),
             "observe-notification" => parsed(g::parse_observe_notification_value(raw))
@@ -880,6 +899,10 @@ impl<A: Authenticator> Server<A> {
             if validate_typed_effect_capabilities(&raw, &typed).is_err() {
                 // The callback returned effects the harness did not grant.
                 return rpc_error(&raw["id"], RpcError::BackendInternal);
+            }
+        } else if raw["method"] == "hooks/configuration" {
+            if crate::canonical::validate("configuration-response", &value).is_err() {
+                return rpc_error(&raw["id"], RpcError::Internal);
             }
         } else if crate::canonical::validate("capabilities-response", &value).is_err()
             || !g::parse_capabilities_response_value(value.clone()).is_ok()

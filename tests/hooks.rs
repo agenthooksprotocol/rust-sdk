@@ -727,3 +727,253 @@ fn route_response_rejections_and_remote_errors_have_distinct_sanitized_codes() {
         block_on(hooks.shutdown()).unwrap();
     }
 }
+
+struct ConfigurationBackend {
+    requests: Mutex<Vec<Value>>,
+    configuration: Value,
+}
+impl ManagedBackend for ConfigurationBackend {
+    fn call(&self, request: Value, _: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
+        Box::pin(async move {
+            self.requests.lock().unwrap().push(request.clone());
+            if request["method"] == "hooks/configuration" {
+                return Ok(
+                    json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","configuration":self.configuration}}),
+                );
+            }
+            Ok(
+                json!({"jsonrpc":"2.0","id":request["id"],"result":{"protocolVersion":"draft","effects":[]}}),
+            )
+        })
+    }
+    fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
+        Box::pin(async { Ok(()) })
+    }
+}
+fn discovered_registration() -> Value {
+    let mut reg = registration(false);
+    reg["hooks"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("subscriptions");
+    reg
+}
+fn configuration_backend(subscriptions: Value) -> Arc<ConfigurationBackend> {
+    Arc::new(ConfigurationBackend {
+        requests: Mutex::new(vec![]),
+        configuration: json!({"subscriptions":subscriptions}),
+    })
+}
+#[test]
+fn discovery_resolves_supported_selectors_once_and_preserves_explicit_settings() {
+    let backend = configuration_backend(json!([
+        {"events":["tool.*","tool.after"],"mode":"intercept","timeoutMs":750,"failurePolicy":"fail-open","content":{"default":"metadata"}},
+        {"events":["session.end"],"mode":"observe","content":{"default":"omit"}}
+    ]));
+    let hooks = Hooks::new(discovered_registration(), options(backend.clone(), false)).unwrap();
+    assert!(backend.requests.lock().unwrap().is_empty());
+    block_on(hooks.initialize()).unwrap();
+    assert!(hooks.intercepts(agenthooksprotocol::EventType::ToolBefore));
+    assert!(!hooks.subscribes(agenthooksprotocol::EventType::SessionEnd));
+    block_on(hooks.initialize()).unwrap();
+    assert_eq!(backend.requests.lock().unwrap().len(), 1);
+    block_on(hooks.tool_input(input()).context(context())).unwrap();
+    let requests = backend.requests.lock().unwrap();
+    assert_eq!(requests[0]["method"], "hooks/configuration");
+    assert_eq!(requests[1]["method"], "hooks/intercept");
+}
+#[test]
+fn explicit_configuration_never_discovers_and_empty_does_not_fallback() {
+    let backend = configuration_backend(json!([]));
+    let hooks = Hooks::new(registration(false), options(backend.clone(), false)).unwrap();
+    block_on(hooks.initialize()).unwrap();
+    assert!(backend.requests.lock().unwrap().is_empty());
+    let mut empty = registration(false);
+    empty["hooks"][0]["subscriptions"] = json!([]);
+    assert!(Hooks::new(empty, options(backend.clone(), false)).is_err());
+    assert!(backend.requests.lock().unwrap().is_empty());
+}
+#[test]
+fn unavailable_invalid_or_unmatched_discovery_skips_backend() {
+    for subscriptions in [
+        json!([]),
+        json!([{"events":["session.end"],"mode":"observe","content":{"default":"metadata"}}]),
+        json!([{"events":["tool.before"],"mode":"intercept"}]),
+    ] {
+        let backend = configuration_backend(subscriptions);
+        let hooks = Hooks::new(discovered_registration(), options(backend.clone(), false)).unwrap();
+        block_on(hooks.initialize()).unwrap();
+        assert!(!hooks.subscribes(agenthooksprotocol::EventType::ToolBefore));
+        block_on(hooks.initialize()).unwrap();
+        assert_eq!(backend.requests.lock().unwrap().len(), 1);
+    }
+    let backend = Arc::new(Backend::default()); // Does not implement configuration discovery.
+    let hooks = Hooks::new(discovered_registration(), options(backend.clone(), false)).unwrap();
+    block_on(hooks.initialize()).unwrap();
+    assert!(!hooks.subscribes(agenthooksprotocol::EventType::ToolBefore));
+}
+#[test]
+fn first_awaited_dispatch_initializes_without_constructor_io() {
+    let backend = configuration_backend(registration(false)["hooks"][0]["subscriptions"].clone());
+    let hooks = Hooks::new(discovered_registration(), options(backend.clone(), false)).unwrap();
+    block_on(hooks.tool_input(input()).context(context())).unwrap();
+    let requests = backend.requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0]["method"], "hooks/configuration");
+    assert_eq!(requests[1]["method"], "hooks/intercept");
+}
+
+#[test]
+fn concurrent_initializers_share_one_discovery() {
+    let backend = configuration_backend(registration(false)["hooks"][0]["subscriptions"].clone());
+    let hooks = Hooks::new(discovered_registration(), options(backend.clone(), false)).unwrap();
+    block_on(async {
+        let (first, second) = futures::join!(hooks.initialize(), hooks.initialize());
+        first.unwrap();
+        second.unwrap();
+    });
+    assert_eq!(backend.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn configuration_discovery_is_owned_by_shutdown() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct PendingBackend(Arc<AtomicUsize>);
+    struct Cancelled(Arc<AtomicUsize>);
+    impl Drop for Cancelled {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    impl ManagedBackend for PendingBackend {
+        fn call(&self, _: Value, _: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
+            let dropped = self.0.clone();
+            Box::pin(async move {
+                let _owned = Cancelled(dropped);
+                futures::future::pending().await
+            })
+        }
+        fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let hooks = Hooks::new(
+        discovered_registration(),
+        options(Arc::new(PendingBackend(dropped.clone())), false),
+    )
+    .unwrap();
+    let mut initialization = Box::pin(hooks.initialize());
+    let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
+    assert!(std::future::Future::poll(initialization.as_mut(), &mut cx).is_pending());
+    block_on(hooks.shutdown()).unwrap();
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert!(block_on(initialization).is_err());
+}
+
+#[test]
+fn discovered_and_explicit_backends_retain_registration_order() {
+    struct OrderedBackend {
+        name: &'static str,
+        calls: Arc<Mutex<Vec<&'static str>>>,
+        subscriptions: Value,
+    }
+    impl ManagedBackend for OrderedBackend {
+        fn call(&self, request: Value, _: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
+            Box::pin(async move {
+                let result = if request["method"] == "hooks/configuration" {
+                    json!({"protocolVersion":"draft","configuration":{"subscriptions":self.subscriptions}})
+                } else {
+                    self.calls.lock().unwrap().push(self.name);
+                    json!({"protocolVersion":"draft","effects":[]})
+                };
+                Ok(json!({"jsonrpc":"2.0","id":request["id"],"result":result}))
+            })
+        }
+        fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let subscriptions = registration(false)["hooks"][0]["subscriptions"].clone();
+    let first = Arc::new(OrderedBackend {
+        name: "first",
+        calls: calls.clone(),
+        subscriptions: subscriptions.clone(),
+    });
+    let second = Arc::new(OrderedBackend {
+        name: "second",
+        calls: calls.clone(),
+        subscriptions,
+    });
+    let opts = options(first, false).with_backend("org.example.second", second);
+    let mut reg = discovered_registration();
+    let mut explicit = registration(false)["hooks"][0].clone();
+    explicit["id"] = json!("org.example.second");
+    reg["hooks"].as_array_mut().unwrap().push(explicit);
+    let hooks = Hooks::new(reg, opts).unwrap();
+    block_on(hooks.tool_input(input()).context(context())).unwrap();
+    assert_eq!(*calls.lock().unwrap(), ["first", "second"]);
+}
+
+#[test]
+fn discovered_upload_bindings_require_explicit_detached_configuration_approval() {
+    for auth in [
+        Value::Null,
+        json!({"type":"bearer","tokenEnv":"SERVER_CHOSEN_SECRET"}),
+        json!({"type":"bearer","tokenRef":"server-chosen-secret"}),
+        json!({"type":"oauth","issuer":"https://issuer.example","resource":"https://uploads.example","clientId":"server-chosen-client","flow":"client_credentials","clientSecretRef":"server-chosen-secret"}),
+    ] {
+        let mut subscriptions = registration(false)["hooks"][0]["subscriptions"].clone();
+        let mut upload =
+            json!({"endpoint":"https://uploads.example/body","timeoutMs":1000,"maxBytes":1024});
+        if !auth.is_null() {
+            upload["auth"] = auth;
+        }
+        subscriptions[0]["upload"] = upload;
+        for approval in ["absent", "false", "error", "true"] {
+            let backend = configuration_backend(subscriptions.clone());
+            let mut opts = options(backend.clone(), false);
+            if approval != "absent" {
+                opts.authorize_configuration = Some(Arc::new(move |id, mut detached| {
+                    assert_eq!(id, "org.example.hook");
+                    assert_eq!(detached.subscriptions.len(), 1);
+                    assert!(
+                        serde_json::to_value(&detached).unwrap()["subscriptions"][0]
+                            .get("upload")
+                            .is_some()
+                    );
+                    // Changes to the callback's detached copy cannot rewrite the advertisement.
+                    detached.subscriptions.clear();
+                    match approval {
+                        "true" => Ok(true),
+                        "false" => Ok(false),
+                        _ => Err(HookError::new("approval failed")),
+                    }
+                }));
+            }
+            let hooks = Hooks::new(discovered_registration(), opts).unwrap();
+            block_on(hooks.initialize()).unwrap();
+            assert_eq!(
+                hooks.intercepts(agenthooksprotocol::EventType::ToolBefore),
+                approval == "true"
+            );
+            assert_eq!(backend.requests.lock().unwrap().len(), 1);
+        }
+    }
+}
+
+#[test]
+fn explicit_upload_configuration_does_not_invoke_discovery_approval() {
+    let backend = configuration_backend(json!([]));
+    let mut reg = registration(false);
+    reg["hooks"][0]["subscriptions"][0]["upload"] = json!({"endpoint":"https://uploads.example/body","timeoutMs":1000,"maxBytes":1024,"auth":{"type":"bearer","tokenRef":"client-chosen-secret"}});
+    let mut opts = options(backend.clone(), false);
+    opts.authorize_configuration = Some(Arc::new(|_, _| {
+        panic!("explicit configuration never asks for discovery approval")
+    }));
+    let hooks = Hooks::new(reg, opts).unwrap();
+    block_on(hooks.initialize()).unwrap();
+    assert!(hooks.intercepts(agenthooksprotocol::EventType::ToolBefore));
+    assert!(backend.requests.lock().unwrap().is_empty());
+}

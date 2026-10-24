@@ -283,3 +283,52 @@ async fn ordinary_registration_per_event_stdio_uses_fresh_children() {
     assert_eq!(report.delivered, 2);
     assert!(report.failures.is_empty());
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn configuration_discovery_uses_persistent_and_per_event_stdio() {
+    const CONFIG_BACKEND: &str = r#"
+import json, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    with open(sys.argv[1], 'a') as log:
+        log.write(json.dumps(req) + '\n')
+    result = {'protocolVersion': 'draft'}
+    if req['method'] == 'hooks/configuration':
+        result['configuration'] = {'subscriptions': [{'events':['tool.before'], 'mode':'intercept', 'timeoutMs':3000, 'failurePolicy':'fail-closed', 'content':{'default':'metadata'}}]}
+    else:
+        assert req['method'] == 'hooks/intercept'
+        result['effects'] = []
+    print(json.dumps({'jsonrpc':'2.0', 'id':req['id'], 'result':result}), flush=True)
+"#;
+    for lifecycle in ["persistent", "per_event"] {
+        let log = Log::new();
+        let registration = json!({"protocolVersion":"draft","hooks":[{
+            "id":"com.example.configuration",
+            "transport":{"type":"stdio","command":"python3","args":["-u","-c",CONFIG_BACKEND,log.0.to_str().unwrap()],"lifecycle":lifecycle}
+        }]});
+        let mut options = HooksOptions::new(
+            "https://host.test/stdio",
+            agenthooksprotocol::Harness::new("test", "1"),
+            capability::HostCapabilities {
+                tool_before: Some(capability::tool_before().deny()),
+                ..Default::default()
+            },
+        );
+        options.observation_timeout = Duration::from_secs(3);
+        let hooks = Hooks::new(registration, options).unwrap();
+        assert!(!log.0.exists());
+        hooks
+            .tool_input(Input {
+                command: "safe".into(),
+                timeout_ms: 100,
+            })
+            .context(context())
+            .await
+            .unwrap();
+        hooks.shutdown().await.unwrap();
+        let messages = log.read();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["method"], "hooks/configuration");
+        assert_eq!(messages[1]["method"], "hooks/intercept");
+    }
+}
