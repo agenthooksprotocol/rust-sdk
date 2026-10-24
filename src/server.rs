@@ -5,6 +5,11 @@ use crate::{
     transport::{Request, Response},
 };
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
+mod configuration;
+pub use configuration::{
+    ConfigurationContext, ConfigurationFunc, ConfigurationReply, ConfigurationSource,
+    ConfiguredHandlerSet, ConfiguredServer, RequestHandler,
+};
 /// Identity supplied by credential verification, never event reference fields.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Principal {
@@ -393,7 +398,7 @@ enum Message {
     Intercept(Box<g::InterceptRequest>),
     Observe(g::ObserveNotification),
     Capabilities(g::CapabilitiesRequest),
-    Configuration,
+    Configuration(g::ConfigurationRequest),
 }
 struct Prepared {
     principal: Principal,
@@ -563,7 +568,11 @@ fn header<'a>(request: &'a Request, name: &str) -> Result<Option<&'a str>, ()> {
     }
 }
 impl<A: Authenticator> Server<A> {
-    async fn invoke(&self, prepared: Prepared) -> Result<Option<serde_json::Value>, RpcError> {
+    async fn invoke(
+        &self,
+        prepared: Prepared,
+        configuration_source: Option<&dyn ConfigurationSource>,
+    ) -> Result<Option<serde_json::Value>, RpcError> {
         let Prepared {
             principal,
             raw,
@@ -601,16 +610,33 @@ impl<A: Authenticator> Server<A> {
             }};
         }
         match message {
-            Message::Configuration => {
-                let configuration = self
-                    .handlers
-                    .configuration
-                    .as_ref()
+            Message::Configuration(request) => {
+                let source = configuration_source
+                    .or_else(|| {
+                        self.handlers
+                            .configuration
+                            .as_ref()
+                            .map(|config| config as &dyn ConfigurationSource)
+                    })
                     .ok_or(RpcError::MethodNotFound)?;
-                let configuration =
-                    serde_json::to_value(configuration).map_err(|_| RpcError::Internal)?;
+                let reply = source
+                    .resolve(
+                        ConfigurationContext {
+                            principal,
+                            verified_content: content,
+                            scope: scope.clone(),
+                        },
+                        request,
+                    )
+                    .await
+                    .map_err(|_| RpcError::BackendInternal)?;
+                if !Arc::ptr_eq(&scope, &reply.scope) {
+                    return Err(RpcError::Internal);
+                }
+                let configuration = serde_json::to_value(reply.configuration)
+                    .map_err(|_| RpcError::BackendInternal)?;
                 crate::canonical::validate("configuration", &configuration)
-                    .map_err(|_| RpcError::Internal)?;
+                    .map_err(|_| RpcError::BackendInternal)?;
                 Ok(Some(
                     serde_json::json!({"jsonrpc":"2.0", "id":raw["id"], "result":{"protocolVersion":g::PROTOCOL_VERSION, "configuration":configuration}}),
                 ))
@@ -756,7 +782,7 @@ impl<A: Authenticator> Server<A> {
         )
     }
     pub async fn handle(&self, request: Request) -> Response {
-        self.dispatch(self.prepare(request, None)).await
+        self.dispatch(self.prepare(request, None), None).await
     }
     /// Opt into automatic verification. Scope comes exclusively from the
     /// authenticated principal, never principalRef/session/source or body refs.
@@ -767,7 +793,7 @@ impl<A: Authenticator> Server<A> {
         store: &dyn ContentStore,
     ) -> impl Future<Output = Response> + Send + 'a + use<'a, A> {
         let prepared = self.prepare(request, Some(store));
-        self.dispatch(prepared)
+        self.dispatch(prepared, None)
     }
     fn prepare(
         &self,
@@ -842,7 +868,8 @@ impl<A: Authenticator> Server<A> {
         }
         // The codec hands the validated document back, so nothing is cloned.
         let (message, raw) = match schema {
-            "configuration-request" => Some((Message::Configuration, raw)),
+            "configuration-request" => parsed(g::parse_configuration_request_value(raw))
+                .map(|(value, raw)| (Message::Configuration(value), raw)),
             "intercept-request" => parsed(g::parse_intercept_request_value(raw))
                 .map(|(value, raw)| (Message::Intercept(Box::new(value)), raw)),
             "observe-notification" => parsed(g::parse_observe_notification_value(raw))
@@ -871,7 +898,11 @@ impl<A: Authenticator> Server<A> {
             content,
         })
     }
-    async fn dispatch(&self, prepared: Result<Prepared, Rejection>) -> Response {
+    async fn dispatch(
+        &self,
+        prepared: Result<Prepared, Rejection>,
+        configuration_source: Option<&dyn ConfigurationSource>,
+    ) -> Response {
         let prepared = match prepared {
             Ok(prepared) => prepared,
             Err(Rejection::Transport(status)) => return empty(status),
@@ -881,7 +912,7 @@ impl<A: Authenticator> Server<A> {
         let raw = prepared.raw.clone();
         let notification = matches!(prepared.message, Message::Observe(_));
         let intercept = matches!(prepared.message, Message::Intercept(_));
-        let value = match self.invoke(prepared).await {
+        let value = match self.invoke(prepared, configuration_source).await {
             Ok(Some(value)) if !notification => value,
             Ok(_) if notification => return empty(204),
             // An observer failure is a bodyless transport signal, never a JSON-RPC reply.

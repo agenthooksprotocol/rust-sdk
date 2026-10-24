@@ -387,16 +387,56 @@ let configuration = Configuration::new()
             .content(content::Selection::metadata()),
     );
 
-let handlers = HandlerSet {
-    configuration: Some(configuration),
-    ..Default::default()
-};
+let handlers = HandlerSet::new().configuration(configuration);
 ```
 
-`Server` serves the declaration through authenticated `hooks/configuration`
-requests on its existing HTTP or stdio transport. It does not infer subscriptions
-from callbacks. An omitted declaration returns method-not-found. The declaration
-contains subscription defaults, not endpoint credentials or harness capabilities.
+The same `.configuration(...)` builder accepts a static declaration or a typed
+configuration callback built with `callback` or `with_state`. Use callbacks for
+per-request configuration selected by the authenticated principal:
+
+```rust
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use agenthooksprotocol::{Configuration, content, event, subscription};
+use agenthooksprotocol::server::{ConfigurationContext, HandlerSet, with_state};
+
+let tenants = Arc::new(BTreeMap::from([(
+    "tenant-a".to_owned(),
+    Configuration::new().subscribe(
+        subscription::intercept(event::ToolBefore)
+            .timeout(Duration::from_millis(750))
+            .fail_open()
+            .content(content::Selection::metadata()),
+    ),
+)]));
+
+let handlers = HandlerSet::new().configuration(with_state(
+    tenants,
+    |tenants, ctx: ConfigurationContext, _request| async move {
+        let configuration = tenants.get(&ctx.principal.subject)
+            .cloned().ok_or_else(|| "unknown tenant".to_owned())?;
+        Ok(ctx.reply(configuration))
+    },
+));
+```
+
+Attach event callbacks with `.intercept(InterceptHandlers::new().tool_before(...))`
+and `.observe(ObserveHandlers::new().tool_after(...))`. Construct the server with
+`handlers.build(authenticator, max_body_bytes)` or
+`ConfiguredServer::new(handlers, authenticator, max_body_bytes)`. These builders
+perform no transport I/O. Both `Server` and `ConfiguredServer` work with the same
+HTTP, Axum, and stdio adapters. Concrete `HandlerSet` and `Server<A>` also support
+their public fields and `Server::new` constructor.
+
+The dispatcher authenticates and validates the discovery request before invoking
+a callback. Each callback returns a scoped, owned configuration reply; the SDK
+validates it and supplies JSON-RPC correlation and protocol-version fields.
+Callback errors are sanitized, cross-request replies are rejected, and dropping
+the dispatch future cancels callback work. Keep callback work inside that future,
+not in detached tasks. Static declarations retain owned snapshot semantics.
+
+An omitted declaration returns method-not-found. No declaration is inferred from
+event handlers, and configuration contains subscription defaults, not endpoint
+credentials or harness capabilities.
 
 Client registrations with explicit `subscriptions` use only that configuration
 and never request backend defaults. Omitting `subscriptions` requests discovery;
