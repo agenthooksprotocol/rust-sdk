@@ -103,21 +103,12 @@ impl ManifestMetadata {
 /// Host authority, not registration data. Ordinary callers supply a source and
 /// harness identity and explicit per-event grants; registration still owns routing
 /// and transport.
-/// Explicit client approval of discovered upload endpoints, credential bindings,
-/// and forwarding of configured backend headers. The configuration is detached;
-/// mutations cannot alter the admitted declaration. Errors reject the backend.
-pub type ConfigurationAuthorizer =
-    Arc<dyn Fn(&str, crate::Configuration) -> Result<bool, HookError> + Send + Sync>;
-
 pub struct HooksOptions {
     pub source: String,
     pub harness: Harness,
     pub capabilities: HostCapabilities,
     pub manifest_metadata: ManifestMetadata,
     pub backend: BackendOptions,
-    /// Required before adopting any backend-provided upload configuration.
-    /// Explicit client subscriptions do not invoke this callback.
-    pub authorize_configuration: Option<ConfigurationAuthorizer>,
     pub observation_timeout: Duration,
     pub max_observations: usize,
     /// Maximum simultaneous upload transfers across active Hooks operations.
@@ -141,7 +132,6 @@ impl HooksOptions {
             capabilities,
             manifest_metadata: ManifestMetadata::default(),
             backend: BackendOptions::default(),
-            authorize_configuration: None,
             observation_timeout: Duration::from_secs(30),
             max_observations: 1024,
             max_concurrent_uploads: 8,
@@ -487,6 +477,20 @@ impl Drop for Delivery<'_> {
     }
 }
 
+/// Whether discovered upload authentication names a secret that only a client
+/// registration may name. Such a backend is skipped whole, before any resolution.
+fn names_local_secret(configuration: &Value) -> bool {
+    configuration["subscriptions"]
+        .as_array()
+        .is_some_and(|subscriptions| {
+            subscriptions.iter().any(|subscription| {
+                ["tokenEnv", "tokenRef", "clientSecretRef"]
+                    .iter()
+                    .any(|key| subscription["upload"]["auth"].get(key).is_some())
+            })
+        })
+}
+
 fn routes_for(
     backend: &Value,
     transport: &Arc<dyn ManagedBackend>,
@@ -765,25 +769,8 @@ impl Hooks {
                 continue;
             }
             let configuration = &response["result"]["configuration"];
-            if configuration["subscriptions"]
-                .as_array()
-                .is_some_and(|subscriptions| {
-                    subscriptions
-                        .iter()
-                        .any(|subscription| subscription.get("upload").is_some())
-                })
-            {
-                let Some(authorize) = &self.options.authorize_configuration else {
-                    continue;
-                };
-                let Ok(detached) =
-                    serde_json::from_value::<crate::Configuration>(configuration.clone())
-                else {
-                    continue;
-                };
-                if !authorize(backend["id"].as_str().unwrap(), detached).unwrap_or(false) {
-                    continue;
-                }
+            if names_local_secret(configuration) {
+                continue;
             }
             let mut resolved = backend.clone();
             resolved["subscriptions"] =

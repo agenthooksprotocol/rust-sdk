@@ -916,64 +916,73 @@ fn discovered_and_explicit_backends_retain_registration_order() {
     assert_eq!(*calls.lock().unwrap(), ["first", "second"]);
 }
 
-#[test]
-fn discovered_upload_bindings_require_explicit_detached_configuration_approval() {
-    for auth in [
-        Value::Null,
+fn discovered_upload(auth: Option<Value>) -> Value {
+    let mut upload =
+        json!({"endpoint":"https://uploads.example/body","timeoutMs":1000,"maxBytes":1024});
+    if let Some(auth) = auth {
+        upload["auth"] = auth;
+    }
+    upload
+}
+
+fn local_secret_references() -> [Value; 3] {
+    [
         json!({"type":"bearer","tokenEnv":"SERVER_CHOSEN_SECRET"}),
         json!({"type":"bearer","tokenRef":"server-chosen-secret"}),
         json!({"type":"oauth","issuer":"https://issuer.example","resource":"https://uploads.example","clientId":"server-chosen-client","flow":"client_credentials","clientSecretRef":"server-chosen-secret"}),
+    ]
+}
+
+#[test]
+fn discovered_upload_without_local_secret_is_admitted_without_approval() {
+    for auth in [
+        None,
+        Some(
+            json!({"type":"oauth","issuer":"https://issuer.example","resource":"https://uploads.example","clientId":"server-chosen-client","flow":"client_credentials"}),
+        ),
     ] {
         let mut subscriptions = registration(false)["hooks"][0]["subscriptions"].clone();
-        let mut upload =
-            json!({"endpoint":"https://uploads.example/body","timeoutMs":1000,"maxBytes":1024});
-        if !auth.is_null() {
-            upload["auth"] = auth;
-        }
-        subscriptions[0]["upload"] = upload;
-        for approval in ["absent", "false", "error", "true"] {
-            let backend = configuration_backend(subscriptions.clone());
-            let mut opts = options(backend.clone(), false);
-            if approval != "absent" {
-                opts.authorize_configuration = Some(Arc::new(move |id, mut detached| {
-                    assert_eq!(id, "org.example.hook");
-                    assert_eq!(detached.subscriptions.len(), 1);
-                    assert!(
-                        serde_json::to_value(&detached).unwrap()["subscriptions"][0]
-                            .get("upload")
-                            .is_some()
-                    );
-                    // Changes to the callback's detached copy cannot rewrite the advertisement.
-                    detached.subscriptions.clear();
-                    match approval {
-                        "true" => Ok(true),
-                        "false" => Ok(false),
-                        _ => Err(HookError::new("approval failed")),
-                    }
-                }));
-            }
-            let hooks = Hooks::new(discovered_registration(), opts).unwrap();
-            block_on(hooks.initialize()).unwrap();
-            assert_eq!(
-                hooks.intercepts(agenthooksprotocol::EventType::ToolBefore),
-                approval == "true"
-            );
-            assert_eq!(backend.requests.lock().unwrap().len(), 1);
+        subscriptions[0]["upload"] = discovered_upload(auth);
+        let backend = configuration_backend(subscriptions);
+        let hooks = Hooks::new(discovered_registration(), options(backend.clone(), false)).unwrap();
+        block_on(hooks.tool_input(input()).context(context())).unwrap();
+        assert!(hooks.intercepts(agenthooksprotocol::EventType::ToolBefore));
+        let requests = backend.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[1]["method"], "hooks/intercept");
+    }
+}
+
+#[test]
+fn discovered_local_secret_reference_skips_entire_backend() {
+    for auth in local_secret_references() {
+        // Every position counts, including a subscription no grant would select;
+        // the clean subscription beside it is not admitted on its own.
+        for (index, event) in [(0, "tool.before"), (1, "tool.before"), (1, "session.end")] {
+            let mut subscriptions = registration(true)["hooks"][0]["subscriptions"].clone();
+            subscriptions[index]["events"] = json!([event]);
+            subscriptions[index]["upload"] = discovered_upload(Some(auth.clone()));
+            let backend = configuration_backend(subscriptions);
+            let hooks =
+                Hooks::new(discovered_registration(), options(backend.clone(), true)).unwrap();
+            block_on(hooks.tool_input(input()).context(context())).unwrap();
+            assert!(!hooks.subscribes(agenthooksprotocol::EventType::ToolBefore));
+            let requests = backend.requests.lock().unwrap();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0]["method"], "hooks/configuration");
         }
     }
 }
 
 #[test]
-fn explicit_upload_configuration_does_not_invoke_discovery_approval() {
-    let backend = configuration_backend(json!([]));
-    let mut reg = registration(false);
-    reg["hooks"][0]["subscriptions"][0]["upload"] = json!({"endpoint":"https://uploads.example/body","timeoutMs":1000,"maxBytes":1024,"auth":{"type":"bearer","tokenRef":"client-chosen-secret"}});
-    let mut opts = options(backend.clone(), false);
-    opts.authorize_configuration = Some(Arc::new(|_, _| {
-        panic!("explicit configuration never asks for discovery approval")
-    }));
-    let hooks = Hooks::new(reg, opts).unwrap();
-    block_on(hooks.initialize()).unwrap();
-    assert!(hooks.intercepts(agenthooksprotocol::EventType::ToolBefore));
-    assert!(backend.requests.lock().unwrap().is_empty());
+fn explicit_upload_configuration_retains_local_secret_references() {
+    for auth in local_secret_references() {
+        let backend = configuration_backend(json!([]));
+        let mut reg = registration(false);
+        reg["hooks"][0]["subscriptions"][0]["upload"] = discovered_upload(Some(auth));
+        let hooks = Hooks::new(reg, options(backend.clone(), false)).unwrap();
+        block_on(hooks.initialize()).unwrap();
+        assert!(hooks.intercepts(agenthooksprotocol::EventType::ToolBefore));
+        assert!(backend.requests.lock().unwrap().is_empty());
+    }
 }
