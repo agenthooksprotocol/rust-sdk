@@ -457,14 +457,14 @@ Explicit registrations retain their ordinary validation behavior. Cancellation
 propagates, and shutdown cancels owned discovery I/O. Per-interception capability
 grants remain authoritative regardless of the advertised configuration.
 
-Any discovered subscription with `upload` requires explicit client approval via
-`HooksOptions::authorize_configuration`. The callback receives the backend ID
-and a detached, validated complete `Configuration`. Return `Ok(true)` only after
-approving its upload endpoints, credential bindings, and forwarding of the
-backend's configured headers, including `Authorization`. Missing approval,
-`Ok(false)`, or an error skips the entire backend, even when `upload.auth` is
-absent. Mutating the callback's copy does not rewrite the advertisement. Explicit
-client upload configuration does not invoke this discovery authorization callback.
+Discovered `upload` settings are admitted like any other discovered subscription
+setting, with no separate approval: the backend already receives the content and
+its configured headers, including `Authorization`, and those headers apply to its
+uploads however they were configured. The exception is local secrets. A discovered
+`upload.auth` on any subscription naming `tokenEnv`, `tokenRef`, or
+`clientSecretRef` skips the entire backend without resolving the reference, because
+only a registration may name them. Explicit client upload configuration retains
+its existing behavior, including local secret references.
 
 ## Quick start
 
