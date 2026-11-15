@@ -9,6 +9,73 @@ Runtime-neutral Rust SDK, generated models, and JSON codecs for the [Agent Hooks
 
 The crate follows the current AHP `draft` schema snapshot and requires Rust 1.88 or newer.
 
+
+## Authentication composition
+
+Explicit `Authorization` headers take precedence and bypass providers. Installing
+`BackendOptions::auth_provider` directly retains its existing full-ownership
+behavior, including bearer bindings. Opt into `auth::AuthProviders` to route
+bearer and OAuth bindings independently, without fallback between providers:
+
+```rust
+use agenthooksprotocol::{
+    adapters::registered::{AuthProvider, BackendOptions},
+    auth::{AuthProviders, BearerAuth},
+};
+use std::{collections::BTreeMap, sync::Arc};
+
+fn authenticated_options(host_oauth: Arc<dyn AuthProvider>) -> BackendOptions {
+    // Populate from a host secret store, not source-controlled credentials.
+    let references = BTreeMap::from([("review-token".into(), "example-token".into())]);
+    let provider = AuthProviders::builder()
+        .bearer(BearerAuth::from_credentials(references))
+        .oauth(host_oauth)
+        .build();
+    BackendOptions { auth_provider: Some(Arc::new(provider)), ..Default::default() }
+}
+```
+
+A bearer registration uses `{"type":"bearer","tokenRef":"review-token"}`.
+`tokenEnv` explicitly authorizes an environment lookup; references never imply
+one. For asynchronous host stores, use `BearerAuth::new(Arc<dyn HeaderResolver>)`.
+The existing resolver receives backend, destination, purpose, source and the
+operation's absolute deadline. Upload bindings resolve independently: never put
+an event token in the upload route merely because its origin matches.
+
+An OAuth registration can use
+`{"type":"oauth","flow":"authorization_code_pkce","resource":"https://hooks.example/review","issuer":"https://login.example","clientId":"review-client"}`.
+The supplied host OAuth provider owns its client configuration, trusted networking,
+credential storage, UI, callback transport and cancellation. It can inspect
+`context.target()?` for a typed binding, either `OAuthFlow::AuthorizationCodePkce`
+or `OAuthFlow::ClientCredentials`, exact issuer/resource identity, client ID and
+configured scopes. Target parsing is not network trust approval. Destinations
+retain their full path/query; hosts must additionally isolate credential namespaces.
+
+There is **no built-in managed OAuth feature yet**. The evaluated rmcp 3.5.1
+candidate has an OAuth SSRF advisory (RUSTSEC-2026-0457; fixed in 3.7.0).
+A patched candidate still needs an adapter that enforces exact issuer/resource
+validation, locally allowed scopes, and host destination/DNS/redirect policy for
+all discovery, registration, token and authorization endpoints. Library defaults
+alone do not meet that contract. Both flows remain host-provided; an unavailable
+flow must return `HookError::authentication(AuthErrorCode::UnsupportedBinding)`,
+not pretend to authenticate. No OAuth dependency is added to the base crate.
+
+For a binding-free endpoint, optionally configure `.unbound(host_discovery)`.
+That provider may initially return `None` for anonymous delivery, then receive the
+401 challenge and its metadata. Discovery is host-policy-controlled, not an
+anonymous fallback after a configured binding fails. A bound provider returning
+`None` fails closed. Challenge notifications go to the selected route and retain
+its opaque attempt ID. Only capabilities/configuration may be retried once;
+effectful deliveries and upload allocations are not replayed by this helper.
+
+Providers should return `HookError::authentication(AuthErrorCode::InteractionRequired)`
+when host interaction is needed, or another typed authentication code. Callers can
+inspect `auth_code()` and `auth_recovery()` without changing protocol diagnostic
+classification (`code()`). Recovery guidance never authorizes replay. Provider
+messages, attached data and cause chains are discarded at SDK boundaries; only
+safe classifications survive. Futures run within the enclosing operation budget
+and cancellation drops them; no browser, listener, worker or file store is created.
+
 ## Installation
 
 Install from [crates.io](https://crates.io/crates/agenthooksprotocol):

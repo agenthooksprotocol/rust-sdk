@@ -19,6 +19,7 @@ pub struct HookError {
     message: String,
     code: Option<crate::generated::DeliveryDiagnosticCode>,
     accepted_settlement: Option<Value>,
+    auth_code: Option<crate::auth::AuthErrorCode>,
 }
 impl HookError {
     /// Construct an unclassified transport failure.
@@ -27,7 +28,21 @@ impl HookError {
             message: message.into(),
             code: None,
             accepted_settlement: None,
+            auth_code: None,
         }
+    }
+    /// Construct a redacted authentication failure with no provider message or cause.
+    pub fn authentication(code: crate::auth::AuthErrorCode) -> Self {
+        let mut error = Self::new(code.as_str())
+            .classified(crate::generated::DeliveryDiagnosticCode::Transport);
+        error.auth_code = Some(code);
+        error
+    }
+    pub fn auth_code(&self) -> Option<crate::auth::AuthErrorCode> {
+        self.auth_code
+    }
+    pub fn auth_recovery(&self) -> Option<crate::auth::AuthRecovery> {
+        self.auth_code.map(crate::auth::AuthErrorCode::recovery)
     }
     /// Raw canonical evidence retained when the consumer cannot decode an accepted settlement.
     /// This is not execution authorization and does not roll back accepted protocol effects.

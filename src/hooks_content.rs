@@ -220,10 +220,10 @@ async fn prepare_upload_credential(
         return upload_credential(upload, options).map(|credential| (credential, None));
     };
     let credential = await_upload_phase(context.deadline, async {
-        provider
-            .credential(context.clone())
-            .await
-            .map_err(|_| error("upload authentication provider failed"))
+        provider.credential(context.clone()).await.map_err(|e| {
+            crate::auth::sanitize_provider_error(e)
+                .classified(crate::generated::DeliveryDiagnosticCode::Preparation)
+        })
     })
     .await?;
     remaining_upload_budget(context.deadline)?;
@@ -236,7 +236,10 @@ async fn prepare_upload_credential(
             Some(credential.attempt_id),
         )),
         None if context.authentication.is_none() => Ok((None, None)),
-        None => Err(error("configured upload credential unavailable")),
+        None => Err(
+            HookError::authentication(crate::auth::AuthErrorCode::CredentialUnavailable)
+                .classified(crate::generated::DeliveryDiagnosticCode::Preparation),
+        ),
     }
 }
 
@@ -316,7 +319,10 @@ impl<H: crate::transport::Http> crate::transport::Http for ChallengeHttp<'_, H> 
                             },
                         )
                         .await
-                        .map_err(|_| error("upload authentication challenge failed"))
+                        .map_err(|e| {
+                            crate::auth::sanitize_provider_error(e)
+                                .classified(crate::generated::DeliveryDiagnosticCode::Preparation)
+                        })
                 })
                 .await
                 .map_err(|e| TransportError(e.to_string()))?;

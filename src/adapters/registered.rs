@@ -143,10 +143,16 @@ pub fn from_registration(
                     auth["flow"].as_str(),
                     Some("authorization_code_pkce" | "client_credentials")
                 ) {
-                    return Err(error("unsupported OAuth flow"));
+                    return Err(HookError::authentication(
+                        crate::auth::AuthErrorCode::UnsupportedBinding,
+                    ));
                 }
             }
-            _ => return Err(error("unsupported backend authentication")),
+            _ => {
+                return Err(HookError::authentication(
+                    crate::auth::AuthErrorCode::UnsupportedBinding,
+                ));
+            }
         }
     }
     match transport["type"].as_str() {
@@ -207,7 +213,7 @@ pub fn from_registration(
                     .filter(|token| {
                         !token.is_empty() && token.bytes().all(|b| b.is_ascii_graphic())
                     })
-                    .ok_or_else(|| error("bearer credential unavailable or invalid"))?;
+                    .ok_or_else(|| HookError::authentication(crate::auth::AuthErrorCode::CredentialUnavailable))?;
                         Some(format!("Bearer {token}"))
                     }
                 }
@@ -411,12 +417,14 @@ impl ManagedBackend for HttpBackend {
                         provider
                             .credential(context.clone())
                             .await
-                            .map_err(|_| error("authentication provider failed"))?
+                            .map_err(crate::auth::sanitize_provider_error)?
                     } else {
                         None
                     };
                     if provider.is_some() && credential.is_none() && self.authentication.is_some() {
-                        return Err(error("configured credential unavailable"));
+                        return Err(HookError::authentication(
+                            crate::auth::AuthErrorCode::CredentialUnavailable,
+                        ));
                     }
                     let mut outgoing = client
                         .post(&self.endpoint)
@@ -426,7 +434,9 @@ impl ManagedBackend for HttpBackend {
                         if credential.token.is_empty()
                             || !credential.token.bytes().all(|b| b.is_ascii_graphic())
                         {
-                            return Err(error("invalid bearer credential"));
+                            return Err(HookError::authentication(
+                                crate::auth::AuthErrorCode::CredentialUnavailable,
+                            ));
                         }
                         outgoing = outgoing.bearer_auth(&credential.token);
                     } else if let Some(auth) = &self.authorization {
@@ -474,7 +484,7 @@ impl ManagedBackend for HttpBackend {
                                 },
                             )
                             .await
-                            .map_err(|_| error("authentication challenge failed"))?;
+                            .map_err(crate::auth::sanitize_provider_error)?;
                         // Auth recovery does not authorize replaying effectful deliveries.
                         if !retry
                             && (request["method"] == "hooks/capabilities"

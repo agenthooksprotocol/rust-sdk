@@ -115,11 +115,27 @@ mod runtime {
             .unwrap()
     }
     fn configured(endpoint: String, missing_upload_token: bool) -> (Hooks, Arc<Recorded>) {
+        configured_with_provider(endpoint, missing_upload_token, false)
+    }
+    fn configured_with_provider(
+        endpoint: String,
+        missing_upload_token: bool,
+        composed: bool,
+    ) -> (Hooks, Arc<Recorded>) {
         let backend = Arc::new(Recorded::default());
         let mut options = options().with_backend("org.example.review", backend.clone());
         options.backend.allow_loopback_http = true;
         if missing_upload_token {
             options.backend.credentials.remove("upload");
+        }
+        if composed {
+            options.backend.auth_provider = Some(Arc::new(
+                agenthooksprotocol::auth::AuthProviders::builder()
+                    .bearer(agenthooksprotocol::auth::BearerAuth::from_credentials(
+                        options.backend.credentials.clone(),
+                    ))
+                    .build(),
+            ));
         }
         let mut registration = registration();
         registration["hooks"][0]["subscriptions"][0]["upload"]["endpoint"] = json!(endpoint);
@@ -127,17 +143,21 @@ mod runtime {
     }
     #[tokio::test]
     async fn actual_upload_uses_only_upload_token_ref() {
-        actual_upload_headers(None, false).await;
+        actual_upload_headers(None, false, false).await;
+    }
+    #[tokio::test]
+    async fn composed_provider_keeps_upload_credentials_independent() {
+        actual_upload_headers(None, false, true).await;
     }
     #[tokio::test]
     async fn actual_upload_registration_headers_override_auth_and_defaults() {
         for value in [json!("Bearer abc123"), json!({"valueRef":"explicit"})] {
-            actual_upload_headers(Some(value), false).await;
+            actual_upload_headers(Some(value), false, false).await;
         }
     }
     #[tokio::test]
     async fn configured_upload_authorization_suppresses_oauth_challenges() {
-        actual_upload_headers(Some(json!("Bearer abc123")), true).await;
+        actual_upload_headers(Some(json!("Bearer abc123")), true, false).await;
     }
     struct NoUploadOAuth;
     impl agenthooksprotocol::adapters::registered::AuthProvider for NoUploadOAuth {
@@ -158,7 +178,7 @@ mod runtime {
             panic!("configured Authorization must suppress upload challenge")
         }
     }
-    async fn actual_upload_headers(explicit: Option<Value>, reject: bool) {
+    async fn actual_upload_headers(explicit: Option<Value>, reject: bool, composed: bool) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}/content", listener.local_addr().unwrap());
         let configured_headers = explicit.is_some();
@@ -176,7 +196,7 @@ mod runtime {
             registration["hooks"][0]["subscriptions"][0]["upload"]["auth"] = json!({"type":"oauth","flow":"client_credentials","resource":"https://resource.example", "issuer":"https://issuer.example", "clientId":"client", "clientSecretRef":"unused"});
             (Hooks::new(registration, opts).unwrap(), backend)
         } else {
-            configured(endpoint, false)
+            configured_with_provider(endpoint, false, composed)
         };
         let server = async {
             let (socket, _) = listener.accept().await.unwrap();
