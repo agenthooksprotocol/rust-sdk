@@ -488,3 +488,25 @@ async fn effectful_no_replay() {
         "effectful delivery must not be replayed after challenge"
     );
 }
+#[tokio::test]
+async fn unsupported_oauth_flows_fail_closed_without_a_host_route() {
+    for flow in ["authorization_code_pkce", "client_credentials"] {
+        let (listener, endpoint) = listener().await;
+        let mut binding = oauth();
+        binding["flow"] = json!(flow);
+        let backend = backend(
+            &endpoint,
+            Some(binding),
+            Arc::new(AuthProviders::builder().build()),
+            false,
+        );
+        let error = backend.call(request(), TIMEOUT).await.unwrap_err();
+        assert_eq!(error.auth_code(), Some(AuthErrorCode::UnsupportedBinding));
+        assert_eq!(error.auth_recovery(), Some(AuthRecovery::Reconfigure));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+}
