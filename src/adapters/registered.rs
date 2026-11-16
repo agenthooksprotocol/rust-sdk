@@ -314,6 +314,89 @@ pub fn from_registration(
         _ => Err(error("unsupported backend transport")),
     }
 }
+// Classification only: providers still validate the complete challenge and scope policy.
+#[cfg(feature = "reqwest")]
+fn insufficient_scope(header: &str) -> bool {
+    fn token(b: u8) -> bool {
+        b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)
+    }
+    let mut parts = Vec::new();
+    let (mut start, mut quoted, mut escaped) = (0, false, false);
+    for (index, byte) in header.bytes().enumerate() {
+        if byte < 0x20 && byte != b'\t' || byte == 0x7f {
+            return false;
+        }
+        if escaped {
+            escaped = false;
+        } else if quoted && byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            quoted = !quoted;
+        } else if !quoted && byte == b',' {
+            parts.push(header[start..index].trim());
+            start = index + 1;
+        }
+    }
+    if quoted || escaped {
+        return false;
+    }
+    parts.push(header[start..].trim());
+    let (mut bearer, mut found) = (false, false);
+    let mut seen = std::collections::BTreeSet::new();
+    for part in parts {
+        let end = part.bytes().take_while(|b| token(*b)).count();
+        if end == 0 {
+            return false;
+        }
+        let rest = part[end..].trim_start();
+        let param = if rest.starts_with('=') {
+            part
+        } else {
+            bearer = part[..end].eq_ignore_ascii_case("bearer");
+            rest
+        };
+        if !bearer {
+            continue;
+        }
+        let Some((name, value)) = param.split_once('=') else {
+            return false;
+        };
+        let name = name.trim().to_ascii_lowercase();
+        if name.is_empty() || !name.bytes().all(token) || !seen.insert(name.clone()) {
+            return false;
+        }
+        let value = value.trim();
+        let value = if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+            let mut decoded = String::new();
+            let mut escaped = false;
+            for ch in value[1..value.len() - 1].chars() {
+                if escaped {
+                    decoded.push(ch);
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == '"' {
+                    return false;
+                } else {
+                    decoded.push(ch);
+                }
+            }
+            if escaped {
+                return false;
+            }
+            decoded
+        } else if !value.is_empty() && value.bytes().all(token) {
+            value.to_owned()
+        } else {
+            return false;
+        };
+        if name == "error" {
+            found = value == "insufficient_scope";
+        }
+    }
+    found
+}
+
 #[cfg(any(feature = "reqwest", feature = "tokio-process"))]
 fn validate_request(request: &Value) -> Result<bool, HookError> {
     let (schema, notification) = match request["method"].as_str() {
@@ -388,19 +471,24 @@ impl ManagedBackend for HttpBackend {
                         .checked_add(timeout)
                         .ok_or_else(|| error("invalid deadline"))?,
                 };
-                let headers = if request["method"] == "hooks/capabilities" {
-                    BTreeMap::new()
-                } else {
-                    registered_headers::resolve(
-                        &self.headers,
-                        &self.backend_id,
-                        &self.endpoint,
-                        context.deadline,
-                        AuthPurpose::Event,
-                        &self.options,
-                    )
-                    .await?
-                };
+                // Capability discovery must not resolve arbitrary registration secrets.
+                // Explicit Authorization remains an intentional auth override on every request.
+                let capability_headers = (request["method"] == "hooks/capabilities").then(|| {
+                    self.headers
+                        .iter()
+                        .filter(|(name, _)| name.as_str() == "authorization")
+                        .map(|(name, value)| (name.clone(), value.clone()))
+                        .collect()
+                });
+                let headers = registered_headers::resolve(
+                    capability_headers.as_ref().unwrap_or(&self.headers),
+                    &self.backend_id,
+                    &self.endpoint,
+                    context.deadline,
+                    AuthPurpose::Event,
+                    &self.options,
+                )
+                .await?;
                 let client = reqwest::Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
                     .build()
@@ -463,23 +551,27 @@ impl ManagedBackend for HttpBackend {
                             "HTTP transport failed"
                         })
                     })?;
-                    if response.status().as_u16() == 401
+                    let status = response.status().as_u16();
+                    // Only authentication metadata is exposed, never response bodies.
+                    let challenge_header = response
+                        .headers()
+                        .get_all(reqwest::header::WWW_AUTHENTICATE)
+                        .iter()
+                        .filter_map(|v| v.to_str().ok())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    if (status == 401 || (status == 403 && insufficient_scope(&challenge_header)))
                         && let Some(provider) = provider
                     {
-                        // Only authentication metadata is exposed, never response bodies.
-                        let headers = response
-                            .headers()
-                            .get_all(reqwest::header::WWW_AUTHENTICATE)
-                            .iter()
-                            .filter_map(|v| v.to_str().ok())
-                            .collect::<Vec<_>>()
-                            .join(", ");
                         provider
                             .challenge(
                                 context.clone(),
                                 AuthChallenge {
-                                    status: 401,
-                                    headers: BTreeMap::from([("www-authenticate".into(), headers)]),
+                                    status,
+                                    headers: BTreeMap::from([(
+                                        "www-authenticate".into(),
+                                        challenge_header,
+                                    )]),
                                     attempt_id: credential.as_ref().map(|c| c.attempt_id.clone()),
                                 },
                             )
@@ -487,6 +579,7 @@ impl ManagedBackend for HttpBackend {
                             .map_err(crate::auth::sanitize_provider_error)?;
                         // Auth recovery does not authorize replaying effectful deliveries.
                         if !retry
+                            && !notification
                             && (request["method"] == "hooks/capabilities"
                                 || request["method"] == "hooks/configuration")
                         {
@@ -724,5 +817,298 @@ impl ManagedBackend for StdioBackend {
             let _gate = self.gate.lock().await;
             self.reap().await
         })
+    }
+}
+
+#[cfg(all(test, feature = "reqwest"))]
+mod transport_auth_tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::{Mutex, atomic::AtomicUsize};
+    use tokio::{
+        io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+        net::TcpListener,
+    };
+
+    const TIMEOUT: Duration = Duration::from_secs(3);
+    #[derive(Default)]
+    struct Provider {
+        credentials: AtomicUsize,
+        challenges: Mutex<Vec<AuthChallenge>>,
+        pending_credential: bool,
+        pending_challenge: bool,
+        dropped: Arc<AtomicBool>,
+    }
+    struct OnDrop(Arc<AtomicBool>);
+    impl Drop for OnDrop {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    impl AuthProvider for Provider {
+        fn credential(
+            &self,
+            _: AuthContext,
+        ) -> LocalFuture<'_, Result<Option<BearerCredential>, HookError>> {
+            Box::pin(async move {
+                self.credentials.fetch_add(1, Ordering::SeqCst);
+                let _drop = OnDrop(self.dropped.clone());
+                if self.pending_credential {
+                    std::future::pending::<()>().await;
+                }
+                Ok(Some(BearerCredential {
+                    token: "cached-unbound".into(),
+                    attempt_id: "attempt".into(),
+                }))
+            })
+        }
+        fn challenge(
+            &self,
+            _: AuthContext,
+            challenge: AuthChallenge,
+        ) -> LocalFuture<'_, Result<(), HookError>> {
+            Box::pin(async move {
+                self.challenges.lock().unwrap().push(challenge);
+                let _drop = OnDrop(self.dropped.clone());
+                if self.pending_challenge {
+                    std::future::pending::<()>().await;
+                }
+                Ok(())
+            })
+        }
+    }
+    fn request() -> Value {
+        json!({"jsonrpc":"2.0","id":"caps","method":"hooks/capabilities","params":{"protocolVersion":"draft"}})
+    }
+    fn effectful(notification: bool) -> Value {
+        let mut request = json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","harness":{"name":"test","version":"1"},"source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}});
+        if notification {
+            request.as_object_mut().unwrap().remove("id");
+            request["method"] = json!("hooks/observe");
+            request["params"]
+                .as_object_mut()
+                .unwrap()
+                .remove("capabilities");
+        }
+        request
+    }
+    async fn backend(
+        provider: Arc<Provider>,
+        explicit: bool,
+    ) -> (Arc<dyn ManagedBackend>, TcpListener) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut registration = json!({"id":"test.auth","transport":{"type":"http","url":format!("http://{}/hooks", listener.local_addr().unwrap())}});
+        if explicit {
+            registration["transport"]["headers"] = json!({"aUtHoRiZaTiOn":"Bearer explicit"});
+            // Explicit headers bypass even an unsupported portable binding.
+            registration["authentication"] = json!({"type":"unknown"});
+        }
+        (
+            from_registration(
+                &registration,
+                &BackendOptions {
+                    auth_provider: Some(provider),
+                    allow_loopback_http: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap(),
+            listener,
+        )
+    }
+    async fn respond(listener: &TcpListener, status: u16, challenge: &str) -> String {
+        let (socket, _) = tokio::time::timeout(TIMEOUT, listener.accept())
+            .await
+            .expect("transport did not send a request")
+            .unwrap();
+        let mut reader = BufReader::new(socket);
+        let (mut headers, mut size) = (String::new(), 0);
+        loop {
+            let mut line = String::new();
+            assert_ne!(reader.read_line(&mut line).await.unwrap(), 0);
+            if line == "\r\n" {
+                break;
+            }
+            if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                size = value.trim().parse().unwrap();
+            }
+            headers.push_str(&line.to_ascii_lowercase());
+        }
+        let mut body = vec![0; size];
+        reader.read_exact(&mut body).await.unwrap();
+        reader.get_mut().write_all(format!("HTTP/1.1 {status} Rejected\r\nWWW-Authenticate: {challenge}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+        headers
+    }
+    async fn no_replay(listener: &TcpListener) {
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_authorization_bypasses_provider_on_capabilities() {
+        let provider = Arc::new(Provider::default());
+        let (backend, listener) = backend(provider.clone(), true).await;
+        let (result, headers) = tokio::join!(
+            backend.call(request(), TIMEOUT),
+            respond(&listener, 401, "Bearer")
+        );
+        assert!(result.is_err());
+        assert!(headers.contains("authorization: bearer explicit\r\n"));
+        assert_eq!(provider.credentials.load(Ordering::SeqCst), 0);
+        assert!(provider.challenges.lock().unwrap().is_empty());
+        no_replay(&listener).await;
+    }
+
+    #[tokio::test]
+    async fn scope_challenges_update_auth_without_replaying_effectful_calls() {
+        for notification in [false, true] {
+            let provider = Arc::new(Provider::default());
+            let (backend, listener) = backend(provider.clone(), false).await;
+            let (result, headers) = tokio::join!(
+                backend.call(effectful(notification), TIMEOUT),
+                respond(
+                    &listener,
+                    403,
+                    "Bearer error=\"insufficient_scope\", scope=\"write\""
+                )
+            );
+            assert!(result.is_err());
+            assert!(headers.contains("authorization: bearer cached-unbound\r\n"));
+            assert_eq!(provider.credentials.load(Ordering::SeqCst), 1);
+            {
+                let challenges = provider.challenges.lock().unwrap();
+                assert_eq!(challenges.len(), 1);
+                assert_eq!(challenges[0].status, 403);
+                assert_eq!(challenges[0].attempt_id.as_deref(), Some("attempt"));
+            }
+            no_replay(&listener).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn safe_auth_retry_is_bounded_for_401_and_scope_403() {
+        for (status, challenge) in [
+            (401, "Bearer error=\"invalid_token\""),
+            (403, "Bearer error=\"insufficient_scope\""),
+        ] {
+            let provider = Arc::new(Provider::default());
+            let (backend, listener) = backend(provider.clone(), false).await;
+            let (result, ()) = tokio::join!(backend.call(request(), TIMEOUT), async {
+                respond(&listener, status, challenge).await;
+                respond(&listener, status, challenge).await;
+            });
+            assert!(result.is_err());
+            assert_eq!(provider.credentials.load(Ordering::SeqCst), 2);
+            assert_eq!(provider.challenges.lock().unwrap().len(), 2);
+            no_replay(&listener).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn unrelated_and_malformed_403_do_not_trigger_auth_recovery() {
+        for challenge in [
+            "Basic realm=\"insufficient_scope\"",
+            "Bearer error=\"invalid_token\"",
+            "Bearer error=\"insufficient_scope\", error=\"invalid_token\"",
+            "Bearer error=\"insufficient_scope",
+        ] {
+            let provider = Arc::new(Provider::default());
+            let (backend, listener) = backend(provider.clone(), false).await;
+            let (result, _) = tokio::join!(
+                backend.call(request(), TIMEOUT),
+                respond(&listener, 403, challenge)
+            );
+            assert!(result.is_err());
+            assert!(provider.challenges.lock().unwrap().is_empty());
+            no_replay(&listener).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn dropping_dispatch_cancels_provider_futures_natively() {
+        for challenge in [false, true] {
+            let provider = Arc::new(Provider {
+                pending_credential: !challenge,
+                pending_challenge: challenge,
+                ..Default::default()
+            });
+            let (backend, listener) = backend(provider.clone(), false).await;
+            let mut dispatch = backend.call(request(), TIMEOUT);
+            if challenge {
+                let mut response = Box::pin(respond(&listener, 401, "Bearer"));
+                tokio::select! {
+                    _ = &mut dispatch => panic!("pending provider completed"),
+                    _ = &mut response => {},
+                }
+                // Poll once more to enter the challenge future after the socket response.
+                while provider.challenges.lock().unwrap().is_empty() {
+                    tokio::select! {
+                        _ = &mut dispatch => panic!("pending provider completed"),
+                        _ = tokio::task::yield_now() => {},
+                    }
+                }
+                provider.dropped.store(false, Ordering::SeqCst);
+            } else {
+                assert!(futures::poll!(&mut dispatch).is_pending());
+            }
+            drop(dispatch);
+            assert!(provider.dropped.load(Ordering::SeqCst));
+            no_replay(&listener).await;
+        }
+    }
+
+    #[test]
+    fn scope_classifier_handles_other_schemes_and_quoted_commas() {
+        assert!(insufficient_scope(
+            "NewScheme abc==, bEaReR realm=\"a,b\", error=\"insufficient_scope\""
+        ));
+        assert!(!insufficient_scope("Basic error=\"insufficient_scope\""));
+    }
+
+    #[tokio::test]
+    async fn provider_deadline_drops_inflight_work_without_auth_reclassification() {
+        let provider = Arc::new(Provider {
+            pending_credential: true,
+            ..Default::default()
+        });
+        let (backend, listener) = backend(provider.clone(), false).await;
+        let error = backend
+            .call(request(), Duration::from_millis(10))
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "HTTP deadline exceeded");
+        assert_eq!(
+            error.code(),
+            crate::generated::DeliveryDiagnosticCode::DeadlineExceeded
+        );
+        assert_eq!(error.auth_code(), None);
+        assert!(provider.dropped.load(Ordering::SeqCst));
+        no_replay(&listener).await;
+    }
+
+    #[test]
+    fn unknown_binding_never_falls_back_to_a_provider_or_anonymous() {
+        let error = from_registration(
+            &json!({"authentication":{"type":"unknown"},"transport":{"type":"http","url":"https://example.com/hooks"}}),
+            &BackendOptions { auth_provider: Some(Arc::new(Provider::default())), ..Default::default() },
+        ).err().unwrap();
+        assert_eq!(
+            error.auth_code(),
+            Some(crate::auth::AuthErrorCode::UnsupportedBinding)
+        );
+    }
+
+    #[test]
+    fn unknown_transport_never_falls_back() {
+        let err = from_registration(
+            &json!({"transport":{"type":"mystery"}}),
+            &BackendOptions::default(),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(err.to_string(), "unsupported backend transport");
     }
 }

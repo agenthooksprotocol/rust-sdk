@@ -58,9 +58,8 @@ policy, connection-time DNS/TLS/redirect-safe network adapter, and exclusive/CAS
 credential store. It creates no browser, listener, worker, HTTP client, or store.
 Native operations run within an existing Tokio runtime and propagate deadlines
 and cancellation. The default crate remains OAuth-free; low-level providers work
-unchanged. See the [host integration guide](docs/managed-oauth.md),
-[compilable example](examples/managed_oauth.rs), and
-[dependency review](docs/managed-oauth-dependency-review.md).
+unchanged. See the [host integration guide](docs/managed-oauth.md) and
+[compilable example](examples/managed_oauth.rs).
 
 For a binding-free endpoint, optionally configure `.unbound(host_discovery)`.
 That provider may initially return `None` for anonymous delivery, then receive the

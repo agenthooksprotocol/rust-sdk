@@ -1,33 +1,35 @@
 # Host-managed OAuth
 
-Enable `managed-oauth` for the native, Tokio-based helper. The default SDK has no OAuth dependency. `auth::managed::ManagedOAuth` implements the existing `AuthProvider`; custom providers remain supported. Use `AuthProviders` to combine explicit bearer references, an OAuth provider, and an independently selected unbound route. Configured Authorization always wins. Installing this helper does not silently replace other routes.
+Enable `managed-oauth` to use `auth::managed::ManagedOAuth` with Tokio. The default SDK has no OAuth dependency. `ManagedOAuth` implements `AuthProvider`; custom providers remain supported. Use `AuthProviders` to select bearer, OAuth and unbound routes explicitly. An explicit `Authorization` header bypasses provider lookup and challenge handling.
 
-## Supply the security boundaries
+## Supply network, policy and storage
 
-The helper deliberately provides **no browser, callback listener, worker, HTTP client, or persistent store**. Supply:
+The helper creates no browser, callback listener, HTTP client, worker or persistent store. Supply these host boundaries:
 
-- `OAuthNetwork`: check HTTPS destinations, resolve and pin allowed IP addresses at connection time, enforce TLS identity, disable redirects, cap streaming response reads at 1 MiB, and never log requests/responses. A preliminary DNS check alone does not prevent rebinding. `check` also authorizes URLs before the host displays them. Do not reuse an unrestricted general-purpose HTTP client.
-- `OAuthPolicy`: select an exact trusted issuer and locally allowed scopes. Its mandatory `approve_endpoints` callback must approve authorization/token endpoints for that issuer, client ID and client-secret reference. A public HTTPS address is not permission to disclose a secret; cross-origin endpoints require explicit approval. Metadata and challenge scopes never grant consent.
-- `CredentialStore`: acquire exclusive ownership per `SessionKey` across **all** processes sharing credentials. Hold ownership until the guard drops, including during network calls. Implement atomic versioned compare-and-swap. Acquisition, load and writes must be cancellation-safe and respect their enclosing deadline; uncertain writes must not overwrite newer versions. A process-local mutex is sufficient only for a genuinely single-process host. No SDK registry or global cache is created.
+- `OAuthNetwork`: enforce destination policy against connection-time resolved addresses, pin approved addresses, verify TLS identity, disable redirects and bound streaming response reads to 1 MiB. A preliminary URL/DNS check alone does not prevent rebinding. `check` also approves authorization URLs before they are displayed. Never log OAuth requests or responses.
+- `OAuthPolicy`: approve the exact issuer, resource, client, scopes and advertised authorization/token endpoints. A public HTTPS endpoint is not permission to disclose a client secret. Metadata and challenge scopes are untrusted requirements, not consent.
+- `CredentialStore`: coordinate exclusive ownership and atomic versioned compare-and-swap across all processes sharing credentials. Use `SessionKey::as_str()` as the storage identity. Acquisition, reads and writes must be cancellation-safe and obey the operation budget. Dropping a guard must release ownership. A process-local mutex is sufficient only for a single-process host.
 
-Records contain access/refresh tokens, PKCE verifiers and state. Encrypt/protect them as credentials; never serialize them into logs or protocol messages. Keys separate credential namespace, backend, full destination and event/upload purpose. Records additionally bind the exact issuer, resource, client and granted scopes. Session record schema 2 retains metadata retrieval provenance; legacy source-less hints are rejected, not guessed or silently promoted. A host migrating prerelease records must explicitly archive/re-authorize them or use a new credential namespace. Reusing a key with incompatible identity fails closed rather than switching credentials. Use separate namespaces for independent host accounts/client registrations.
+Records contain access/refresh tokens, PKCE verifiers and state. Encrypt/protect them as credentials; do not log or send them on the AHP wire. Discovery runs outside credential-store ownership; token acquisition/refresh remains serialized per grant. Hosts must not introduce a second lock order around network or policy callbacks.
 
-Discovery follows MCP 2025-11-25: a Bearer `resource_metadata` challenge first, otherwise endpoint-path-specific then root resource well-known URLs; authorization-server OAuth/OIDC locations follow the prescribed issuer-path order. RFC 9728 section 3.3 requires the returned resource to match the retrieval source exactly: a path-specific well-known candidate is bound to that endpoint's full path/query identifier, the root candidate to the origin identifier (without an appended slash), and a challenge metadata URL to the exact resource request URL. A covering ancestor alone is insufficient. Destination coverage and exact configured resource/issuer constraints are additional checks. A successful response with a wrong resource fails immediately, without trying a broader fallback. Saved hints retain their source and expected resource identity, and are revalidated on reuse; they are not bare metadata URLs. PKCE uses S256, validated state/redirect and advertised issuer-response validation. Every exchange and refresh includes RFC 8707 `resource`. Dynamic registration is not performed: the host provides a pre-registered client.
+## Choose scope and consent boundaries
+
+Configure `OAuthClientConfig::new(namespace, client_id, flow)` and call `.scopes(requested, allowed)`. Requested scopes guide acquisition; allowed scopes are the local ceiling, defaulting to the requested set when no broader ceiling is supplied. A token may grant fewer requested scopes, or additional scopes within that ceiling. An explicit target or Bearer challenge can require a subset for an operation. Insufficient required scopes prevent dispatch without discarding a rotated refresh token.
+
+Binding identity separates namespace, backend, exact destination and event/upload purpose. Grant identity additionally includes exact issuer/resource, client, flow and the canonical allowed-scope ceiling. Secrets, secret references, token-auth method, metadata capabilities and requested/granted scopes are not grant identity. Use separate namespaces for host accounts or registrations.
+
+Default grants are isolated per binding, including upload targets. Set `.grant_partition("host-approved-account")` only to share consent deliberately. Each target and purpose must still pass independent policy approval; matching partitions do not authorize a new resource, issuer, client or scope ceiling. Do not automatically copy event authorization to uploads.
 
 ## Prepare and complete a login
 
-The following host function has no transport/UI side effects. Its dependencies must implement the contracts above. Run it inside an existing Tokio runtime; do not call a nested runtime from an async host.
-
 ```rust,no_run
-use std::{sync::Arc, time::Instant};
 use agenthooksprotocol::{
     adapters::registered::AuthContext,
-    auth::{OAuthFlow, managed::{
-        CredentialStore, ManagedOAuth, OAuthClientConfig, OAuthNetwork, OAuthPolicy,
-        OperationBudget, Preparation,
-    }},
+    auth::{OAuthFlow, managed::{CredentialStore, ManagedOAuth, OAuthClientConfig,
+        OAuthNetwork, OAuthPolicy, OperationBudget, Preparation}},
     client::HookError,
 };
+use std::{sync::Arc, time::Instant};
 
 async fn prepare_login(
     context: AuthContext,
@@ -36,31 +38,39 @@ async fn prepare_login(
     policy: Arc<dyn OAuthPolicy>,
     store: Arc<dyn CredentialStore>,
 ) -> Result<(ManagedOAuth, Preparation), HookError> {
-    let config = OAuthClientConfig::new("account-a", "registered-client", OAuthFlow::AuthorizationCodePkce)
-        .redirect_uri("https://app.example/oauth/callback")
-        .scopes(vec!["hooks".into()], vec!["hooks".into()]);
+    let config = OAuthClientConfig::new(
+        "account-a", "registered-client", OAuthFlow::AuthorizationCodePkce,
+    )
+    .redirect_uri("https://app.example/oauth/callback")
+    .scopes(vec!["hooks".into()], vec!["hooks".into()]);
     let oauth = ManagedOAuth::new(config, network, policy, store)?;
     let prepared = oauth.prepare(context, OperationBudget::until(deadline)).await?;
     Ok((oauth, prepared))
 }
 ```
 
-For `Preparation::Ready`, use the credential only for the original target. For `InteractionRequired`, display `pending.authorization_url()` only when it returns `Some`. The host receives the callback URL and calls `oauth.complete(pending, callback, budget).await`. Do not log either URL. The callback must match the configured HTTPS redirect, contain unique valid state/code fields, and satisfy issuer checks. A completion operation gets its own explicit budget; preparation remains bounded by the original context deadline.
+For `Preparation::Ready`, use the credential only for its approved target. For `InteractionRequired`, display `pending.authorization_url()` when present, receive the callback through host-owned transport and call `complete(pending, callback, budget)`. Do not log either URL. Clone a pending handle if the host needs to call `cancel_login` later. Completion and cancellation receive explicit host budgets. Completion cannot extend the original consent operation's deadline. Dropping a future cancels its work; it does not spawn a detached exchange.
 
-Clone a pending handle before completion when you need to cancel that generation. Dropping a future cancels work and releases its store guard; it never spawns detached work. If an exchange may already have consumed the code, the persisted marker prevents replay. A later `prepare` returns a cancellation-only pending handle (`exchange_is_uncertain()`, no authorization URL). Call `cancel_login` on that generation, then prepare a new login. An old callback/cancellation cannot remove a newer pending generation. Definitive code rejection retires that login.
+Only host `prepare` creates pending consent. Dispatch and challenge handling return `interaction_required` without starting login or borrowing a short delivery deadline as a consent budget. Pending consent is reused only for the same grant, exact redirect, requested scope set and explicit requirements, while its original context remains active and covers the new prepare budget. An incompatible explicit prepare replaces the pending generation; its old callback cannot complete the replacement. Poll the same host operation with its original budget rather than extending its lifetime. Invalid callback redirect, state or issuer does not consume a valid pending operation. A valid callback is claimed once before code exchange; consent denial consumes it. Canceling a login does not delete a valid grant. Ambiguous code exchange cannot be safely replayed: cancel that pending generation and explicitly prepare another login.
 
-## Client credentials
+Redirects must use HTTPS, except HTTP to literal IPv4 loopback addresses in `127.0.0.0/8` or IPv6 `::1` for desktop/CLI callbacks. HTTP DNS names, including `localhost`, and remote HTTP redirects are rejected. No implicit listener is installed.
 
-Use `OAuthFlow::ClientCredentials` and `.client_secret("local-secret-reference", secret, TokenAuthMethod::ClientSecretBasic)` (or explicitly supported `ClientSecretPost`). Resolve `secret` from host-controlled storage into `ClientSecret::new(...)`; never put its value into protocol configuration. The explicit target's `clientId` and optional `clientSecretRef` must match. The issuer must advertise client-credentials support and the selected token authentication method. No interaction or fallback to a different flow is attempted.
+## Use configured or discovered endpoints
 
-## Refresh and recovery
+An explicit OAuth binding fixes issuer, resource, client and flow. It skips protected-resource metadata discovery, but still validates issuer metadata and local constraints. Unbound endpoints use RFC 9728 protected-resource discovery, with strict retrieval-source/resource identity and local approval before credentials are issued. Resource identifiers retain exact trailing slash and query identity; they are not normalized into a different configured identifier.
 
-Tokens are refreshed before expiry with a 30-second safety margin. The host's exclusive guard provides single-flight refresh; waiters reload the latest generation. A delayed 401 for an older generation cannot reject or unnecessarily refresh a newer valid token. Definitive `invalid_grant` persists rejection and invokes the matching-generation rejection hook. Scope increases require a new locally approved grant, not reuse of a narrower token.
+Saved approved bindings allow valid cached credentials to be sent up front, including notifications and uploads that cannot be replayed, and after recreating a provider with the same durable host store. An unknown unbound target may start anonymously under local policy. Hosts can prepare an unknown target before its first unsafe call. Mutable capabilities and client-secret rotation do not permanently poison a compatible grant.
 
-Credentials are retained on all refresh failures. Transport loss, cancellation, malformed responses and ambiguous server errors retain an uncertainty marker: the old refresh token is **not** automatically replayed. A 429/5xx status alone does not prove that rotation did not happen. A network adapter may implement `refresh_failure_is_safe` only where the trusted issuer's contract establishes that the specific response did not consume the grant. Such known-safe failures clear the marker, preserving credentials for a later host-controlled retry. Standard, definitive OAuth request errors are classified without exposing server error text.
+PKCE uses S256, state and redirect validation, and advertised issuer-response checks. Every token exchange and refresh includes RFC 8707 `resource`. Dynamic client registration is not performed.
 
-For an uncertain refresh, use `SessionRecord::refresh_is_uncertain()` and its opaque `attempt_id()` to obtain the generation, then call `abandon_uncertain_refresh(context, generation, budget)`. This explicit host decision retires only that generation without replaying its refresh token or discarding its evidence; prepare again to authorize/reacquire. A stale repair cannot reject a newer token. Inspect only opaque IDs/flags; never log the record.
+## Use client credentials
 
-All public failures use sanitized classifications and recovery guidance. Recovery guidance never authorizes replaying an effectful hook delivery. Authentication failure never sends an explicitly bound request anonymously, changes its binding, or borrows event credentials for upload. Fix login/credentials for a **new** operation instead of replaying effects.
+Choose `OAuthFlow::ClientCredentials` and `.client_secret(reference, secret, TokenAuthMethod::ClientSecretBasic)` or explicitly supported `ClientSecretPost`. Construct the SDK-owned `ClientSecret::new(...)` from a host-resolved secret; never put its value in protocol configuration. The type has no `Debug` or serialization implementation; explicit secret access and serialized session records still require care. Secret memory is not automatically zeroized. The explicit target's client ID and optional secret reference must match. Issuer metadata must support the flow and token-auth method. Client credentials reacquire noninteractively and never request human login.
 
-See [dependency review](managed-oauth-dependency-review.md) for the pinned primitive, provenance, optional dependency footprint and inherited audit findings.
+## Recover without replaying effects
+
+Known-expiry tokens refresh with a 30-second margin. Tokens with no expiry remain usable until rejected or restricted by host policy. Refresh preserves omitted refresh tokens and persists rotations before reporting operation-level scope insufficiency. Refresh responses with omitted scope inherit the previous grant rather than broadening consent.
+
+A delayed rejection of an older token generation cannot invalidate a newer token. Definitive interactive refresh `invalid_grant` requires new consent. Timeouts, non-OAuth responses, 5xx and other transient refresh failures preserve material and return retry guidance; uncertainty is not an irreversible login-only state. An ambiguous rotating refresh may later return `invalid_grant`: neither the SDK nor the host store can roll back an authorization server's external exchange.
+
+`auth_code()` and `auth_recovery()` provide sanitized classifications. `AuthRecovery::as_str()` returns `configure`, `login`, `retry` or `none`. Guidance never permits replay of an effectful operation. A Bearer 403 with `error="insufficient_scope"` can record step-up only within the local ceiling; other 403 responses remain denied. PKCE asks the host to prepare consent; client credentials can reacquire approved scopes. Only the transport decides whether its existing single safe retry applies. Notifications, uploads and effectful deliveries are not replayed merely because authentication state changed.

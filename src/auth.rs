@@ -46,14 +46,13 @@ impl AuthErrorCode {
     }
     pub const fn recovery(self) -> AuthRecovery {
         match self {
-            Self::InteractionRequired | Self::RefreshRejected => AuthRecovery::Interact,
-            Self::CredentialUnavailable => AuthRecovery::SupplyCredential,
-            Self::InvalidConfiguration | Self::UnsupportedBinding | Self::UntrustedDestination => {
-                AuthRecovery::Reconfigure
-            }
+            Self::InteractionRequired | Self::RefreshRejected => AuthRecovery::Login,
+            Self::CredentialUnavailable
+            | Self::InvalidConfiguration
+            | Self::UnsupportedBinding
+            | Self::UntrustedDestination => AuthRecovery::Configure,
             Self::AccessDenied => AuthRecovery::None,
-            // A generic provider/discovery failure does not prove retry is safe.
-            Self::ProviderFailed | Self::DiscoveryFailed => AuthRecovery::HostPolicy,
+            Self::ProviderFailed | Self::DiscoveryFailed => AuthRecovery::Retry,
         }
     }
 }
@@ -62,10 +61,19 @@ impl AuthErrorCode {
 #[non_exhaustive]
 pub enum AuthRecovery {
     None,
-    Reconfigure,
-    SupplyCredential,
-    Interact,
-    HostPolicy,
+    Configure,
+    Login,
+    Retry,
+}
+impl AuthRecovery {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Configure => "configure",
+            Self::Login => "login",
+            Self::Retry => "retry",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +95,7 @@ pub enum AuthBinding {
 /// backend and purpose remain distinct; hosts must add their credential namespace.
 /// OAuth resource and issuer strings retain their exact configured identity.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct AuthTarget {
     backend_id: String,
     destination: url::Url,
@@ -128,6 +137,9 @@ impl AuthContext {
     /// This is not destination trust approval; transports/hosts retain that duty.
     pub fn target(&self) -> Result<AuthTarget, HookError> {
         let invalid = || HookError::authentication(AuthErrorCode::InvalidConfiguration);
+        if self.backend_id.trim().is_empty() {
+            return Err(invalid());
+        }
         let destination = url::Url::parse(&self.destination).map_err(|_| invalid())?;
         if !matches!(destination.scheme(), "https" | "http")
             || destination.host_str().is_none()
@@ -225,6 +237,7 @@ impl AuthContext {
 
 /// Bearer-only adapter using the existing host header/secret resolver contract.
 /// Tokens are resolved at dispatch time and are never used as attempt identifiers.
+#[non_exhaustive]
 pub struct BearerAuth {
     resolver: Arc<dyn HeaderResolver>,
 }
@@ -293,12 +306,14 @@ impl AuthProvider for BearerAuth {
 
 /// Explicit binding router. No route is selected by catching provider errors.
 /// Immutable routes send a challenge back to the same owner without a global registry.
+#[non_exhaustive]
 pub struct AuthProviders {
     bearer: Option<Arc<dyn AuthProvider>>,
     oauth: Option<Arc<dyn AuthProvider>>,
     unbound: Option<Arc<dyn AuthProvider>>,
 }
 #[derive(Default)]
+#[non_exhaustive]
 pub struct AuthProvidersBuilder {
     bearer: Option<Arc<dyn AuthProvider>>,
     oauth: Option<Arc<dyn AuthProvider>>,
@@ -389,4 +404,56 @@ impl AuthProvider for AuthProviders {
 pub(crate) fn sanitize_provider_error(error: HookError) -> HookError {
     HookError::authentication(error.auth_code().unwrap_or(AuthErrorCode::ProviderFailed))
         .classified(error.code())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_backend_identity_fails_closed() {
+        let context = AuthContext {
+            backend_id: String::new(),
+            authentication: None,
+            destination: "https://api.example/hooks".into(),
+            purpose: AuthPurpose::Event,
+            deadline: std::time::Instant::now(),
+        };
+        assert_eq!(
+            context.target().err().unwrap().auth_code(),
+            Some(AuthErrorCode::InvalidConfiguration)
+        );
+    }
+
+    #[test]
+    fn canonical_recovery_guidance() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "auth/managed/testdata/sdk-auth-lifecycle.json"
+        ))
+        .unwrap();
+        let codes = [
+            AuthErrorCode::InvalidConfiguration,
+            AuthErrorCode::UnsupportedBinding,
+            AuthErrorCode::CredentialUnavailable,
+            AuthErrorCode::InteractionRequired,
+            AuthErrorCode::AccessDenied,
+            AuthErrorCode::RefreshRejected,
+            AuthErrorCode::DiscoveryFailed,
+            AuthErrorCode::UntrustedDestination,
+            AuthErrorCode::ProviderFailed,
+        ];
+        assert_eq!(vectors["recovery"].as_array().unwrap().len(), codes.len());
+        for vector in vectors["recovery"].as_array().unwrap() {
+            let code = codes
+                .iter()
+                .find(|code| code.as_str() == vector["code"])
+                .unwrap();
+            assert_eq!(
+                code.recovery().as_str(),
+                vector["recovery"],
+                "{}",
+                code.as_str()
+            );
+        }
+    }
 }

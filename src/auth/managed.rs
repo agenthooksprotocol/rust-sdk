@@ -13,7 +13,19 @@ use oauth2::{
     TokenResponse, TokenUrl,
     basic::{BasicClient, BasicErrorResponseType, BasicTokenResponse, BasicTokenType},
 };
-pub use oauth2::{ClientSecret, HttpRequest as OAuthRequest, HttpResponse as OAuthResponse};
+pub use oauth2::{HttpRequest as OAuthRequest, HttpResponse as OAuthResponse};
+/// SDK-owned secret. Deliberately does not implement Debug or serialization.
+#[derive(Clone)]
+#[non_exhaustive]
+pub struct ClientSecret(String);
+impl ClientSecret {
+    pub fn new(secret: String) -> Self {
+        Self(secret)
+    }
+    pub fn secret(&self) -> &String {
+        &self.0
+    }
+}
 use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
@@ -26,6 +38,7 @@ mod discovery;
 
 /// Absolute operation budget. Dropping an operation drops all its work/guards.
 #[derive(Clone, Copy)]
+#[non_exhaustive]
 pub struct OperationBudget {
     deadline: Instant,
 }
@@ -90,11 +103,13 @@ pub trait OAuthNetwork: Send + Sync {
     ) -> LocalFuture<'_, Result<oauth2::HttpResponse, HookError>>;
 }
 #[derive(Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ResourceMetadata {
     pub resource: String,
     pub authorization_servers: Vec<String>,
 }
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TrustedMetadata {
     pub resource: String,
     pub issuer: String,
@@ -106,17 +121,57 @@ pub struct TrustedMetadata {
     pub token_endpoint_auth_methods_supported: Vec<String>,
     pub code_challenge_methods_supported: Vec<String>,
 }
+#[non_exhaustive]
 pub struct TrustDecision {
     pub issuer: String,
     pub scopes: Vec<String>,
 }
+impl ResourceMetadata {
+    pub fn new(resource: String, authorization_servers: Vec<String>) -> Self {
+        Self {
+            resource,
+            authorization_servers,
+        }
+    }
+}
+impl TrustDecision {
+    pub fn new(issuer: String, scopes: Vec<String>) -> Self {
+        Self { issuer, scopes }
+    }
+}
+impl TrustedMetadata {
+    pub fn new(resource: String, issuer: String, token_endpoint: String) -> Self {
+        Self {
+            resource,
+            issuer,
+            token_endpoint,
+            authorization_endpoint: None,
+            authorization_response_iss_parameter_supported: false,
+            scopes: Vec::new(),
+            grant_types_supported: Vec::new(),
+            token_endpoint_auth_methods_supported: Vec::new(),
+            code_challenge_methods_supported: Vec::new(),
+        }
+    }
+}
 /// Select only locally trusted issuers and locally permitted scopes. Metadata and
 /// challenge scopes are requirements to evaluate, never trust/consent grants.
+#[non_exhaustive]
 pub struct EndpointTrust<'a> {
     pub target: &'a AuthTarget,
     pub client_id: &'a str,
     pub client_secret_ref: Option<&'a str>,
     pub metadata: &'a TrustedMetadata,
+}
+impl<'a> EndpointTrust<'a> {
+    pub fn new(target: &'a AuthTarget, client_id: &'a str, metadata: &'a TrustedMetadata) -> Self {
+        Self {
+            target,
+            client_id,
+            client_secret_ref: None,
+            metadata,
+        }
+    }
 }
 pub trait OAuthPolicy: Send + Sync {
     /// Mandatory issuer/client-bound approval of every advertised endpoint.
@@ -130,12 +185,14 @@ pub trait OAuthPolicy: Send + Sync {
     ) -> Result<TrustDecision, HookError>;
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TokenAuthMethod {
     None,
     ClientSecretBasic,
     ClientSecretPost,
 }
 /// Host registration, never inferred from untrusted metadata. Secret Debug is not exposed.
+#[non_exhaustive]
 pub struct OAuthClientConfig {
     namespace: String,
     pub(super) client_id: String,
@@ -143,6 +200,7 @@ pub struct OAuthClientConfig {
     pub(super) requested_scopes: Vec<String>,
     pub(super) allowed_scopes: Vec<String>,
     redirect_uri: Option<String>,
+    grant_partition: Option<String>,
     secret: Option<(String, ClientSecret)>,
     method: TokenAuthMethod,
 }
@@ -159,6 +217,7 @@ impl OAuthClientConfig {
             requested_scopes: Vec::new(),
             allowed_scopes: Vec::new(),
             redirect_uri: None,
+            grant_partition: None,
             secret: None,
             method: TokenAuthMethod::None,
         }
@@ -166,6 +225,11 @@ impl OAuthClientConfig {
     pub fn scopes(mut self, requested: Vec<String>, allowed: Vec<String>) -> Self {
         self.requested_scopes = requested;
         self.allowed_scopes = allowed;
+        self
+    }
+    /// Explicit opt-in to grant sharing, never destination authorization.
+    pub fn grant_partition(mut self, partition: impl Into<String>) -> Self {
+        self.grant_partition = Some(partition.into());
         self
     }
     pub fn redirect_uri(mut self, uri: impl Into<String>) -> Self {
@@ -183,16 +247,23 @@ impl OAuthClientConfig {
         self
     }
 }
-/// Cache identity includes namespace, full destination, backend and purpose.
-/// The record further binds issuer/resource/client/scopes, checked on every use.
+/// Canonical binding or grant storage identity; use `as_str()` for durable keys.
+/// Context accessors (backend, destination, purpose) describe binding keys only;
+/// they return empty strings for grant keys, whose principal is encoded in `as_str()`.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub struct SessionKey {
+    storage_key: String,
     namespace: String,
     backend_id: String,
     destination: String,
     purpose: String,
 }
 impl SessionKey {
+    /// Canonical length-prefixed UTF-8 storage identity.
+    pub fn as_str(&self) -> &str {
+        &self.storage_key
+    }
     pub fn namespace(&self) -> &str {
         &self.namespace
     }
@@ -206,15 +277,17 @@ impl SessionKey {
         &self.purpose
     }
 }
-/// Versioned host-persisted secret record. Serialization is for host storage,
+/// Host-persisted secret record. Serialization is for host storage,
 /// not diagnostics or protocol messages. There is intentionally no Debug.
 #[derive(Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct SessionRecord {
-    schema_version: u32,
     version: String,
     metadata: TrustedMetadata,
     client_id: String,
     flow: String,
+    configured_binding: bool,
+    allowed_scopes: Vec<String>,
     resource_metadata_hint: Option<discovery::ResourceMetadataHint>,
     challenge_scopes: Vec<String>,
     token: Option<SavedToken>,
@@ -224,7 +297,9 @@ pub struct SessionRecord {
 struct SavedToken {
     access_token: String,
     refresh_token: Option<String>,
-    expires_at: u64,
+    expires_at: Option<u64>,
+    scopes: Vec<String>,
+    authorized_scopes: Vec<String>,
     generation: String,
     rejected: bool,
     access_rejected: bool,
@@ -233,6 +308,10 @@ struct SavedToken {
 #[derive(Clone, Serialize, Deserialize)]
 struct SavedLogin {
     id: String,
+    binding_key: SessionKey,
+    metadata: TrustedMetadata,
+    required_scopes: Vec<String>,
+    host_deadline_ms: u64,
     state: String,
     verifier: String,
     redirect_uri: String,
@@ -281,12 +360,14 @@ pub trait CredentialGuard: Send {
     }
 }
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct PendingLogin {
-    key: SessionKey,
+    key: Box<SessionKey>,
     id: String,
     url: Url,
     expires_at: u64,
     exchange_in_flight: bool,
+    deadline: Instant,
     context: Box<AuthContext>,
 }
 impl PendingLogin {
@@ -305,10 +386,12 @@ impl PendingLogin {
         self.expires_at
     }
 }
+#[non_exhaustive]
 pub enum Preparation {
     Ready(BearerCredential),
     InteractionRequired(PendingLogin),
 }
+#[non_exhaustive]
 pub struct ManagedOAuth {
     pub(super) config: OAuthClientConfig,
     pub(super) network: Arc<dyn OAuthNetwork>,
@@ -378,17 +461,33 @@ fn now() -> Result<u64, HookError> {
 }
 impl ManagedOAuth {
     pub fn new(
-        config: OAuthClientConfig,
+        mut config: OAuthClientConfig,
         network: Arc<dyn OAuthNetwork>,
         policy: Arc<dyn OAuthPolicy>,
         store: Arc<dyn CredentialStore>,
     ) -> Result<Self, HookError> {
-        if config.namespace.is_empty()
+        if config.allowed_scopes.is_empty() {
+            config.allowed_scopes = config.requested_scopes.clone();
+        }
+        config.allowed_scopes.sort();
+        config.allowed_scopes.dedup();
+        if config
+            .allowed_scopes
+            .iter()
+            .any(|scope| !valid_scope(scope))
+        {
+            return Err(fail(AuthErrorCode::InvalidConfiguration));
+        }
+        if config
+            .grant_partition
+            .as_ref()
+            .is_some_and(|p| p.is_empty())
+            || config.namespace.is_empty()
             || config.client_id.is_empty()
             || config
                 .requested_scopes
                 .iter()
-                .any(|s| !config.allowed_scopes.contains(s) || s.is_empty())
+                .any(|s| !config.allowed_scopes.contains(s) || !valid_scope(s))
         {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
@@ -413,7 +512,20 @@ impl ManagedOAuth {
                     .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))?,
             )
             .map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?;
-            if !valid_https(&uri) || uri.query().is_some() {
+            if !(valid_https(&uri)
+                || (uri.scheme() == "http"
+                    && uri
+                        .host_str()
+                        .and_then(|host| {
+                            host.trim_matches(['[', ']'])
+                                .parse::<std::net::IpAddr>()
+                                .ok()
+                        })
+                        .is_some_and(|ip| ip.is_loopback())
+                    && uri.username().is_empty()
+                    && uri.password().is_none()
+                    && uri.fragment().is_none()))
+            {
                 return Err(fail(AuthErrorCode::InvalidConfiguration));
             }
         }
@@ -431,7 +543,20 @@ impl ManagedOAuth {
         }
     }
     fn key(&self, target: &AuthTarget) -> SessionKey {
+        let purpose = match target.purpose() {
+            crate::adapters::registered::AuthPurpose::Event => "event",
+            crate::adapters::registered::AuthPurpose::Upload => "upload",
+        };
         SessionKey {
+            storage_key: frame(
+                "ahp.oauth.binding:",
+                &[
+                    &self.config.namespace,
+                    target.backend_id(),
+                    purpose,
+                    target.destination().as_str(),
+                ],
+            ),
             namespace: self.config.namespace.clone(),
             backend_id: target.backend_id().into(),
             destination: target.destination().as_str().into(),
@@ -441,6 +566,58 @@ impl ManagedOAuth {
             }
             .into(),
         }
+    }
+    fn grant_key(&self, target: &AuthTarget, metadata: &TrustedMetadata) -> SessionKey {
+        let partition = self
+            .config
+            .grant_partition
+            .as_ref()
+            .map(|p| format!("shared:{p}"))
+            .unwrap_or_else(|| format!("binding:{}", self.key(target).as_str()));
+        let allowed = self.config.allowed_scopes.join(" ");
+        SessionKey {
+            storage_key: frame(
+                "ahp.oauth.grant:",
+                &[
+                    &self.config.namespace,
+                    &metadata.issuer,
+                    &metadata.resource,
+                    &self.config.client_id,
+                    self.flow_id(),
+                    &allowed,
+                    &partition,
+                ],
+            ),
+            namespace: self.config.namespace.clone(),
+            backend_id: String::new(),
+            destination: String::new(),
+            purpose: String::new(),
+        }
+    }
+    fn satisfies_requirements(&self, record: &SessionRecord) -> bool {
+        record.token.as_ref().is_some_and(|token| {
+            record
+                .challenge_scopes
+                .iter()
+                .all(|scope| token.authorized_scopes.contains(scope))
+        })
+    }
+    fn cached(&self, record: &SessionRecord) -> Option<BearerCredential> {
+        record
+            .token
+            .as_ref()
+            .filter(|token| {
+                !token.rejected
+                    && !token.access_rejected
+                    && token
+                        .expires_at
+                        .is_none_or(|expiry| expiry > now().unwrap_or(u64::MAX).saturating_add(30))
+                    && self.satisfies_requirements(record)
+            })
+            .map(|token| BearerCredential {
+                token: token.access_token.clone(),
+                attempt_id: token.generation.clone(),
+            })
     }
     fn validate_target(&self, target: &AuthTarget) -> Result<(), HookError> {
         match target.binding() {
@@ -478,18 +655,25 @@ impl ManagedOAuth {
             .map_err(sanitize_provider_error)
     }
     fn validate_saved(&self, target: &AuthTarget, record: &SessionRecord) -> Result<(), HookError> {
-        if record.schema_version != 2
-            || record.client_id != self.config.client_id
+        if record.client_id != self.config.client_id
             || record.flow != self.flow_id()
+            || record.allowed_scopes != self.config.allowed_scopes
         {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
-        discovery::validate_saved_source(
-            target.destination(),
-            &record.metadata.resource,
-            record.resource_metadata_hint.as_ref(),
-        )?;
-        self.approve_metadata(target, &record.metadata)?;
+        if matches!(target.binding(), AuthBinding::Unbound) && !record.configured_binding {
+            discovery::validate_saved_source(
+                target.destination(),
+                &record.metadata.resource,
+                record.resource_metadata_hint.as_ref(),
+            )?;
+        } else {
+            discovery::validate_resource(
+                &record.metadata.resource,
+                target.destination(),
+                Some(&record.metadata.resource),
+            )?;
+        }
         if target
             .issuer()
             .is_some_and(|issuer| issuer != record.metadata.issuer)
@@ -508,16 +692,14 @@ impl ManagedOAuth {
         decision.scopes.sort();
         decision.scopes.dedup();
         if decision.issuer != record.metadata.issuer
-            || decision.scopes != record.metadata.scopes
             || decision
                 .scopes
                 .iter()
                 .any(|scope| !self.config.allowed_scopes.contains(scope))
-            || self
-                .config
-                .requested_scopes
+            || target
+                .scopes()
                 .iter()
-                .chain(target.scopes())
+                .chain(&record.challenge_scopes)
                 .any(|scope| !decision.scopes.contains(scope))
         {
             return Err(fail(AuthErrorCode::UntrustedDestination));
@@ -553,7 +735,7 @@ impl ManagedOAuth {
     ) -> Result<Preparation, HookError> {
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
         budget
-            .run(self.prepare_inner(context, None, None, budget))
+            .run(self.prepare_inner(context, None, None, budget, true))
             .await
     }
     async fn persist(
@@ -585,104 +767,192 @@ impl ManagedOAuth {
         challenge: Option<&str>,
         rejected_attempt: Option<&str>,
         budget: OperationBudget,
+        interactive: bool,
     ) -> Result<Preparation, HookError> {
         let target = context.target()?;
         self.validate_target(&target)?;
-        let key = self.key(&target);
-        let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
-        let mut saved = budget.run(guard.load()).await?;
-        if let Some(record) = &saved {
-            self.validate_saved(&target, record)?;
+        let binding_key = self.key(&target);
+        let mut binding_guard = budget
+            .run(self.store.acquire(binding_key.clone(), budget))
+            .await?;
+        let mut saved_binding = budget.run(binding_guard.load()).await?;
+        drop(binding_guard);
+        if saved_binding.as_ref().is_some_and(|record| record.client_id != self.config.client_id || record.flow != self.flow_id() || record.allowed_scopes != self.config.allowed_scopes
+            || target.issuer().is_some_and(|issuer| issuer != record.metadata.issuer)
+            || matches!(target.binding(), AuthBinding::OAuth {resource, ..} if resource != &record.metadata.resource)) {
+            saved_binding = None;
         }
-        // Persist rejection before discovery/refresh can fail, without rejecting the refresh grant.
-        if let Some(record) = saved.as_mut()
-            && let Some(token) = record.token.as_mut()
+        let mut required = discovery::challenge_scopes(challenge)?;
+        required.extend_from_slice(target.scopes());
+        if let Some(binding) = &saved_binding {
+            required.extend_from_slice(&binding.challenge_scopes);
+        }
+        required.sort();
+        required.dedup();
+        if required
+            .iter()
+            .any(|scope| !self.config.allowed_scopes.contains(scope))
+        {
+            return Err(fail(AuthErrorCode::AccessDenied));
+        }
+        // Validate local authorization before touching the grant; no network is needed on a cache hit.
+        if let Some(binding) = &saved_binding {
+            let mut current_binding = binding.clone();
+            current_binding.challenge_scopes = required.clone();
+            self.validate_saved(&target, &current_binding)?;
+            let endpoints_current = self.approve_metadata(&target, &binding.metadata).is_ok();
+            let key = self.grant_key(&target, &binding.metadata);
+            let mut guard = budget.run(self.store.acquire(key, budget)).await?;
+            if let Some(mut record) = budget.run(guard.load()).await?
+                && endpoints_current
+            {
+                record.metadata = binding.metadata.clone();
+                record.challenge_scopes = required.clone();
+                if let Some(token) = record.token.as_mut()
+                    && rejected_attempt == Some(token.generation.as_str())
+                {
+                    token.access_rejected = true;
+                    self.persist(&mut *guard, &mut record, budget).await?;
+                }
+                if challenge.is_none()
+                    || rejected_attempt.is_some_and(|attempt| {
+                        record
+                            .token
+                            .as_ref()
+                            .is_some_and(|token| token.generation != attempt)
+                    })
+                {
+                    if let Some(credential) = self.cached(&record) {
+                        return Ok(Preparation::Ready(credential));
+                    }
+                }
+                if self.config.flow == OAuthFlow::AuthorizationCodePkce
+                    && record
+                        .token
+                        .as_ref()
+                        .is_some_and(|token| token.refresh_token.is_some() && !token.rejected)
+                    && self.satisfies_requirements(&record)
+                {
+                    return self
+                        .refresh(&mut *guard, &mut record, budget)
+                        .await
+                        .map(Preparation::Ready);
+                }
+            }
+        }
+        // Discovery must never hold a credential-store guard (including a binding guard).
+        let (mut metadata, hint) = discovery::discover(
+            self,
+            &target,
+            challenge,
+            saved_binding
+                .as_ref()
+                .and_then(|record| record.resource_metadata_hint.as_ref()),
+            &required,
+            budget,
+        )
+        .await?;
+        let mut binding = SessionRecord {
+            version: String::new(),
+            metadata: metadata.clone(),
+            client_id: self.config.client_id.clone(),
+            flow: self.flow_id().into(),
+            configured_binding: !matches!(target.binding(), AuthBinding::Unbound),
+            allowed_scopes: self.config.allowed_scopes.clone(),
+            resource_metadata_hint: hint.clone(),
+            challenge_scopes: required.clone(),
+            token: None,
+            pending: None,
+        };
+        loop {
+            let mut binding_guard = budget
+                .run(self.store.acquire(binding_key.clone(), budget))
+                .await?;
+            let current = budget.run(binding_guard.load()).await?;
+            drop(binding_guard);
+            let expected = current.as_ref().map(|record| record.version.clone());
+            if let Some(current) = current
+                && current.client_id == self.config.client_id
+                && current.flow == self.flow_id()
+                && current.allowed_scopes == self.config.allowed_scopes
+                && current.metadata.issuer == metadata.issuer
+                && current.metadata.resource == metadata.resource
+            {
+                required.extend(current.challenge_scopes);
+            }
+            required.sort();
+            required.dedup();
+            let decision = self
+                .policy
+                .select(
+                    &target,
+                    &ResourceMetadata::new(
+                        metadata.resource.clone(),
+                        vec![metadata.issuer.clone()],
+                    ),
+                    &required,
+                )
+                .map_err(sanitize_provider_error)?;
+            if decision.issuer != metadata.issuer
+                || decision
+                    .scopes
+                    .iter()
+                    .any(|scope| !self.config.allowed_scopes.contains(scope))
+                || required
+                    .iter()
+                    .any(|scope| !decision.scopes.contains(scope))
+            {
+                return Err(fail(AuthErrorCode::AccessDenied));
+            }
+            metadata.scopes = decision.scopes;
+            binding.metadata = metadata.clone();
+            binding.challenge_scopes = required.clone();
+            binding.version = expected.clone().unwrap_or_default();
+            let mut binding_guard = budget
+                .run(self.store.acquire(binding_key.clone(), budget))
+                .await?;
+            if budget
+                .run(binding_guard.load())
+                .await?
+                .as_ref()
+                .map(|record| record.version.clone())
+                != expected
+            {
+                drop(binding_guard);
+                continue;
+            }
+            self.persist(&mut *binding_guard, &mut binding, budget)
+                .await?;
+            break;
+        }
+        let key = self.grant_key(&target, &metadata);
+        let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
+        let mut record = match budget.run(guard.load()).await? {
+            Some(record) => record,
+            None => {
+                let mut record = binding.clone();
+                record.version.clear();
+                record
+            }
+        };
+        record.metadata = metadata;
+        record.resource_metadata_hint = hint;
+        record.challenge_scopes = required;
+        if let Some(token) = record.token.as_mut()
             && rejected_attempt == Some(token.generation.as_str())
-            && !token.access_rejected
         {
             token.access_rejected = true;
-            self.persist(&mut *guard, record, budget).await?;
         }
-        // A stale response must not invalidate or refresh a newer token generation.
-        if let (Some(attempt), Some(record)) = (rejected_attempt, &saved)
-            && let Some(token) = &record.token
-            && token.generation != attempt
-            && !token.rejected
-            && !token.access_rejected
-            && !token.refresh_in_flight
-            && token.expires_at > now()?.saturating_add(30)
-        {
-            return Ok(Preparation::Ready(BearerCredential {
-                token: token.access_token.clone(),
-                attempt_id: token.generation.clone(),
-            }));
+        if let Some(credential) = self.cached(&record) {
+            return Ok(Preparation::Ready(credential));
         }
-        let hint = saved
-            .as_ref()
-            .and_then(|r| r.resource_metadata_hint.as_ref());
-        let previous_scopes = saved
-            .as_ref()
-            .map(|record| record.challenge_scopes.as_slice())
-            .unwrap_or(&[]);
-        let mut challenge_scopes = discovery::challenge_scopes(challenge)?;
-        challenge_scopes.extend_from_slice(previous_scopes);
-        challenge_scopes.sort();
-        challenge_scopes.dedup();
-        let (metadata, hint) =
-            discovery::discover(self, &target, challenge, hint, previous_scopes, budget).await?;
-        let mut record = match saved {
-            Some(record)
-                if record.metadata == metadata && record.client_id == self.config.client_id =>
-            {
-                record
-            }
-            Some(mut record) => {
-                let mut previous = record.metadata.clone();
-                previous.scopes = metadata.scopes.clone();
-                if previous != metadata || record.client_id != self.config.client_id {
-                    return Err(fail(AuthErrorCode::UntrustedDestination));
-                }
-                // A locally approved scope change needs a new grant, never an old-token replay.
-                record.metadata = metadata;
-                record.token = None;
-                record.pending = None;
-                record
-            }
-            None => SessionRecord {
-                schema_version: 2,
-                version: String::new(),
-                metadata,
-                client_id: self.config.client_id.clone(),
-                flow: self.flow_id().into(),
-                resource_metadata_hint: hint.clone(),
-                challenge_scopes: challenge_scopes.clone(),
-                token: None,
-                pending: None,
-            },
-        };
-        if record.challenge_scopes != challenge_scopes || record.resource_metadata_hint != hint {
-            record.challenge_scopes = challenge_scopes;
-            record.resource_metadata_hint = hint;
-            self.persist(&mut *guard, &mut record, budget).await?;
-        }
-        let rejected = rejected_attempt
-            .is_some_and(|a| record.token.as_ref().is_some_and(|t| t.generation == a));
         if let Some(token) = &record.token {
-            if !rejected
+            // Explicit step-up needs new consent, not refresh with a widened scope request.
+            if self.config.flow == OAuthFlow::AuthorizationCodePkce
+                && token.refresh_token.is_some()
                 && !token.rejected
-                && !token.access_rejected
-                && !token.refresh_in_flight
-                && token.expires_at > now()?.saturating_add(30)
+                && self.satisfies_requirements(&record)
             {
-                return Ok(Preparation::Ready(BearerCredential {
-                    token: token.access_token.clone(),
-                    attempt_id: token.generation.clone(),
-                }));
-            }
-            if token.refresh_in_flight {
-                return Err(fail(AuthErrorCode::InteractionRequired));
-            }
-            if token.refresh_token.is_some() && !token.rejected {
                 return self
                     .refresh(&mut *guard, &mut record, budget)
                     .await
@@ -695,8 +965,16 @@ impl ManagedOAuth {
                 .await
                 .map(Preparation::Ready),
             OAuthFlow::AuthorizationCodePkce => {
+                if !interactive {
+                    return Err(fail(AuthErrorCode::InteractionRequired));
+                }
                 if let Some(login) = &record.pending
                     && login.expires_at > now()?
+                    && login.host_deadline_ms.saturating_add(1) >= wall_deadline_ms(budget)?
+                    && login.host_deadline_ms > now_ms()?
+                    && login.binding_key == self.key(&target)
+                    && login.metadata.scopes == record.metadata.scopes
+                    && login.required_scopes == record.challenge_scopes
                     && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
                 {
                     let pending = pending(key, context, login)?;
@@ -718,6 +996,10 @@ impl ManagedOAuth {
                     .await?;
                 let login = SavedLogin {
                     id: random_id(),
+                    binding_key: self.key(&target),
+                    metadata: record.metadata.clone(),
+                    required_scopes: record.challenge_scopes.clone(),
+                    host_deadline_ms: wall_deadline_ms(budget)?,
                     state: state.secret().clone(),
                     verifier: verifier.secret().clone(),
                     redirect_uri: self
@@ -726,7 +1008,15 @@ impl ManagedOAuth {
                         .clone()
                         .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))?,
                     url: url.to_string(),
-                    expires_at: now()?.saturating_add(600),
+                    expires_at: now()?.saturating_add(
+                        600.min(
+                            budget
+                                .deadline
+                                .saturating_duration_since(Instant::now())
+                                .as_secs()
+                                .max(1),
+                        ),
+                    ),
                     in_flight: false,
                 };
                 record.pending = Some(login.clone());
@@ -772,7 +1062,7 @@ impl ManagedOAuth {
                 },
             );
         if let Some((_, secret)) = &self.config.secret {
-            client = client.set_client_secret(secret.clone());
+            client = client.set_client_secret(oauth2::ClientSecret::new(secret.secret().clone()));
         }
         if let Some(redirect) = &self.config.redirect_uri {
             client = client.set_redirect_uri(
@@ -835,7 +1125,7 @@ impl ManagedOAuth {
         let mut request = client
             .exchange_refresh_token(&refresh)
             .add_extra_param("resource", &record.metadata.resource);
-        for scope in &record.metadata.scopes {
+        for scope in &record.token.as_ref().unwrap().authorized_scopes {
             request = request.add_scope(Scope::new(scope.clone()));
         }
         let status = Arc::new(std::sync::atomic::AtomicU16::new(0));
@@ -892,41 +1182,56 @@ impl ManagedOAuth {
         old_refresh: Option<String>,
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
-        if *response.token_type() != BasicTokenType::Bearer
+        let invalid_access = *response.token_type() != BasicTokenType::Bearer
             || response.access_token().secret().is_empty()
             || !response
                 .access_token()
                 .secret()
                 .bytes()
-                .all(|b| b.is_ascii_graphic())
-        {
-            return Err(fail(AuthErrorCode::CredentialUnavailable));
-        }
-        let expires = response
-            .expires_in()
-            .filter(|v| v.as_secs() > 30)
-            .ok_or_else(|| fail(AuthErrorCode::CredentialUnavailable))?;
-        let scopes = response
+                .all(|b| b.is_ascii_graphic());
+        let expires = response.expires_in();
+        let invalid_expiry = expires.is_some_and(|v| v.as_secs() == 0);
+        let previous_scopes = if old_refresh.is_some() {
+            record
+                .token
+                .as_ref()
+                .map(|token| token.authorized_scopes.clone())
+                .unwrap_or_else(|| record.metadata.scopes.clone())
+        } else {
+            record.metadata.scopes.clone()
+        };
+        let mut scopes = response
             .scopes()
             .map(|s| s.iter().map(|s| s.as_str().to_owned()).collect::<Vec<_>>())
-            .unwrap_or_else(|| record.metadata.scopes.clone());
-        if scopes
-            .iter()
-            .any(|s| !record.metadata.scopes.contains(s) || !self.config.allowed_scopes.contains(s))
-            || record.metadata.scopes.iter().any(|s| !scopes.contains(s))
-        {
-            return Err(fail(AuthErrorCode::AccessDenied));
-        }
+            .unwrap_or_else(|| previous_scopes.clone());
+        scopes.sort();
+        scopes.dedup();
+        let invalid_scopes = scopes.iter().any(|scope| {
+            !valid_scope(scope)
+                || !self.config.allowed_scopes.contains(scope)
+                || (old_refresh.is_some() && !previous_scopes.contains(scope))
+        });
         let token = SavedToken {
             access_token: response.access_token().secret().clone(),
             refresh_token: response
                 .refresh_token()
                 .map(|s| s.secret().clone())
-                .or(old_refresh),
-            expires_at: now()?.saturating_add(expires.as_secs()),
+                .or(old_refresh.clone()),
+            expires_at: expires
+                .map(|expiry| now().unwrap_or(u64::MAX).saturating_add(expiry.as_secs())),
+            authorized_scopes: if invalid_scopes && old_refresh.is_some() {
+                previous_scopes
+            } else {
+                scopes
+                    .iter()
+                    .filter(|scope| self.config.allowed_scopes.contains(scope))
+                    .cloned()
+                    .collect()
+            },
+            scopes,
             generation: random_id(),
             rejected: false,
-            access_rejected: false,
+            access_rejected: invalid_access || invalid_expiry || invalid_scopes,
             refresh_in_flight: false,
         };
         let credential = BearerCredential {
@@ -936,6 +1241,12 @@ impl ManagedOAuth {
         record.token = Some(token);
         record.pending = None;
         self.persist(guard, record, budget).await?;
+        if invalid_access || invalid_expiry {
+            return Err(fail(AuthErrorCode::CredentialUnavailable));
+        }
+        if invalid_scopes || !self.satisfies_requirements(record) {
+            return Err(fail(AuthErrorCode::AccessDenied));
+        }
         Ok(credential)
     }
     /// Complete only this pending generation. Callback transport/UI remain host-owned.
@@ -947,6 +1258,7 @@ impl ManagedOAuth {
         callback: Url,
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
+        let budget = OperationBudget::until(budget.deadline.min(login.deadline));
         budget
             .run(self.complete_inner(login, callback, budget))
             .await
@@ -959,9 +1271,6 @@ impl ManagedOAuth {
     ) -> Result<BearerCredential, HookError> {
         let target = login.context.target()?;
         self.validate_target(&target)?;
-        if login.key != self.key(&target) {
-            return Err(fail(AuthErrorCode::InvalidConfiguration));
-        }
         let redirect = Url::parse(
             self.config
                 .redirect_uri
@@ -977,20 +1286,54 @@ impl ManagedOAuth {
         {
             return Err(fail(AuthErrorCode::AccessDenied));
         }
+        let mut expected_query = redirect
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect::<Vec<_>>();
+        let mut fixed_query = callback
+            .query_pairs()
+            .filter(|(key, _)| {
+                !matches!(
+                    key.as_ref(),
+                    "state" | "code" | "error" | "iss" | "error_description" | "error_uri"
+                )
+            })
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect::<Vec<_>>();
+        expected_query.sort();
+        fixed_query.sort();
+        if expected_query != fixed_query {
+            return Err(fail(AuthErrorCode::AccessDenied));
+        }
+        let mut binding_guard = budget
+            .run(self.store.acquire(self.key(&target), budget))
+            .await?;
+        let binding = budget
+            .run(binding_guard.load())
+            .await?
+            .ok_or_else(|| fail(AuthErrorCode::InteractionRequired))?;
+        drop(binding_guard);
+        self.validate_saved(&target, &binding)?;
+        self.approve_metadata(&target, &binding.metadata)?;
         let mut guard = budget
-            .run(self.store.acquire(login.key.clone(), budget))
+            .run(self.store.acquire((*login.key).clone(), budget))
             .await?;
         let mut record = budget
             .run(guard.load())
             .await?
             .ok_or_else(|| fail(AuthErrorCode::InteractionRequired))?;
-        self.validate_saved(&login.context.target()?, &record)?;
+        drop(guard);
+        if *login.key != self.grant_key(&target, &record.metadata) {
+            return Err(fail(AuthErrorCode::InvalidConfiguration));
+        }
+
         let saved = record
             .pending
             .as_ref()
             .filter(|s| {
                 s.id == login.id
                     && s.expires_at > now().unwrap_or(u64::MAX)
+                    && s.host_deadline_ms > now_ms().unwrap_or(u64::MAX)
                     && !s.in_flight
                     && self.config.redirect_uri.as_deref() == Some(s.redirect_uri.as_str())
             })
@@ -1014,31 +1357,32 @@ impl ManagedOAuth {
         }
         if CsrfToken::new(state.ok_or_else(|| fail(AuthErrorCode::AccessDenied))?)
             != CsrfToken::new(saved.state.clone())
-            || (record
+            || (saved
                 .metadata
                 .authorization_response_iss_parameter_supported
                 && issuer.is_none())
-            || issuer
-                .as_ref()
-                .is_some_and(|i| i != &record.metadata.issuer)
+            || issuer.as_ref().is_some_and(|i| i != &saved.metadata.issuer)
             || (code.is_some() && error.is_some())
         {
             return Err(fail(AuthErrorCode::AccessDenied));
         }
-        // Recheck current host trust; callback cannot select a different issuer/resource/scope.
-        let target = login.context.target()?;
-        self.validate_target(&target)?;
-        let (metadata, _) = discovery::discover(
-            self,
-            &target,
-            None,
-            record.resource_metadata_hint.as_ref(),
-            &record.challenge_scopes,
-            budget,
-        )
-        .await?;
-        if metadata != record.metadata {
-            return Err(fail(AuthErrorCode::UntrustedDestination));
+        if saved.binding_key != self.key(&target) {
+            return Err(fail(AuthErrorCode::AccessDenied));
+        }
+        self.approve_metadata(&target, &saved.metadata)?;
+        let mut guard = budget
+            .run(self.store.acquire((*login.key).clone(), budget))
+            .await?;
+        record = budget
+            .run(guard.load())
+            .await?
+            .ok_or_else(|| fail(AuthErrorCode::InteractionRequired))?;
+        if !record.pending.as_ref().is_some_and(|pending| {
+            pending.id == saved.id
+                && !pending.in_flight
+                && pending.host_deadline_ms > now_ms().unwrap_or(u64::MAX)
+        }) {
+            return Err(fail(AuthErrorCode::InteractionRequired));
         }
         if error.is_some() {
             record.pending = None;
@@ -1048,6 +1392,8 @@ impl ManagedOAuth {
         let code = code
             .filter(|s| !s.is_empty())
             .ok_or_else(|| fail(AuthErrorCode::AccessDenied))?;
+        record.metadata = saved.metadata.clone();
+        record.challenge_scopes = saved.required_scopes.clone();
         record.pending.as_mut().unwrap().in_flight = true;
         self.persist(&mut *guard, &mut record, budget).await?;
         let client = self.client(&record.metadata)?;
@@ -1072,6 +1418,10 @@ impl ManagedOAuth {
                     record.pending = None;
                     self.persist(&mut *guard, &mut record, budget).await?;
                 }
+                if matches!(&error, RequestTokenError::ServerResponse(response) if *response.error() == BasicErrorResponseType::InvalidGrant)
+                {
+                    return Err(fail(AuthErrorCode::InteractionRequired));
+                }
                 return Err(token_error(error));
             }
         };
@@ -1092,13 +1442,28 @@ impl ManagedOAuth {
             .run(async {
                 let target = context.target()?;
                 self.validate_target(&target)?;
-                let mut guard = budget
+                let mut binding_guard = budget
                     .run(self.store.acquire(self.key(&target), budget))
+                    .await?;
+                let Some(binding) = budget.run(binding_guard.load()).await? else {
+                    return Ok(false);
+                };
+                drop(binding_guard);
+                self.validate_saved(&target, &binding)?;
+                let mut guard = budget
+                    .run(
+                        self.store
+                            .acquire(self.grant_key(&target, &binding.metadata), budget),
+                    )
                     .await?;
                 let Some(mut record) = budget.run(guard.load()).await? else {
                     return Ok(false);
                 };
-                self.validate_saved(&target, &record)?;
+                if self.grant_key(&target, &binding.metadata)
+                    != self.grant_key(&target, &record.metadata)
+                {
+                    return Err(fail(AuthErrorCode::InvalidConfiguration));
+                }
                 if let Some(token) = &mut record.token
                     && token.generation == attempt_id
                     && token.refresh_in_flight
@@ -1122,13 +1487,22 @@ impl ManagedOAuth {
             .run(async {
                 let target = login.context.target()?;
                 self.validate_target(&target)?;
-                if login.key != self.key(&target) {
-                    return Err(fail(AuthErrorCode::InvalidConfiguration));
-                }
-                let mut guard = budget.run(self.store.acquire(login.key, budget)).await?;
+                let mut guard = budget
+                    .run(self.store.acquire((*login.key).clone(), budget))
+                    .await?;
                 if let Some(mut record) = budget.run(guard.load()).await?
                     && record.pending.as_ref().is_some_and(|s| s.id == login.id)
                 {
+                    if record
+                        .pending
+                        .as_ref()
+                        .is_some_and(|pending| pending.binding_key != self.key(&target))
+                    {
+                        return Err(fail(AuthErrorCode::AccessDenied));
+                    }
+                    if *login.key != self.grant_key(&target, &record.metadata) {
+                        return Err(fail(AuthErrorCode::InvalidConfiguration));
+                    }
                     record.pending = None;
                     self.persist(&mut *guard, &mut record, budget).await?;
                 }
@@ -1139,17 +1513,49 @@ impl ManagedOAuth {
 }
 fn pending(
     key: SessionKey,
-    context: AuthContext,
+    mut context: AuthContext,
     login: &SavedLogin,
 ) -> Result<PendingLogin, HookError> {
+    let remaining = login.host_deadline_ms.saturating_sub(now_ms()?);
+    let deadline = Instant::now() + std::time::Duration::from_millis(remaining);
+    context.deadline = deadline;
     Ok(PendingLogin {
-        key,
+        key: Box::new(key),
         id: login.id.clone(),
         url: Url::parse(&login.url).map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?,
         expires_at: login.expires_at,
         exchange_in_flight: login.in_flight,
+        deadline,
         context: Box::new(context),
     })
+}
+fn now_ms() -> Result<u64, HookError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|v| v.as_millis().min(u64::MAX as u128) as u64)
+        .map_err(|_| fail(AuthErrorCode::ProviderFailed))
+}
+fn wall_deadline_ms(budget: OperationBudget) -> Result<u64, HookError> {
+    Ok(now_ms()?.saturating_add(
+        budget
+            .deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .min(u64::MAX as u128) as u64,
+    ))
+}
+fn valid_scope(scope: &str) -> bool {
+    !scope.is_empty()
+        && scope
+            .bytes()
+            .all(|b| b == 0x21 || (0x23..=0x5b).contains(&b) || (0x5d..=0x7e).contains(&b))
+}
+fn frame(prefix: &str, fields: &[&str]) -> String {
+    let mut key = prefix.to_owned();
+    for field in fields {
+        key.push_str(&format!("{}:{}", field.len(), field));
+    }
+    key
 }
 fn valid_https(url: &Url) -> bool {
     url.scheme() == "https"
@@ -1164,17 +1570,12 @@ fn token_error(
     match error {
         RequestTokenError::Request(error) => sanitize_provider_error(error),
         RequestTokenError::ServerResponse(response)
-            if *response.error() == BasicErrorResponseType::InvalidGrant =>
-        {
-            fail(AuthErrorCode::RefreshRejected)
-        }
-        RequestTokenError::ServerResponse(response)
             if matches!(
                 response.error(),
                 BasicErrorResponseType::InvalidClient | BasicErrorResponseType::UnauthorizedClient
             ) =>
         {
-            fail(AuthErrorCode::AccessDenied)
+            fail(AuthErrorCode::CredentialUnavailable)
         }
         _ => fail(AuthErrorCode::ProviderFailed),
     }
@@ -1195,7 +1596,10 @@ impl AuthProvider for ManagedOAuth {
                     return Ok(None);
                 }
             }
-            match self.prepare(context, budget).await? {
+            match budget
+                .run(self.prepare_inner(context, None, None, budget, false))
+                .await?
+            {
                 Preparation::Ready(credential) => Ok(Some(credential)),
                 Preparation::InteractionRequired(_) => {
                     Err(fail(AuthErrorCode::InteractionRequired))
@@ -1209,7 +1613,7 @@ impl AuthProvider for ManagedOAuth {
         challenge: AuthChallenge,
     ) -> LocalFuture<'_, Result<(), HookError>> {
         Box::pin(async move {
-            if challenge.status != 401 {
+            if challenge.status != 401 && challenge.status != 403 {
                 return Err(fail(AuthErrorCode::AccessDenied));
             }
             let budget = OperationBudget::until(context.deadline);
@@ -1220,13 +1624,26 @@ impl AuthProvider for ManagedOAuth {
                 .map(|(_, value)| value.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
+            if challenge.status == 403
+                && (!discovery::insufficient_scope(&headers)?
+                    || (discovery::challenge_scopes(Some(&headers))?.is_empty()
+                        && context.target()?.scopes().is_empty()))
+            {
+                return Err(fail(AuthErrorCode::AccessDenied));
+            }
             let header = if headers.is_empty() {
                 None
             } else {
                 Some(headers.as_str())
             };
             match budget
-                .run(self.prepare_inner(context, header, challenge.attempt_id.as_deref(), budget))
+                .run(self.prepare_inner(
+                    context,
+                    header,
+                    challenge.attempt_id.as_deref(),
+                    budget,
+                    false,
+                ))
                 .await?
             {
                 Preparation::Ready(_) => Ok(()),
@@ -1238,6 +1655,6 @@ impl AuthProvider for ManagedOAuth {
     }
 }
 
-#[cfg(all(test, feature = "interop"))]
+#[cfg(test)]
 #[path = "managed/tests.rs"]
 mod tests;

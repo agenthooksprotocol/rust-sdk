@@ -20,6 +20,7 @@ fn denied() -> HookError {
 struct Challenge {
     resource_metadata: Option<String>,
     scopes: Vec<String>,
+    insufficient_scope: bool,
 }
 
 fn token(byte: u8) -> bool {
@@ -88,7 +89,8 @@ fn parse_challenge(header: Option<&str>) -> Result<Challenge, HookError> {
     let Some(header) = header else {
         return Ok(result);
     };
-    let (mut bearer, mut scope_seen, mut metadata_seen) = (false, false, false);
+    let (mut bearer, mut scheme_seen) = (false, false);
+    let mut bearer_parameters = Vec::new();
     for part in challenge_parts(header)? {
         if part.is_empty() {
             return Err(failed());
@@ -99,8 +101,18 @@ fn parse_challenge(header: Option<&str>) -> Result<Challenge, HookError> {
         }
         let rest = part[end..].trim_start();
         let param = if rest.starts_with('=') {
+            if !scheme_seen {
+                return Err(failed());
+            }
             part
         } else {
+            // A new scheme must be separated from its credentials. Unknown
+            // credentials can be token68 (including trailing '=' padding), not
+            // necessarily auth-params; do not parse them as Bearer parameters.
+            if end < part.len() && !part.as_bytes()[end].is_ascii_whitespace() {
+                return Err(failed());
+            }
+            scheme_seen = true;
             bearer = part[..end].eq_ignore_ascii_case("bearer");
             rest
         };
@@ -112,18 +124,20 @@ fn parse_challenge(header: Option<&str>) -> Result<Challenge, HookError> {
         if name.is_empty() || !name.bytes().all(token) {
             return Err(failed());
         }
+        let normalized_name = name.to_ascii_lowercase();
+        if bearer_parameters.contains(&normalized_name) {
+            return Err(failed());
+        }
+        bearer_parameters.push(normalized_name);
         let value = parameter(value)?;
         if name.eq_ignore_ascii_case("resource_metadata") {
-            if metadata_seen || value.is_empty() {
+            if value.is_empty() {
                 return Err(failed());
             }
-            metadata_seen = true;
             result.resource_metadata = Some(value);
+        } else if name.eq_ignore_ascii_case("error") {
+            result.insufficient_scope = value == "insufficient_scope";
         } else if name.eq_ignore_ascii_case("scope") {
-            if scope_seen {
-                return Err(failed());
-            }
-            scope_seen = true;
             if value.is_empty() || !value.bytes().all(|b| b == b' ' || scope_byte(b)) {
                 return Err(failed());
             }
@@ -135,6 +149,13 @@ fn parse_challenge(header: Option<&str>) -> Result<Challenge, HookError> {
         }
     }
     Ok(result)
+}
+
+pub(super) fn insufficient_scope(header: &str) -> Result<bool, HookError> {
+    if header.is_empty() {
+        return Ok(false);
+    }
+    Ok(parse_challenge(Some(header))?.insufficient_scope)
 }
 
 pub(super) fn challenge_scopes(header: Option<&str>) -> Result<Vec<String>, HookError> {
@@ -163,7 +184,7 @@ fn resource_identifier(value: &str) -> Result<Url, HookError> {
     https(value, false)
 }
 
-fn validate_resource(
+pub(super) fn validate_resource(
     identifier: &str,
     destination: &Url,
     configured: Option<&str>,
@@ -400,38 +421,59 @@ pub(super) async fn discover(
     challenge.scopes.extend_from_slice(saved_scopes);
     challenge.scopes.sort();
     challenge.scopes.dedup();
-    let configured_resource = match target.binding() {
-        AuthBinding::OAuth { resource, .. } => Some(resource.as_str()),
-        AuthBinding::Unbound => None,
+    // Reject requests outside the local scope ceiling before any discovery request.
+    if owner
+        .config
+        .requested_scopes
+        .iter()
+        .chain(target.scopes())
+        .chain(&challenge.scopes)
+        .any(|scope| {
+            scope.is_empty()
+                || !scope.bytes().all(scope_byte)
+                || !owner.config.allowed_scopes.contains(scope)
+        })
+    {
+        return Err(denied());
+    }
+    let resource_url = https(target.destination().as_str(), false)?;
+    let (metadata, hint) = match target.binding() {
+        AuthBinding::OAuth { resource, .. } => {
+            validate_resource(resource, &resource_url, Some(resource))?;
+            let issuer = target.issuer().ok_or_else(failed)?;
+            https(issuer, true)?;
+            // Presets identify the principal; PRM is only needed to learn an unbound one.
+            (
+                ResourceMetadata {
+                    resource: resource.clone(),
+                    authorization_servers: vec![issuer.to_owned()],
+                },
+                None,
+            )
+        }
+        AuthBinding::Unbound => {
+            let candidates =
+                resource_candidates(&resource_url, current_header, &challenge, saved_hint)?;
+            let urls = candidates
+                .iter()
+                .map(|candidate| https(&candidate.url, false))
+                .collect::<Result<Vec<_>, _>>()?;
+            let (metadata, fetched_url): (ResourceMetadata, _) =
+                fetch(owner, &urls, EndpointUse::ResourceMetadata, budget).await?;
+            let hint = candidates
+                .into_iter()
+                .find(|candidate| candidate.url == fetched_url)
+                .ok_or_else(failed)?;
+            // Exact retrieval-source identity precedes all use of untrusted metadata.
+            validate_resource_source(&metadata.resource, &hint)?;
+            validate_resource(&metadata.resource, &resource_url, None)?;
+            (metadata, Some(hint))
+        }
         _ => return Err(failed()),
     };
-    if let Some(resource) = configured_resource {
-        resource_identifier(resource)?;
-    }
-    // Well-known discovery follows the actual endpoint path, not an audience alias.
-    let resource_url = https(target.destination().as_str(), false)?;
-    let candidates = resource_candidates(&resource_url, current_header, &challenge, saved_hint)?;
-    let urls = candidates
-        .iter()
-        .map(|candidate| https(&candidate.url, false))
-        .collect::<Result<Vec<_>, _>>()?;
-    let (metadata, fetched_url): (ResourceMetadata, _) =
-        fetch(owner, &urls, EndpointUse::ResourceMetadata, budget).await?;
-    let hint = candidates
-        .into_iter()
-        .find(|candidate| candidate.url == fetched_url)
-        .ok_or_else(failed)?;
-    // RFC 9728 section 3.3 requires exact retrieval-source identity BEFORE any
-    // metadata is used. Destination coverage and explicit presets are additional checks.
-    validate_resource_source(&metadata.resource, &hint)?;
     if metadata.authorization_servers.is_empty() {
         return Err(failed());
     }
-    validate_resource(
-        &metadata.resource,
-        target.destination(),
-        configured_resource,
-    )?;
     for issuer in &metadata.authorization_servers {
         https(issuer, true)?;
     }
@@ -519,12 +561,35 @@ pub(super) async fn discover(
             .authorization_response_iss_parameter_supported,
     };
     owner.approve_metadata(target, &metadata)?;
-    Ok((metadata, Some(hint)))
+    Ok((metadata, hint))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_resource_identity_preserves_trailing_slash_and_query() {
+        for resource in [
+            "https://api.example/api/",
+            "https://api.example/api/?audience=hooks",
+        ] {
+            let destination = Url::parse(resource).unwrap();
+            assert!(validate_resource(resource, &destination, Some(resource)).is_ok());
+            assert!(
+                validate_resource(resource, &destination, Some("https://api.example/api")).is_err()
+            );
+        }
+        let destination = Url::parse("https://api.example/api/?audience=other").unwrap();
+        assert!(
+            validate_resource(
+                "https://api.example/api/?audience=hooks",
+                &destination,
+                Some("https://api.example/api/?audience=hooks"),
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn resource_identifiers_cover_only_same_origin_path_segments() {
@@ -647,6 +712,57 @@ mod tests {
             parse_challenge(Some("Basic realm=example")).unwrap(),
             Challenge::default()
         );
+    }
+
+    #[test]
+    fn unknown_schemes_with_padded_token68_do_not_hide_following_bearer() {
+        for credentials in ["abc=", "abc==", "/+abc==", "a-b._~+/==="] {
+            let header = format!(
+                "Negotiate {credentials}, Bearer scope=\"read\", resource_metadata=\"https://api.example/meta\", Other {credentials}"
+            );
+            let parsed = parse_challenge(Some(&header)).unwrap();
+            assert_eq!(parsed.scopes, ["read"]);
+            assert_eq!(
+                parsed.resource_metadata.as_deref(),
+                Some("https://api.example/meta")
+            );
+        }
+        assert_eq!(
+            parse_challenge(Some("Unknown /+abc==")).unwrap(),
+            Challenge::default()
+        );
+    }
+
+    #[test]
+    fn insufficient_scope_requires_an_unambiguous_bearer_error() {
+        assert!(insufficient_scope("Unknown abc==, Bearer error=insufficient_scope").unwrap());
+        for header in [
+            "",
+            "Bearer",
+            "Bearer error=invalid_token",
+            "Unknown error=insufficient_scope",
+        ] {
+            assert!(!insufficient_scope(header).unwrap(), "{header}");
+        }
+        assert!(
+            insufficient_scope("Bearer error=insufficient_scope, error=invalid_token").is_err()
+        );
+    }
+
+    #[test]
+    fn malformed_or_ambiguous_bearer_parameters_fail_closed() {
+        for header in [
+            "Bearer scope=read==",
+            "Bearer scope=",
+            "Bearer scope",
+            "Bearer/scope=read",
+            "scope=read, Bearer",
+            "Bearer error=invalid_token, ERROR=insufficient_scope",
+            "Bearer extension=one, extension=two",
+            "Bearer scope=read, Unknown abc==, Bearer scope=write",
+        ] {
+            assert!(parse_challenge(Some(header)).is_err(), "{header}");
+        }
     }
 
     #[test]

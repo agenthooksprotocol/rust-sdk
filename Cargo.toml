@@ -4,6 +4,7 @@ version = "0.11.0"
 edition = "2024"
 rust-version = "1.88"
 publish = ["crates-io"]
+exclude = ["src/auth/managed/testdata/*.pem"]
 description = "Official non-normative Rust SDK for the Agent Hooks Protocol"
 license = "Apache-2.0"
 repository = "https://github.com/agenthooksprotocol/rust-sdk"
@@ -22,7 +23,7 @@ interop = ["reqwest", "reqwest/blocking", "reqwest/form", "dep:tiny_http", "dep:
 
 [dependencies]
 http = "1"
-oauth2 = { version = "=5.0.0", optional = true, default-features = false, features = ["timing-resistant-secret-traits"] }
+oauth2 = { version = "5", optional = true, default-features = false, features = ["timing-resistant-secret-traits"] }
 tokio = { version = "1", features = ["process", "time", "io-util", "sync", "rt"], optional = true }
 sha2 = "0.11"
 time = { version = "0.3", features = ["formatting"] }

@@ -1,0 +1,491 @@
+{
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change.",
+  "recovery": [
+    {
+      "code": "invalid_configuration",
+      "recovery": "configure"
+    },
+    {
+      "code": "unsupported_binding",
+      "recovery": "configure"
+    },
+    {
+      "code": "credential_unavailable",
+      "recovery": "configure"
+    },
+    {
+      "code": "interaction_required",
+      "recovery": "login"
+    },
+    {
+      "code": "access_denied",
+      "recovery": "none"
+    },
+    {
+      "code": "refresh_rejected",
+      "recovery": "login"
+    },
+    {
+      "code": "discovery_failed",
+      "recovery": "retry"
+    },
+    {
+      "code": "untrusted_destination",
+      "recovery": "configure"
+    },
+    {
+      "code": "provider_failed",
+      "recovery": "retry"
+    }
+  ],
+  "keys": [
+    {
+      "id": "default-event",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ]
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+    },
+    {
+      "id": "default-upload",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "upload",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ]
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read80:binding:ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks"
+    },
+    {
+      "id": "shared-event",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ],
+        "grant_partition": "approved-events-and-uploads"
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read34:shared:approved-events-and-uploads"
+    },
+    {
+      "id": "shared-upload",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "upload",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ],
+        "grant_partition": "approved-events-and-uploads"
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read34:shared:approved-events-and-uploads"
+    },
+    {
+      "id": "unicode-namespace",
+      "input": {
+        "namespace": "account-😀",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ]
+      },
+      "binding_key": "ahp.oauth.binding:12:account-😀7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:12:account-😀22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read85:binding:ahp.oauth.binding:12:account-😀7:backend5:event25:https://api.example/hooks"
+    },
+    {
+      "id": "scope-ceiling-change",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read"
+        ]
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce4:read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+    },
+    {
+      "id": "scope-order-dedup",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access",
+          "read"
+        ]
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+    },
+    {
+      "id": "resource-trailing-slash",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example/",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ]
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example20:https://api.example/6:client23:authorization_code_pkce19:offline_access read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+    },
+    {
+      "id": "secret-and-capability-rotation",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_id": "client",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ],
+        "client_secret": "not-a-real-secret",
+        "metadata": {
+          "grant_types_supported": [
+            "authorization_code",
+            "refresh_token",
+            "client_credentials"
+          ]
+        }
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+    }
+  ],
+  "token_responses": [
+    {
+      "id": "unknown-expiry",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "known-expiry",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "expires_in": 3600
+      },
+      "accepted": true,
+      "expiry": "known",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "allowed-added-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "offline_access"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read offline_access"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read",
+        "offline_access"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "narrowed-scope",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "required-scope-missing",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [
+        "write"
+      ],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": false,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "forbidden-added-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read admin"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "access_denied",
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-inherits-narrowed-grant",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-preserves-allowed-extra-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read"
+      ],
+      "previous_granted": [
+        "read",
+        "offline_access"
+      ],
+      "allowed": [
+        "read",
+        "offline_access"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read",
+        "offline_access"
+      ],
+      "refresh_preserved": true
+    }
+  ],
+  "lifecycle": [
+    {
+      "id": "cached-token-metadata-outage",
+      "expect": "valid stored grant works without metadata HTTP, including a recreated provider"
+    },
+    {
+      "id": "unbound-preemptive-unsafe-delivery",
+      "expect": "known authorized binding sends stored token on first attempt; no 401/replay for upload or notification"
+    },
+    {
+      "id": "refresh-unknown-expiry-rotation",
+      "expect": "rotated refresh credential persisted and reusable when expires_in absent"
+    },
+    {
+      "id": "transient-refresh-failure",
+      "expect": "5xx/non-OAuth/timeout retains credentials and returns retry, never permanent fabricated login state"
+    },
+    {
+      "id": "client-credentials-transient-reissue",
+      "expect": "retry can acquire with current client credentials without any human-login outcome"
+    },
+    {
+      "id": "host-owned-login-budget",
+      "expect": "delivery returns interaction_required without creating pending login; explicit prepare owns its longer budget"
+    },
+    {
+      "id": "metadata-and-secret-rotation",
+      "expect": "nonidentity metadata changes and new runtime secret do not permanently fail stored session or persist secret"
+    },
+    {
+      "id": "insufficient-scope-step-up",
+      "expect": "only Bearer 403 insufficient_scope triggers allowed-scope step-up; no effectful replay"
+    },
+    {
+      "id": "configured-preset-no-protected-resource-metadata",
+      "expect": "explicit trusted preset uses issuer metadata and does not require PRM"
+    },
+    {
+      "id": "explicit-shared-grant",
+      "expect": "independently approved event/upload bindings share consent only with same explicit grant partition"
+    },
+    {
+      "id": "invalid-callback-does-not-consume",
+      "expect": "invalid state/redirect does not consume pending handle; subsequent valid callback can complete once"
+    },
+    {
+      "id": "loopback-redirect",
+      "expect": "literal IPv4/IPv6 loopback HTTP redirect accepted; remote HTTP rejected"
+    },
+    {
+      "id": "narrowed-refresh-scope-inheritance",
+      "expect": "initial request read+write grants read; refresh with no scope stays read and cannot fabricate write"
+    },
+    {
+      "id": "pending-scope-context-replacement",
+      "expect": "explicit scope-step-up prepare replaces incompatible pending consent; old callback cannot complete it"
+    },
+    {
+      "id": "pending-budget-replacement",
+      "expect": "new explicit prepare requiring later budget replaces shorter pending operation rather than silently inheriting expiry"
+    },
+    {
+      "id": "scope-challenge-without-required-scope",
+      "expect": "insufficient_scope without scope cannot invent permissions; require explicit host requirement or deny"
+    }
+  ]
+}

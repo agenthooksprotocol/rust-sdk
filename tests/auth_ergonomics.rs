@@ -502,7 +502,7 @@ async fn unsupported_oauth_flows_fail_closed_without_a_host_route() {
         );
         let error = backend.call(request(), TIMEOUT).await.unwrap_err();
         assert_eq!(error.auth_code(), Some(AuthErrorCode::UnsupportedBinding));
-        assert_eq!(error.auth_recovery(), Some(AuthRecovery::Reconfigure));
+        assert_eq!(error.auth_recovery(), Some(AuthRecovery::Configure));
         assert!(
             tokio::time::timeout(Duration::from_millis(50), listener.accept())
                 .await
