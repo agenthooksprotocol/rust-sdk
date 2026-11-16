@@ -51,14 +51,16 @@ or `OAuthFlow::ClientCredentials`, exact issuer/resource identity, client ID and
 configured scopes. Target parsing is not network trust approval. Destinations
 retain their full path/query; hosts must additionally isolate credential namespaces.
 
-There is **no built-in managed OAuth feature yet**. The evaluated rmcp 3.5.1
-candidate has an OAuth SSRF advisory (RUSTSEC-2026-0457; fixed in 3.7.0).
-A patched candidate still needs an adapter that enforces exact issuer/resource
-validation, locally allowed scopes, and host destination/DNS/redirect policy for
-all discovery, registration, token and authorization endpoints. Library defaults
-alone do not meet that contract. Both flows remain host-provided; an unavailable
-flow must return `HookError::authentication(AuthErrorCode::UnsupportedBinding)`,
-not pretend to authenticate. No OAuth dependency is added to the base crate.
+Enable the optional `managed-oauth` feature for `auth::managed::ManagedOAuth`:
+library-backed PKCE and client credentials, host-controlled prepare/complete login,
+expiry and coordinated refresh. Supply a mandatory issuer/client-bound endpoint
+policy, connection-time DNS/TLS/redirect-safe network adapter, and exclusive/CAS
+credential store. It creates no browser, listener, worker, HTTP client, or store.
+Native operations run within an existing Tokio runtime and propagate deadlines
+and cancellation. The default crate remains OAuth-free; low-level providers work
+unchanged. See the [host integration guide](docs/managed-oauth.md),
+[compilable example](examples/managed_oauth.rs), and
+[dependency review](docs/managed-oauth-dependency-review.md).
 
 For a binding-free endpoint, optionally configure `.unbound(host_discovery)`.
 That provider may initially return `None` for anonymous delivery, then receive the

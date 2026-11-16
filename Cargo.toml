@@ -12,6 +12,8 @@ repository = "https://github.com/agenthooksprotocol/rust-sdk"
 default = []
 # Single-declaration typed MCP elicitation forms.
 typed-form = ["dep:schemars"]
+# Host-driven OAuth; no bundled HTTP client, browser, listener or store.
+managed-oauth = ["dep:oauth2", "dep:tokio"]
 reqwest = ["dep:reqwest", "dep:tokio"]
 axum = ["dep:axum"]
 tokio-process = ["dep:tokio"]
@@ -20,6 +22,7 @@ interop = ["reqwest", "reqwest/blocking", "reqwest/form", "dep:tiny_http", "dep:
 
 [dependencies]
 http = "1"
+oauth2 = { version = "=5.0.0", optional = true, default-features = false, features = ["timing-resistant-secret-traits"] }
 tokio = { version = "1", features = ["process", "time", "io-util", "sync", "rt"], optional = true }
 sha2 = "0.11"
 time = { version = "0.3", features = ["formatting"] }
@@ -96,3 +99,7 @@ required-features = ["reqwest", "tokio-process"]
 [[example]]
 name = "form_answers"
 required-features = ["typed-form"]
+
+[[example]]
+name = "managed_oauth"
+required-features = ["managed-oauth"]

@@ -12,6 +12,10 @@ use crate::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
+/// Optional host-driven PKCE and client-credentials OAuth implementation.
+#[cfg(feature = "managed-oauth")]
+pub mod managed;
+
 /// Safe, stable authentication classifications, independent of protocol diagnostics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

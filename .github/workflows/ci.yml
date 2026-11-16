@@ -29,6 +29,8 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - run: cargo check --locked --no-default-features --lib
+      - run: cargo check --locked --no-default-features --features managed-oauth --lib
+      - run: cargo test --locked --features managed-oauth,interop --lib auth::managed
       - run: cargo test --locked --no-default-features
       - run: cargo test --locked --features reqwest,axum,tokio-process
       - run: cargo test --locked --features interop
