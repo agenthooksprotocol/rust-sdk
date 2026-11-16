@@ -537,6 +537,155 @@ mod interop_tests {
         assert!(owner.prepare(f.context(), budget()).await.is_err());
     }
 
+    struct RefreshScopePolicy;
+    impl OAuthPolicy for RefreshScopePolicy {
+        fn approve_endpoints(&self, trust: EndpointTrust<'_>) -> Result<(), HookError> {
+            Policy.approve_endpoints(trust)
+        }
+        fn select(
+            &self,
+            _: &AuthTarget,
+            resource: &ResourceMetadata,
+            required: &[String],
+        ) -> Result<TrustDecision, HookError> {
+            let mut scopes = vec!["read".into(), "write".into()];
+            scopes.extend_from_slice(required);
+            scopes.sort();
+            scopes.dedup();
+            Ok(TrustDecision::new(
+                resource.authorization_servers[0].clone(),
+                scopes,
+            ))
+        }
+    }
+    fn refresh_scope_owner(f: &Fixture, store: Arc<Store>) -> ManagedOAuth {
+        let config =
+            OAuthClientConfig::new("refresh-scopes", "client", OAuthFlow::AuthorizationCodePkce)
+                .scopes(
+                    vec!["read".into(), "write".into()],
+                    vec!["read".into(), "write".into()],
+                )
+                .redirect_uri("https://localhost/callback");
+        ManagedOAuth::new(
+            config,
+            f.network.clone(),
+            Arc::new(RefreshScopePolicy),
+            store,
+        )
+        .unwrap()
+    }
+    async fn reload_scope_grant(
+        oauth: &ManagedOAuth,
+        store: &Store,
+        context: &AuthContext,
+    ) -> SessionRecord {
+        let target = context.target().unwrap();
+        let mut guard = store.acquire(oauth.key(&target), budget()).await.unwrap();
+        let binding = guard.load().await.unwrap().unwrap();
+        drop(guard);
+        let mut guard = store
+            .acquire(oauth.grant_key(&target, &binding.metadata), budget())
+            .await
+            .unwrap();
+        guard.load().await.unwrap().unwrap()
+    }
+    async fn tls_refresh_scope_lifecycle(broaden: bool) {
+        let f = Fixture::new();
+        let store = Arc::new(Store::default());
+        let owner = refresh_scope_owner(&f, store.clone());
+        let pending = login(owner.prepare(f.context(), budget()).await.unwrap());
+        assert!(
+            pending
+                .url
+                .query_pairs()
+                .any(|(key, value)| key == "scope" && value == "read write")
+        );
+        *f.reply.lock().unwrap() = (
+            200,
+            json!({"access_token":"initial-read", "refresh_token":"initial-refresh", "token_type":"Bearer", "scope":"read", "expires_in":3600}),
+        );
+        owner
+            .complete(pending.clone(), callback(&pending), budget())
+            .await
+            .unwrap();
+        let initial = reload_scope_grant(&owner, &store, &f.context()).await;
+        assert_eq!(initial.token.as_ref().unwrap().scopes, vec!["read"]);
+        assert_eq!(
+            initial.token.as_ref().unwrap().authorized_scopes,
+            vec!["read"]
+        );
+        drop(owner);
+        expire(&store).await;
+        let recreated = refresh_scope_owner(&f, store.clone());
+        let mut response = json!({"access_token":"refreshed-access", "refresh_token":"rotated-refresh", "token_type":"Bearer", "expires_in":3600});
+        if broaden {
+            response["scope"] = json!("read write");
+        }
+        *f.reply.lock().unwrap() = (200, response);
+        let refreshed = recreated.credential(f.context()).await;
+        if broaden {
+            assert_eq!(
+                refreshed.err().unwrap().auth_code(),
+                Some(AuthErrorCode::AccessDenied)
+            );
+        } else {
+            assert_eq!(refreshed.unwrap().unwrap().token, "refreshed-access");
+        }
+        let requests = f.token_requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(form(&requests[0])["grant_type"], "authorization_code");
+        let refresh = form(&requests[1]);
+        assert_eq!(refresh["grant_type"], "refresh_token");
+        assert_eq!(refresh["scope"], "read");
+        assert_eq!(refresh["refresh_token"], "initial-refresh");
+        assert_eq!(refresh["resource"], f.context().destination);
+        drop(recreated);
+        let recreated = refresh_scope_owner(&f, store.clone());
+        let saved = reload_scope_grant(&recreated, &store, &f.context()).await;
+        let token = saved.token.as_ref().unwrap();
+        assert_eq!(token.refresh_token.as_deref(), Some("rotated-refresh"));
+        assert_eq!(token.authorized_scopes, vec!["read"]);
+        assert_eq!(token.access_rejected, broaden);
+        if broaden {
+            assert!(recreated.cached(&saved).is_none());
+        } else {
+            assert_eq!(token.scopes, vec!["read"]);
+        }
+        let mut required = f.context();
+        required.authentication = Some(
+            json!({"type":"oauth", "flow":"authorization_code_pkce", "issuer":format!("{}/tenant", f.base), "resource":required.destination, "clientId":"client", "scopes":["write"]}),
+        );
+        assert_eq!(
+            recreated
+                .credential(required.clone())
+                .await
+                .err()
+                .unwrap()
+                .auth_code(),
+            Some(AuthErrorCode::InteractionRequired)
+        );
+        let fresh = login(recreated.prepare(required, budget()).await.unwrap());
+        assert!(
+            fresh
+                .url
+                .query_pairs()
+                .any(|(key, value)| key == "scope" && value == "read write")
+        );
+        assert_eq!(
+            f.token_requests().len(),
+            2,
+            "fresh write consent must not be replaced with a widening refresh"
+        );
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn tls_narrowed_grant_refresh_after_provider_recreation() {
+        tls_refresh_scope_lifecycle(false).await;
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn tls_broadened_refresh_quarantines_access_after_provider_recreation() {
+        tls_refresh_scope_lifecycle(true).await;
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn serialized_refresh_preserves_resource_and_ignores_stale_401() {
         let f = Fixture::new();

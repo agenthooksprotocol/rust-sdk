@@ -14,7 +14,7 @@ the fixture before expiry; they must never disable certificate or hostname check
 `sdk-auth-lifecycle.json` is an exact copy of the canonical protocol repository's
 `conformance/draft/sdk-auth-lifecycle.json`, governed by
 `spec/draft/sdk-auth-lifecycle.md`. Its SHA-256 is
-`4b7f03758ebdba268d9ed218aa7c739c8a1207e9561c52e8f99b657a3eca2f97`.
+`ef3d8f5ea5ef9c0036dfd23fcd65131f9c9a0a7e465c931d0265fc03f4938e2f`.
 
 Native tests consume the recovery, storage-key and token-response vectors. The
 lifecycle entries are a coverage manifest, not executable runtime evidence;

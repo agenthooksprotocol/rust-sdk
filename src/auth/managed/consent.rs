@@ -1,6 +1,181 @@
 //! Consent regressions complementing the parent module's scope-step-up and expiry tests.
 use super::*;
 
+async fn stored_grant(oauth: &ManagedOAuth, store: &Store, ctx: &AuthContext) -> SessionRecord {
+    let target = ctx.target().unwrap();
+    let mut binding_guard = store.acquire(oauth.key(&target), budget()).await.unwrap();
+    let binding = binding_guard.load().await.unwrap().unwrap();
+    drop(binding_guard);
+    let mut grant_guard = store
+        .acquire(oauth.grant_key(&target, &binding.metadata), budget())
+        .await
+        .unwrap();
+    grant_guard.load().await.unwrap().unwrap()
+}
+
+fn last_refresh_scopes(network: &Network) -> Vec<String> {
+    let requests = network.requests.lock().unwrap();
+    let params =
+        url::form_urlencoded::parse(requests.last().unwrap().as_bytes()).collect::<Vec<_>>();
+    assert!(
+        params
+            .iter()
+            .any(|(key, value)| key == "grant_type" && value == "refresh_token")
+    );
+    params
+        .iter()
+        .find(|(key, _)| key == "scope")
+        .unwrap()
+        .1
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect()
+}
+
+async fn exchange_narrowed_grant(store: Arc<Store>, network: Arc<Network>) {
+    let oauth = consent_owner(store.clone(), network.clone(), &["read", "write"]);
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    assert!(
+        pending
+            .url
+            .query_pairs()
+            .any(|(key, value)| key == "scope" && value == "read write")
+    );
+    network.replies.lock().unwrap().push_back((
+        200,
+        json!({
+            "access_token":"initial-read", "refresh_token":"initial-refresh",
+            "token_type":"Bearer", "scope":"read", "expires_in":1
+        }),
+    ));
+    assert_eq!(
+        oauth
+            .complete(pending.clone(), consent_callback(&pending), budget())
+            .await
+            .unwrap()
+            .token,
+        "initial-read"
+    );
+    let saved = stored_grant(&oauth, &store, &context()).await;
+    let token = saved.token.unwrap();
+    assert_eq!(token.scopes, vec!["read"]);
+    assert_eq!(token.authorized_scopes, vec!["read"]);
+    // The one-second lifetime is inside the normal refresh safety margin.
+    assert!(token.expires_at.unwrap() <= now().unwrap() + 30);
+}
+
+#[tokio::test]
+async fn narrowed_grant_survives_provider_recreation_and_scope_omitting_refresh() {
+    let store = Arc::new(Store::default());
+    let network = Arc::new(Network::default());
+    exchange_narrowed_grant(store.clone(), network.clone()).await;
+    let metadata_requests = network.metadata.load(Ordering::SeqCst);
+    network.offline.store(true, Ordering::SeqCst);
+    network.replies.lock().unwrap().push_back((
+        200,
+        json!({
+            "access_token":"refreshed-read", "refresh_token":"rotated-read",
+            "token_type":"Bearer", "expires_in":3600
+        }),
+    ));
+    let recreated = consent_owner(store.clone(), network.clone(), &["read", "write"]);
+    assert_eq!(
+        recreated
+            .credential(context())
+            .await
+            .unwrap()
+            .unwrap()
+            .token,
+        "refreshed-read"
+    );
+    assert_eq!(last_refresh_scopes(&network), vec!["read"]);
+    assert_eq!(network.metadata.load(Ordering::SeqCst), metadata_requests);
+    let saved = stored_grant(&recreated, &store, &context()).await;
+    let token = saved.token.unwrap();
+    assert_eq!(token.scopes, vec!["read"]);
+    assert_eq!(token.authorized_scopes, vec!["read"]);
+    assert_eq!(token.refresh_token.as_deref(), Some("rotated-read"));
+    drop(recreated);
+    let recreated = consent_owner(store, network.clone(), &["read", "write"]);
+    let mut required = context();
+    required.authentication.as_mut().unwrap()["scopes"] = json!(["write"]);
+    network.offline.store(false, Ordering::SeqCst);
+    assert_eq!(
+        recreated
+            .credential(required.clone())
+            .await
+            .err()
+            .unwrap()
+            .auth_code(),
+        Some(AuthErrorCode::InteractionRequired)
+    );
+    let pending = login(recreated.prepare(required, budget()).await.unwrap());
+    assert!(
+        pending
+            .url
+            .query_pairs()
+            .any(|(key, value)| key == "scope" && value == "read write")
+    );
+    assert_eq!(
+        network.tokens.load(Ordering::SeqCst),
+        2,
+        "write requires fresh consent, not a widening refresh"
+    );
+}
+
+#[tokio::test]
+async fn recreated_provider_quarantines_broadened_refresh_and_retains_rotation() {
+    let store = Arc::new(Store::default());
+    let network = Arc::new(Network::default());
+    exchange_narrowed_grant(store.clone(), network.clone()).await;
+    network.replies.lock().unwrap().push_back((
+        200,
+        json!({
+            "access_token":"unconsented-write", "refresh_token":"rotated-quarantined",
+            "token_type":"Bearer", "scope":"read write", "expires_in":3600
+        }),
+    ));
+    let recreated = consent_owner(store.clone(), network.clone(), &["read", "write"]);
+    assert_eq!(
+        recreated
+            .credential(context())
+            .await
+            .err()
+            .unwrap()
+            .auth_code(),
+        Some(AuthErrorCode::AccessDenied)
+    );
+    assert_eq!(last_refresh_scopes(&network), vec!["read"]);
+    drop(recreated);
+    let recreated = consent_owner(store.clone(), network.clone(), &["read", "write"]);
+    let saved = stored_grant(&recreated, &store, &context()).await;
+    assert!(recreated.cached(&saved).is_none());
+    let token = saved.token.unwrap();
+    assert_eq!(token.refresh_token.as_deref(), Some("rotated-quarantined"));
+    assert_eq!(token.authorized_scopes, vec!["read"]);
+    assert!(token.access_rejected);
+    let mut required = context();
+    required.authentication.as_mut().unwrap()["scopes"] = json!(["write"]);
+    assert_eq!(
+        recreated
+            .credential(required.clone())
+            .await
+            .err()
+            .unwrap()
+            .auth_code(),
+        Some(AuthErrorCode::InteractionRequired)
+    );
+    assert!(matches!(
+        recreated.prepare(required, budget()).await.unwrap(),
+        Preparation::InteractionRequired(_)
+    ));
+    assert_eq!(
+        network.tokens.load(Ordering::SeqCst),
+        2,
+        "quarantine must not become consent after provider recreation"
+    );
+}
+
 struct ConsentPolicy(Vec<String>);
 impl OAuthPolicy for ConsentPolicy {
     fn approve_endpoints(&self, context: EndpointTrust<'_>) -> Result<(), HookError> {

@@ -120,7 +120,7 @@
     {
       "id": "unicode-namespace",
       "input": {
-        "namespace": "account-😀",
+        "namespace": "account-\ud83d\ude00",
         "backend_id": "backend",
         "purpose": "event",
         "destination": "https://api.example/hooks",
@@ -133,8 +133,8 @@
           "offline_access"
         ]
       },
-      "binding_key": "ahp.oauth.binding:12:account-😀7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:12:account-😀22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read85:binding:ahp.oauth.binding:12:account-😀7:backend5:event25:https://api.example/hooks"
+      "binding_key": "ahp.oauth.binding:12:account-\ud83d\ude007:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:12:account-\ud83d\ude0022:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read85:binding:ahp.oauth.binding:12:account-\ud83d\ude007:backend5:event25:https://api.example/hooks"
     },
     {
       "id": "scope-ceiling-change",
@@ -420,6 +420,32 @@
         "offline_access"
       ],
       "refresh_preserved": true
+    },
+    {
+      "id": "refresh-forbids-grant-broadening",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": "read write"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "access_denied",
+      "refresh_preserved": true
     }
   ],
   "lifecycle": [
@@ -486,6 +512,10 @@
     {
       "id": "scope-challenge-without-required-scope",
       "expect": "insufficient_scope without scope cannot invent permissions; require explicit host requirement or deny"
+    },
+    {
+      "id": "refresh-forbids-grant-broadening",
+      "expect": "initial read+write request grants read; explicit read+write refresh is denied, rotated refresh retained, unauthorized access quarantined across provider recreation"
     }
   ]
 }
