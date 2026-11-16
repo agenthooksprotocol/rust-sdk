@@ -215,7 +215,7 @@ pub struct SessionRecord {
     metadata: TrustedMetadata,
     client_id: String,
     flow: String,
-    resource_metadata_hint: Option<String>,
+    resource_metadata_hint: Option<discovery::ResourceMetadataHint>,
     challenge_scopes: Vec<String>,
     token: Option<SavedToken>,
     pending: Option<SavedLogin>,
@@ -478,13 +478,18 @@ impl ManagedOAuth {
             .map_err(sanitize_provider_error)
     }
     fn validate_saved(&self, target: &AuthTarget, record: &SessionRecord) -> Result<(), HookError> {
-        self.approve_metadata(target, &record.metadata)?;
-        if record.schema_version != 1
+        if record.schema_version != 2
             || record.client_id != self.config.client_id
             || record.flow != self.flow_id()
         {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
+        discovery::validate_saved_source(
+            target.destination(),
+            &record.metadata.resource,
+            record.resource_metadata_hint.as_ref(),
+        )?;
+        self.approve_metadata(target, &record.metadata)?;
         if target
             .issuer()
             .is_some_and(|issuer| issuer != record.metadata.issuer)
@@ -614,7 +619,7 @@ impl ManagedOAuth {
         }
         let hint = saved
             .as_ref()
-            .and_then(|r| r.resource_metadata_hint.as_deref());
+            .and_then(|r| r.resource_metadata_hint.as_ref());
         let previous_scopes = saved
             .as_ref()
             .map(|record| record.challenge_scopes.as_slice())
@@ -644,7 +649,7 @@ impl ManagedOAuth {
                 record
             }
             None => SessionRecord {
-                schema_version: 1,
+                schema_version: 2,
                 version: String::new(),
                 metadata,
                 client_id: self.config.client_id.clone(),
@@ -1027,7 +1032,7 @@ impl ManagedOAuth {
             self,
             &target,
             None,
-            record.resource_metadata_hint.as_deref(),
+            record.resource_metadata_hint.as_ref(),
             &record.challenge_scopes,
             budget,
         )

@@ -6,7 +6,7 @@ use crate::{
     auth::{AuthBinding, AuthErrorCode, AuthTarget, OAuthFlow},
     client::HookError,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 fn failed() -> HookError {
@@ -159,13 +159,8 @@ fn https(value: &str, issuer: bool) -> Result<Url, HookError> {
     Ok(url)
 }
 
-// Resource identifiers cannot contain a query; request destinations may.
 fn resource_identifier(value: &str) -> Result<Url, HookError> {
-    let resource = https(value, false)?;
-    if resource.query().is_some() {
-        return Err(failed());
-    }
-    Ok(resource)
+    https(value, false)
 }
 
 fn validate_resource(
@@ -184,7 +179,12 @@ fn validate_resource(
             .path()
             .strip_prefix(path)
             .is_some_and(|suffix| path.ends_with('/') || suffix.starts_with('/'));
-    if resource.origin() != destination.origin() || !covered {
+    if resource.origin() != destination.origin()
+        || !covered
+        || resource
+            .query()
+            .is_some_and(|query| Some(query) != destination.query())
+    {
         return Err(failed());
     }
     Ok(())
@@ -198,16 +198,45 @@ fn at_path(base: &Url, path: &str) -> Url {
     url
 }
 
-fn resource_locations(resource: &Url) -> Vec<Url> {
-    let mut urls = Vec::new();
-    if resource.path() != "/" && !resource.path().is_empty() {
-        urls.push(at_path(
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) enum ResourceMetadataSource {
+    Challenge,
+    WellKnown,
+}
+/// Persist the retrieval provenance, not just an untrusted metadata location.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct ResourceMetadataHint {
+    pub(super) url: String,
+    pub(super) expected_resource: String,
+    pub(super) source: ResourceMetadataSource,
+}
+
+fn resource_locations(resource: &Url) -> Vec<ResourceMetadataHint> {
+    let mut candidates = Vec::new();
+    if resource.path() != "/" || resource.query().is_some() {
+        let suffix = if resource.path() == "/" {
+            ""
+        } else {
+            resource.path()
+        };
+        let mut url = at_path(
             resource,
-            &format!("/.well-known/oauth-protected-resource{}", resource.path()),
-        ));
+            &format!("/.well-known/oauth-protected-resource{suffix}"),
+        );
+        // RFC 9728 section 3.1 inserts the suffix before the path AND query.
+        url.set_query(resource.query());
+        candidates.push(ResourceMetadataHint {
+            url: url.to_string(),
+            expected_resource: resource.as_str().to_owned(),
+            source: ResourceMetadataSource::WellKnown,
+        });
     }
-    urls.push(at_path(resource, "/.well-known/oauth-protected-resource"));
-    urls
+    candidates.push(ResourceMetadataHint {
+        url: at_path(resource, "/.well-known/oauth-protected-resource").to_string(),
+        expected_resource: resource.origin().ascii_serialization(),
+        source: ResourceMetadataSource::WellKnown,
+    });
+    candidates
 }
 
 fn issuer_locations(issuer: &Url) -> Vec<Url> {
@@ -267,18 +296,52 @@ fn resource_candidates(
     resource: &Url,
     current_header: Option<&str>,
     challenge: &Challenge,
-    saved_hint: Option<&str>,
-) -> Result<Vec<Url>, HookError> {
+    saved_hint: Option<&ResourceMetadataHint>,
+) -> Result<Vec<ResourceMetadataHint>, HookError> {
     if let Some(explicit) = &challenge.resource_metadata {
-        return Ok(vec![https(explicit, false)?]);
+        return Ok(vec![ResourceMetadataHint {
+            url: https(explicit, false)?.to_string(),
+            expected_resource: resource.as_str().to_owned(),
+            source: ResourceMetadataSource::Challenge,
+        }]);
     }
-    if current_header.is_none() {
-        if let Some(hint) = saved_hint.and_then(|hint| https(hint, false).ok()) {
-            // This is only a discovery location, not a trust grant: fetch rechecks policy.
-            return Ok(vec![hint]);
+    let locations = resource_locations(resource);
+    if current_header.is_none()
+        && let Some(hint) = saved_hint
+    {
+        https(&hint.url, false)?;
+        let valid_source = match hint.source {
+            ResourceMetadataSource::Challenge => hint.expected_resource == resource.as_str(),
+            ResourceMetadataSource::WellKnown => locations.contains(hint),
+        };
+        if !valid_source {
+            return Err(failed());
         }
+        // Network and trust checks still run; the saved hint carries no authority.
+        return Ok(vec![hint.clone()]);
     }
-    Ok(resource_locations(resource))
+    Ok(locations)
+}
+
+pub(super) fn validate_saved_source(
+    destination: &Url,
+    identifier: &str,
+    hint: Option<&ResourceMetadataHint>,
+) -> Result<(), HookError> {
+    let hint = hint.ok_or_else(failed)?;
+    resource_candidates(destination, None, &Challenge::default(), Some(hint))?;
+    validate_resource_source(identifier, hint)?;
+    validate_resource(identifier, destination, None)
+}
+
+fn validate_resource_source(
+    identifier: &str,
+    hint: &ResourceMetadataHint,
+) -> Result<(), HookError> {
+    if identifier != hint.expected_resource {
+        return Err(failed());
+    }
+    Ok(())
 }
 
 fn reject_reserved_query(url: &Url) -> Result<(), HookError> {
@@ -328,10 +391,10 @@ pub(super) async fn discover(
     owner: &ManagedOAuth,
     target: &AuthTarget,
     challenge: Option<&str>,
-    saved_hint: Option<&str>,
+    saved_hint: Option<&ResourceMetadataHint>,
     saved_scopes: &[String],
     budget: OperationBudget,
-) -> Result<(TrustedMetadata, Option<String>), HookError> {
+) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>), HookError> {
     let current_header = challenge;
     let mut challenge = parse_challenge(current_header)?;
     challenge.scopes.extend_from_slice(saved_scopes);
@@ -347,9 +410,20 @@ pub(super) async fn discover(
     }
     // Well-known discovery follows the actual endpoint path, not an audience alias.
     let resource_url = https(target.destination().as_str(), false)?;
-    let urls = resource_candidates(&resource_url, current_header, &challenge, saved_hint)?;
-    let (metadata, hint): (ResourceMetadata, _) =
+    let candidates = resource_candidates(&resource_url, current_header, &challenge, saved_hint)?;
+    let urls = candidates
+        .iter()
+        .map(|candidate| https(&candidate.url, false))
+        .collect::<Result<Vec<_>, _>>()?;
+    let (metadata, fetched_url): (ResourceMetadata, _) =
         fetch(owner, &urls, EndpointUse::ResourceMetadata, budget).await?;
+    let hint = candidates
+        .into_iter()
+        .find(|candidate| candidate.url == fetched_url)
+        .ok_or_else(failed)?;
+    // RFC 9728 section 3.3 requires exact retrieval-source identity BEFORE any
+    // metadata is used. Destination coverage and explicit presets are additional checks.
+    validate_resource_source(&metadata.resource, &hint)?;
     if metadata.authorization_servers.is_empty() {
         return Err(failed());
     }
@@ -624,50 +698,102 @@ mod tests {
     }
 
     #[test]
-    fn resource_locations_keep_path_and_drop_query() {
+    fn resource_locations_bind_exact_path_query_and_root_identities() {
+        let resource = https("https://mcp.example/public/mcp?x=1", false).unwrap();
+        let locations = resource_locations(&resource);
+        assert_eq!(locations.len(), 2);
         assert_eq!(
-            strings(resource_locations(
-                &https("https://mcp.example/public/mcp?x=1", false).unwrap()
-            )),
-            [
-                "https://mcp.example/.well-known/oauth-protected-resource/public/mcp",
-                "https://mcp.example/.well-known/oauth-protected-resource",
-            ]
+            locations[0].url,
+            "https://mcp.example/.well-known/oauth-protected-resource/public/mcp?x=1"
         );
+        assert_eq!(locations[0].expected_resource, resource.as_str());
         assert_eq!(
-            resource_locations(&https("https://mcp.example/", false).unwrap()).len(),
-            1
+            locations[1].url,
+            "https://mcp.example/.well-known/oauth-protected-resource"
         );
+        assert_eq!(locations[1].expected_resource, "https://mcp.example");
+        let root = resource_locations(&https("https://mcp.example/", false).unwrap());
+        assert_eq!(root.len(), 1);
+        assert_eq!(root[0].expected_resource, "https://mcp.example");
+        let trailing = resource_locations(&https("https://mcp.example/api/", false).unwrap());
+        assert_eq!(
+            trailing[0].url,
+            "https://mcp.example/.well-known/oauth-protected-resource/api/"
+        );
+        assert_eq!(trailing[0].expected_resource, "https://mcp.example/api/");
     }
 
     #[test]
-    fn saved_hint_is_only_used_without_a_current_challenge() {
-        let resource = https("https://mcp.example/rpc", false).unwrap();
-        let saved = Some("https://metadata.example/nonstandard");
+    fn saved_hint_retains_source_identity_and_never_overrides_current_challenge() {
+        let resource = https("https://mcp.example/rpc?x=1", false).unwrap();
+        let saved = ResourceMetadataHint {
+            url: "https://metadata.example/nonstandard".into(),
+            expected_resource: resource.as_str().into(),
+            source: ResourceMetadataSource::Challenge,
+        };
         let absent = Challenge::default();
-        assert_eq!(
-            strings(resource_candidates(&resource, None, &absent, saved).unwrap()),
-            ["https://metadata.example/nonstandard"]
+        assert!(
+            resource_candidates(&resource, None, &absent, Some(&saved)).unwrap()
+                == vec![saved.clone()]
         );
-        assert_eq!(
-            resource_candidates(&resource, Some("Bearer"), &absent, saved).unwrap(),
-            resource_locations(&resource)
+        assert!(
+            resource_candidates(&resource, Some("Bearer"), &absent, Some(&saved)).unwrap()
+                == resource_locations(&resource)
         );
         let header = r#"Bearer resource_metadata="https://current.example/meta""#;
         let challenge = parse_challenge(Some(header)).unwrap();
-        assert_eq!(
-            strings(resource_candidates(&resource, Some(header), &challenge, saved).unwrap()),
-            ["https://current.example/meta"]
-        );
-        assert_eq!(
-            resource_candidates(&resource, None, &absent, Some("http://insecure.example")).unwrap(),
-            resource_locations(&resource)
-        );
-        let invalid = parse_challenge(Some(
-            r#"Bearer resource_metadata="http://insecure.example""#,
+        let current =
+            resource_candidates(&resource, Some(header), &challenge, Some(&saved)).unwrap();
+        assert_eq!(current[0].url, "https://current.example/meta");
+        assert_eq!(current[0].expected_resource, resource.as_str());
+        assert!(matches!(
+            current[0].source,
+            ResourceMetadataSource::Challenge
+        ));
+        let mut invalid = saved.clone();
+        invalid.expected_resource = "https://mcp.example".into();
+        assert!(resource_candidates(&resource, None, &absent, Some(&invalid)).is_err());
+        invalid = saved.clone();
+        invalid.source = ResourceMetadataSource::WellKnown;
+        assert!(resource_candidates(&resource, None, &absent, Some(&invalid)).is_err());
+        invalid = saved.clone();
+        invalid.url = "http://insecure.example".into();
+        assert!(resource_candidates(&resource, None, &absent, Some(&invalid)).is_err());
+        for valid in resource_locations(&resource) {
+            assert!(
+                resource_candidates(&resource, None, &absent, Some(&valid)).unwrap()
+                    == vec![valid.clone()]
+            );
+            let mut invalid = valid;
+            invalid.expected_resource.push('/');
+            assert!(resource_candidates(&resource, None, &absent, Some(&invalid)).is_err());
+        }
+    }
+
+    #[test]
+    fn covering_parent_cannot_impersonate_an_exact_metadata_source() {
+        let resource = https("https://mcp.example/api/hooks?x=1", false).unwrap();
+        assert!(validate_saved_source(&resource, resource.as_str(), None).is_err());
+        let challenge = parse_challenge(Some(
+            r#"Bearer resource_metadata="https://metadata.example/meta""#,
         ))
         .unwrap();
-        assert!(resource_candidates(&resource, Some("Bearer"), &invalid, saved).is_err());
+        let mut sources = resource_candidates(&resource, Some("Bearer"), &challenge, None).unwrap();
+        sources.extend(resource_locations(&resource));
+        for hint in sources {
+            assert!(validate_resource(&hint.expected_resource, &resource, None).is_ok());
+            assert!(validate_resource_source(&hint.expected_resource, &hint).is_ok());
+            assert!(validate_saved_source(&resource, &hint.expected_resource, Some(&hint)).is_ok());
+            for covering in ["https://mcp.example/", "https://mcp.example/api"] {
+                assert!(validate_resource(covering, &resource, None).is_ok());
+                assert!(validate_resource_source(covering, &hint).is_err());
+                assert!(validate_saved_source(&resource, covering, Some(&hint)).is_err());
+            }
+            // Even a URI-equivalent trailing slash/default port is not an exact identity.
+            assert!(
+                validate_resource_source("https://mcp.example:443/api/hooks?x=1", &hint).is_err()
+            );
+        }
     }
 
     #[test]

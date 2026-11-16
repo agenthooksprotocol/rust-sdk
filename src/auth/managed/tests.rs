@@ -102,6 +102,7 @@ struct Fixture {
     network: Arc<Network>,
     seen: Arc<Mutex<Vec<Seen>>>,
     reply: Arc<Mutex<(u16, Value)>>,
+    metadata_replies: Arc<Mutex<BTreeMap<String, (u16, String)>>>,
     denied_token: Arc<AtomicBool>,
     delay: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
@@ -206,6 +207,8 @@ impl Fixture {
             .unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let reply = Arc::new(Mutex::new((200, token("first", true))));
+        let metadata_replies = Arc::new(Mutex::new(BTreeMap::<String, (u16, String)>::new()));
+        let metadata = metadata_replies.clone();
         let denied_token = Arc::new(AtomicBool::new(false));
         let delay = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
@@ -240,10 +243,29 @@ impl Fixture {
                         thread::sleep(Duration::from_millis(300));
                     }
                     r.lock().unwrap().clone()
-                } else if path == "/meta" || path == "/.well-known/oauth-protected-resource" {
+                } else if path == "/meta"
+                    || path.starts_with("/.well-known/oauth-protected-resource")
+                {
+                    let default_resource = if path == "/.well-known/oauth-protected-resource" {
+                        origin.clone()
+                    } else if path == "/meta" {
+                        format!("{origin}/resource")
+                    } else {
+                        format!(
+                            "{origin}{}",
+                            path.strip_prefix("/.well-known/oauth-protected-resource")
+                                .unwrap()
+                        )
+                    };
+                    let (status, resource) = metadata
+                        .lock()
+                        .unwrap()
+                        .get(&path)
+                        .cloned()
+                        .unwrap_or((200, default_resource));
                     (
-                        200,
-                        json!({"resource":format!("{origin}/resource"),"authorization_servers":[format!("{origin}/tenant")]}),
+                        status,
+                        json!({"resource":resource,"authorization_servers":[format!("{origin}/tenant")]}),
                     )
                 } else if path == "/tenant/.well-known/openid-configuration" {
                     (
@@ -273,6 +295,7 @@ impl Fixture {
             }),
             seen,
             reply,
+            metadata_replies,
             denied_token,
             delay,
             stop,
@@ -641,9 +664,9 @@ async fn namespace_destination_upload_isolation_and_login_cancellation() {
     assert_ne!(p.id, u.id);
     let mut destination = f.context();
     destination.destination.push_str("?separate=1");
-    // Explicit OAuth resource identity is stable while full delivery destination differs.
+    // The explicit resource must also match the query-bearing retrieval identity.
     destination.authentication = Some(
-        json!({"type":"oauth","flow":"authorization_code_pkce","issuer":format!("{}/tenant", f.base),"clientId":"client","resource":f.context().destination,"scopes":["read"]}),
+        json!({"type":"oauth","flow":"authorization_code_pkce","issuer":format!("{}/tenant", f.base),"clientId":"client","resource":destination.destination,"scopes":["read"]}),
     );
     let d = login(a.prepare(destination, budget()).await.unwrap());
     assert_ne!(p.id, d.id);
@@ -754,7 +777,7 @@ async fn unbound_initial_none_then_challenge_hint_and_well_known_order() {
         &paths[..2],
         [
             "/.well-known/oauth-protected-resource/resource",
-            "/.well-known/oauth-protected-resource"
+            "/.well-known/oauth-authorization-server/tenant"
         ]
     );
 }
@@ -1174,4 +1197,302 @@ async fn safe_refresh_failure_does_not_resurrect_rejected_access() {
             .unwrap()
             .access_rejected
     );
+}
+
+fn metadata_challenge(f: &Fixture) -> AuthChallenge {
+    AuthChallenge {
+        status: 401,
+        headers: BTreeMap::from([(
+            "WWW-Authenticate".into(),
+            format!("Bearer resource_metadata=\"{}/meta\"", f.base),
+        )]),
+        attempt_id: None,
+    }
+}
+
+fn seen_paths(f: &Fixture) -> Vec<String> {
+    f.seen
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|s| s.path.clone())
+        .collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn metadata_source_identity_rejects_covering_resources_without_fallback() {
+    for source in ["challenge", "path", "root"] {
+        let f = Fixture::new();
+        let owner = f.owner(
+            Arc::new(Store::default()),
+            source,
+            OAuthFlow::AuthorizationCodePkce,
+        );
+        let path = "/.well-known/oauth-protected-resource/resource";
+        let root = "/.well-known/oauth-protected-resource";
+        let (metadata_path, wrong_resource, expected_paths) = match source {
+            "challenge" => ("/meta", f.base.clone(), vec!["/meta"]),
+            "path" => (path, f.base.clone(), vec![path]),
+            // A trailing slash covers the same origin but is not its exact identity.
+            _ => {
+                f.metadata_replies
+                    .lock()
+                    .unwrap()
+                    .insert(path.into(), (404, String::new()));
+                (root, format!("{}/", f.base), vec![path, root])
+            }
+        };
+        f.metadata_replies
+            .lock()
+            .unwrap()
+            .insert(metadata_path.into(), (200, wrong_resource));
+        if source == "challenge" {
+            assert!(
+                owner
+                    .challenge(f.context(), metadata_challenge(&f))
+                    .await
+                    .is_err()
+            );
+        } else {
+            assert!(owner.prepare(f.context(), budget()).await.is_err());
+        }
+        assert_eq!(
+            seen_paths(&f),
+            expected_paths,
+            "source {source} must fail before AS discovery or alternate fallback"
+        );
+        assert!(f.token_requests().is_empty());
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn root_metadata_hint_survives_completion_and_repeated_prepare() {
+    let f = Fixture::new();
+    f.metadata_replies.lock().unwrap().insert(
+        "/.well-known/oauth-protected-resource/resource".into(),
+        (404, String::new()),
+    );
+    let store = Arc::new(Store::default());
+    let owner = f.owner(store.clone(), "root", OAuthFlow::AuthorizationCodePkce);
+    let pending = login(owner.prepare(f.context(), budget()).await.unwrap());
+    {
+        let records = store.records.lock().await;
+        let record = records.values().next().unwrap();
+        assert_eq!(record.schema_version, 2);
+        let hint = record.resource_metadata_hint.as_ref().unwrap();
+        assert_eq!(hint.expected_resource, f.base);
+        assert_eq!(
+            hint.url,
+            format!("{}/.well-known/oauth-protected-resource", f.base)
+        );
+        assert!(matches!(
+            hint.source,
+            discovery::ResourceMetadataSource::WellKnown
+        ));
+    }
+    f.seen.lock().unwrap().clear();
+    let url = callback(&pending);
+    owner.complete(pending, url, budget()).await.unwrap();
+    assert_eq!(seen_paths(&f)[0], "/.well-known/oauth-protected-resource");
+    assert_eq!(form(&f.token_requests()[0])["resource"], f.base);
+    f.seen.lock().unwrap().clear();
+    let _ = ready(owner.prepare(f.context(), budget()).await.unwrap());
+    assert_eq!(seen_paths(&f)[0], "/.well-known/oauth-protected-resource");
+    assert!(!seen_paths(&f).iter().any(|p| p.ends_with("/resource")));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn challenge_hint_provenance_survives_completion_and_repeated_prepare() {
+    let f = Fixture::new();
+    let store = Arc::new(Store::default());
+    let owner = f.owner(store.clone(), "challenge", OAuthFlow::AuthorizationCodePkce);
+    assert!(
+        owner
+            .challenge(f.context(), metadata_challenge(&f))
+            .await
+            .is_err()
+    );
+    {
+        let records = store.records.lock().await;
+        let hint = records
+            .values()
+            .next()
+            .unwrap()
+            .resource_metadata_hint
+            .as_ref()
+            .unwrap();
+        assert_eq!(hint.expected_resource, f.context().destination);
+        assert!(matches!(
+            hint.source,
+            discovery::ResourceMetadataSource::Challenge
+        ));
+    }
+    f.seen.lock().unwrap().clear();
+    let pending = login(owner.prepare(f.context(), budget()).await.unwrap());
+    assert_eq!(seen_paths(&f)[0], "/meta");
+    f.seen.lock().unwrap().clear();
+    let url = callback(&pending);
+    owner.complete(pending, url, budget()).await.unwrap();
+    assert_eq!(seen_paths(&f)[0], "/meta");
+    f.seen.lock().unwrap().clear();
+    let _ = ready(owner.prepare(f.context(), budget()).await.unwrap());
+    assert_eq!(seen_paths(&f)[0], "/meta");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mismatched_saved_metadata_provenance_fails_closed_before_network() {
+    for corruption in ["source", "resource", "url"] {
+        let f = Fixture::new();
+        let store = Arc::new(Store::default());
+        let owner = f.owner(store.clone(), corruption, OAuthFlow::AuthorizationCodePkce);
+        assert!(
+            owner
+                .challenge(f.context(), metadata_challenge(&f))
+                .await
+                .is_err()
+        );
+        {
+            let mut records = store.records.lock().await;
+            let hint = records
+                .values_mut()
+                .next()
+                .unwrap()
+                .resource_metadata_hint
+                .as_mut()
+                .unwrap();
+            match corruption {
+                "source" => hint.source = discovery::ResourceMetadataSource::WellKnown,
+                "resource" => hint.expected_resource = f.base.clone(),
+                _ => hint.url = "http://oauth.test/meta".into(),
+            }
+        }
+        f.seen.lock().unwrap().clear();
+        assert!(
+            owner.prepare(f.context(), budget()).await.is_err(),
+            "corruption {corruption}"
+        );
+        assert!(
+            seen_paths(&f).is_empty(),
+            "corruption {corruption} must fail before network"
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn challenge_metadata_identity_includes_destination_query() {
+    for exact in [false, true] {
+        let f = Fixture::new();
+        let store = Arc::new(Store::default());
+        let owner = f.owner(store, "query", OAuthFlow::AuthorizationCodePkce);
+        let mut context = f.context();
+        context.destination.push_str("?tenant=one");
+        let resource = if exact {
+            context.destination.clone()
+        } else {
+            f.context().destination
+        };
+        f.metadata_replies
+            .lock()
+            .unwrap()
+            .insert("/meta".into(), (200, resource));
+        // challenge() reports interaction-required as an error even on valid discovery.
+        assert!(
+            owner
+                .challenge(context.clone(), metadata_challenge(&f))
+                .await
+                .is_err()
+        );
+        if exact {
+            let pending = login(owner.prepare(context, budget()).await.unwrap());
+            let resource = pending
+                .url
+                .query_pairs()
+                .find(|(k, _)| k == "resource")
+                .unwrap()
+                .1
+                .into_owned();
+            assert_eq!(resource, format!("{}/resource?tenant=one", f.base));
+        } else {
+            assert_eq!(seen_paths(&f), ["/meta"]);
+        }
+        assert!(f.token_requests().is_empty());
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn explicit_resource_preset_does_not_accept_root_fallback_identity() {
+    let f = Fixture::new();
+    f.metadata_replies.lock().unwrap().insert(
+        "/.well-known/oauth-protected-resource/resource".into(),
+        (404, String::new()),
+    );
+    let owner = f.owner(
+        Arc::new(Store::default()),
+        "preset",
+        OAuthFlow::AuthorizationCodePkce,
+    );
+    let mut context = f.context();
+    context.authentication = Some(json!({
+        "type": "oauth", "flow": "authorization_code_pkce",
+        "issuer": format!("{}/tenant", f.base), "clientId": "client",
+        "resource": context.destination,
+    }));
+    assert!(owner.prepare(context, budget()).await.is_err());
+    assert_eq!(
+        seen_paths(&f),
+        [
+            "/.well-known/oauth-protected-resource/resource",
+            "/.well-known/oauth-protected-resource",
+        ]
+    );
+    assert!(f.token_requests().is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn legacy_session_schema_and_unattributed_string_hints_are_not_trusted() {
+    let f = Fixture::new();
+    let store = Arc::new(Store::default());
+    let owner = f.owner(store.clone(), "legacy", OAuthFlow::AuthorizationCodePkce);
+    let _ = login(owner.prepare(f.context(), budget()).await.unwrap());
+    {
+        let mut records = store.records.lock().await;
+        let record = records.values_mut().next().unwrap();
+        let mut serialized = serde_json::to_value(&*record).unwrap();
+        serialized["resource_metadata_hint"] = format!("{}/meta", f.base).into();
+        assert!(serde_json::from_value::<SessionRecord>(serialized).is_err());
+        record.schema_version = 1;
+    }
+    f.seen.lock().unwrap().clear();
+    assert!(owner.prepare(f.context(), budget()).await.is_err());
+    assert!(seen_paths(&f).is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn saved_root_hint_cannot_claim_path_identity() {
+    let f = Fixture::new();
+    f.metadata_replies.lock().unwrap().insert(
+        "/.well-known/oauth-protected-resource/resource".into(),
+        (404, String::new()),
+    );
+    let store = Arc::new(Store::default());
+    let owner = f.owner(
+        store.clone(),
+        "root-provenance",
+        OAuthFlow::AuthorizationCodePkce,
+    );
+    let _ = login(owner.prepare(f.context(), budget()).await.unwrap());
+    store
+        .records
+        .lock()
+        .await
+        .values_mut()
+        .next()
+        .unwrap()
+        .resource_metadata_hint
+        .as_mut()
+        .unwrap()
+        .expected_resource = f.context().destination;
+    f.seen.lock().unwrap().clear();
+    assert!(owner.prepare(f.context(), budget()).await.is_err());
+    assert!(seen_paths(&f).is_empty());
 }

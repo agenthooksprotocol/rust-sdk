@@ -12,8 +12,8 @@ Local verification: 2026-11-16, Rust 1.88.0, existing `feat/auth-ergonomics` bra
 | `cargo +1.88.0 test --locked --no-default-features -- --test-threads=1` | 342 passed across 45 result groups |
 | `cargo +1.88.0 test --locked --features reqwest,axum,tokio-process -- --test-threads=1` | 424 passed across 45 result groups |
 | `cargo +1.88.0 test --locked --features interop -- --test-threads=1` with required schema/fixture environment | 526 passed across 53 result groups |
-| `cargo +1.88.0 test --locked --no-default-features --features managed-oauth --lib` | 66 passed |
-| `cargo +1.88.0 test --locked --features managed-oauth,interop --lib auth::managed` | 27 passed: 11 discovery + 16 host-owned TLS tests |
+| `cargo +1.88.0 test --locked --no-default-features --features managed-oauth --lib` | 67 passed |
+| `cargo +1.88.0 test --locked --features managed-oauth,interop --lib auth::managed` | 36 passed: 12 discovery + 24 host-owned TLS tests |
 | Protocol generator `--rust-sdk . --check` at CI-pinned `1d98c19bf4558d998ef8af32b2ac54f604899c20` | codec, canonical schemas and lock match |
 | `git diff --check` | passed |
 
@@ -39,6 +39,12 @@ The initial interop invocation lacked its mandatory `AHP_SCHEMA_DIR` and `AHP_IN
 | client-credentials | managed `client_credentials_expiry_and_cache`, `saved_pkce_grant_cannot_be_reopened_as_client_credentials` |
 
 Additional discovery tests cover quoted/escaped and ambiguous challenges, exact issuer locations, resource path coverage and hostile prefixes/origins/queries, explicit exact resource identity, endpoint validation and local scope selection. Real TLS tests verify resource parameters at exchange and refresh, mandatory endpoint denial before secret delivery, scope increases, definitive rejection hooks, uncertain rotation and rejected-access-token persistence.
+
+## RFC 9728 section 3.3 source-identity correction
+
+Resource coverage alone is not sufficient. Every discovery candidate now carries its exact expected resource identifier: the full endpoint path/query for path-specific well-known metadata, the origin without an appended slash for root metadata, and the actual resource request URL for a challenge-advertised metadata URL. A 200 response with a covering but incorrect resource fails before issuer discovery or token exchange and cannot trigger broader fallback. Explicit resource presets remain an additional exact constraint.
+
+Persisted schema-2 hints retain retrieval source and expected resource, validated before cached metadata/credentials are used and again on discovery. Source-less legacy hints and mismatched root/path/challenge provenance fail closed. Regressions cover all three wrong-source cases, root versus path fallback, exact query identity, repeated prepare/complete with saved hints, legacy records, tampering and incompatible explicit presets. The focused, standalone and strict lint checks above were rerun after this correction.
 
 ## Review and boundaries
 
