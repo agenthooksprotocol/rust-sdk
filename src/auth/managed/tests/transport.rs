@@ -197,3 +197,181 @@ pub(super) async fn unreplayed_challenge_prepares_next_attempt() {
     result.unwrap();
     assert!(seen[0].0.contains("authorization: bearer learned\r\n"));
 }
+
+/// Forwards token requests over real HTTP to a loopback listener; metadata uses the fake.
+struct Loopback {
+    inner: Arc<Network>,
+    token: String,
+}
+impl OAuthNetwork for Loopback {
+    fn check(
+        &self,
+        _: Url,
+        _: EndpointUse,
+        _: OperationBudget,
+    ) -> LocalFuture<'_, Result<(), HookError>> {
+        Box::pin(async { Ok(()) })
+    }
+    fn send(
+        &self,
+        request: OAuthRequest,
+        usage: EndpointUse,
+        budget: OperationBudget,
+    ) -> LocalFuture<'_, Result<OAuthResponse, HookError>> {
+        if usage != EndpointUse::Token {
+            return self.inner.send(request, usage, budget);
+        }
+        Box::pin(async move {
+            let (parts, body) = request.into_parts();
+            let response = reqwest::Client::new()
+                .post(&self.token)
+                .headers(parts.headers)
+                .body(body)
+                .send()
+                .await
+                .map_err(|_| fail(AuthErrorCode::ProviderFailed))?;
+            // reqwest exposes no write-completion hook; response headers prove it.
+            if let Some(written) = parts.extensions.get::<RequestWritten>() {
+                written.mark();
+            }
+            let status = response.status();
+            let body = response
+                .bytes()
+                .await
+                .map_err(|_| fail(AuthErrorCode::ProviderFailed))?;
+            Ok(http::Response::builder()
+                .status(status.as_u16())
+                .header("content-type", "application/json")
+                .body(body.to_vec())
+                .unwrap())
+        })
+    }
+}
+
+#[tokio::test]
+async fn token_response_body_is_received_after_caller_drop() {
+    let host = Host::new();
+    host.seed(&host.pkce(|c| c), context()).await;
+    host.store.expire();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let network = Arc::new(Loopback {
+        inner: host.network.clone(),
+        token: format!("http://{}/token", listener.local_addr().unwrap()),
+    });
+    let oauth = ManagedOAuth::new(
+        OAuthClientConfig::new("account", "client", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .redirect_uri("http://127.0.0.1/callback"),
+        network,
+        host.policy.clone(),
+        host.store.clone(),
+    )
+    .unwrap();
+    // Headers arrive at once; the body only after the caller's future is dropped.
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut reader = BufReader::new(socket);
+        let mut size = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            if line == "\r\n" {
+                break;
+            }
+            if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                size = value.trim().parse().unwrap();
+            }
+        }
+        let mut request = vec![0; size];
+        reader.read_exact(&mut request).await.unwrap();
+        let body = r#"{"access_token":"b","refresh_token":"rotated","token_type":"Bearer"}"#;
+        let socket = reader.get_mut();
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        );
+        socket.write_all(head.as_bytes()).await.unwrap();
+        socket.flush().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        socket.write_all(body.as_bytes()).await.unwrap();
+    });
+    let dropped = tokio::time::timeout(Duration::from_millis(100), oauth.credential(context()));
+    assert!(
+        dropped.await.is_err(),
+        "caller future dropped before the body"
+    );
+    server.await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let token = host.store.token();
+    assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
+    assert!(!token.refresh_in_flight && token.access_rejected);
+}
+
+/// A token connect that never completes; records when its future is dropped.
+struct Stalled {
+    inner: Arc<Network>,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+struct OnDrop(Arc<std::sync::atomic::AtomicBool>);
+impl Drop for OnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+impl OAuthNetwork for Stalled {
+    fn check(
+        &self,
+        _: Url,
+        _: EndpointUse,
+        _: OperationBudget,
+    ) -> LocalFuture<'_, Result<(), HookError>> {
+        Box::pin(async { Ok(()) })
+    }
+    fn send(
+        &self,
+        request: OAuthRequest,
+        usage: EndpointUse,
+        budget: OperationBudget,
+    ) -> LocalFuture<'_, Result<OAuthResponse, HookError>> {
+        if usage != EndpointUse::Token {
+            return self.inner.send(request, usage, budget);
+        }
+        let guard = OnDrop(self.dropped.clone());
+        Box::pin(async move {
+            let _guard = guard;
+            std::future::pending().await
+        })
+    }
+}
+
+#[tokio::test]
+async fn stalled_connect_releases_promptly_on_caller_drop() {
+    let host = Host::new();
+    host.seed(&host.pkce(|c| c), context()).await;
+    host.store.expire();
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let oauth = ManagedOAuth::new(
+        OAuthClientConfig::new("account", "client", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .redirect_uri("http://127.0.0.1/callback"),
+        Arc::new(Stalled {
+            inner: host.network.clone(),
+            dropped: dropped.clone(),
+        }),
+        host.policy.clone(),
+        host.store.clone(),
+    )
+    .unwrap();
+    let caller = tokio::time::timeout(Duration::from_millis(50), oauth.credential(context()));
+    assert!(caller.await.is_err());
+    tokio::task::yield_now().await;
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "unsent request is aborted with the caller"
+    );
+    assert_eq!(
+        host.store.held.load(Ordering::SeqCst),
+        0,
+        "grant lock released"
+    );
+}

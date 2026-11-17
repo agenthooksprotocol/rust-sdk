@@ -95,6 +95,8 @@ pub enum EndpointUse {
 /// Adapter requests and responses MUST NOT be logged, even at DEBUG level.
 /// Mark DNS, TCP connect and TLS handshake failures from `send` with
 /// `HookError::request_not_sent`; only those (and 404/410) refetch metadata.
+/// For token requests, call the `RequestWritten` extension's `mark` once the
+/// request bytes are written.
 pub trait OAuthNetwork: Send + Sync {
     fn check(
         &self,
@@ -445,18 +447,117 @@ enum Mode {
 struct TokenHttp {
     network: Arc<dyn OAuthNetwork>,
     budget: OperationBudget,
+    commit_timeout: Duration,
+    salvage: Option<Salvage>,
     status: AtomicU16,
     /// The raw received body; oauth2 does not keep it for every failure.
     body: std::sync::Mutex<Option<Vec<u8>>>,
+}
+/// Inserted into every token request's extensions. `OAuthNetwork::send` must call
+/// `mark` once the request bytes are written: until then caller cancellation
+/// aborts the request; afterwards the response is received and persisted even if
+/// the caller is gone, so a rotated refresh token is never lost.
+#[derive(Clone, Default)]
+pub struct RequestWritten(Arc<std::sync::atomic::AtomicBool>);
+impl RequestWritten {
+    pub fn mark(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+    fn is_marked(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+struct AbortUnlessWritten {
+    task: tokio::task::JoinHandle<()>,
+    written: RequestWritten,
+}
+impl Drop for AbortUnlessWritten {
+    fn drop(&mut self) {
+        if !self.written.is_marked() {
+            self.task.abort();
+        }
+    }
+}
+/// Saves a refresh response's rotated token when the caller is gone.
+#[derive(Clone)]
+struct Salvage {
+    store: Arc<dyn CredentialStore>,
+    key: SessionKey,
+    presented: String,
+}
+impl Salvage {
+    async fn save(self, body: &[u8], budget: OperationBudget) -> Result<(), HookError> {
+        let mut guard = budget.run(self.store.acquire(self.key, budget)).await?;
+        let Some(mut record) = budget.run(guard.load()).await? else {
+            return Ok(());
+        };
+        let Some(token) = record.token.as_mut() else {
+            return Ok(());
+        };
+        if token.refresh_token.as_deref() != Some(self.presented.as_str()) {
+            return Ok(());
+        }
+        if let Some(rotated) = rotated_refresh(body) {
+            token.refresh_token = Some(rotated);
+        }
+        // The new access token is not recovered; the next use refreshes again.
+        token.access_rejected = true;
+        token.refresh_in_flight = false;
+        persist(&mut *guard, &mut record, budget).await
+    }
 }
 impl TokenHttp {
     fn new(owner: &ManagedOAuth, budget: OperationBudget) -> Self {
         Self {
             network: owner.network.clone(),
             budget,
+            commit_timeout: owner.config.commit_timeout,
+            salvage: None,
             status: AtomicU16::new(0),
             body: std::sync::Mutex::new(None),
         }
+    }
+    /// Once sent, a token request's response is received on its own task under
+    /// the commit timeout, so caller cancellation cannot abort the body read; if
+    /// the caller is gone, a refresh's rotated token is saved by `salvage`.
+    async fn send(&self, request: oauth2::HttpRequest) -> Result<OAuthResponse, HookError> {
+        let url = Url::parse(&request.uri().to_string())
+            .map_err(|_| fail(AuthErrorCode::UntrustedDestination))?;
+        if !valid_https(&url) {
+            return Err(fail(AuthErrorCode::UntrustedDestination));
+        }
+        let budget = self.budget;
+        budget
+            .run(self.network.check(url, EndpointUse::Token, budget))
+            .await?;
+        if tokio::runtime::Handle::try_current().is_err() {
+            return budget
+                .run(self.network.send(request, EndpointUse::Token, budget))
+                .await;
+        }
+        let commit = commit_budget(self.commit_timeout);
+        let network = self.network.clone();
+        let salvage = self.salvage.clone();
+        let written = RequestWritten::default();
+        let mut request = request;
+        request.extensions_mut().insert(written.clone());
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let result = commit
+                .run(network.send(request, EndpointUse::Token, commit))
+                .await;
+            if let Err(Ok(response)) = sender.send(result)
+                && let Some(salvage) = salvage
+            {
+                let _ = salvage.save(response.body(), commit).await;
+            }
+        });
+        // Before the request is written (DNS, connect, TLS), caller cancellation
+        // still aborts the exchange; afterwards it runs to completion detached.
+        let _abort = AbortUnlessWritten { task, written };
+        receiver
+            .await
+            .map_err(|_| fail(AuthErrorCode::ProviderFailed))?
     }
 }
 impl TokenHttp {
@@ -495,9 +596,11 @@ impl<'c> oauth2::AsyncHttpClient<'c> for TokenHttp {
     type Future = LocalFuture<'c, Result<oauth2::HttpResponse, HookError>>;
     fn call(&'c self, request: oauth2::HttpRequest) -> Self::Future {
         Box::pin(async move {
-            let response =
-                checked_network_send(&*self.network, request, EndpointUse::Token, self.budget)
-                    .await?;
+            let response = self.send(request).await?;
+            if response.status().is_redirection() || response.body().len() > 1024 * 1024 {
+                // Never followed; the request may have been processed.
+                return Err(fail(AuthErrorCode::ProviderFailed));
+            }
             self.status
                 .store(response.status().as_u16(), Ordering::Relaxed);
             *self.body.lock().unwrap() = Some(response.body().clone());
@@ -523,12 +626,7 @@ async fn checked_network_send(
     budget.run(network.check(url, usage, budget)).await?;
     let response = budget.run(network.send(request, usage, budget)).await?;
     if response.status().is_redirection() || response.body().len() > 1024 * 1024 {
-        // Never followed. At the token endpoint the request may have been processed.
-        return Err(fail(if usage == EndpointUse::Token {
-            AuthErrorCode::ProviderFailed
-        } else {
-            AuthErrorCode::UntrustedDestination
-        }));
+        return Err(fail(AuthErrorCode::UntrustedDestination));
     }
     Ok(response)
 }
@@ -831,7 +929,7 @@ impl ManagedOAuth {
         guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
     ) -> Result<(), HookError> {
-        let budget = OperationBudget::until(Instant::now() + self.config.commit_timeout);
+        let budget = commit_budget(self.config.commit_timeout);
         if tokio::runtime::Handle::try_current().is_err() {
             return persist(&mut **guard, record, budget).await;
         }
@@ -952,6 +1050,58 @@ impl ManagedOAuth {
         current.metadata = metadata;
         self.persist(&mut *guard, &mut current, budget).await
     }
+    /// Mark this exact token generation as rejected in the store.
+    async fn retire(
+        &self,
+        target: &AuthTarget,
+        metadata: &TrustedMetadata,
+        attempt: &str,
+        budget: OperationBudget,
+    ) -> Result<(), HookError> {
+        let key = self.grant_key(target, metadata);
+        let mut guard = budget.run(self.store.acquire(key, budget)).await?;
+        if let Some(mut record) = budget.run(guard.load()).await?
+            && let Some(token) = record.token.as_mut()
+            && token.generation == attempt
+            && !token.access_rejected
+        {
+            token.access_rejected = true;
+            self.persist(&mut *guard, &mut record, budget).await?;
+        }
+        Ok(())
+    }
+    /// Full discovery (outside any store guard) and a write-on-change binding update.
+    async fn rebind(
+        &self,
+        target: &AuthTarget,
+        challenge: Option<&Challenge>,
+        hint: Option<&discovery::ResourceMetadataHint>,
+        required: &[String],
+        binding_key: SessionKey,
+        budget: OperationBudget,
+    ) -> Result<(SessionRecord, Vec<String>), HookError> {
+        let (metadata, hint, scopes) =
+            discovery::discover(self, target, challenge, hint, required, budget).await?;
+        let mut binding = SessionRecord {
+            version: String::new(),
+            metadata,
+            client_id: self.config.client_id.clone(),
+            flow: self.flow_id().into(),
+            configured_binding: !matches!(target.binding(), AuthBinding::Unbound),
+            resource_metadata_hint: hint,
+            token: None,
+            pending: None,
+        };
+        let mut guard = budget.run(self.store.acquire(binding_key, budget)).await?;
+        match budget.run(guard.load()).await? {
+            Some(current) if current.same_binding(&binding) => {}
+            current => {
+                binding.version = current.map(|r| r.version).unwrap_or_default();
+                self.persist(&mut *guard, &mut binding, budget).await?;
+            }
+        }
+        Ok((binding, scopes))
+    }
     #[allow(clippy::too_many_arguments)]
     async fn acquire_inner(
         &self,
@@ -975,18 +1125,17 @@ impl ManagedOAuth {
         }
         // Challenge handling always rebinds through full discovery, so a resource
         // that moved to another authorization server is found even if the old one
-        // still answers. No stored metadata is consulted (or refetched) first.
-        let rediscover = rediscover || challenge.is_some();
-        if let Some(binding) = saved
-            .as_ref()
-            .filter(|r| !rediscover && self.compatible(&target, r))
-        {
+        // still answers. The stored issuer's metadata is not refetched first.
+        let force = rediscover || challenge.is_some();
+        let known = saved.as_ref().filter(|r| self.compatible(&target, r));
+        if let Some(binding) = known {
             match self.validate_saved(&target, binding, &required) {
                 Ok(scopes) => {
                     let mut binding = binding.clone();
                     // Absent persisted authorization-server metadata: fetch only the
                     // stored issuer's metadata, never protected-resource metadata.
-                    if binding.metadata.token_endpoint.is_empty() && mode != Mode::Prepare {
+                    if binding.metadata.token_endpoint.is_empty() && mode != Mode::Prepare && !force
+                    {
                         binding.metadata = discovery::issuer_metadata(
                             self,
                             &target,
@@ -1001,18 +1150,27 @@ impl ManagedOAuth {
                             .await?;
                         self.persist(&mut *guard, &mut binding, budget).await?;
                     }
-                    if self.approve_metadata(&target, &binding.metadata).is_ok() {
+                    if !binding.metadata.token_endpoint.is_empty()
+                        && self.approve_metadata(&target, &binding.metadata).is_ok()
+                    {
                         usable = Some((binding, scopes));
                     }
                 }
                 Err(_) if mode == Mode::Lookup => return Ok(None),
-                // Policy no longer approves the stored binding: `prepare` rebinds.
-                Err(_) if mode == Mode::Prepare => {}
+                // Policy no longer approves the stored binding: rebind by discovery.
+                Err(_) if mode == Mode::Prepare || force => {}
                 Err(error) => return Err(error.into()),
             }
         }
+        // Retire a rejected generation before any network, so a failed discovery
+        // or renewal never leaves the revoked token servable.
+        if let (Some(attempt), Some(binding)) = (rejected_attempt, known) {
+            self.retire(&target, &binding.metadata, attempt, budget)
+                .await?;
+        }
         // `prepare` serves a usable cached token, otherwise rebuilds binding metadata
         // so stale persisted metadata always has a repair path.
+        let mut discover_now = force || usable.is_none();
         if mode == Mode::Prepare
             && let Some((binding, _)) = &usable
         {
@@ -1024,37 +1182,36 @@ impl ManagedOAuth {
             {
                 return Ok(Some(Preparation::Ready(credential)));
             }
-            usable = None;
+            discover_now = true;
         }
         let (binding, scopes) = match usable {
-            Some(found) => found,
+            Some(found) if !discover_now => found,
             None if mode == Mode::Lookup => return Ok(None),
-            None => {
-                // Discovery never holds a credential-store guard.
+            cached => {
                 let hint = saved
                     .as_ref()
                     .and_then(|r| r.resource_metadata_hint.as_ref());
-                let (metadata, hint, scopes) =
-                    discovery::discover(self, &target, challenge, hint, &required, budget).await?;
-                let mut binding = SessionRecord {
-                    version: String::new(),
-                    metadata,
-                    client_id: self.config.client_id.clone(),
-                    flow: self.flow_id().into(),
-                    configured_binding: !matches!(target.binding(), AuthBinding::Unbound),
-                    resource_metadata_hint: hint,
-                    token: None,
-                    pending: None,
-                };
-                let mut guard = budget.run(self.store.acquire(binding_key, budget)).await?;
-                match budget.run(guard.load()).await? {
-                    Some(current) if current.same_binding(&binding) => {}
-                    current => {
-                        binding.version = current.map(|r| r.version).unwrap_or_default();
-                        self.persist(&mut *guard, &mut binding, budget).await?;
+                match self
+                    .rebind(&target, challenge, hint, &required, binding_key, budget)
+                    .await
+                {
+                    Ok(found) => found,
+                    // A transient discovery outage during challenge handling renews
+                    // through the still-valid cached binding instead of failing.
+                    Err(error)
+                        if challenge.is_some()
+                            && cached.is_some()
+                            && matches!(
+                                error.auth_code(),
+                                Some(
+                                    AuthErrorCode::DiscoveryFailed | AuthErrorCode::ProviderFailed
+                                )
+                            ) =>
+                    {
+                        cached.unwrap()
                     }
+                    Err(error) => return Err(error.into()),
                 }
-                (binding, scopes)
             }
         };
         let key = self.grant_key(&target, &binding.metadata);
@@ -1089,7 +1246,7 @@ impl ManagedOAuth {
             && subset(&required, &self.effective(&token.scopes))
         {
             return self
-                .refresh(&mut guard, &mut record, &required, budget)
+                .refresh(&key, &mut guard, &mut record, &required, budget)
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -1257,6 +1414,7 @@ impl ManagedOAuth {
     }
     async fn refresh(
         &self,
+        key: &SessionKey,
         guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
         required: &[String],
@@ -1282,7 +1440,12 @@ impl ManagedOAuth {
         let request = client
             .exchange_refresh_token(&refresh)
             .add_extra_param("resource", &record.metadata.resource);
-        let http = TokenHttp::new(self, budget);
+        let mut http = TokenHttp::new(self, budget);
+        http.salvage = Some(Salvage {
+            store: self.store.clone(),
+            key: key.clone(),
+            presented: refresh.secret().clone(),
+        });
         let error = match request.request_async(&http).await {
             Ok(response) => {
                 return Ok(self
@@ -1335,9 +1498,7 @@ impl ManagedOAuth {
         let Some(body) = http.body.lock().unwrap().take() else {
             return Ok(());
         };
-        let rotated = serde_json::from_slice::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|value| value["refresh_token"].as_str().map(str::to_owned));
+        let rotated = rotated_refresh(&body);
         self.keep_refresh(record, rotated);
         self.commit(guard, record).await
     }
@@ -1591,6 +1752,25 @@ impl ManagedOAuth {
     }
 }
 use crate::auth::valid_scope;
+fn commit_budget(timeout: Duration) -> OperationBudget {
+    let now = Instant::now();
+    OperationBudget::until(
+        now.checked_add(timeout)
+            .unwrap_or_else(|| now + Duration::from_secs(86_400)),
+    )
+}
+/// A refresh token from a JSON or form-encoded body, if valid.
+fn rotated_refresh(body: &[u8]) -> Option<String> {
+    serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| value["refresh_token"].as_str().map(str::to_owned))
+        .or_else(|| {
+            url::form_urlencoded::parse(body)
+                .find(|(key, _)| key == "refresh_token")
+                .map(|(_, value)| value.into_owned())
+        })
+        .filter(|token| valid_token(token))
+}
 async fn persist(
     guard: &mut dyn CredentialGuard,
     record: &mut SessionRecord,

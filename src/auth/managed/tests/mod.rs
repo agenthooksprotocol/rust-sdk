@@ -209,6 +209,7 @@ struct Network {
     issuer_patch: Mutex<Value>,
     /// Authorization server advertised by protected-resource metadata.
     prm_issuer: Mutex<Option<String>>,
+    prm_outage: AtomicBool,
     offline: AtomicBool,
     transport_failures: AtomicUsize,
     unsent_failures: AtomicUsize,
@@ -270,6 +271,9 @@ impl OAuthNetwork for Network {
             });
             let (status, body) = match usage {
                 EndpointUse::Token => {
+                    if let Some(written) = request.extensions().get::<RequestWritten>() {
+                        written.mark();
+                    }
                     if let Some(hook) = self.on_token.lock().unwrap().take() {
                         hook();
                     }
@@ -303,6 +307,9 @@ impl OAuthNetwork for Network {
                 }
                 _ if self.offline.load(Ordering::SeqCst) => {
                     panic!("metadata HTTP while offline: {}", request.uri())
+                }
+                EndpointUse::ResourceMetadata if self.prm_outage.load(Ordering::SeqCst) => {
+                    (503, json!({}))
                 }
                 EndpointUse::ResourceMetadata => {
                     let issuer = self.prm_issuer.lock().unwrap().clone();
@@ -2517,4 +2524,71 @@ async fn prepare_rebinds_when_policy_rejects_stored_issuer() {
         host.store.binding().unwrap().metadata.issuer,
         "https://issuer2.example"
     );
+}
+
+#[tokio::test]
+async fn failed_challenge_discovery_still_retires_rejected_token() {
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    let revoked = oauth.credential(unbound()).await.unwrap().unwrap();
+    // No cached fallback either: the binding lacks persisted token-endpoint metadata.
+    for (key, record) in host.store.records.lock().unwrap().iter_mut() {
+        if key.starts_with("ahp.oauth.binding:") {
+            record.metadata.token_endpoint.clear();
+        }
+    }
+    host.network.prm_outage.store(true, Ordering::SeqCst);
+    let rejected = challenge(401, "Bearer", Some(&revoked.attempt_id));
+    assert_eq!(
+        code(oauth.challenge(unbound(), rejected).await),
+        AuthErrorCode::DiscoveryFailed
+    );
+    assert!(host.store.token().access_rejected);
+    host.network
+        .reply(200, json!({"access_token":"fresh","token_type":"Bearer"}));
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "fresh"
+    );
+}
+
+#[tokio::test]
+async fn challenge_renews_through_cached_binding_during_discovery_outage() {
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    let revoked = oauth.credential(unbound()).await.unwrap().unwrap();
+    host.network.prm_outage.store(true, Ordering::SeqCst);
+    host.network
+        .reply(200, json!({"access_token":"renewed","token_type":"Bearer"}));
+    let rejected = challenge(401, "Bearer", Some(&revoked.attempt_id));
+    oauth.challenge(unbound(), rejected).await.unwrap();
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "renewed"
+    );
+}
+
+#[tokio::test]
+async fn form_encoded_refresh_failure_keeps_valid_rotated_token() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c.commit_timeout(Duration::MAX));
+    host.seed(&oauth, context()).await;
+    for (body, kept) in [
+        (
+            "access_token=a&refresh_token=bad%20token&token_type=Bearer",
+            "seed-refresh",
+        ),
+        (
+            "access_token=a&refresh_token=rotated&token_type=Bearer",
+            "rotated",
+        ),
+    ] {
+        host.store.expire();
+        host.network.reply(200, Value::String(body.into()));
+        assert_eq!(
+            code(oauth.credential(context()).await),
+            AuthErrorCode::ProviderFailed
+        );
+        assert_eq!(host.store.token().refresh_token.as_deref(), Some(kept));
+    }
 }
