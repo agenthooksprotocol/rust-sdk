@@ -15,7 +15,7 @@ default = []
 # Single-declaration typed MCP elicitation forms.
 typed-form = ["dep:schemars"]
 # Host-driven OAuth; no bundled HTTP client, browser, listener or store.
-managed-oauth = ["dep:oauth2", "dep:tokio", "tokio/time"]
+managed-oauth = ["dep:oauth2", "dep:tokio", "tokio/time", "tokio/rt"]
 reqwest = ["dep:reqwest", "dep:tokio", "tokio/time"]
 axum = ["dep:axum"]
 tokio-process = ["dep:tokio", "tokio/process", "tokio/time", "tokio/io-util", "tokio/sync", "tokio/rt"]

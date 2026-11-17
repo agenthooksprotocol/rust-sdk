@@ -42,6 +42,8 @@ struct Store {
     held: Arc<AtomicUsize>,
     rejected: Arc<AtomicUsize>,
     writes: Arc<AtomicUsize>,
+    /// Milliseconds each write takes, simulating a slow host store.
+    write_delay: Arc<AtomicUsize>,
 }
 struct Guard {
     records: Arc<Mutex<BTreeMap<String, SessionRecord>>>,
@@ -49,6 +51,7 @@ struct Guard {
     held: Arc<AtomicUsize>,
     rejected: Arc<AtomicUsize>,
     writes: Arc<AtomicUsize>,
+    write_delay: Arc<AtomicUsize>,
     _lock: OwnedMutexGuard<()>,
 }
 impl Drop for Guard {
@@ -111,6 +114,7 @@ impl CredentialStore for Store {
                 held: self.held.clone(),
                 rejected: self.rejected.clone(),
                 writes: self.writes.clone(),
+                write_delay: self.write_delay.clone(),
                 _lock: lock,
             }) as Box<dyn CredentialGuard>)
         })
@@ -126,6 +130,8 @@ impl CredentialGuard for Guard {
         replacement: SessionRecord,
     ) -> LocalFuture<'_, Result<bool, HookError>> {
         Box::pin(async move {
+            let delay = self.write_delay.load(Ordering::SeqCst) as u64;
+            tokio::time::sleep(Duration::from_millis(delay)).await;
             let mut records = self.records.lock().unwrap();
             if records.get(&self.key).map(|r| r.version.clone()) != expected {
                 return Ok(false);
@@ -146,6 +152,8 @@ struct Policy {
     held: Arc<AtomicUsize>,
     deny: AtomicBool,
     select: Mutex<Vec<String>>,
+    /// When set, only this issuer is approved.
+    only: Mutex<Option<String>>,
 }
 impl Policy {
     fn new(store: &Store) -> Arc<Self> {
@@ -153,6 +161,7 @@ impl Policy {
             held: store.held.clone(),
             deny: AtomicBool::new(false),
             select: Mutex::new(scopes(&["read"])),
+            only: Mutex::new(None),
         })
     }
 }
@@ -171,8 +180,15 @@ impl OAuthPolicy for Policy {
         if self.deny.load(Ordering::SeqCst) {
             return Err(fail(AuthErrorCode::UntrustedDestination));
         }
+        let issuer = match self.only.lock().unwrap().clone() {
+            Some(only) if !resource.authorization_servers.contains(&only) => {
+                return Err(fail(AuthErrorCode::UntrustedDestination));
+            }
+            Some(only) => only,
+            None => resource.authorization_servers[0].clone(),
+        };
         Ok(TrustDecision::new(
-            resource.authorization_servers[0].clone(),
+            issuer,
             union(&self.select.lock().unwrap(), required),
         ))
     }
@@ -297,7 +313,8 @@ impl OAuthNetwork for Network {
                     )
                 }
                 _ => {
-                    let mut body = json!({"issuer":"https://issuer.example","authorization_endpoint":"https://issuer.example/authorize","token_endpoint":"https://issuer.example/token","grant_types_supported":["authorization_code","refresh_token","client_credentials"],"token_endpoint_auth_methods_supported":["none","client_secret_basic","client_secret_post"],"code_challenge_methods_supported":["S256"]});
+                    let origin = format!("https://{}", request.uri().host().unwrap());
+                    let mut body = json!({"issuer":origin,"authorization_endpoint":format!("{origin}/authorize"),"token_endpoint":format!("{origin}/token"),"grant_types_supported":["authorization_code","refresh_token","client_credentials"],"token_endpoint_auth_methods_supported":["none","client_secret_basic","client_secret_post"],"code_challenge_methods_supported":["S256"]});
                     if let Value::Object(patch) = &*self.issuer_patch.lock().unwrap() {
                         for (k, v) in patch {
                             body[k] = v.clone();
@@ -306,13 +323,14 @@ impl OAuthNetwork for Network {
                     (200, body)
                 }
             };
-            let body = match body {
-                Value::String(raw) => raw.into_bytes(),
-                body => serde_json::to_vec(&body).unwrap(),
+            // Raw string replies are served as text/plain.
+            let (media, body) = match body {
+                Value::String(raw) => ("text/plain", raw.into_bytes()),
+                body => ("application/json", serde_json::to_vec(&body).unwrap()),
             };
             Ok(http::Response::builder()
                 .status(status)
-                .header("content-type", "application/json")
+                .header("content-type", media)
                 .body(body)
                 .unwrap())
         })
@@ -554,14 +572,13 @@ async fn canonical_token_vectors() {
             Ok(response) => {
                 oauth
                     .save_token(
-                        &mut *guard,
+                        &mut guard,
                         &mut record,
                         response,
                         &requested,
                         &bound,
                         refresh.then(|| "old-refresh".into()),
                         &required,
-                        budget(),
                     )
                     .await
             }
@@ -2291,5 +2308,213 @@ async fn lookup_with_changed_client_or_flow_is_discovery_failed() {
     assert_eq!(
         code(flow.credential(unbound()).await),
         AuthErrorCode::DiscoveryFailed
+    );
+}
+
+/// Seeded PKCE grant whose refresh is in flight when the store becomes slow.
+async fn slow_refresh(host: &Host, oauth: &ManagedOAuth, reply: Value) {
+    host.seed(oauth, context()).await;
+    host.store.expire();
+    host.network.reply(200, reply);
+    let delay = host.store.write_delay.clone();
+    *host.network.on_token.lock().unwrap() =
+        Some(Box::new(move || delay.store(300, Ordering::SeqCst)));
+}
+
+#[tokio::test]
+async fn token_commit_outlives_caller_deadline() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    slow_refresh(
+        &host,
+        &oauth,
+        json!({"access_token":"b","refresh_token":"rotated","token_type":"Bearer"}),
+    )
+    .await;
+    let mut short = context();
+    short.deadline = Instant::now() + Duration::from_millis(150);
+    assert!(oauth.credential(short).await.is_err());
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let token = host.store.token();
+    assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
+    assert!(!token.refresh_in_flight);
+}
+
+#[tokio::test]
+async fn token_commit_survives_dropped_future() {
+    // Both a valid response and an undecodable 2xx keep the rotated refresh token.
+    for (reply, access) in [
+        (
+            json!({"access_token":"b","refresh_token":"rotated","token_type":"Bearer"}),
+            false,
+        ),
+        (
+            json!({"access_token":"b","refresh_token":"rotated","token_type":"Bearer","expires_in":null}),
+            true,
+        ),
+    ] {
+        let host = Host::new();
+        let oauth = host.pkce(|c| c);
+        slow_refresh(&host, &oauth, reply).await;
+        let dropped = tokio::time::timeout(Duration::from_millis(50), oauth.credential(context()));
+        assert!(dropped.await.is_err(), "future dropped mid-commit");
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let token = host.store.token();
+        assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
+        assert!(!token.refresh_in_flight);
+        assert_eq!(token.access_rejected, access);
+    }
+}
+
+#[tokio::test]
+async fn expires_in_null_is_malformed() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    host.seed(&oauth, context()).await;
+    host.store.expire();
+    host.network.reply(
+        200,
+        json!({"access_token":"b","token_type":"Bearer","expires_in":null}),
+    );
+    assert_eq!(
+        code(oauth.credential(context()).await),
+        AuthErrorCode::ProviderFailed
+    );
+}
+
+#[tokio::test]
+async fn non_json_2xx_refresh_keeps_rotated_token() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    host.seed(&oauth, context()).await;
+    host.store.expire();
+    // oauth2 reports a 2xx without a JSON content type as `Other`.
+    host.network.reply(
+        200,
+        Value::String(
+            r#"{"access_token":"b","refresh_token":"rotated","token_type":"Bearer"}"#.into(),
+        ),
+    );
+    assert_eq!(
+        code(oauth.credential(context()).await),
+        AuthErrorCode::ProviderFailed
+    );
+    let token = host.store.token();
+    assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
+    assert!(!token.refresh_in_flight && token.access_rejected);
+}
+
+/// Strip the binding's persisted token endpoint and move the resource to issuer2.
+fn move_issuer_with_empty_metadata(host: &Host) {
+    for (key, record) in host.store.records.lock().unwrap().iter_mut() {
+        if key.starts_with("ahp.oauth.binding:") {
+            record.metadata.token_endpoint.clear();
+        }
+    }
+    *host.network.prm_issuer.lock().unwrap() = Some("https://issuer2.example".into());
+    *host.network.issuer_patch.lock().unwrap() = json!({"issuer":"https://issuer2.example"});
+}
+
+#[tokio::test]
+async fn challenge_with_empty_metadata_rediscovers_moved_issuer() {
+    // Client credentials.
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    move_issuer_with_empty_metadata(&host);
+    host.network
+        .reply(200, json!({"access_token":"moved","token_type":"Bearer"}));
+    oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .unwrap();
+    assert_eq!(
+        host.store.binding().unwrap().metadata.issuer,
+        "https://issuer2.example"
+    );
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "moved"
+    );
+    // PKCE: the binding is repaired and consent is requested from the new issuer.
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    assert_eq!(
+        code(
+            oauth
+                .challenge(unbound(), challenge(401, "Bearer", None))
+                .await
+        ),
+        AuthErrorCode::InteractionRequired
+    );
+    move_issuer_with_empty_metadata(&host);
+    assert_eq!(
+        code(
+            oauth
+                .challenge(unbound(), challenge(401, "Bearer", None))
+                .await
+        ),
+        AuthErrorCode::InteractionRequired
+    );
+    assert_eq!(
+        host.store.binding().unwrap().metadata.issuer,
+        "https://issuer2.example"
+    );
+    assert!(
+        !host
+            .store
+            .binding()
+            .unwrap()
+            .metadata
+            .token_endpoint
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn challenge_rebinds_when_old_issuer_still_answers() {
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    // The old authorization server is still up; only PRM points elsewhere.
+    *host.network.prm_issuer.lock().unwrap() = Some("https://issuer2.example".into());
+    host.network
+        .reply(200, json!({"access_token":"rebound","token_type":"Bearer"}));
+    oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .unwrap();
+    assert_eq!(
+        host.store.binding().unwrap().metadata.issuer,
+        "https://issuer2.example"
+    );
+    assert_eq!(
+        host.network.tokens().last().unwrap().uri,
+        "https://issuer2.example/token"
+    );
+}
+
+#[tokio::test]
+async fn prepare_rebinds_when_policy_rejects_stored_issuer() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    assert!(
+        oauth
+            .challenge(unbound(), challenge(401, "Bearer", None))
+            .await
+            .is_err()
+    );
+    *host.network.prm_issuer.lock().unwrap() = Some("https://issuer2.example".into());
+    *host.policy.only.lock().unwrap() = Some("https://issuer2.example".into());
+    // Lookup keeps treating a refusal as anonymous.
+    assert!(oauth.credential(unbound()).await.unwrap().is_none());
+    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    assert!(
+        pending
+            .authorization_url()
+            .as_str()
+            .starts_with("https://issuer2.example/authorize?")
+    );
+    assert_eq!(
+        host.store.binding().unwrap().metadata.issuer,
+        "https://issuer2.example"
     );
 }

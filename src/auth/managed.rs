@@ -210,6 +210,7 @@ pub struct OAuthClientConfig {
     secret: Option<(String, ClientSecret)>,
     method: TokenAuthMethod,
     login_lifetime: Duration,
+    commit_timeout: Duration,
 }
 impl OAuthClientConfig {
     pub fn new(
@@ -228,7 +229,15 @@ impl OAuthClientConfig {
             secret: None,
             method: TokenAuthMethod::None,
             login_lifetime: MAX_LOGIN_LIFETIME,
+            commit_timeout: Duration::from_secs(30),
         }
+    }
+    /// Bound for persisting a received token response (default 30 seconds). The
+    /// write outlives the caller's deadline and cancellation so a spent refresh
+    /// token is never left current; it requires a Tokio runtime to run detached.
+    pub fn commit_timeout(mut self, timeout: Duration) -> Self {
+        self.commit_timeout = timeout;
+        self
     }
     /// Fixed lifetime of each pending login, from its creation; at most 10 minutes.
     /// It is independent of the creating `prepare` call's budget or cancellation.
@@ -437,6 +446,8 @@ struct TokenHttp {
     network: Arc<dyn OAuthNetwork>,
     budget: OperationBudget,
     status: AtomicU16,
+    /// The raw received body; oauth2 does not keep it for every failure.
+    body: std::sync::Mutex<Option<Vec<u8>>>,
 }
 impl TokenHttp {
     fn new(owner: &ManagedOAuth, budget: OperationBudget) -> Self {
@@ -444,6 +455,7 @@ impl TokenHttp {
             network: owner.network.clone(),
             budget,
             status: AtomicU16::new(0),
+            body: std::sync::Mutex::new(None),
         }
     }
 }
@@ -488,6 +500,7 @@ impl<'c> oauth2::AsyncHttpClient<'c> for TokenHttp {
                     .await?;
             self.status
                 .store(response.status().as_u16(), Ordering::Relaxed);
+            *self.body.lock().unwrap() = Some(response.body().clone());
             Ok(if response.status().is_success() {
                 response.map(|body| normalize_token_body(&body).unwrap_or(body))
             } else {
@@ -807,18 +820,33 @@ impl ManagedOAuth {
         record: &mut SessionRecord,
         budget: OperationBudget,
     ) -> Result<(), HookError> {
-        let expected = Some(record.version.clone()).filter(|v| !v.is_empty());
-        let mut replacement = record.clone();
-        replacement.version = random_id();
-        let version = replacement.version.clone();
-        if !budget
-            .run(guard.compare_and_swap(expected, replacement))
-            .await?
-        {
-            return Err(fail(AuthErrorCode::ProviderFailed));
+        persist(guard, record, budget).await
+    }
+    /// Persist the outcome of a received token response. A spent code or refresh
+    /// token must not stay stored as current, so the write runs on its own task
+    /// under the commit timeout and completes even if the caller's deadline
+    /// passes or its future is dropped.
+    async fn commit(
+        &self,
+        guard: &mut Box<dyn CredentialGuard>,
+        record: &mut SessionRecord,
+    ) -> Result<(), HookError> {
+        let budget = OperationBudget::until(Instant::now() + self.config.commit_timeout);
+        if tokio::runtime::Handle::try_current().is_err() {
+            return persist(&mut **guard, record, budget).await;
         }
-        record.version = version;
-        Ok(())
+        let mut owned = std::mem::replace(guard, Box::new(Committing));
+        let mut replacement = record.clone();
+        let task = tokio::spawn(async move {
+            let result = persist(&mut *owned, &mut replacement, budget).await;
+            (owned, replacement, result)
+        });
+        let (owned, replacement, result) = task
+            .await
+            .map_err(|_| fail(AuthErrorCode::ProviderFailed))?;
+        *guard = owned;
+        *record = replacement;
+        result
     }
     /// Host-initiated preparation; bounded by both the supplied budget and context.
     /// The only operation that creates a pending login. To request step-up consent
@@ -945,7 +973,14 @@ impl ManagedOAuth {
         if mode == Mode::Lookup && saved.as_ref().is_some_and(|r| !self.compatible(&target, r)) {
             return Err(fail(AuthErrorCode::DiscoveryFailed).into());
         }
-        if let Some(binding) = saved.as_ref().filter(|r| self.compatible(&target, r)) {
+        // Challenge handling always rebinds through full discovery, so a resource
+        // that moved to another authorization server is found even if the old one
+        // still answers. No stored metadata is consulted (or refetched) first.
+        let rediscover = rediscover || challenge.is_some();
+        if let Some(binding) = saved
+            .as_ref()
+            .filter(|r| !rediscover && self.compatible(&target, r))
+        {
             match self.validate_saved(&target, binding, &required) {
                 Ok(scopes) => {
                     let mut binding = binding.clone();
@@ -971,14 +1006,13 @@ impl ManagedOAuth {
                     }
                 }
                 Err(_) if mode == Mode::Lookup => return Ok(None),
+                // Policy no longer approves the stored binding: `prepare` rebinds.
+                Err(_) if mode == Mode::Prepare => {}
                 Err(error) => return Err(error.into()),
             }
         }
         // `prepare` serves a usable cached token, otherwise rebuilds binding metadata
         // so stale persisted metadata always has a repair path.
-        if rediscover {
-            usable = None;
-        }
         if mode == Mode::Prepare
             && let Some((binding, _)) = &usable
         {
@@ -1055,7 +1089,7 @@ impl ManagedOAuth {
             && subset(&required, &self.effective(&token.scopes))
         {
             return self
-                .refresh(&mut *guard, &mut record, &required, budget)
+                .refresh(&mut guard, &mut record, &required, budget)
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -1068,7 +1102,7 @@ impl ManagedOAuth {
         if self.config.flow == OAuthFlow::ClientCredentials {
             return self
                 .client_credentials(
-                    &mut *guard,
+                    &mut guard,
                     &mut record,
                     &scopes,
                     &previous,
@@ -1185,7 +1219,7 @@ impl ManagedOAuth {
     #[allow(clippy::too_many_arguments)]
     async fn client_credentials(
         &self,
-        guard: &mut dyn CredentialGuard,
+        guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
         scopes: &[String],
         previous: &[String],
@@ -1212,9 +1246,7 @@ impl ManagedOAuth {
             Ok(response) => {
                 let bound = union(previous, &self.config.allowed_scopes);
                 Ok(self
-                    .save_token(
-                        guard, record, response, scopes, &bound, None, required, budget,
-                    )
+                    .save_token(guard, record, response, scopes, &bound, None, required)
                     .await?)
             }
             Err(error) => {
@@ -1225,7 +1257,7 @@ impl ManagedOAuth {
     }
     async fn refresh(
         &self,
-        guard: &mut dyn CredentialGuard,
+        guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
         required: &[String],
         budget: OperationBudget,
@@ -1244,7 +1276,7 @@ impl ManagedOAuth {
         );
         token.refresh_in_flight = true;
         let client = self.client(&record.metadata)?;
-        self.persist(guard, record, budget).await?;
+        self.persist(&mut **guard, record, budget).await?;
         // No scope parameter: the refresh keeps the full previous grant even when
         // the current ceiling is narrower (RFC 6749 section 6).
         let request = client
@@ -1262,7 +1294,6 @@ impl ManagedOAuth {
                         &previous,
                         Some(refresh.secret().clone()),
                         required,
-                        budget,
                     )
                     .await?);
             }
@@ -1282,13 +1313,13 @@ impl ManagedOAuth {
                     == Some(refresh.secret())
             {
                 current.token = None;
-                self.persist(guard, &mut current, budget).await?;
+                self.commit(guard, &mut current).await?;
                 *record = current;
                 budget.run(guard.on_refresh_rejected(generation)).await?;
             }
             return Err(fail(AuthErrorCode::RefreshRejected).into());
         }
-        self.failed_refresh(guard, record, &error, budget).await?;
+        self.failed_refresh(guard, record, &http).await?;
         let classified = token_error(&error);
         Err(http.failure(&error, classified))
     }
@@ -1297,21 +1328,18 @@ impl ManagedOAuth {
     /// response the outcome is unknown: the marker remains and the token is retried.
     async fn failed_refresh(
         &self,
-        guard: &mut dyn CredentialGuard,
+        guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
-        error: &TokenError,
-        budget: OperationBudget,
+        http: &TokenHttp,
     ) -> Result<(), HookError> {
-        let body = match error {
-            RequestTokenError::ServerResponse(_) => None,
-            RequestTokenError::Parse(_, body) => Some(body.as_slice()),
-            _ => return Ok(()),
+        let Some(body) = http.body.lock().unwrap().take() else {
+            return Ok(());
         };
-        let rotated = body
-            .and_then(|body| serde_json::from_slice::<serde_json::Value>(body).ok())
+        let rotated = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
             .and_then(|value| value["refresh_token"].as_str().map(str::to_owned));
         self.keep_refresh(record, rotated);
-        self.persist(guard, record, budget).await
+        self.commit(guard, record).await
     }
     /// The access token of a failed refresh is retired; the refresh token is kept.
     fn keep_refresh(&self, record: &mut SessionRecord, rotated: Option<String>) {
@@ -1329,14 +1357,13 @@ impl ManagedOAuth {
     #[allow(clippy::too_many_arguments)]
     async fn save_token(
         &self,
-        guard: &mut dyn CredentialGuard,
+        guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
         response: BasicTokenResponse,
         requested: &[String],
         bound: &[String],
         old_refresh: Option<String>,
         required: &[String],
-        budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
         let response_scopes = response
             .scopes()
@@ -1356,9 +1383,9 @@ impl ManagedOAuth {
             // A failed initial exchange persists nothing beyond releasing its login claim.
             if refreshed {
                 self.keep_refresh(record, rotated);
-                self.persist(guard, record, budget).await?;
+                self.commit(guard, record).await?;
             } else if record.pending.take().is_some() {
-                self.persist(guard, record, budget).await?;
+                self.commit(guard, record).await?;
             }
             return Err(fail(AuthErrorCode::ProviderFailed));
         }
@@ -1379,7 +1406,7 @@ impl ManagedOAuth {
         };
         let sufficient = subset(required, &self.effective(&token.scopes));
         record.token = Some(token);
-        self.persist(guard, record, budget).await?;
+        self.commit(guard, record).await?;
         if !sufficient {
             return Err(fail(AuthErrorCode::AccessDenied));
         }
@@ -1520,21 +1547,20 @@ impl ManagedOAuth {
         match response {
             Ok(response) => {
                 self.save_token(
-                    &mut *guard,
+                    &mut guard,
                     &mut record,
                     response,
                     &saved.scopes,
                     &bound,
                     None,
                     target.scopes(),
-                    budget,
                 )
                 .await
             }
             Err(error) => {
                 // The claimed login has ended; nothing else is persisted.
                 record.pending = None;
-                self.persist(&mut *guard, &mut record, budget).await?;
+                self.commit(&mut guard, &mut record).await?;
                 if matches!(&error, RequestTokenError::ServerResponse(response) if *response.error() == BasicErrorResponseType::InvalidGrant)
                 {
                     return Err(gone());
@@ -1565,6 +1591,38 @@ impl ManagedOAuth {
     }
 }
 use crate::auth::valid_scope;
+async fn persist(
+    guard: &mut dyn CredentialGuard,
+    record: &mut SessionRecord,
+    budget: OperationBudget,
+) -> Result<(), HookError> {
+    let expected = Some(record.version.clone()).filter(|v| !v.is_empty());
+    let mut replacement = record.clone();
+    replacement.version = random_id();
+    let version = replacement.version.clone();
+    if !budget
+        .run(guard.compare_and_swap(expected, replacement))
+        .await?
+    {
+        return Err(fail(AuthErrorCode::ProviderFailed));
+    }
+    record.version = version;
+    Ok(())
+}
+/// Stands in for a guard while its commit task owns it.
+struct Committing;
+impl CredentialGuard for Committing {
+    fn load(&mut self) -> LocalFuture<'_, Result<Option<SessionRecord>, HookError>> {
+        Box::pin(async { Err(fail(AuthErrorCode::ProviderFailed)) })
+    }
+    fn compare_and_swap(
+        &mut self,
+        _: Option<String>,
+        _: SessionRecord,
+    ) -> LocalFuture<'_, Result<bool, HookError>> {
+        Box::pin(async { Err(fail(AuthErrorCode::ProviderFailed)) })
+    }
+}
 fn valid_token(token: &str) -> bool {
     !token.is_empty() && token.bytes().all(|b| b.is_ascii_graphic())
 }
@@ -1604,9 +1662,14 @@ fn valid_redirect(uri: &Url) -> bool {
         }
 }
 /// RFC 6749 permits `expires_in` as a positive integer; also accept a string of
-/// ASCII digits. Anything else (zero aside) is left to fail token parsing.
+/// ASCII digits. Anything else, including null, fails token parsing.
 fn normalize_token_body(body: &[u8]) -> Option<Vec<u8>> {
     let mut value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    if value.get("expires_in")?.is_null() {
+        // Present but null is malformed, not absent.
+        value["expires_in"] = "invalid".into();
+        return serde_json::to_vec(&value).ok();
+    }
     let digits = value.get("expires_in")?.as_str()?;
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
