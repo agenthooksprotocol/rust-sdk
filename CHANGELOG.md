@@ -5,6 +5,17 @@
 - Check original structural descriptors at generated Serde decode boundaries, preserving the richer `parse_*` diagnostics API. Direct decoding is stricter; primitive constrained aliases can become transparent newtypes.
 - Add schema-derived `EffectId` and typed, allocation-free `Capabilities::supports` effect-family membership queries, including custom identifiers, without changing authorization or admission policy. `capability::EffectType` aliases `EffectId`; `as_str()` is retained, but the identifier is no longer a closed `Copy` enum.
 
+## [0.13.0](https://github.com/agenthooksprotocol/rust-sdk/compare/v0.12.0...v0.13.0) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **auth:** add OAuth client registration via CIMD and DCR ([#58](https://github.com/agenthooksprotocol/rust-sdk/issues/58))
+
+### Features
+
+* **auth:** add OAuth client registration via CIMD and DCR ([#58](https://github.com/agenthooksprotocol/rust-sdk/issues/58)) ([aedb96d](https://github.com/agenthooksprotocol/rust-sdk/commit/aedb96d406308c37815cc6d60767f3a27bc24d5a))
+
 ## [0.12.0](https://github.com/agenthooksprotocol/rust-sdk/compare/v0.11.0...v0.12.0) (2026-11-17)
 
 
