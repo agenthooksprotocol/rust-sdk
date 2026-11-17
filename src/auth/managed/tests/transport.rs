@@ -305,7 +305,9 @@ async fn token_response_body_is_received_after_caller_drop() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     let token = host.store.token();
     assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
-    assert!(!token.refresh_in_flight && token.access_rejected);
+    // The detached exchange committed the whole response, not just the rotation.
+    assert!(!token.refresh_in_flight && !token.access_rejected);
+    assert_eq!(token.access_token, "b");
 }
 
 /// A token connect that never completes; records when its future is dropped.

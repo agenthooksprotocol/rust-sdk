@@ -447,19 +447,15 @@ enum Mode {
 struct TokenHttp {
     network: Arc<dyn OAuthNetwork>,
     budget: OperationBudget,
-    commit_timeout: Duration,
-    /// For a refresh: the presented token and the grant guard, which moves into
-    /// the detached exchange so the lock outlives a cancelled caller.
-    presented: Option<String>,
-    guard: std::sync::Mutex<Option<Box<dyn CredentialGuard>>>,
+    written: RequestWritten,
     status: AtomicU16,
     /// The raw received body; oauth2 does not keep it for every failure.
     body: std::sync::Mutex<Option<Vec<u8>>>,
 }
 /// Inserted into every token request's extensions. `OAuthNetwork::send` must call
 /// `mark` once the request bytes are written: until then caller cancellation
-/// aborts the request; afterwards the response is received and persisted even if
-/// the caller is gone, so a rotated refresh token is never lost.
+/// aborts the exchange; afterwards it receives the response and commits the
+/// outcome itself, so a rotated refresh token is never lost.
 #[derive(Clone, Default)]
 pub struct RequestWritten(Arc<std::sync::atomic::AtomicBool>);
 impl RequestWritten {
@@ -476,7 +472,7 @@ impl RequestWritten {
     }
 }
 struct AbortUnlessWritten {
-    task: tokio::task::JoinHandle<()>,
+    task: tokio::task::AbortHandle,
     written: RequestWritten,
 }
 impl Drop for AbortUnlessWritten {
@@ -486,48 +482,7 @@ impl Drop for AbortUnlessWritten {
         }
     }
 }
-/// Saves a refresh response's rotated token, under the still-held grant lock,
-/// when the caller is gone.
-async fn salvage(
-    guard: &mut dyn CredentialGuard,
-    presented: &str,
-    body: &[u8],
-    budget: OperationBudget,
-) -> Result<(), HookError> {
-    {
-        let Some(mut record) = budget.run(guard.load()).await? else {
-            return Ok(());
-        };
-        let Some(token) = record.token.as_mut() else {
-            return Ok(());
-        };
-        if token.refresh_token.as_deref() != Some(presented) {
-            return Ok(());
-        }
-        if let Some(rotated) = rotated_refresh(body) {
-            token.refresh_token = Some(rotated);
-        }
-        // The new access token is not recovered; the next use refreshes again.
-        token.access_rejected = true;
-        token.refresh_in_flight = false;
-        persist(guard, &mut record, budget).await
-    }
-}
 impl TokenHttp {
-    fn new(owner: &ManagedOAuth, budget: OperationBudget) -> Self {
-        Self {
-            network: owner.network.clone(),
-            budget,
-            commit_timeout: owner.config.commit_timeout,
-            presented: None,
-            guard: std::sync::Mutex::new(None),
-            status: AtomicU16::new(0),
-            body: std::sync::Mutex::new(None),
-        }
-    }
-    /// Once sent, a token request's response is received on its own task under
-    /// the commit timeout, so caller cancellation cannot abort the body read; if
-    /// the caller is gone, a refresh's rotated token is saved by `salvage`.
     async fn send(&self, request: oauth2::HttpRequest) -> Result<OAuthResponse, HookError> {
         let url = Url::parse(&request.uri().to_string())
             .map_err(|_| fail(AuthErrorCode::UntrustedDestination))?;
@@ -538,42 +493,21 @@ impl TokenHttp {
         budget
             .run(self.network.check(url, EndpointUse::Token, budget))
             .await?;
-        if tokio::runtime::Handle::try_current().is_err() {
-            return budget
-                .run(self.network.send(request, EndpointUse::Token, budget))
-                .await;
-        }
-        let commit = commit_budget(self.commit_timeout);
-        let network = self.network.clone();
-        let presented = self.presented.clone();
-        let guard = self.guard.lock().unwrap().take();
-        let written = RequestWritten::default();
         let mut request = request;
-        request.extensions_mut().insert(written.clone());
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-        let task = tokio::spawn(async move {
-            let result = commit
-                .run(network.send(request, EndpointUse::Token, commit))
-                .await;
-            // The caller is gone: commit the rotated token while still holding the
-            // grant lock, so no concurrent caller can re-present the spent token.
-            if let Err((Ok(response), Some(mut guard))) = sender.send((result, guard))
-                && let Some(presented) = presented
-            {
-                let _ = salvage(&mut *guard, &presented, response.body(), commit).await;
-            }
-        });
-        // Before the request is written (DNS, connect, TLS), caller cancellation
-        // still aborts the exchange and drops the guard; afterwards it runs to
-        // completion detached and keeps the lock until committed.
-        let _abort = AbortUnlessWritten { task, written };
-        let (result, guard) = receiver
+        request.extensions_mut().insert(self.written.clone());
+        budget
+            .run(self.network.send(request, EndpointUse::Token, budget))
             .await
-            .map_err(|_| fail(AuthErrorCode::ProviderFailed))?;
-        *self.guard.lock().unwrap() = guard;
-        result
     }
 }
+/// The owned state a detached exchange needs after its response, so it can
+/// commit the outcome after the caller is gone.
+#[derive(Clone)]
+struct Committer {
+    allowed: Vec<String>,
+    timeout: Duration,
+}
+type Exchange<T> = LocalFuture<'static, (T, Box<dyn CredentialGuard>, SessionRecord)>;
 impl TokenHttp {
     /// Only failures where the token endpoint provably did not process the
     /// request suggest stale metadata: a request the network reports as not
@@ -937,32 +871,6 @@ impl ManagedOAuth {
     ) -> Result<(), HookError> {
         persist(guard, record, budget).await
     }
-    /// Persist the outcome of a received token response. A spent code or refresh
-    /// token must not stay stored as current, so the write runs on its own task
-    /// under the commit timeout and completes even if the caller's deadline
-    /// passes or its future is dropped.
-    async fn commit(
-        &self,
-        guard: &mut Box<dyn CredentialGuard>,
-        record: &mut SessionRecord,
-    ) -> Result<(), HookError> {
-        let budget = commit_budget(self.config.commit_timeout);
-        if tokio::runtime::Handle::try_current().is_err() {
-            return persist(&mut **guard, record, budget).await;
-        }
-        let mut owned = std::mem::replace(guard, Box::new(Committing));
-        let mut replacement = record.clone();
-        let task = tokio::spawn(async move {
-            let result = persist(&mut *owned, &mut replacement, budget).await;
-            (owned, replacement, result)
-        });
-        let (owned, replacement, result) = task
-            .await
-            .map_err(|_| fail(AuthErrorCode::ProviderFailed))?;
-        *guard = owned;
-        *record = replacement;
-        result
-    }
     /// Host-initiated preparation; bounded by both the supplied budget and context.
     /// The only operation that creates a pending login. To request step-up consent
     /// after `interaction_required`, include the broader scopes in host policy or
@@ -1288,14 +1196,7 @@ impl ManagedOAuth {
         let scopes = self.request_scopes(&previous, &scopes);
         if self.config.flow == OAuthFlow::ClientCredentials {
             return self
-                .client_credentials(
-                    &mut guard,
-                    &mut record,
-                    &scopes,
-                    &previous,
-                    &required,
-                    budget,
-                )
+                .client_credentials(&mut guard, &mut record, &scopes, &previous, &required)
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -1403,6 +1304,53 @@ impl ManagedOAuth {
         }
         Ok(client)
     }
+    fn committer(&self) -> Committer {
+        Committer {
+            allowed: self.config.allowed_scopes.clone(),
+            timeout: self.config.commit_timeout,
+        }
+    }
+    /// Run a token exchange that owns the grant guard and record. Before its
+    /// request is written, dropping the caller aborts it and releases the lock;
+    /// afterwards it receives the response and commits the outcome itself under
+    /// a fresh commit budget, holding the lock, and only then reports back.
+    async fn detached<T: Send + 'static>(
+        &self,
+        guard: &mut Box<dyn CredentialGuard>,
+        record: &mut SessionRecord,
+        exchange: impl FnOnce(
+            Box<dyn CredentialGuard>,
+            SessionRecord,
+            TokenHttp,
+            Committer,
+        ) -> Exchange<T>,
+    ) -> Result<T, HookError> {
+        let committer = self.committer();
+        let http = TokenHttp {
+            network: self.network.clone(),
+            budget: commit_budget(committer.timeout),
+            written: RequestWritten::default(),
+            status: AtomicU16::new(0),
+            body: std::sync::Mutex::new(None),
+        };
+        let written = http.written.clone();
+        let owned = std::mem::replace(guard, Box::new(Committing));
+        let future = exchange(owned, record.clone(), http, committer);
+        let (outcome, owned, updated) = if tokio::runtime::Handle::try_current().is_ok() {
+            let task = tokio::spawn(future);
+            let _abort = AbortUnlessWritten {
+                task: task.abort_handle(),
+                written,
+            };
+            task.await
+                .map_err(|_| fail(AuthErrorCode::ProviderFailed))?
+        } else {
+            future.await
+        };
+        *guard = owned;
+        *record = updated;
+        Ok(outcome)
+    }
     #[allow(clippy::too_many_arguments)]
     async fn client_credentials(
         &self,
@@ -1411,7 +1359,6 @@ impl ManagedOAuth {
         scopes: &[String],
         previous: &[String],
         required: &[String],
-        budget: OperationBudget,
     ) -> Result<BearerCredential, Renewal> {
         if !record
             .metadata
@@ -1422,25 +1369,40 @@ impl ManagedOAuth {
             return Err(fail(AuthErrorCode::UnsupportedBinding).into());
         }
         let client = self.client(&record.metadata)?;
-        let mut request = client
-            .exchange_client_credentials()
-            .add_extra_param("resource", &record.metadata.resource);
-        for scope in scopes {
-            request = request.add_scope(Scope::new(scope.clone()));
-        }
-        let http = TokenHttp::new(self, budget);
-        match request.request_async(&http).await {
-            Ok(response) => {
-                let bound = union(previous, &self.config.allowed_scopes);
-                Ok(self
-                    .save_token(guard, record, response, scopes, &bound, None, required)
-                    .await?)
-            }
-            Err(error) => {
-                let classified = token_error(&error);
-                Err(http.failure(&error, classified))
-            }
-        }
+        let resource = record.metadata.resource.clone();
+        let (scopes, required) = (scopes.to_vec(), required.to_vec());
+        let bound = union(previous, &self.config.allowed_scopes);
+        self.detached(
+            guard,
+            record,
+            move |mut guard, mut record, http, committer| {
+                Box::pin(async move {
+                    let mut request = client
+                        .exchange_client_credentials()
+                        .add_extra_param("resource", resource);
+                    for scope in &scopes {
+                        request = request.add_scope(Scope::new(scope.clone()));
+                    }
+                    let outcome = match request.request_async(&http).await {
+                        Ok(response) => committer
+                            .save_token(
+                                &mut *guard,
+                                &mut record,
+                                response,
+                                &scopes,
+                                &bound,
+                                None,
+                                &required,
+                            )
+                            .await
+                            .map_err(Renewal::from),
+                        Err(error) => Err(http.failure(&error, token_error(&error))),
+                    };
+                    (outcome, guard, record)
+                })
+            },
+        )
+        .await?
     }
     async fn refresh(
         &self,
@@ -1464,145 +1426,31 @@ impl ManagedOAuth {
         token.refresh_in_flight = true;
         let client = self.client(&record.metadata)?;
         self.persist(&mut **guard, record, budget).await?;
-        // No scope parameter: the refresh keeps the full previous grant even when
-        // the current ceiling is narrower (RFC 6749 section 6).
-        let request = client
-            .exchange_refresh_token(&refresh)
-            .add_extra_param("resource", &record.metadata.resource);
-        let mut http = TokenHttp::new(self, budget);
-        http.presented = Some(refresh.secret().clone());
-        *http.guard.lock().unwrap() = Some(std::mem::replace(guard, Box::new(Committing)));
-        let outcome = request.request_async(&http).await;
-        // The exchange hands the guard back unless the request never ran.
-        if let Some(returned) = http.guard.lock().unwrap().take() {
-            *guard = returned;
-        }
-        let error = match outcome {
-            Ok(response) => {
-                return Ok(self
-                    .save_token(
-                        guard,
-                        record,
-                        response,
-                        &previous,
-                        &previous,
-                        Some(refresh.secret().clone()),
-                        required,
-                    )
-                    .await?);
-            }
-            Err(error) => error,
-        };
-        if let RequestTokenError::ServerResponse(response) = &error
-            && *response.error() == BasicErrorResponseType::InvalidGrant
-            && http.status.load(Ordering::Relaxed) == 400
-        {
-            // Definitive: drop both tokens, but only if the store still holds the
-            // presented refresh token (compare-and-delete); a newer record is kept.
-            if let Some(mut current) = budget.run(guard.load()).await?
-                && current
-                    .token
-                    .as_ref()
-                    .and_then(|t| t.refresh_token.as_ref())
-                    == Some(refresh.secret())
-            {
-                current.token = None;
-                self.commit(guard, &mut current).await?;
-                *record = current;
-                budget.run(guard.on_refresh_rejected(generation)).await?;
-            }
-            return Err(fail(AuthErrorCode::RefreshRejected).into());
-        }
-        self.failed_refresh(guard, record, &http).await?;
-        let classified = token_error(&error);
-        Err(http.failure(&error, classified))
-    }
-    /// After a spent refresh token, an observed failure response clears the marker
-    /// and keeps a valid rotated refresh token (else the presented one). Without a
-    /// response the outcome is unknown: the marker remains and the token is retried.
-    async fn failed_refresh(
-        &self,
-        guard: &mut Box<dyn CredentialGuard>,
-        record: &mut SessionRecord,
-        http: &TokenHttp,
-    ) -> Result<(), HookError> {
-        let Some(body) = http.body.lock().unwrap().take() else {
-            return Ok(());
-        };
-        let rotated = rotated_refresh(&body);
-        self.keep_refresh(record, rotated);
-        self.commit(guard, record).await
-    }
-    /// The access token of a failed refresh is retired; the refresh token is kept.
-    fn keep_refresh(&self, record: &mut SessionRecord, rotated: Option<String>) {
-        if let Some(token) = record.token.as_mut() {
-            if let Some(rotated) = rotated.filter(|token| valid_token(token)) {
-                token.refresh_token = Some(rotated);
-            }
-            token.access_rejected = true;
-            token.refresh_in_flight = false;
-        }
-    }
-    /// `requested` is the response scope set when `scope` is omitted: the
-    /// requested set initially, the previous grant on refresh. `bound` is the
-    /// acquiring ceiling initially, the previous grant on refresh.
-    #[allow(clippy::too_many_arguments)]
-    async fn save_token(
-        &self,
-        guard: &mut Box<dyn CredentialGuard>,
-        record: &mut SessionRecord,
-        response: BasicTokenResponse,
-        requested: &[String],
-        bound: &[String],
-        old_refresh: Option<String>,
-        required: &[String],
-    ) -> Result<BearerCredential, HookError> {
-        let response_scopes = response
-            .scopes()
-            .map(|s| s.iter().map(|s| s.as_str().to_owned()).collect::<Vec<_>>())
-            .unwrap_or_else(|| requested.to_vec());
-        let refreshed = old_refresh.is_some();
-        let granted = union(&response_scopes, &[])
-            .into_iter()
-            .filter(|scope| bound.contains(scope))
-            .collect::<Vec<_>>();
-        let rotated = response.refresh_token().map(|s| s.secret().clone());
-        let expires = response.expires_in();
-        if *response.token_type() != BasicTokenType::Bearer
-            || !valid_token(response.access_token().secret())
-            || expires.is_some_and(|v| v.is_zero())
-        {
-            // A failed initial exchange persists nothing beyond releasing its login claim.
-            if refreshed {
-                self.keep_refresh(record, rotated);
-                self.commit(guard, record).await?;
-            } else if record.pending.take().is_some() {
-                self.commit(guard, record).await?;
-            }
-            return Err(fail(AuthErrorCode::ProviderFailed));
-        }
-        let refresh_token = rotated.filter(|token| valid_token(token)).or(old_refresh);
-        record.pending = None;
-        let token = SavedToken {
-            access_token: response.access_token().secret().clone(),
-            refresh_token,
-            expires_at: expires.map(|expiry| now().saturating_add(expiry.as_secs())),
-            scopes: granted,
-            generation: random_id(),
-            access_rejected: false,
-            refresh_in_flight: false,
-        };
-        let credential = BearerCredential {
-            token: token.access_token.clone(),
-            attempt_id: token.generation.clone(),
-        };
-        let sufficient = subset(required, &self.effective(&token.scopes));
-        record.token = Some(token);
-        self.commit(guard, record).await?;
-        if !sufficient {
-            return Err(fail(AuthErrorCode::AccessDenied));
-        }
-        Ok(credential)
+        let resource = record.metadata.resource.clone();
+        let required = required.to_vec();
+        self.detached(
+            guard,
+            record,
+            move |mut guard, mut record, http, committer| {
+                Box::pin(async move {
+                    let outcome = committer
+                        .refresh(
+                            &mut *guard,
+                            &mut record,
+                            &http,
+                            client,
+                            refresh,
+                            generation,
+                            previous,
+                            resource,
+                            &required,
+                        )
+                        .await;
+                    (outcome, guard, record)
+                })
+            },
+        )
+        .await?
     }
     /// Complete the stored pending login for this target from any process sharing
     /// the store. Callback transport/UI remain host-owned. Redirect, state and issuer
@@ -1723,43 +1571,43 @@ impl ManagedOAuth {
         // Claim once before the exchange; a cancelled exchange is superseded by `prepare`.
         record.pending.as_mut().unwrap().in_flight = true;
         self.persist(&mut *guard, &mut record, budget).await?;
-        let http = TokenHttp::new(self, budget);
-        let response = self
-            .client(&saved.metadata)?
-            .exchange_code(AuthorizationCode::new(code))
-            .set_pkce_verifier(PkceCodeVerifier::new(saved.verifier))
-            .add_extra_param("resource", &saved.metadata.resource)
-            .request_async(&http)
-            .await;
+        let client = self.client(&saved.metadata)?;
         let previous = record
             .token
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let bound = union(&saved.ceiling, &previous);
-        match response {
-            Ok(response) => {
-                self.save_token(
-                    &mut guard,
-                    &mut record,
-                    response,
-                    &saved.scopes,
-                    &bound,
-                    None,
-                    target.scopes(),
-                )
-                .await
-            }
-            Err(error) => {
-                // The claimed login has ended; nothing else is persisted.
-                record.pending = None;
-                self.commit(&mut guard, &mut record).await?;
-                if matches!(&error, RequestTokenError::ServerResponse(response) if *response.error() == BasicErrorResponseType::InvalidGrant)
-                {
-                    return Err(gone());
-                }
-                Err(token_error(&error))
-            }
-        }
+        let required = target.scopes().to_vec();
+        self.detached(&mut guard, &mut record, move |mut guard, mut record, http, committer| {
+            Box::pin(async move {
+                let response = client
+                    .exchange_code(AuthorizationCode::new(code))
+                    .set_pkce_verifier(PkceCodeVerifier::new(saved.verifier))
+                    .add_extra_param("resource", saved.metadata.resource.clone())
+                    .request_async(&http)
+                    .await;
+                let outcome = match response {
+                    Ok(response) => {
+                        committer
+                            .save_token(&mut *guard, &mut record, response, &saved.scopes, &bound, None, &required)
+                            .await
+                    }
+                    Err(error) => {
+                        // The claimed login has ended; nothing else is persisted.
+                        record.pending = None;
+                        match committer.persist(&mut *guard, &mut record).await {
+                            Err(failure) => Err(failure),
+                            Ok(()) if matches!(&error, RequestTokenError::ServerResponse(response) if *response.error() == BasicErrorResponseType::InvalidGrant) => {
+                                Err(fail(AuthErrorCode::InteractionRequired))
+                            }
+                            Ok(()) => Err(token_error(&error)),
+                        }
+                    }
+                };
+                (outcome, guard, record)
+            })
+        })
+        .await?
     }
     /// Cancel only this login generation. A stale cancellation cannot remove a newer
     /// login, and cancellation never deletes a valid stored grant.
@@ -1783,6 +1631,154 @@ impl ManagedOAuth {
     }
 }
 use crate::auth::valid_scope;
+impl Committer {
+    fn effective(&self, scopes: &[String]) -> Vec<String> {
+        scopes
+            .iter()
+            .filter(|scope| self.allowed.contains(scope))
+            .cloned()
+            .collect()
+    }
+    async fn persist(
+        &self,
+        guard: &mut dyn CredentialGuard,
+        record: &mut SessionRecord,
+    ) -> Result<(), HookError> {
+        persist(guard, record, commit_budget(self.timeout)).await
+    }
+    /// The refresh exchange proper; runs detached once the request is written.
+    #[allow(clippy::too_many_arguments)]
+    async fn refresh(
+        &self,
+        guard: &mut dyn CredentialGuard,
+        record: &mut SessionRecord,
+        http: &TokenHttp,
+        client: Client,
+        refresh: RefreshToken,
+        generation: String,
+        previous: Vec<String>,
+        resource: String,
+        required: &[String],
+    ) -> Result<BearerCredential, Renewal> {
+        // No scope parameter: the refresh keeps the full previous grant even when
+        // the current ceiling is narrower (RFC 6749 section 6).
+        let request = client
+            .exchange_refresh_token(&refresh)
+            .add_extra_param("resource", resource);
+        let error = match request.request_async(http).await {
+            Ok(response) => {
+                let presented = Some(refresh.secret().clone());
+                return Ok(self
+                    .save_token(
+                        guard, record, response, &previous, &previous, presented, required,
+                    )
+                    .await?);
+            }
+            Err(error) => error,
+        };
+        if let RequestTokenError::ServerResponse(response) = &error
+            && *response.error() == BasicErrorResponseType::InvalidGrant
+            && http.status.load(Ordering::Relaxed) == 400
+        {
+            // Definitive: drop both tokens, but only if the store still holds the
+            // presented refresh token (compare-and-delete); a newer record is kept.
+            let budget = commit_budget(self.timeout);
+            if let Some(mut current) = budget.run(guard.load()).await?
+                && current
+                    .token
+                    .as_ref()
+                    .and_then(|t| t.refresh_token.as_ref())
+                    == Some(refresh.secret())
+            {
+                current.token = None;
+                self.persist(guard, &mut current).await?;
+                *record = current;
+                budget.run(guard.on_refresh_rejected(generation)).await?;
+            }
+            return Err(fail(AuthErrorCode::RefreshRejected).into());
+        }
+        // An observed failure response clears the marker and keeps a valid rotated
+        // refresh token (else the presented one). Without a response the outcome is
+        // unknown: the marker remains and the token is retried.
+        let body = http.body.lock().unwrap().take();
+        if let Some(body) = body {
+            keep_refresh(record, rotated_refresh(&body));
+            self.persist(guard, record).await?;
+        }
+        Err(http.failure(&error, token_error(&error)))
+    }
+    /// `requested` is the response scope set when `scope` is omitted: the
+    /// requested set initially, the previous grant on refresh. `bound` is the
+    /// acquiring ceiling initially, the previous grant on refresh.
+    #[allow(clippy::too_many_arguments)]
+    async fn save_token(
+        &self,
+        guard: &mut dyn CredentialGuard,
+        record: &mut SessionRecord,
+        response: BasicTokenResponse,
+        requested: &[String],
+        bound: &[String],
+        old_refresh: Option<String>,
+        required: &[String],
+    ) -> Result<BearerCredential, HookError> {
+        let response_scopes = response
+            .scopes()
+            .map(|s| s.iter().map(|s| s.as_str().to_owned()).collect::<Vec<_>>())
+            .unwrap_or_else(|| requested.to_vec());
+        let refreshed = old_refresh.is_some();
+        let granted = union(&response_scopes, &[])
+            .into_iter()
+            .filter(|scope| bound.contains(scope))
+            .collect::<Vec<_>>();
+        let rotated = response.refresh_token().map(|s| s.secret().clone());
+        let expires = response.expires_in();
+        if *response.token_type() != BasicTokenType::Bearer
+            || !valid_token(response.access_token().secret())
+            || expires.is_some_and(|v| v.is_zero())
+        {
+            // A failed initial exchange persists nothing beyond releasing its login claim.
+            if refreshed {
+                keep_refresh(record, rotated);
+                self.persist(guard, record).await?;
+            } else if record.pending.take().is_some() {
+                self.persist(guard, record).await?;
+            }
+            return Err(fail(AuthErrorCode::ProviderFailed));
+        }
+        let refresh_token = rotated.filter(|token| valid_token(token)).or(old_refresh);
+        record.pending = None;
+        let token = SavedToken {
+            access_token: response.access_token().secret().clone(),
+            refresh_token,
+            expires_at: expires.map(|expiry| now().saturating_add(expiry.as_secs())),
+            scopes: granted,
+            generation: random_id(),
+            access_rejected: false,
+            refresh_in_flight: false,
+        };
+        let credential = BearerCredential {
+            token: token.access_token.clone(),
+            attempt_id: token.generation.clone(),
+        };
+        let sufficient = subset(required, &self.effective(&token.scopes));
+        record.token = Some(token);
+        self.persist(guard, record).await?;
+        if !sufficient {
+            return Err(fail(AuthErrorCode::AccessDenied));
+        }
+        Ok(credential)
+    }
+}
+/// The access token of a failed refresh is retired; the refresh token is kept.
+fn keep_refresh(record: &mut SessionRecord, rotated: Option<String>) {
+    if let Some(token) = record.token.as_mut() {
+        if let Some(rotated) = rotated.filter(|token| valid_token(token)) {
+            token.refresh_token = Some(rotated);
+        }
+        token.access_rejected = true;
+        token.refresh_in_flight = false;
+    }
+}
 fn commit_budget(timeout: Duration) -> OperationBudget {
     let now = Instant::now();
     OperationBudget::until(

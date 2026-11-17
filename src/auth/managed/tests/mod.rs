@@ -602,8 +602,9 @@ async fn canonical_token_vectors() {
         let result = match serde_json::from_slice::<BasicTokenResponse>(&body) {
             Ok(response) => {
                 oauth
+                    .committer()
                     .save_token(
-                        &mut guard,
+                        &mut *guard,
                         &mut record,
                         response,
                         &requested,
@@ -2632,14 +2633,11 @@ async fn detached_refresh_keeps_grant_lock_from_concurrent_caller() {
     // Caller A gives up after the request was written.
     let a = tokio::time::timeout(Duration::from_millis(100), oauth.credential(context()));
     assert!(a.await.is_err());
-    // Caller B retries at once: it waits for the lock instead of re-presenting.
-    host.network.reply(
-        200,
-        json!({"access_token":"b","refresh_token":"next","token_type":"Bearer"}),
-    );
+    // Caller B retries at once: it waits for the lock, then uses the committed
+    // outcome of A's exchange instead of re-presenting the spent token.
     assert_eq!(
         oauth.credential(context()).await.unwrap().unwrap().token,
-        "b"
+        "a"
     );
     let presented: Vec<String> = host
         .network
@@ -2654,8 +2652,8 @@ async fn detached_refresh_keeps_grant_lock_from_concurrent_caller() {
                 .into_owned()
         })
         .collect();
-    assert_eq!(presented, ["seed-refresh", "rotated"]);
-    assert_eq!(host.store.token().refresh_token.as_deref(), Some("next"));
+    assert_eq!(presented, ["seed-refresh"]);
+    assert_eq!(host.store.token().refresh_token.as_deref(), Some("rotated"));
 }
 
 #[tokio::test]
@@ -2689,4 +2687,62 @@ async fn definitive_discovery_failure_never_falls_back_to_cached_binding() {
         host.store.binding().unwrap().metadata.issuer,
         "https://issuer.example"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn caller_dropped_after_response_before_polling_still_commits() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    host.seed(&oauth, context()).await;
+    host.store.expire();
+    host.network.reply(
+        200,
+        json!({"access_token":"a","refresh_token":"rotated","token_type":"Bearer"}),
+    );
+    let mut caller = Box::pin(oauth.credential(context()));
+    // Poll the caller only until its exchange has been spawned.
+    // (Yield between polls so the runtime drives timers in the fake store.)
+    loop {
+        assert!(futures::poll!(&mut caller).is_pending());
+        if host.store.token().refresh_in_flight {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    // The exchange runs to completion while the caller is not polled.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while host.store.token().refresh_in_flight {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("detached exchange committed");
+    drop(caller);
+    let token = host.store.token();
+    assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
+    assert_eq!(token.access_token, "a");
+    assert!(!token.access_rejected);
+}
+
+#[tokio::test]
+async fn slow_issuer_then_slow_store_commit_within_fresh_budget_after_drop() {
+    let host = Host::new();
+    // Each phase fits the commit timeout; together they exceed it.
+    let oauth = host.pkce(|c| c.commit_timeout(Duration::from_millis(300)));
+    host.seed(&oauth, context()).await;
+    host.store.expire();
+    host.network.reply(
+        200,
+        json!({"access_token":"a","refresh_token":"rotated","token_type":"Bearer"}),
+    );
+    host.network.token_delay.store(200, Ordering::SeqCst);
+    let delay = host.store.write_delay.clone();
+    *host.network.on_token.lock().unwrap() =
+        Some(Box::new(move || delay.store(200, Ordering::SeqCst)));
+    let caller = tokio::time::timeout(Duration::from_millis(50), oauth.credential(context()));
+    assert!(caller.await.is_err());
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    let token = host.store.token();
+    assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
+    assert!(!token.refresh_in_flight);
 }
