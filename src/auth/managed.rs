@@ -626,6 +626,10 @@ impl ManagedOAuth {
                 attempt_id: token.generation.clone(),
             })
     }
+    /// An acquisition requests previously granted ∪ (wanted ∩ ceiling).
+    fn request_scopes(&self, previous: &[String], wanted: &[String]) -> Vec<String> {
+        union(previous, &self.effective(wanted))
+    }
     fn effective(&self, scopes: &[String]) -> Vec<String> {
         scopes
             .iter()
@@ -958,7 +962,7 @@ impl ManagedOAuth {
             .token
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
-        let scopes = union(&previous, &scopes);
+        let scopes = self.request_scopes(&previous, &scopes);
         if self.config.flow == OAuthFlow::ClientCredentials {
             return self
                 .client_credentials(
@@ -978,12 +982,13 @@ impl ManagedOAuth {
             }
             return Err(fail(AuthErrorCode::InteractionRequired));
         }
-        let live = record
-            .pending
-            .as_ref()
-            .filter(|login| login.expires_at_ms > now_ms() && !login.in_flight);
+        // Only a live login for the same grant key and redirect is reused or merged.
+        let live = record.pending.as_ref().filter(|login| {
+            login.expires_at_ms > now_ms()
+                && !login.in_flight
+                && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
+        });
         if let Some(login) = live
-            && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
             && subset(&scopes, &login.scopes)
         {
             let pending = PendingLogin::new(key, login)?;

@@ -509,6 +509,11 @@ async fn canonical_token_vectors() {
         }
         let requested = if refresh {
             previous.clone()
+        } else if vector["wire_request"].is_array() {
+            let wanted = union(&strings(&vector["requested"]), &required);
+            let wire = oauth.request_scopes(&previous, &wanted);
+            assert_eq!(wire, union(&strings(&vector["wire_request"]), &[]), "{id}");
+            wire
         } else {
             strings(&vector["requested"])
         };
@@ -742,6 +747,9 @@ async fn cached_token_metadata_outage() {
         let served = recreated.credential(ctx).await.unwrap().unwrap();
         assert_eq!(served.token, credential.token);
     }
+    // A host prepare with a usable cached token makes no metadata calls either.
+    let prepared = ready(recreated.prepare(context(), budget()).await.unwrap());
+    assert_eq!(prepared.token, credential.token);
     assert_eq!(
         host.store.writes.load(Ordering::SeqCst),
         writes,
@@ -1193,6 +1201,15 @@ async fn pending_login_supersede() {
             AuthErrorCode::InteractionRequired
         );
     }
+    // A different redirect starts from the new caller's scopes and ceiling alone.
+    let narrow = host.pkce(|c| {
+        c.scopes(scopes(&["read"]), scopes(&["read"]))
+            .redirect_uri("http://127.0.0.1/other")
+    });
+    let fresh = login(narrow.prepare(context(), budget()).await.unwrap());
+    assert_ne!(fresh.id, wide.id);
+    assert_eq!(query(fresh.authorization_url(), "scope").unwrap(), "read");
+    assert_eq!(host.store.pending()[0].ceiling, scopes(&["read"]));
     assert!(host.network.tokens().is_empty());
 }
 

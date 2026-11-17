@@ -1,5 +1,5 @@
 {
-  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change.",
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's requested set (within allowed for acquisitions; the original request for refreshes); wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required.",
   "recovery": [
     {
       "code": "invalid_configuration",
@@ -581,7 +581,6 @@
       "id": "step-up-keeps-previous-grant",
       "exchange": "reacquire",
       "requested": [
-        "files",
         "read",
         "write"
       ],
@@ -594,6 +593,11 @@
         "write"
       ],
       "required": [
+        "write"
+      ],
+      "wire_request": [
+        "files",
+        "read",
         "write"
       ],
       "response": {
@@ -700,11 +704,11 @@
     },
     {
       "id": "pending-login-supersede",
-      "expect": "later prepare with different grant key/redirect or scopes outside the pending scopes supersedes it; old callback fails interaction_required"
+      "expect": "later prepare with a different grant key or redirect, or scopes outside the pending scopes, supersedes it; a different grant key or redirect starts from the new caller's scopes and ceiling alone; old callback fails interaction_required"
     },
     {
       "id": "pending-login-supersede-scope-union",
-      "expect": "superseding login requests old pending scopes plus the new caller's ceiling-filtered requested+required scopes and stores the union of both ceilings; alternating callers with different ceilings converge"
+      "expect": "with the same grant key and redirect, a superseding login requests old pending scopes plus the new caller's ceiling-filtered requested+required scopes and stores the union of both ceilings; alternating callers with different ceilings converge"
     },
     {
       "id": "pending-login-end-states",
