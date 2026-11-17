@@ -13,6 +13,7 @@ use std::{
 };
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
+mod client_registration;
 #[cfg(feature = "reqwest")]
 mod transport;
 
@@ -82,6 +83,30 @@ impl Store {
                 token.expires_at = Some(0);
             }
         }
+    }
+    fn registration_record(&self) -> Option<SessionRecord> {
+        self.find("ahp.oauth.registration:")
+    }
+    fn registration(&self) -> Option<registration::SavedRegistration> {
+        self.registration_record().and_then(|r| r.registration)
+    }
+    fn marker(&self) -> Option<registration::FailedMarker> {
+        self.registration_record().and_then(|r| r.marker)
+    }
+    /// Another process's write, bypassing the lock (and CAS) of this one.
+    fn edit_registration(&self, edit: impl FnOnce(&mut SessionRecord)) {
+        let mut records = self.records.lock().unwrap();
+        let record = records
+            .iter_mut()
+            .find(|(k, _)| k.starts_with("ahp.oauth.registration:"))
+            .unwrap()
+            .1;
+        edit(record);
+        record.version = random_id();
+    }
+    /// Every persisted record, serialized as the host would store it.
+    fn dump(&self) -> String {
+        serde_json::to_string(&*self.records.lock().unwrap()).unwrap()
     }
     fn pending(&self) -> Vec<SavedLogin> {
         self.records
@@ -228,6 +253,17 @@ struct Network {
     transport_failures: AtomicUsize,
     unsent_failures: AtomicUsize,
     on_token: Mutex<Option<Hook>>,
+    /// Issuer metadata advertises `{issuer}/register`.
+    dcr: AtomicBool,
+    /// Queued registration replies `(status, body, Retry-After)`; status 0 is a
+    /// network failure. When empty, registration succeeds with a fresh client.
+    registration_replies: Mutex<VecDeque<(u16, Value, Option<&'static str>)>>,
+    registered: AtomicUsize,
+    registration_delay: AtomicUsize,
+    refuse_registration: AtomicBool,
+    /// Mark the registration request written only after the delay.
+    registration_written_late: AtomicBool,
+    on_registration: Mutex<Option<Hook>>,
 }
 impl Network {
     fn reply(&self, status: u16, body: Value) {
@@ -242,12 +278,27 @@ impl Network {
             .cloned()
             .collect()
     }
+    fn registrations(&self) -> Vec<Seen> {
+        self.seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.usage == EndpointUse::Registration)
+            .cloned()
+            .collect()
+    }
+    fn register_reply(&self, status: u16, body: Value, retry_after: Option<&'static str>) {
+        self.registration_replies
+            .lock()
+            .unwrap()
+            .push_back((status, body, retry_after));
+    }
     fn metadata_requests(&self) -> Vec<String> {
         self.seen
             .lock()
             .unwrap()
             .iter()
-            .filter(|s| s.usage != EndpointUse::Token)
+            .filter(|s| !matches!(s.usage, EndpointUse::Token | EndpointUse::Registration))
             .map(|s| s.uri.clone())
             .collect()
     }
@@ -261,10 +312,17 @@ impl OAuthNetwork for Network {
     fn check(
         &self,
         _: Url,
-        _: EndpointUse,
+        usage: EndpointUse,
         _: OperationBudget,
     ) -> LocalFuture<'_, Result<(), HookError>> {
-        Box::pin(async { Ok(()) })
+        let refused =
+            usage == EndpointUse::Registration && self.refuse_registration.load(Ordering::SeqCst);
+        Box::pin(async move {
+            if refused {
+                return Err(fail(AuthErrorCode::UntrustedDestination));
+            }
+            Ok(())
+        })
     }
     fn send(
         &self,
@@ -284,6 +342,7 @@ impl OAuthNetwork for Network {
                     .unwrap_or_default(),
             });
             let (status, body) = match usage {
+                EndpointUse::Registration => return self.registration(&request).await,
                 EndpointUse::Token => {
                     if let Some(written) = request.extensions().get::<RequestWritten>() {
                         written.mark();
@@ -346,6 +405,9 @@ impl OAuthNetwork for Network {
                 _ => {
                     let origin = format!("https://{}", request.uri().host().unwrap());
                     let mut body = json!({"issuer":origin,"authorization_endpoint":format!("{origin}/authorize"),"token_endpoint":format!("{origin}/token"),"grant_types_supported":["authorization_code","refresh_token","client_credentials"],"token_endpoint_auth_methods_supported":["none","client_secret_basic","client_secret_post"],"code_challenge_methods_supported":["S256"]});
+                    if self.dcr.load(Ordering::SeqCst) {
+                        body["registration_endpoint"] = format!("{origin}/register").into();
+                    }
                     if let Value::Object(patch) = &*self.issuer_patch.lock().unwrap() {
                         for (k, v) in patch {
                             body[k] = v.clone();
@@ -368,10 +430,87 @@ impl OAuthNetwork for Network {
     }
 }
 
+impl Network {
+    async fn registration(&self, request: &OAuthRequest) -> Result<OAuthResponse, HookError> {
+        let written = request.extensions().get::<RequestWritten>().unwrap();
+        let late = self.registration_written_late.load(Ordering::SeqCst);
+        if !late {
+            written.mark();
+        }
+        let delay = self.registration_delay.load(Ordering::SeqCst) as u64;
+        tokio::time::sleep(Duration::from_millis(delay)).await;
+        if late {
+            written.mark();
+        }
+        if let Some(hook) = self.on_registration.lock().unwrap().take() {
+            hook();
+        }
+        let queued = self.registration_replies.lock().unwrap().pop_front();
+        let (status, body, retry_after) = queued.unwrap_or_else(|| {
+            let n = self.registered.fetch_add(1, Ordering::SeqCst) + 1;
+            let sent: Value = serde_json::from_slice(request.body()).unwrap();
+            let mut body = json!({"client_id": format!("dcr-client-{n}")});
+            if sent["token_endpoint_auth_method"] != "none" {
+                body["client_secret"] = format!("issued-secret-{n}").into();
+            }
+            (201, body, None)
+        });
+        if status == 0 {
+            return Err(fail(AuthErrorCode::ProviderFailed));
+        }
+        let mut response = http::Response::builder()
+            .status(status)
+            .header("content-type", "application/json");
+        if let Some(retry_after) = retry_after {
+            response = response.header("retry-after", retry_after);
+        }
+        Ok(response.body(serde_json::to_vec(&body).unwrap()).unwrap())
+    }
+}
+
+/// Host secret storage; records deletions.
+#[derive(Default)]
+struct Secrets {
+    values: Mutex<BTreeMap<String, String>>,
+    deleted: Mutex<Vec<String>>,
+}
+impl ClientSecretStorage for Secrets {
+    fn store(
+        &self,
+        reference: String,
+        secret: ClientSecret,
+        _: OperationBudget,
+    ) -> LocalFuture<'_, Result<(), HookError>> {
+        self.values
+            .lock()
+            .unwrap()
+            .insert(reference, secret.secret().clone());
+        Box::pin(async { Ok(()) })
+    }
+    fn resolve(
+        &self,
+        reference: String,
+        _: OperationBudget,
+    ) -> LocalFuture<'_, Result<Option<ClientSecret>, HookError>> {
+        let value = self.values.lock().unwrap().get(&reference).cloned();
+        Box::pin(async { Ok(value.map(ClientSecret::new)) })
+    }
+    fn delete(
+        &self,
+        reference: String,
+        _: OperationBudget,
+    ) -> LocalFuture<'_, Result<(), HookError>> {
+        self.values.lock().unwrap().remove(&reference);
+        self.deleted.lock().unwrap().push(reference);
+        Box::pin(async { Ok(()) })
+    }
+}
+
 struct Host {
     store: Arc<Store>,
     network: Arc<Network>,
     policy: Arc<Policy>,
+    secrets: Arc<Secrets>,
 }
 impl Host {
     fn new() -> Self {
@@ -380,6 +519,7 @@ impl Host {
             policy: Policy::new(&store),
             store,
             network: Arc::new(Network::default()),
+            secrets: Arc::new(Secrets::default()),
         }
     }
     fn pkce(&self, config: impl FnOnce(OAuthClientConfig) -> OAuthClientConfig) -> ManagedOAuth {
@@ -528,7 +668,9 @@ fn canonical_key_vectors() {
         let id = &vector["id"];
         assert_eq!(oauth.key(&target).as_str(), vector["binding_key"], "{id}");
         assert_eq!(
-            oauth.grant_key(&target, &metadata).as_str(),
+            oauth
+                .grant_key(&target, &metadata, v["client_id"].as_str().unwrap())
+                .as_str(),
             vector["grant_key"],
             "{id}"
         );
@@ -546,18 +688,16 @@ async fn canonical_token_vectors() {
         oauth.config.allowed_scopes = strings(&vector["allowed"]);
         let required = strings(&vector["required"]);
         let mut record = SessionRecord {
-            version: String::new(),
-            metadata: TrustedMetadata::new(
-                "https://api.example/hooks".into(),
-                "https://issuer.example".into(),
-                "https://issuer.example/token".into(),
-            ),
             client_id: "client".into(),
-            flow: "authorization_code_pkce".into(),
             configured_binding: true,
-            resource_metadata_hint: None,
-            token: None,
-            pending: None,
+            ..SessionRecord::empty(
+                TrustedMetadata::new(
+                    "https://api.example/hooks".into(),
+                    "https://issuer.example".into(),
+                    "https://issuer.example/token".into(),
+                ),
+                "authorization_code_pkce",
+            )
         };
         let refresh = vector["exchange"] == "refresh";
         let previous = if vector["previous_granted"].is_array() {
@@ -798,6 +938,150 @@ fn lifecycle_manifest_maps_to_native_tests() {
         (
             "ambiguous-renewal-failure-no-refetch",
             ambiguous_renewal_failure_no_refetch,
+        ),
+        (
+            "registration-order-preregistered-cimd-dcr",
+            client_registration::registration_order_preregistered_cimd_dcr,
+        ),
+        (
+            "dcr-preregistered-wins",
+            client_registration::dcr_preregistered_wins,
+        ),
+        (
+            "cimd-used-when-supported",
+            client_registration::cimd_used_when_supported,
+        ),
+        (
+            "cimd-not-supported-falls-back-to-dcr",
+            client_registration::cimd_not_supported_falls_back_to_dcr,
+        ),
+        (
+            "cimd-redirect-mismatch-invalid-configuration",
+            client_registration::cimd_redirect_mismatch_invalid_configuration,
+        ),
+        (
+            "cimd-never-fetched-by-sdk",
+            client_registration::cimd_never_fetched_by_sdk,
+        ),
+        (
+            "cimd-client-credentials-not-used",
+            client_registration::cimd_client_credentials_not_used,
+        ),
+        (
+            "cimd-invalid-client-no-dcr-fallback",
+            client_registration::cimd_invalid_client_no_dcr_fallback,
+        ),
+        (
+            "dcr-policy-disallows-registration",
+            client_registration::dcr_policy_disallows_registration,
+        ),
+        (
+            "dcr-registration-endpoint-destination-policy",
+            client_registration::dcr_registration_endpoint_destination_policy,
+        ),
+        (
+            "dcr-pkce-registers-only-in-prepare",
+            client_registration::dcr_pkce_registers_only_in_prepare,
+        ),
+        (
+            "dcr-registers-once-across-processes",
+            client_registration::dcr_registers_once_across_processes,
+        ),
+        (
+            "dcr-registration-reused-across-grants",
+            client_registration::dcr_registration_reused_across_grants,
+        ),
+        (
+            "dcr-expired-secret-reregisters",
+            client_registration::dcr_expired_secret_reregisters,
+        ),
+        (
+            "dcr-invalid-client-reregisters-once",
+            client_registration::dcr_invalid_client_reregisters_once,
+        ),
+        (
+            "dcr-new-client-id-new-grant",
+            client_registration::dcr_new_client_id_new_grant,
+        ),
+        (
+            "dcr-secret-not-in-token-record",
+            client_registration::dcr_secret_not_in_token_record,
+        ),
+        (
+            "dcr-no-secret-hook-no-confidential-registration",
+            client_registration::dcr_no_secret_hook_no_confidential_registration,
+        ),
+        (
+            "dcr-metadata-change-keeps-selection",
+            client_registration::dcr_metadata_change_keeps_selection,
+        ),
+        (
+            "dcr-management-fields-not-persisted",
+            client_registration::dcr_management_fields_not_persisted,
+        ),
+        (
+            "dcr-initial-access-token-scoped",
+            client_registration::dcr_initial_access_token_scoped,
+        ),
+        (
+            "lookup-never-registers-pkce",
+            client_registration::lookup_never_registers_pkce,
+        ),
+        (
+            "dcr-failed-marker-bounds-registration",
+            client_registration::dcr_failed_marker_bounds_registration,
+        ),
+        (
+            "dcr-response-validation-invalid-configuration",
+            client_registration::dcr_response_validation_invalid_configuration,
+        ),
+        (
+            "prepare-force-reregistration",
+            client_registration::prepare_force_reregistration,
+        ),
+        (
+            "dcr-policy-change-reregisters",
+            client_registration::dcr_policy_change_reregisters,
+        ),
+        (
+            "dcr-replaced-secret-deleted",
+            client_registration::dcr_replaced_secret_deleted,
+        ),
+        (
+            "cc-registration-auto-repairs-after-backoff",
+            client_registration::cc_registration_auto_repairs_after_backoff,
+        ),
+        (
+            "cc-proactive-reregistration-before-expiry",
+            client_registration::cc_proactive_reregistration_before_expiry,
+        ),
+        (
+            "marker-blocks-only-registration",
+            client_registration::marker_blocks_only_registration,
+        ),
+        (
+            "stale-callback-does-not-delete-new-registration",
+            client_registration::stale_callback_does_not_delete_new_registration,
+        ),
+        (
+            "registration-transient-failure-backs-off",
+            client_registration::registration_transient_failure_backs_off,
+        ),
+        (
+            "registration-retry-after-honoured",
+            client_registration::registration_retry_after_honoured,
+        ),
+        (
+            "marker-update-atomic-across-processes",
+            client_registration::marker_update_atomic_across_processes,
+        ),
+        (
+            "proactive-reregistration-once-across-processes",
+            client_registration::proactive_reregistration_once_across_processes,
+        ),
+        (
+            "proactive-renewal-failure-keeps-current-registration",
+            client_registration::proactive_renewal_failure_keeps_current_registration,
         ),
     ];
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
@@ -1207,6 +1491,7 @@ async fn pending_login_cross_process_completion() {
         store: host.store.clone(),
         network: Arc::new(Network::default()),
         policy: host.policy.clone(),
+        secrets: host.secrets.clone(),
     };
     other.network.reply(
         200,

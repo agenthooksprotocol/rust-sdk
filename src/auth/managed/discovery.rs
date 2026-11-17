@@ -258,6 +258,11 @@ struct IssuerMetadata {
     code_challenge_methods_supported: Vec<String>,
     #[serde(default)]
     authorization_response_iss_parameter_supported: bool,
+    /// Kept loosely typed: only a string endpoint or JSON `true` is used.
+    #[serde(default)]
+    registration_endpoint: Option<serde_json::Value>,
+    #[serde(default)]
+    client_id_metadata_document_supported: Option<serde_json::Value>,
 }
 fn default_auth_methods() -> Vec<String> {
     vec!["client_secret_basic".to_owned()]
@@ -392,6 +397,11 @@ pub(super) async fn issuer_metadata(
         code_challenge_methods_supported: as_metadata.code_challenge_methods_supported,
         authorization_response_iss_parameter_supported: as_metadata
             .authorization_response_iss_parameter_supported,
+        registration_endpoint: as_metadata
+            .registration_endpoint
+            .and_then(|v| v.as_str().map(str::to_owned)),
+        client_id_metadata_document_supported: as_metadata.client_id_metadata_document_supported
+            == Some(serde_json::Value::Bool(true)),
     };
     owner.approve_metadata(target, &metadata)?;
     Ok(metadata)

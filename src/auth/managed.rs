@@ -45,6 +45,10 @@ use std::{
 use url::Url;
 #[path = "managed/discovery.rs"]
 mod discovery;
+#[path = "managed/registration.rs"]
+mod registration;
+use registration::{ClientChoice, ClientSource};
+pub use registration::{ClientSecretStorage, RegistrationPolicy};
 
 /// Absolute operation budget. Dropping an operation drops all its work/guards.
 #[derive(Clone, Copy)]
@@ -86,6 +90,8 @@ pub enum EndpointUse {
     IssuerMetadata,
     Authorization,
     Token,
+    /// RFC 7591 client registration; also local destination policy for it.
+    Registration,
 }
 /// Required security boundary, not a generic HTTP client. Implementations MUST
 /// enforce local destination policy against resolved IPs (including rebinding),
@@ -95,8 +101,8 @@ pub enum EndpointUse {
 /// Adapter requests and responses MUST NOT be logged, even at DEBUG level.
 /// Mark DNS, TCP connect and TLS handshake failures from `send` with
 /// `HookError::request_not_sent`; only those (and 404/410) refetch metadata.
-/// For token requests, call the `RequestWritten` extension's `mark` once the
-/// request bytes are written.
+/// For token and registration requests, call the `RequestWritten` extension's
+/// `mark` once the request bytes are written.
 pub trait OAuthNetwork: Send + Sync {
     fn check(
         &self,
@@ -128,6 +134,11 @@ pub struct TrustedMetadata {
     pub grant_types_supported: Vec<String>,
     pub token_endpoint_auth_methods_supported: Vec<String>,
     pub code_challenge_methods_supported: Vec<String>,
+    #[serde(default)]
+    pub registration_endpoint: Option<String>,
+    /// True only when the metadata member is JSON `true`.
+    #[serde(default)]
+    pub client_id_metadata_document_supported: bool,
 }
 #[non_exhaustive]
 pub struct TrustDecision {
@@ -158,6 +169,8 @@ impl TrustedMetadata {
             grant_types_supported: Vec::new(),
             token_endpoint_auth_methods_supported: Vec::new(),
             code_challenge_methods_supported: Vec::new(),
+            registration_endpoint: None,
+            client_id_metadata_document_supported: false,
         }
     }
 }
@@ -166,6 +179,7 @@ impl TrustedMetadata {
 #[non_exhaustive]
 pub struct EndpointTrust<'a> {
     pub target: &'a AuthTarget,
+    /// The pre-registered client; empty when CIMD or DCR selects it after approval.
     pub client_id: &'a str,
     pub client_secret_ref: Option<&'a str>,
     pub metadata: &'a TrustedMetadata,
@@ -203,7 +217,7 @@ const MAX_LOGIN_LIFETIME: Duration = Duration::from_secs(600);
 #[non_exhaustive]
 pub struct OAuthClientConfig {
     namespace: String,
-    pub(super) client_id: String,
+    pub(super) client_id: Option<String>,
     pub(super) flow: OAuthFlow,
     pub(super) requested_scopes: Vec<String>,
     pub(super) allowed_scopes: Vec<String>,
@@ -213,16 +227,30 @@ pub struct OAuthClientConfig {
     method: TokenAuthMethod,
     login_lifetime: Duration,
     commit_timeout: Duration,
+    cimd: Option<registration::Cimd>,
+    registrations: Vec<RegistrationPolicy>,
+    secret_storage: Option<Arc<dyn ClientSecretStorage>>,
+    registration_backoff: (Duration, Duration),
+    renewal_margin: Duration,
 }
 impl OAuthClientConfig {
+    /// A pre-registered client. It always wins: CIMD and DCR are never attempted.
     pub fn new(
         namespace: impl Into<String>,
         client_id: impl Into<String>,
         flow: OAuthFlow,
     ) -> Self {
         Self {
+            client_id: Some(client_id.into()),
+            ..Self::unregistered(namespace, flow)
+        }
+    }
+    /// No pre-registered client: an explicit preset's `clientId`, else a configured
+    /// Client ID Metadata Document, else permitted Dynamic Client Registration.
+    pub fn unregistered(namespace: impl Into<String>, flow: OAuthFlow) -> Self {
+        Self {
             namespace: namespace.into(),
-            client_id: client_id.into(),
+            client_id: None,
             flow,
             requested_scopes: Vec::new(),
             allowed_scopes: Vec::new(),
@@ -232,7 +260,48 @@ impl OAuthClientConfig {
             method: TokenAuthMethod::None,
             login_lifetime: MAX_LOGIN_LIFETIME,
             commit_timeout: Duration::from_secs(30),
+            cimd: None,
+            registrations: Vec::new(),
+            secret_storage: None,
+            registration_backoff: (Duration::from_secs(60), Duration::from_secs(3600)),
+            renewal_margin: Duration::from_secs(3600),
         }
+    }
+    /// PKCE only, used when issuer metadata has `client_id_metadata_document_supported`
+    /// `true`. `url` is the `client_id` verbatim; `redirect_uris` are the document's,
+    /// and the configured redirect must be one of them. The SDK never fetches `url`.
+    pub fn client_id_metadata_document(
+        mut self,
+        url: impl Into<String>,
+        redirect_uris: Vec<String>,
+    ) -> Self {
+        self.cimd = Some(registration::Cimd {
+            url: url.into(),
+            redirect_uris,
+        });
+        self
+    }
+    /// Permit RFC 7591 registration at the policy's exact issuer. Repeat per issuer.
+    pub fn dynamic_registration(mut self, policy: RegistrationPolicy) -> Self {
+        self.registrations.push(policy);
+        self
+    }
+    /// Host storage for issued client secrets; required for client-credentials DCR.
+    pub fn client_secret_storage(mut self, storage: Arc<dyn ClientSecretStorage>) -> Self {
+        self.secret_storage = Some(storage);
+        self
+    }
+    /// Failed-registration backoff: `initial` doubling per attempt, capped at `max`
+    /// (defaults 1 minute and 1 hour). `max` also caps a later `Retry-After`.
+    pub fn registration_backoff(mut self, initial: Duration, max: Duration) -> Self {
+        self.registration_backoff = (initial, max);
+        self
+    }
+    /// Cap of the proactive re-registration margin before a client secret expires:
+    /// `min(0.1 x secret lifetime, cap)`, default 1 hour.
+    pub fn registration_renewal_margin(mut self, cap: Duration) -> Self {
+        self.renewal_margin = cap;
+        self
     }
     /// Bound for persisting a received token response (default 30 seconds). The
     /// write outlives the caller's deadline and cancellation so a spent refresh
@@ -319,6 +388,16 @@ pub struct SessionRecord {
     resource_metadata_hint: Option<discovery::ResourceMetadataHint>,
     token: Option<SavedToken>,
     pending: Option<SavedLogin>,
+    /// Binding records: the selected client's source and, for DCR, its registration key.
+    #[serde(default)]
+    client_source: ClientSource,
+    #[serde(default)]
+    registration_key: Option<String>,
+    /// Registration records: the DCR client and its failed-registration marker.
+    #[serde(default)]
+    registration: Option<registration::SavedRegistration>,
+    #[serde(default)]
+    marker: Option<registration::FailedMarker>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct SavedToken {
@@ -345,6 +424,11 @@ struct SavedLogin {
     url: String,
     expires_at_ms: u64,
     in_flight: bool,
+    /// The client and DCR registration generation the login was created under.
+    #[serde(default)]
+    client_id: String,
+    #[serde(default)]
+    registration_generation: Option<String>,
 }
 impl SessionRecord {
     pub fn version(&self) -> &str {
@@ -360,12 +444,30 @@ impl SessionRecord {
             .as_ref()
             .is_some_and(|token| token.refresh_in_flight)
     }
+    fn empty(metadata: TrustedMetadata, flow: &str) -> Self {
+        Self {
+            version: String::new(),
+            metadata,
+            client_id: String::new(),
+            flow: flow.into(),
+            configured_binding: false,
+            resource_metadata_hint: None,
+            token: None,
+            pending: None,
+            client_source: ClientSource::default(),
+            registration_key: None,
+            registration: None,
+            marker: None,
+        }
+    }
     fn same_binding(&self, other: &Self) -> bool {
         self.metadata == other.metadata
             && self.resource_metadata_hint == other.resource_metadata_hint
             && self.client_id == other.client_id
             && self.flow == other.flow
             && self.configured_binding == other.configured_binding
+            && self.client_source == other.client_source
+            && self.registration_key == other.registration_key
     }
 }
 /// Acquire MUST serialize all writers for this key across the host's processes.
@@ -427,6 +529,30 @@ pub enum Preparation {
     Ready(BearerCredential),
     InteractionRequired(PendingLogin),
 }
+/// Options for an explicit host `prepare`.
+#[derive(Clone, Default)]
+#[non_exhaustive]
+pub struct PrepareOptions {
+    required: Vec<String>,
+    force_registration: bool,
+}
+impl PrepareOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Operation requirements, such as the `HookError::required_scopes` of a step-up.
+    pub fn required(mut self, scopes: Vec<String>) -> Self {
+        self.required = scopes;
+        self
+    }
+    /// Delete the current DCR registration (and its secret) and any failed
+    /// marker, then register anew. Use when the server deleted the client: it
+    /// sends no callback, so the SDK never infers this from an expired login.
+    pub fn force_registration(mut self) -> Self {
+        self.force_registration = true;
+        self
+    }
+}
 #[non_exhaustive]
 pub struct ManagedOAuth {
     pub(super) config: OAuthClientConfig,
@@ -452,7 +578,7 @@ struct TokenHttp {
     /// The raw received body; oauth2 does not keep it for every failure.
     body: std::sync::Mutex<Option<Vec<u8>>>,
 }
-/// Inserted into every token request's extensions. `OAuthNetwork::send` must call
+/// Inserted into every token and registration request's extensions. `OAuthNetwork::send` must call
 /// `mark` once the request bytes are written: until then caller cancellation
 /// aborts the exchange; afterwards it receives the response and commits the
 /// outcome itself, so a rotated refresh token is never lost.
@@ -517,6 +643,8 @@ impl TokenHttp {
         let unsent = matches!(error, RequestTokenError::Request(e) if e.is_request_not_sent());
         if unsent || matches!(self.status.load(Ordering::Relaxed), 404 | 410) {
             Renewal::Stale(classified)
+        } else if invalid_client(error) {
+            Renewal::InvalidClient(classified)
         } else {
             Renewal::Failed(classified)
         }
@@ -526,6 +654,11 @@ impl TokenHttp {
 enum Renewal {
     Stale(HookError),
     Failed(HookError),
+    /// The token endpoint answered `invalid_client` (an OAuth error).
+    InvalidClient(HookError),
+    /// A DCR client-credentials registration at this issuer was deleted after
+    /// `invalid_client`; register once more and re-acquire once.
+    Reregister(String),
 }
 impl From<HookError> for Renewal {
     fn from(error: HookError) -> Self {
@@ -535,7 +668,8 @@ impl From<HookError> for Renewal {
 impl From<Renewal> for HookError {
     fn from(error: Renewal) -> Self {
         match error {
-            Renewal::Stale(error) | Renewal::Failed(error) => error,
+            Renewal::Stale(error) | Renewal::Failed(error) | Renewal::InvalidClient(error) => error,
+            Renewal::Reregister(_) => fail(AuthErrorCode::CredentialUnavailable),
         }
     }
 }
@@ -584,6 +718,9 @@ async fn checked_network_send(
 type Client =
     BasicClient<EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
 type TokenError = RequestTokenError<HookError, BasicErrorResponse>;
+fn invalid_client(error: &TokenError) -> bool {
+    matches!(error, RequestTokenError::ServerResponse(r) if *r.error() == BasicErrorResponseType::InvalidClient)
+}
 fn fail(code: AuthErrorCode) -> HookError {
     HookError::authentication(code)
 }
@@ -628,8 +765,15 @@ impl ManagedOAuth {
                 .as_ref()
                 .is_some_and(|p| p.is_empty())
             || config.namespace.is_empty()
-            || config.client_id.is_empty()
+            || config.client_id.as_ref().is_some_and(|id| id.is_empty())
             || !subset(&config.requested_scopes, &config.allowed_scopes)
+            || config.client_id.is_none() && config.secret.is_some()
+            || !config.registrations.iter().all(RegistrationPolicy::valid)
+            || config.registrations.iter().enumerate().any(|(i, policy)| {
+                config.registrations[..i]
+                    .iter()
+                    .any(|other| other.issuer() == policy.issuer())
+            })
         {
             return Err(invalid());
         }
@@ -641,7 +785,10 @@ impl ManagedOAuth {
         {
             return Err(invalid());
         }
-        if config.flow == OAuthFlow::ClientCredentials && config.secret.is_none() {
+        if config.flow == OAuthFlow::ClientCredentials
+            && config.client_id.is_some()
+            && config.secret.is_none()
+        {
             return Err(fail(AuthErrorCode::UnsupportedBinding));
         }
         if config.flow == OAuthFlow::AuthorizationCodePkce {
@@ -685,8 +832,14 @@ impl ManagedOAuth {
             purpose: purpose.into(),
         }
     }
-    /// No ceiling, auth method or secret: changing those never orphans a grant.
-    fn grant_key(&self, target: &AuthTarget, metadata: &TrustedMetadata) -> SessionKey {
+    /// No ceiling, auth method, secret or registration source: changing those
+    /// never orphans a grant. A different `client_id` is a different grant.
+    fn grant_key(
+        &self,
+        target: &AuthTarget,
+        metadata: &TrustedMetadata,
+        client_id: &str,
+    ) -> SessionKey {
         let partition = match &self.config.grant_partition {
             Some(partition) => format!("shared:{partition}"),
             None => format!("binding:{}", self.key(target).as_str()),
@@ -698,7 +851,7 @@ impl ManagedOAuth {
                     &self.config.namespace,
                     &metadata.issuer,
                     &metadata.resource,
-                    &self.config.client_id,
+                    client_id,
                     self.flow_id(),
                     &partition,
                 ],
@@ -742,21 +895,30 @@ impl ManagedOAuth {
             AuthBinding::Unbound => Ok(()),
             AuthBinding::OAuth { flow, .. }
                 if *flow == self.config.flow
-                    && target.client_id() == Some(self.config.client_id.as_str()) =>
+                    && self
+                        .config
+                        .client_id
+                        .as_deref()
+                        .is_none_or(|id| target.client_id() == Some(id)) =>
             {
                 if let Some(reference) = target.client_secret_ref()
                     && self.config.secret.as_ref().map(|(r, _)| r.as_str()) != Some(reference)
                 {
                     return Err(fail(AuthErrorCode::InvalidConfiguration));
                 }
+                // A preset client-credentials client needs the host's secret.
+                if *flow == OAuthFlow::ClientCredentials && self.config.client_id.is_none() {
+                    return Err(fail(AuthErrorCode::UnsupportedBinding));
+                }
                 Ok(())
             }
             _ => Err(fail(AuthErrorCode::UnsupportedBinding)),
         }
     }
-    /// A saved binding is only reused for the same principal as the current target.
+    /// A saved binding is only reused for the same principal as the current target
+    /// and while host policy still selects its recorded client.
     fn compatible(&self, target: &AuthTarget, record: &SessionRecord) -> bool {
-        record.client_id == self.config.client_id
+        self.selection_current(target, record)
             && record.flow == self.flow_id()
             && target
                 .issuer()
@@ -771,7 +933,7 @@ impl ManagedOAuth {
         self.policy
             .approve_endpoints(EndpointTrust {
                 target,
-                client_id: &self.config.client_id,
+                client_id: self.preregistered(target).unwrap_or_default(),
                 client_secret_ref: self
                     .config
                     .secret
@@ -890,14 +1052,33 @@ impl ManagedOAuth {
         required: &[String],
         budget: OperationBudget,
     ) -> Result<Preparation, HookError> {
-        if !required.iter().all(|scope| valid_scope(scope)) {
+        let options = PrepareOptions::new().required(required.to_vec());
+        self.prepare_with(context, options, budget).await
+    }
+    /// `prepare` with explicit options; the only path that registers a PKCE client.
+    pub async fn prepare_with(
+        &self,
+        context: AuthContext,
+        options: PrepareOptions,
+        budget: OperationBudget,
+    ) -> Result<Preparation, HookError> {
+        if !options.required.iter().all(|scope| valid_scope(scope)) {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
-        let pending = budget
-            .run(self.acquire(context, None, required, None, budget, Mode::Prepare))
-            .await?;
-        pending.ok_or_else(|| fail(AuthErrorCode::ProviderFailed))
+        budget
+            .run(async {
+                let target = context.target()?;
+                self.validate_target(&target)?;
+                self.prepare_registration(&target, options.force_registration, budget)
+                    .await?;
+                let required = &options.required;
+                let pending = self
+                    .acquire(context, None, required, None, budget, Mode::Prepare)
+                    .await?;
+                pending.ok_or_else(|| fail(AuthErrorCode::ProviderFailed))
+            })
+            .await
     }
     /// `challenge` is present only for challenge recovery; its requirements, like
     /// `extra`, apply to this operation only and are never stored.
@@ -948,6 +1129,18 @@ impl ManagedOAuth {
             }
             result => result,
         };
+        // A deleted DCR client-credentials registration: register once more and
+        // re-acquire once; a repeated invalid_client is a failed registration.
+        let result = match result {
+            Err(Renewal::Reregister(_)) => match attempt(false).await {
+                Err(Renewal::Reregister(issuer)) => {
+                    self.mark_failed(&issuer, budget).await;
+                    Err(fail(AuthErrorCode::CredentialUnavailable).into())
+                }
+                result => result,
+            },
+            result => result,
+        };
         result.map_err(|error| attach(error.into()))
     }
     async fn refetch_issuer(
@@ -979,11 +1172,11 @@ impl ManagedOAuth {
     async fn retire(
         &self,
         target: &AuthTarget,
-        metadata: &TrustedMetadata,
+        binding: &SessionRecord,
         attempt: &str,
         budget: OperationBudget,
     ) -> Result<(), HookError> {
-        let key = self.grant_key(target, metadata);
+        let key = self.grant_key(target, &binding.metadata, &binding.client_id);
         let mut guard = budget.run(self.store.acquire(key, budget)).await?;
         if let Some(mut record) = budget.run(guard.load()).await?
             && let Some(token) = record.token.as_mut()
@@ -1018,17 +1211,40 @@ impl ManagedOAuth {
         )
         .await?;
         let mut binding = SessionRecord {
-            version: String::new(),
-            metadata,
-            client_id: self.config.client_id.clone(),
-            flow: self.flow_id().into(),
             configured_binding: !matches!(target.binding(), AuthBinding::Unbound),
             resource_metadata_hint: hint,
-            token: None,
-            pending: None,
+            ..SessionRecord::empty(metadata, self.flow_id())
         };
         let mut guard = budget.run(self.store.acquire(binding_key, budget)).await?;
-        match budget.run(guard.load()).await? {
+        let current = budget.run(guard.load()).await?;
+        // A recorded selection survives metadata changes until host policy changes it.
+        match current.as_ref().filter(|current| {
+            current.metadata.issuer == binding.metadata.issuer
+                && current.flow == binding.flow
+                && self.selection_current(target, current)
+        }) {
+            Some(current) => {
+                binding.client_source = current.client_source;
+                binding.client_id = current.client_id.clone();
+                binding.registration_key = current.registration_key.clone();
+            }
+            None => {
+                binding.client_source = self.select_source(target, &binding.metadata)?;
+                match binding.client_source {
+                    ClientSource::Preregistered => {
+                        binding.client_id = self.preregistered(target).unwrap_or_default().into()
+                    }
+                    ClientSource::Cimd => {
+                        binding.client_id = self.config.cimd.as_ref().unwrap().url.clone()
+                    }
+                    ClientSource::Dcr => {
+                        let key = self.registration_key(&binding.metadata.issuer);
+                        binding.registration_key = Some(key.as_str().into());
+                    }
+                }
+            }
+        }
+        match current {
             Some(current) if current.same_binding(&binding) => {}
             current => {
                 binding.version = current.map(|r| r.version).unwrap_or_default();
@@ -1100,8 +1316,7 @@ impl ManagedOAuth {
         // Retire a rejected generation before any network, so a failed discovery
         // or renewal never leaves the revoked token servable.
         if let (Some(attempt), Some(binding)) = (rejected_attempt, known) {
-            self.retire(&target, &binding.metadata, attempt, budget)
-                .await?;
+            self.retire(&target, binding, attempt, budget).await?;
         }
         // `prepare` serves a usable cached token, otherwise rebuilds binding metadata
         // so stale persisted metadata always has a repair path.
@@ -1109,7 +1324,8 @@ impl ManagedOAuth {
         if mode == Mode::Prepare
             && let Some((binding, _)) = &usable
         {
-            let key = self.grant_key(&target, &binding.metadata);
+            // The binding records its selected client; a usable token needs no registration.
+            let key = self.grant_key(&target, &binding.metadata, &binding.client_id);
             if let Some(credential) = self
                 .load(&key, budget)
                 .await?
@@ -1152,7 +1368,26 @@ impl ManagedOAuth {
                 }
             }
         };
-        let key = self.grant_key(&target, &binding.metadata);
+        // A still-valid token for the recorded DCR client keeps working even
+        // while its registration is unusable or a failed marker blocks renewal.
+        if binding.client_source == ClientSource::Dcr
+            && rejected_attempt.is_none()
+            && !binding.client_id.is_empty()
+            && let Some(credential) = self
+                .load(
+                    &self.grant_key(&target, &binding.metadata, &binding.client_id),
+                    budget,
+                )
+                .await?
+                .and_then(|record| self.cached(&record, &required))
+        {
+            return Ok(Some(Preparation::Ready(credential)));
+        }
+        let choice = self.choose(&target, &binding, mode, budget).await?;
+        let binding = self
+            .record_client(&target, binding, &choice, budget)
+            .await?;
+        let key = self.grant_key(&target, &binding.metadata, &choice.id);
         let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
         let loaded = budget.run(guard.load()).await?;
         let mut record = loaded.unwrap_or_else(|| SessionRecord {
@@ -1160,7 +1395,7 @@ impl ManagedOAuth {
             ..binding.clone()
         });
         let mut dirty = record.metadata != binding.metadata;
-        record.metadata = binding.metadata;
+        record.metadata = binding.metadata.clone();
         // A 401 for this exact generation retires it; a stale 401 cannot reject a newer token.
         if let Some(token) = record.token.as_mut()
             && rejected_attempt == Some(token.generation.as_str())
@@ -1183,8 +1418,12 @@ impl ManagedOAuth {
             && token.refresh_token.is_some()
             && subset(&required, &self.effective(&token.scopes))
         {
+            let result = self
+                .refresh(&mut guard, &mut record, &choice, &required, budget)
+                .await;
+            drop(guard);
             return self
-                .refresh(&mut guard, &mut record, &required, budget)
+                .client_failure(result, &choice, &binding, budget)
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -1195,8 +1434,25 @@ impl ManagedOAuth {
             .map_or(Vec::new(), |t| t.scopes.clone());
         let scopes = self.request_scopes(&previous, &scopes);
         if self.config.flow == OAuthFlow::ClientCredentials {
+            let result = self
+                .client_credentials(
+                    &mut guard,
+                    &mut record,
+                    &choice,
+                    &scopes,
+                    &previous,
+                    &required,
+                )
+                .await;
+            drop(guard);
+            if result.is_ok()
+                && choice.renew
+                && let Some(generation) = &choice.generation
+            {
+                self.renew(&binding.metadata, generation, budget).await;
+            }
             return self
-                .client_credentials(&mut guard, &mut record, &scopes, &previous, &required)
+                .client_failure(result, &choice, &binding, budget)
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -1208,6 +1464,7 @@ impl ManagedOAuth {
             login.expires_at_ms > now_ms()
                 && !login.in_flight
                 && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
+                && login.registration_generation == choice.generation
         });
         if let Some(login) = live
             && subset(&scopes, &login.scopes)
@@ -1228,7 +1485,7 @@ impl ManagedOAuth {
             .authorization_endpoint
             .clone()
             .ok_or_else(|| fail(AuthErrorCode::DiscoveryFailed))?;
-        let client = self.client(&record.metadata)?.set_auth_uri(
+        let client = self.client(&record.metadata, &choice)?.set_auth_uri(
             AuthUrl::new(authorization).map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?,
         );
         let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
@@ -1257,6 +1514,8 @@ impl ManagedOAuth {
             url: url.to_string(),
             expires_at_ms: now_ms().saturating_add(self.config.login_lifetime.as_millis() as u64),
             in_flight: false,
+            client_id: choice.id.clone(),
+            registration_generation: choice.generation.clone(),
         };
         let pending = PendingLogin::new(key, &login)?;
         // Atomically supersedes any previous pending login; its callback then fails.
@@ -1264,8 +1523,71 @@ impl ManagedOAuth {
         self.persist(&mut *guard, &mut record, budget).await?;
         Ok(Some(Preparation::InteractionRequired(pending)))
     }
-    fn client(&self, metadata: &TrustedMetadata) -> Result<Client, HookError> {
-        let method = match self.config.method {
+    /// Record the chosen client on the binding (write-on-change).
+    async fn record_client(
+        &self,
+        target: &AuthTarget,
+        mut binding: SessionRecord,
+        choice: &ClientChoice,
+        budget: OperationBudget,
+    ) -> Result<SessionRecord, HookError> {
+        if binding.client_id == choice.id {
+            return Ok(binding);
+        }
+        let mut guard = budget
+            .run(self.store.acquire(self.key(target), budget))
+            .await?;
+        if let Some(mut current) = budget.run(guard.load()).await?
+            && current.same_binding(&binding)
+        {
+            current.client_id = choice.id.clone();
+            self.persist(&mut *guard, &mut current, budget).await?;
+            binding.version = current.version;
+        }
+        drop(guard);
+        // A replaced DCR client (after invalid_client or expiry): the old client's
+        // binding-scoped grant is unreachable, and served no usable token.
+        let old = std::mem::replace(&mut binding.client_id, choice.id.clone());
+        if choice.source == ClientSource::Dcr {
+            self.clear_grant(target, &binding.metadata, &old, budget)
+                .await?;
+        }
+        Ok(binding)
+    }
+    /// `invalid_client`: a CIMD client is misconfigured; a DCR registration
+    /// generation is compare-and-deleted, then PKCE needs consent and client
+    /// credentials register once more.
+    async fn client_failure(
+        &self,
+        result: Result<BearerCredential, Renewal>,
+        choice: &ClientChoice,
+        binding: &SessionRecord,
+        budget: OperationBudget,
+    ) -> Result<BearerCredential, Renewal> {
+        let Err(Renewal::InvalidClient(error)) = result else {
+            return result;
+        };
+        match choice.source {
+            ClientSource::Preregistered => Err(Renewal::Failed(error)),
+            ClientSource::Cimd => Err(fail(AuthErrorCode::InvalidConfiguration).into()),
+            ClientSource::Dcr => {
+                if let Some(generation) = &choice.generation {
+                    self.forget(&binding.metadata.issuer, generation, budget)
+                        .await?;
+                }
+                if self.config.flow == OAuthFlow::AuthorizationCodePkce {
+                    return Err(fail(AuthErrorCode::InteractionRequired).into());
+                }
+                Err(Renewal::Reregister(binding.metadata.issuer.clone()))
+            }
+        }
+    }
+    fn client(
+        &self,
+        metadata: &TrustedMetadata,
+        choice: &ClientChoice,
+    ) -> Result<Client, HookError> {
+        let method = match choice.method {
             TokenAuthMethod::None => "none",
             TokenAuthMethod::ClientSecretBasic => "client_secret_basic",
             TokenAuthMethod::ClientSecretPost => "client_secret_post",
@@ -1281,19 +1603,17 @@ impl ManagedOAuth {
         if !supported {
             return Err(fail(AuthErrorCode::UnsupportedBinding));
         }
-        let mut client = BasicClient::new(ClientId::new(self.config.client_id.clone()))
+        let mut client = BasicClient::new(ClientId::new(choice.id.clone()))
             .set_token_uri(
                 TokenUrl::new(metadata.token_endpoint.clone())
                     .map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?,
             )
-            .set_auth_type(
-                if self.config.method == TokenAuthMethod::ClientSecretBasic {
-                    AuthType::BasicAuth
-                } else {
-                    AuthType::RequestBody
-                },
-            );
-        if let Some((_, secret)) = &self.config.secret {
+            .set_auth_type(if choice.method == TokenAuthMethod::ClientSecretBasic {
+                AuthType::BasicAuth
+            } else {
+                AuthType::RequestBody
+            });
+        if let Some(secret) = &choice.secret {
             client = client.set_client_secret(oauth2::ClientSecret::new(secret.secret().clone()));
         }
         if let Some(redirect) = &self.config.redirect_uri {
@@ -1356,6 +1676,7 @@ impl ManagedOAuth {
         &self,
         guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
+        choice: &ClientChoice,
         scopes: &[String],
         previous: &[String],
         required: &[String],
@@ -1368,7 +1689,7 @@ impl ManagedOAuth {
         {
             return Err(fail(AuthErrorCode::UnsupportedBinding).into());
         }
-        let client = self.client(&record.metadata)?;
+        let client = self.client(&record.metadata, choice)?;
         let resource = record.metadata.resource.clone();
         let (scopes, required) = (scopes.to_vec(), required.to_vec());
         let bound = union(previous, &self.config.allowed_scopes);
@@ -1408,6 +1729,7 @@ impl ManagedOAuth {
         &self,
         guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
+        choice: &ClientChoice,
         required: &[String],
         budget: OperationBudget,
     ) -> Result<BearerCredential, Renewal> {
@@ -1424,7 +1746,7 @@ impl ManagedOAuth {
                 .ok_or_else(|| fail(AuthErrorCode::CredentialUnavailable))?,
         );
         token.refresh_in_flight = true;
-        let client = self.client(&record.metadata)?;
+        let client = self.client(&record.metadata, choice)?;
         self.persist(&mut **guard, record, budget).await?;
         let resource = record.metadata.resource.clone();
         let required = required.to_vec();
@@ -1534,7 +1856,11 @@ impl ManagedOAuth {
         }
         self.validate_saved(&target, &binding, target.scopes())?;
         self.approve_metadata(&target, &binding.metadata)?;
-        let key = self.grant_key(&target, &binding.metadata);
+        // Never registers: a missing PKCE registration needs a new `prepare`.
+        let choice = self
+            .choose(&target, &binding, Mode::Deliver, budget)
+            .await?;
+        let key = self.grant_key(&target, &binding.metadata, &choice.id);
         let record = self.load(&key, budget).await?.ok_or_else(gone)?;
         // Superseded, expired, claimed or foreign-state callbacks never consume a login.
         let saved = record
@@ -1543,6 +1869,7 @@ impl ManagedOAuth {
                 login.expires_at_ms > now_ms()
                     && !login.in_flight
                     && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
+                    && (login.client_id.is_empty() || login.client_id == choice.id)
                     && state == CsrfToken::new(login.state.clone())
             })
             .ok_or_else(gone)?;
@@ -1571,14 +1898,15 @@ impl ManagedOAuth {
         // Claim once before the exchange; a cancelled exchange is superseded by `prepare`.
         record.pending.as_mut().unwrap().in_flight = true;
         self.persist(&mut *guard, &mut record, budget).await?;
-        let client = self.client(&saved.metadata)?;
+        let client = self.client(&saved.metadata, &choice)?;
+        let generation = saved.registration_generation.clone();
         let previous = record
             .token
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let bound = union(&saved.ceiling, &previous);
         let required = target.scopes().to_vec();
-        self.detached(&mut guard, &mut record, move |mut guard, mut record, http, committer| {
+        let outcome = self.detached(&mut guard, &mut record, move |mut guard, mut record, http, committer| {
             Box::pin(async move {
                 let response = client
                     .exchange_code(AuthorizationCode::new(code))
@@ -1591,23 +1919,34 @@ impl ManagedOAuth {
                         committer
                             .save_token(&mut *guard, &mut record, response, &saved.scopes, &bound, None, &required)
                             .await
+                            .map_err(Renewal::from)
                     }
                     Err(error) => {
                         // The claimed login has ended; nothing else is persisted.
                         record.pending = None;
                         match committer.persist(&mut *guard, &mut record).await {
-                            Err(failure) => Err(failure),
+                            Err(failure) => Err(failure.into()),
                             Ok(()) if matches!(&error, RequestTokenError::ServerResponse(response) if *response.error() == BasicErrorResponseType::InvalidGrant) => {
-                                Err(fail(AuthErrorCode::InteractionRequired))
+                                Err(fail(AuthErrorCode::InteractionRequired).into())
                             }
-                            Ok(()) => Err(token_error(&error)),
+                            Ok(()) if invalid_client(&error) => Err(Renewal::InvalidClient(token_error(&error))),
+                            Ok(()) => Err(token_error(&error).into()),
                         }
                     }
                 };
                 (outcome, guard, record)
             })
         })
-        .await?
+        .await?;
+        drop(guard);
+        // invalid_client deletes only the registration generation this login used.
+        let choice = ClientChoice {
+            generation,
+            ..choice
+        };
+        self.client_failure(outcome, &choice, &binding, budget)
+            .await
+            .map_err(Into::into)
     }
     /// Cancel only this login generation. A stale cancellation cannot remove a newer
     /// login, and cancellation never deletes a valid stored grant.
@@ -1803,18 +2142,28 @@ async fn persist(
     record: &mut SessionRecord,
     budget: OperationBudget,
 ) -> Result<(), HookError> {
+    if !cas(guard, record, budget).await? {
+        return Err(fail(AuthErrorCode::ProviderFailed));
+    }
+    Ok(())
+}
+/// Compare-and-set on the record version; false when another writer won.
+async fn cas(
+    guard: &mut dyn CredentialGuard,
+    record: &mut SessionRecord,
+    budget: OperationBudget,
+) -> Result<bool, HookError> {
     let expected = Some(record.version.clone()).filter(|v| !v.is_empty());
     let mut replacement = record.clone();
     replacement.version = random_id();
     let version = replacement.version.clone();
-    if !budget
+    let swapped = budget
         .run(guard.compare_and_swap(expected, replacement))
-        .await?
-    {
-        return Err(fail(AuthErrorCode::ProviderFailed));
+        .await?;
+    if swapped {
+        record.version = version;
     }
-    record.version = version;
-    Ok(())
+    Ok(swapped)
 }
 /// Stands in for a guard while its commit task owns it.
 struct Committing;
