@@ -399,8 +399,9 @@ mod provider_auth {
         assert_eq!(contexts[0].backend_id, "org.example.auth");
         assert_eq!(contexts[0].destination, endpoint);
         assert_eq!(contexts[0].purpose, AuthPurpose::Event);
+        // One challenge per operation: a replayed rejection fails without another.
         let challenges = provider.challenges.lock().unwrap();
-        assert_eq!(challenges.len(), expected_calls);
+        assert_eq!(challenges.len(), 1);
         assert_eq!(challenges[0].attempt_id.as_deref(), Some("generation-7"));
         assert_eq!(challenges[0].status, 401);
         assert!(challenges[0].headers["www-authenticate"].contains("invalid_token"));
@@ -415,8 +416,8 @@ mod provider_auth {
         exercise(json!({"jsonrpc":"2.0","id":"caps","method":"hooks/capabilities","params":{"protocolVersion":"draft"}}), 2, None).await;
     }
     #[tokio::test]
-    async fn intercept_challenge_does_not_authorize_replay() {
-        exercise(json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","harness":{"name":"test","version":"1"},"source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}}), 1,
+    async fn intercept_challenge_replays_once() {
+        exercise(json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","harness":{"name":"test","version":"1"},"source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}}), 2,
             Some(json!({"type":"bearer","tokenRef":"host-reference"}))).await;
     }
     #[tokio::test]

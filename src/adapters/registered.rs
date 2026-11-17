@@ -317,84 +317,7 @@ pub fn from_registration(
 // Classification only: providers still validate the complete challenge and scope policy.
 #[cfg(feature = "reqwest")]
 fn insufficient_scope(header: &str) -> bool {
-    fn token(b: u8) -> bool {
-        b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)
-    }
-    let mut parts = Vec::new();
-    let (mut start, mut quoted, mut escaped) = (0, false, false);
-    for (index, byte) in header.bytes().enumerate() {
-        if byte < 0x20 && byte != b'\t' || byte == 0x7f {
-            return false;
-        }
-        if escaped {
-            escaped = false;
-        } else if quoted && byte == b'\\' {
-            escaped = true;
-        } else if byte == b'"' {
-            quoted = !quoted;
-        } else if !quoted && byte == b',' {
-            parts.push(header[start..index].trim());
-            start = index + 1;
-        }
-    }
-    if quoted || escaped {
-        return false;
-    }
-    parts.push(header[start..].trim());
-    let (mut bearer, mut found) = (false, false);
-    let mut seen = std::collections::BTreeSet::new();
-    for part in parts {
-        let end = part.bytes().take_while(|b| token(*b)).count();
-        if end == 0 {
-            return false;
-        }
-        let rest = part[end..].trim_start();
-        let param = if rest.starts_with('=') {
-            part
-        } else {
-            bearer = part[..end].eq_ignore_ascii_case("bearer");
-            rest
-        };
-        if !bearer {
-            continue;
-        }
-        let Some((name, value)) = param.split_once('=') else {
-            return false;
-        };
-        let name = name.trim().to_ascii_lowercase();
-        if name.is_empty() || !name.bytes().all(token) || !seen.insert(name.clone()) {
-            return false;
-        }
-        let value = value.trim();
-        let value = if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
-            let mut decoded = String::new();
-            let mut escaped = false;
-            for ch in value[1..value.len() - 1].chars() {
-                if escaped {
-                    decoded.push(ch);
-                    escaped = false;
-                } else if ch == '\\' {
-                    escaped = true;
-                } else if ch == '"' {
-                    return false;
-                } else {
-                    decoded.push(ch);
-                }
-            }
-            if escaped {
-                return false;
-            }
-            decoded
-        } else if !value.is_empty() && value.bytes().all(token) {
-            value.to_owned()
-        } else {
-            return false;
-        };
-        if name == "error" {
-            found = value == "insufficient_scope";
-        }
-    }
-    found
+    crate::auth::challenge::parse(header).is_ok_and(|challenge| challenge.insufficient_scope)
 }
 
 #[cfg(any(feature = "reqwest", feature = "tokio-process"))]
@@ -499,7 +422,9 @@ impl ManagedBackend for HttpBackend {
                     .auth_provider
                     .as_ref()
                     .filter(|_| !explicit_auth);
-                let mut retry = false;
+                // Challenged replay: at most once, same id and buffered body, and only
+                // for requests that expect a response. Notifications are never replayed.
+                let mut challenged = false;
                 let mut response = loop {
                     let credential = if let Some(provider) = provider {
                         provider
@@ -562,6 +487,7 @@ impl ManagedBackend for HttpBackend {
                         .join(", ");
                     if (status == 401 || (status == 403 && insufficient_scope(&challenge_header)))
                         && let Some(provider) = provider
+                        && !std::mem::replace(&mut challenged, true)
                     {
                         provider
                             .challenge(
@@ -577,13 +503,8 @@ impl ManagedBackend for HttpBackend {
                             )
                             .await
                             .map_err(crate::auth::sanitize_provider_error)?;
-                        // Auth recovery does not authorize replaying effectful deliveries.
-                        if !retry
-                            && !notification
-                            && (request["method"] == "hooks/capabilities"
-                                || request["method"] == "hooks/configuration")
-                        {
-                            retry = true;
+                        // A second rejection is an operational failure.
+                        if !notification {
                             continue;
                         }
                     }
@@ -963,47 +884,31 @@ mod transport_auth_tests {
     }
 
     #[tokio::test]
-    async fn scope_challenges_update_auth_without_replaying_effectful_calls() {
-        for notification in [false, true] {
-            let provider = Arc::new(Provider::default());
-            let (backend, listener) = backend(provider.clone(), false).await;
-            let (result, headers) = tokio::join!(
-                backend.call(effectful(notification), TIMEOUT),
-                respond(
-                    &listener,
-                    403,
-                    "Bearer error=\"insufficient_scope\", scope=\"write\""
-                )
-            );
-            assert!(result.is_err());
-            assert!(headers.contains("authorization: bearer cached-unbound\r\n"));
-            assert_eq!(provider.credentials.load(Ordering::SeqCst), 1);
-            {
-                let challenges = provider.challenges.lock().unwrap();
-                assert_eq!(challenges.len(), 1);
-                assert_eq!(challenges[0].status, 403);
-                assert_eq!(challenges[0].attempt_id.as_deref(), Some("attempt"));
-            }
-            no_replay(&listener).await;
-        }
-    }
-
-    #[tokio::test]
-    async fn safe_auth_retry_is_bounded_for_401_and_scope_403() {
+    async fn challenged_replay_is_once_and_never_for_notifications() {
         for (status, challenge) in [
             (401, "Bearer error=\"invalid_token\""),
-            (403, "Bearer error=\"insufficient_scope\""),
+            (403, "Bearer error=\"insufficient_scope\", scope=\"write\""),
         ] {
-            let provider = Arc::new(Provider::default());
-            let (backend, listener) = backend(provider.clone(), false).await;
-            let (result, ()) = tokio::join!(backend.call(request(), TIMEOUT), async {
-                respond(&listener, status, challenge).await;
-                respond(&listener, status, challenge).await;
-            });
-            assert!(result.is_err());
-            assert_eq!(provider.credentials.load(Ordering::SeqCst), 2);
-            assert_eq!(provider.challenges.lock().unwrap().len(), 2);
-            no_replay(&listener).await;
+            for request in [request(), effectful(false), effectful(true)] {
+                let notification = request.get("id").is_none();
+                let provider = Arc::new(Provider::default());
+                let (backend, listener) = backend(provider.clone(), false).await;
+                let (result, ()) = tokio::join!(backend.call(request, TIMEOUT), async {
+                    respond(&listener, status, challenge).await;
+                    if !notification {
+                        respond(&listener, status, challenge).await;
+                    }
+                });
+                // A second rejection is an operational failure without a second challenge.
+                assert!(result.is_err());
+                let attempts = if notification { 1 } else { 2 };
+                assert_eq!(provider.credentials.load(Ordering::SeqCst), attempts);
+                let challenges = provider.challenges.lock().unwrap().clone();
+                assert_eq!(challenges.len(), 1);
+                assert_eq!(challenges[0].status, status);
+                assert_eq!(challenges[0].attempt_id.as_deref(), Some("attempt"));
+                no_replay(&listener).await;
+            }
         }
     }
 

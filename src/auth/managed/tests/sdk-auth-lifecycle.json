@@ -56,7 +56,7 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     },
     {
       "id": "default-upload",
@@ -75,7 +75,7 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read80:binding:ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce80:binding:ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks"
     },
     {
       "id": "shared-event",
@@ -95,7 +95,7 @@
         "grant_partition": "approved-events-and-uploads"
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read34:shared:approved-events-and-uploads"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce34:shared:approved-events-and-uploads"
     },
     {
       "id": "shared-upload",
@@ -115,7 +115,7 @@
         "grant_partition": "approved-events-and-uploads"
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read34:shared:approved-events-and-uploads"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce34:shared:approved-events-and-uploads"
     },
     {
       "id": "unicode-namespace",
@@ -134,28 +134,10 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:12:account-\ud83d\ude007:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:12:account-\ud83d\ude0022:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read85:binding:ahp.oauth.binding:12:account-\ud83d\ude007:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:12:account-\ud83d\ude0022:https://issuer.example19:https://api.example6:client23:authorization_code_pkce85:binding:ahp.oauth.binding:12:account-\ud83d\ude007:backend5:event25:https://api.example/hooks"
     },
     {
-      "id": "scope-ceiling-change",
-      "input": {
-        "namespace": "account",
-        "backend_id": "backend",
-        "purpose": "event",
-        "destination": "https://api.example/hooks",
-        "issuer": "https://issuer.example",
-        "resource": "https://api.example",
-        "client_id": "client",
-        "flow": "authorization_code_pkce",
-        "allowed_scopes": [
-          "read"
-        ]
-      },
-      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce4:read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
-    },
-    {
-      "id": "scope-order-dedup",
+      "id": "scope-ceiling-widening",
       "input": {
         "namespace": "account",
         "backend_id": "backend",
@@ -167,12 +149,12 @@
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
-          "offline_access",
-          "read"
+          "write",
+          "offline_access"
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     },
     {
       "id": "resource-trailing-slash",
@@ -191,10 +173,10 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example20:https://api.example/6:client23:authorization_code_pkce19:offline_access read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example20:https://api.example/6:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     },
     {
-      "id": "secret-and-capability-rotation",
+      "id": "secret-auth-method-and-capability-rotation",
       "input": {
         "namespace": "account",
         "backend_id": "backend",
@@ -215,10 +197,11 @@
             "refresh_token",
             "client_credentials"
           ]
-        }
+        },
+        "token_endpoint_auth_method": "client_secret_basic"
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce19:offline_access read79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     }
   ],
   "token_responses": [
@@ -342,10 +325,11 @@
       "granted": [
         "read"
       ],
+      "error": "access_denied",
       "refresh_preserved": true
     },
     {
-      "id": "forbidden-added-scope",
+      "id": "unallowed-added-scope-ignored",
       "requested": [
         "read"
       ],
@@ -357,11 +341,14 @@
         "access_token": "fixture-access",
         "token_type": "Bearer",
         "refresh_token": "fixture-refresh",
-        "scope": "read admin"
+        "scope": "read openid admin"
       },
-      "accepted": false,
-      "usable": false,
-      "error": "access_denied",
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
       "refresh_preserved": true
     },
     {
@@ -422,7 +409,7 @@
       "refresh_preserved": true
     },
     {
-      "id": "refresh-forbids-grant-broadening",
+      "id": "refresh-broadening-scope-ignored",
       "exchange": "refresh",
       "requested": [
         "read",
@@ -442,9 +429,152 @@
         "refresh_token": "fixture-refresh-rotated",
         "scope": "read write"
       },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "invalid-token-type",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "refresh_token": "fixture-refresh-rotated",
+        "token_type": "mac"
+      },
       "accepted": false,
       "usable": false,
-      "error": "access_denied",
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "zero-expires-in",
+      "exchange": "refresh",
+      "requested": [
+        "read"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "refresh_token": "fixture-refresh-rotated",
+        "token_type": "Bearer",
+        "expires_in": 0
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
+    },
+    {
+      "id": "initial-without-refresh-token",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "expires_in": 3600
+      },
+      "accepted": true,
+      "expiry": "known",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": false
+    },
+    {
+      "id": "string-expires-in",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "expires_in": "3600"
+      },
+      "accepted": true,
+      "expiry": "known",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "fractional-expires-in",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "expires_in": 3600.5
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "refresh-narrow-ceiling-keeps-grant",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read",
+        "write"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read",
+        "write"
+      ],
+      "effective": [
+        "read"
+      ],
       "refresh_preserved": true
     }
   ],
@@ -458,6 +588,22 @@
       "expect": "known authorized binding sends stored token on first attempt; no 401/replay for upload or notification"
     },
     {
+      "id": "unreplayed-challenge-prepares-next-attempt",
+      "expect": "401/insufficient_scope on a notification or upload is not replayed but runs challenge handling (discovery, client-credentials acquisition, no login creation); the next operation sends a credential"
+    },
+    {
+      "id": "unbound-lookup-anonymous-fallback",
+      "expect": "up-front lookup never creates a pending login or performs discovery; only a store miss or host policy refusal sends an anonymous attempt"
+    },
+    {
+      "id": "unbound-lookup-refreshes-expired-token",
+      "expect": "up-front lookup refreshes an expired stored token non-interactively using cached authorization-server metadata"
+    },
+    {
+      "id": "up-front-refresh-failure-no-anonymous-fallback",
+      "expect": "known binding whose non-interactive refresh fails (transient, invalid_grant, missing cached metadata) fails the operation with that error, never sends anonymously"
+    },
+    {
       "id": "refresh-unknown-expiry-rotation",
       "expect": "rotated refresh credential persisted and reusable when expires_in absent"
     },
@@ -466,20 +612,80 @@
       "expect": "5xx/non-OAuth/timeout retains credentials and returns retry, never permanent fabricated login state"
     },
     {
+      "id": "refresh-invalid-grant-drops-tokens",
+      "expect": "definitive interactive refresh invalid_grant removes access and refresh tokens when the record still holds the presented refresh token, and returns refresh_rejected"
+    },
+    {
+      "id": "refresh-invalid-grant-stale-does-not-wipe",
+      "expect": "invalid_grant for a refresh token already replaced by a newer record leaves the newer record intact"
+    },
+    {
+      "id": "token-validation-failure-clears-in-flight",
+      "expect": "invalid code-exchange response persists nothing; invalid refresh response persists only a valid rotated refresh token; no in-flight/refreshing state remains; returns provider_failed"
+    },
+    {
       "id": "client-credentials-transient-reissue",
       "expect": "retry can acquire with current client credentials without any human-login outcome"
     },
     {
-      "id": "host-owned-login-budget",
-      "expect": "delivery returns interaction_required without creating pending login; explicit prepare owns its longer budget"
+      "id": "delivery-never-creates-pending-login",
+      "expect": "delivery/credential/challenge paths return interaction_required without creating a pending login; only explicit prepare creates one"
+    },
+    {
+      "id": "pending-login-fixed-lifetime",
+      "expect": "pending login lifetime is host-configured and bounded (default 10 minutes), fixed at creation and survives the creating prepare's deadline or cancellation"
+    },
+    {
+      "id": "pending-login-cross-process-completion",
+      "expect": "a pending login created in one process completes from another process sharing the store"
+    },
+    {
+      "id": "pending-login-reuse",
+      "expect": "later prepare with same grant key and exact redirect whose requested+required scopes are within the pending scopes reuses it regardless of deadline or ceiling; completion records scopes bounded by the stored creating ceiling"
+    },
+    {
+      "id": "pending-login-supersede",
+      "expect": "later prepare with different grant key/redirect or scopes outside the pending scopes supersedes it; old callback fails interaction_required"
+    },
+    {
+      "id": "pending-login-supersede-scope-union",
+      "expect": "superseding login requests the union of old pending, new requested and new required scopes, intersected with the new ceiling; alternating callers converge without looping"
+    },
+    {
+      "id": "pending-login-end-states",
+      "expect": "a pending login ends exactly once by completion, supersede, cancel or expiry; later callbacks fail interaction_required"
     },
     {
       "id": "metadata-and-secret-rotation",
-      "expect": "nonidentity metadata changes and new runtime secret do not permanently fail stored session or persist secret"
+      "expect": "nonidentity metadata, token-endpoint auth method and runtime secret changes do not permanently fail stored session or persist secret"
+    },
+    {
+      "id": "scope-ceiling-widening-keeps-grant",
+      "expect": "widening the allowed ceiling finds the existing grant; effective scopes are granted scopes intersected with the current ceiling at use"
+    },
+    {
+      "id": "scope-ceiling-narrowing-keeps-grant",
+      "expect": "narrowing the ceiling hides scopes at use only; after a refresh under the narrow ceiling and widening it again the scope is still available"
     },
     {
       "id": "insufficient-scope-step-up",
-      "expect": "only Bearer 403 insufficient_scope triggers allowed-scope step-up; no effectful replay"
+      "expect": "only Bearer 403 insufficient_scope triggers allowed-scope step-up for the challenged operation"
+    },
+    {
+      "id": "step-up-requirement-operation-scoped",
+      "expect": "a challenge requirement is not persisted on the binding; later operations use the stored grant, including scopes added by step-up consent"
+    },
+    {
+      "id": "step-up-required-scopes-round-trip",
+      "expect": "interaction_required carries the validated required scopes; host passes them to prepare as explicit required scopes and consent includes them; access_denied reports them for diagnostics only"
+    },
+    {
+      "id": "prepare-required-outside-ceiling-denied",
+      "expect": "prepare with explicit required scopes outside the caller's ceiling fails access_denied"
+    },
+    {
+      "id": "challenged-replay-once",
+      "expect": "401 or Bearer 403 insufficient_scope on hooks/intercept, hooks/configuration or hooks/capabilities replays once with the same request id and body; second rejection fails"
     },
     {
       "id": "configured-preset-no-protected-resource-metadata",
@@ -502,20 +708,16 @@
       "expect": "initial request read+write grants read; refresh with no scope stays read and cannot fabricate write"
     },
     {
-      "id": "pending-scope-context-replacement",
-      "expect": "explicit scope-step-up prepare replaces incompatible pending consent; old callback cannot complete it"
-    },
-    {
-      "id": "pending-budget-replacement",
-      "expect": "new explicit prepare requiring later budget replaces shorter pending operation rather than silently inheriting expiry"
-    },
-    {
       "id": "scope-challenge-without-required-scope",
       "expect": "insufficient_scope without scope cannot invent permissions; require explicit host requirement or deny"
     },
     {
-      "id": "refresh-forbids-grant-broadening",
-      "expect": "initial read+write request grants read; explicit read+write refresh is denied, rotated refresh retained, unauthorized access quarantined across provider recreation"
+      "id": "refresh-broadening-scope-ignored",
+      "expect": "initial read+write request grants read; refresh response scoped read write records read only, persists rotated refresh and stays usable; a write-requiring operation fails access_denied"
+    },
+    {
+      "id": "extra-granted-scope-ignored",
+      "expect": "response scopes outside the allowed ceiling (e.g. openid, offline_access) are dropped from the recorded grant, not an error"
     }
   ]
 }

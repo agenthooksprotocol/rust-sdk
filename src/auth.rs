@@ -12,6 +12,9 @@ use crate::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
+#[cfg(any(feature = "reqwest", feature = "managed-oauth"))]
+pub(crate) mod challenge;
+
 /// Optional host-driven PKCE and client-credentials OAuth implementation.
 #[cfg(feature = "managed-oauth")]
 pub mod managed;
@@ -404,6 +407,14 @@ impl AuthProvider for AuthProviders {
 pub(crate) fn sanitize_provider_error(error: HookError) -> HookError {
     HookError::authentication(error.auth_code().unwrap_or(AuthErrorCode::ProviderFailed))
         .classified(error.code())
+        .with_required_scopes(error.required_scopes())
+}
+/// RFC 6749 section 3.3 scope-token grammar.
+pub(crate) fn valid_scope(scope: &str) -> bool {
+    !scope.is_empty()
+        && scope
+            .bytes()
+            .all(|b| b == 0x21 || (0x23..=0x5b).contains(&b) || (0x5d..=0x7e).contains(&b))
 }
 
 #[cfg(test)]
@@ -427,10 +438,9 @@ mod tests {
 
     #[test]
     fn canonical_recovery_guidance() {
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "auth/managed/testdata/sdk-auth-lifecycle.json"
-        ))
-        .unwrap();
+        let vectors: serde_json::Value =
+            serde_json::from_str(include_str!("auth/managed/tests/sdk-auth-lifecycle.json"))
+                .unwrap();
         let codes = [
             AuthErrorCode::InvalidConfiguration,
             AuthErrorCode::UnsupportedBinding,

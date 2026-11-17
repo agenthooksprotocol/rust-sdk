@@ -20,6 +20,7 @@ pub struct HookError {
     code: Option<crate::generated::DeliveryDiagnosticCode>,
     accepted_settlement: Option<Value>,
     auth_code: Option<crate::auth::AuthErrorCode>,
+    required_scopes: Option<Box<[String]>>,
 }
 impl HookError {
     /// Construct an unclassified transport failure.
@@ -29,6 +30,7 @@ impl HookError {
             code: None,
             accepted_settlement: None,
             auth_code: None,
+            required_scopes: None,
         }
     }
     /// Construct a redacted authentication failure with no provider message or cause.
@@ -43,6 +45,25 @@ impl HookError {
     }
     pub fn auth_recovery(&self) -> Option<crate::auth::AuthRecovery> {
         self.auth_code.map(crate::auth::AuthErrorCode::recovery)
+    }
+    /// Validated scopes an operation required, carried only by `interaction_required`
+    /// and `access_denied`. Pass them back to an explicit host `prepare` for step-up.
+    pub fn required_scopes(&self) -> &[String] {
+        self.required_scopes.as_deref().unwrap_or(&[])
+    }
+    /// Attach required scopes to `interaction_required`/`access_denied`; other codes
+    /// and anything other than RFC 6749 scope tokens are dropped.
+    pub fn with_required_scopes(mut self, scopes: &[String]) -> Self {
+        use crate::auth::AuthErrorCode::{AccessDenied, InteractionRequired};
+        let scopes: Vec<_> = scopes
+            .iter()
+            .filter(|scope| crate::auth::valid_scope(scope))
+            .cloned()
+            .collect();
+        self.required_scopes = (matches!(self.auth_code, Some(AccessDenied | InteractionRequired))
+            && !scopes.is_empty())
+        .then(|| scopes.into_boxed_slice());
+        self
     }
     /// Raw canonical evidence retained when the consumer cannot decode an accepted settlement.
     /// This is not execution authorization and does not roll back accepted protocol effects.

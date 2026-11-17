@@ -461,7 +461,7 @@ async fn malformed_binding_never_reaches_provider_or_network() {
 }
 
 #[tokio::test]
-async fn effectful_no_replay() {
+async fn intercept_challenged_replay_is_once_with_same_body() {
     let (listener, endpoint) = listener().await;
     let provider = Provider::new(Outcome::AfterChallenge);
     let backend = backend(
@@ -472,20 +472,24 @@ async fn effectful_no_replay() {
     );
     let request = json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","harness":{"name":"test","version":"1"},"source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}});
     tokio::time::timeout(TIMEOUT, async {
-        let (result, (headers, _)) =
-            tokio::join!(backend.call(request, TIMEOUT), respond(&listener, 401));
+        let (result, (first, second)) = tokio::join!(backend.call(request, TIMEOUT), async {
+            (respond(&listener, 401).await, respond(&listener, 401).await)
+        });
+        // A second rejection is an operational failure.
         assert!(result.is_err());
-        assert!(!headers.contains("authorization:"));
+        assert!(!first.0.contains("authorization:"));
+        assert!(second.0.contains("authorization:"));
+        assert_eq!(first.1, second.1, "same JSON-RPC id and buffered body");
     })
     .await
     .unwrap();
-    assert_eq!(provider.contexts.lock().unwrap().len(), 1);
+    assert_eq!(provider.contexts.lock().unwrap().len(), 2);
     assert_eq!(provider.challenges.lock().unwrap().len(), 1);
     assert!(
         tokio::time::timeout(Duration::from_millis(50), listener.accept())
             .await
             .is_err(),
-        "effectful delivery must not be replayed after challenge"
+        "replayed at most once"
     );
 }
 #[tokio::test]

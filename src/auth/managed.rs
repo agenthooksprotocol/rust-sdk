@@ -3,15 +3,22 @@
 //! The embedding host supplies a policy-enforcing network client and a durable,
 //! exclusive/CAS-capable store. Credentials and pending login records are secret.
 use crate::{
-    adapters::registered::{AuthChallenge, AuthContext, AuthProvider, BearerCredential},
-    auth::{AuthBinding, AuthErrorCode, AuthTarget, OAuthFlow, sanitize_provider_error},
+    adapters::registered::{
+        AuthChallenge, AuthContext, AuthProvider, AuthPurpose, BearerCredential,
+    },
+    auth::{
+        AuthBinding, AuthErrorCode, AuthTarget, OAuthFlow, challenge::Challenge,
+        sanitize_provider_error,
+    },
     client::{HookError, LocalFuture},
 };
 use oauth2::{
     AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, EndpointNotSet, EndpointSet,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, RequestTokenError, Scope,
     TokenResponse, TokenUrl,
-    basic::{BasicClient, BasicErrorResponseType, BasicTokenResponse, BasicTokenType},
+    basic::{
+        BasicClient, BasicErrorResponse, BasicErrorResponseType, BasicTokenResponse, BasicTokenType,
+    },
 };
 pub use oauth2::{HttpRequest as OAuthRequest, HttpResponse as OAuthResponse};
 /// SDK-owned secret. Deliberately does not implement Debug or serialization.
@@ -29,8 +36,11 @@ impl ClientSecret {
 use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
-    sync::Arc,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    sync::{
+        Arc,
+        atomic::{AtomicU16, Ordering},
+    },
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use url::Url;
 #[path = "managed/discovery.rs"]
@@ -84,11 +94,6 @@ pub enum EndpointUse {
 /// that validation at actual connection time, not trust an earlier DNS lookup.
 /// Adapter requests and responses MUST NOT be logged, even at DEBUG level.
 pub trait OAuthNetwork: Send + Sync {
-    /// Opt in only when this trusted issuer guarantees this response did not
-    /// consume/rotate the refresh grant. Status 429/5xx alone is NOT proof.
-    fn refresh_failure_is_safe(&self, _response: &OAuthResponse) -> bool {
-        false
-    }
     fn check(
         &self,
         endpoint: Url,
@@ -116,7 +121,6 @@ pub struct TrustedMetadata {
     pub authorization_endpoint: Option<String>,
     pub authorization_response_iss_parameter_supported: bool,
     pub token_endpoint: String,
-    pub scopes: Vec<String>,
     pub grant_types_supported: Vec<String>,
     pub token_endpoint_auth_methods_supported: Vec<String>,
     pub code_challenge_methods_supported: Vec<String>,
@@ -147,7 +151,6 @@ impl TrustedMetadata {
             token_endpoint,
             authorization_endpoint: None,
             authorization_response_iss_parameter_supported: false,
-            scopes: Vec::new(),
             grant_types_supported: Vec::new(),
             token_endpoint_auth_methods_supported: Vec::new(),
             code_challenge_methods_supported: Vec::new(),
@@ -191,6 +194,7 @@ pub enum TokenAuthMethod {
     ClientSecretBasic,
     ClientSecretPost,
 }
+const MAX_LOGIN_LIFETIME: Duration = Duration::from_secs(600);
 /// Host registration, never inferred from untrusted metadata. Secret Debug is not exposed.
 #[non_exhaustive]
 pub struct OAuthClientConfig {
@@ -203,6 +207,7 @@ pub struct OAuthClientConfig {
     grant_partition: Option<String>,
     secret: Option<(String, ClientSecret)>,
     method: TokenAuthMethod,
+    login_lifetime: Duration,
 }
 impl OAuthClientConfig {
     pub fn new(
@@ -220,7 +225,14 @@ impl OAuthClientConfig {
             grant_partition: None,
             secret: None,
             method: TokenAuthMethod::None,
+            login_lifetime: MAX_LOGIN_LIFETIME,
         }
+    }
+    /// Fixed lifetime of each pending login, from its creation; at most 10 minutes.
+    /// It is independent of the creating `prepare` call's budget or cancellation.
+    pub fn login_lifetime(mut self, lifetime: Duration) -> Self {
+        self.login_lifetime = lifetime.min(MAX_LOGIN_LIFETIME);
+        self
     }
     pub fn scopes(mut self, requested: Vec<String>, allowed: Vec<String>) -> Self {
         self.requested_scopes = requested;
@@ -279,6 +291,10 @@ impl SessionKey {
 }
 /// Host-persisted secret record. Serialization is for host storage,
 /// not diagnostics or protocol messages. There is intentionally no Debug.
+///
+/// Binding records hold validated discovery provenance; grant records also hold
+/// the token and any pending login. Only granted scopes are recorded: the local
+/// ceiling and operation requirements are re-applied at use.
 #[derive(Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct SessionRecord {
@@ -287,9 +303,7 @@ pub struct SessionRecord {
     client_id: String,
     flow: String,
     configured_binding: bool,
-    allowed_scopes: Vec<String>,
     resource_metadata_hint: Option<discovery::ResourceMetadataHint>,
-    challenge_scopes: Vec<String>,
     token: Option<SavedToken>,
     pending: Option<SavedLogin>,
 }
@@ -298,25 +312,25 @@ struct SavedToken {
     access_token: String,
     refresh_token: Option<String>,
     expires_at: Option<u64>,
+    /// Granted: response ∩ acquiring ceiling, or ∩ previous grant on refresh.
+    /// The current ceiling is applied at use, never when recording.
     scopes: Vec<String>,
-    authorized_scopes: Vec<String>,
     generation: String,
-    rejected: bool,
     access_rejected: bool,
     refresh_in_flight: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct SavedLogin {
     id: String,
-    binding_key: SessionKey,
     metadata: TrustedMetadata,
-    required_scopes: Vec<String>,
-    host_deadline_ms: u64,
+    scopes: Vec<String>,
+    /// The creating caller's ceiling; it bounds what completion records.
+    ceiling: Vec<String>,
     state: String,
     verifier: String,
     redirect_uri: String,
     url: String,
-    expires_at: u64,
+    expires_at_ms: u64,
     in_flight: bool,
 }
 impl SessionRecord {
@@ -326,10 +340,19 @@ impl SessionRecord {
     pub fn attempt_id(&self) -> Option<&str> {
         self.token.as_ref().map(|token| token.generation.as_str())
     }
+    /// A refresh request was sent but no response was observed (cancelled or
+    /// transport failure). The refresh token is still retried by default.
     pub fn refresh_is_uncertain(&self) -> bool {
         self.token
             .as_ref()
             .is_some_and(|token| token.refresh_in_flight)
+    }
+    fn same_binding(&self, other: &Self) -> bool {
+        self.metadata == other.metadata
+            && self.resource_metadata_hint == other.resource_metadata_hint
+            && self.client_id == other.client_id
+            && self.flow == other.flow
+            && self.configured_binding == other.configured_binding
     }
 }
 /// Acquire MUST serialize all writers for this key across the host's processes.
@@ -359,31 +382,31 @@ pub trait CredentialGuard: Send {
         Box::pin(async { Ok(()) })
     }
 }
+/// A stored pending login. Any process sharing the store can complete it with
+/// `ManagedOAuth::complete`; this handle is only needed to display or cancel it.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct PendingLogin {
-    key: Box<SessionKey>,
+    key: SessionKey,
     id: String,
     url: Url,
-    expires_at: u64,
-    exchange_in_flight: bool,
-    deadline: Instant,
-    context: Box<AuthContext>,
+    expires_at: SystemTime,
 }
 impl PendingLogin {
-    /// Never reopen this URL after an uncertain exchange; cancel this generation first.
-    pub fn authorization_url(&self) -> Option<&Url> {
-        if self.exchange_in_flight {
-            None
-        } else {
-            Some(&self.url)
-        }
+    pub fn authorization_url(&self) -> &Url {
+        &self.url
     }
-    pub fn exchange_is_uncertain(&self) -> bool {
-        self.exchange_in_flight
-    }
-    pub fn expires_at(&self) -> u64 {
+    /// Fixed at creation; reuse by a later `prepare` never extends it.
+    pub fn expires_at(&self) -> SystemTime {
         self.expires_at
+    }
+    fn new(key: SessionKey, login: &SavedLogin) -> Result<Self, HookError> {
+        Ok(Self {
+            key,
+            id: login.id.clone(),
+            url: Url::parse(&login.url).map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?,
+            expires_at: UNIX_EPOCH + Duration::from_millis(login.expires_at_ms),
+        })
     }
 }
 #[non_exhaustive]
@@ -398,11 +421,29 @@ pub struct ManagedOAuth {
     pub(super) policy: Arc<dyn OAuthPolicy>,
     store: Arc<dyn CredentialStore>,
 }
+/// Which caller drives acquisition. Only `Prepare` may create a pending login.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Explicit host preparation.
+    Prepare,
+    /// Bound delivery credential or challenge recovery.
+    Deliver,
+    /// Up-front lookup for an unbound endpoint: stored usable token only.
+    Lookup,
+}
 struct TokenHttp {
     network: Arc<dyn OAuthNetwork>,
     budget: OperationBudget,
-    status: Option<Arc<std::sync::atomic::AtomicU16>>,
-    safe_failure: Option<Arc<std::sync::atomic::AtomicBool>>,
+    status: AtomicU16,
+}
+impl TokenHttp {
+    fn new(owner: &ManagedOAuth, budget: OperationBudget) -> Self {
+        Self {
+            network: owner.network.clone(),
+            budget,
+            status: AtomicU16::new(0),
+        }
+    }
 }
 impl<'c> oauth2::AsyncHttpClient<'c> for TokenHttp {
     type Error = HookError;
@@ -412,19 +453,13 @@ impl<'c> oauth2::AsyncHttpClient<'c> for TokenHttp {
             let response =
                 checked_network_send(&*self.network, request, EndpointUse::Token, self.budget)
                     .await?;
-            if let Some(safe) = &self.safe_failure {
-                safe.store(
-                    self.network.refresh_failure_is_safe(&response),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-            }
-            if let Some(status) = &self.status {
-                status.store(
-                    response.status().as_u16(),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-            }
-            Ok(response)
+            self.status
+                .store(response.status().as_u16(), Ordering::Relaxed);
+            Ok(if response.status().is_success() {
+                response.map(|body| normalize_token_body(&body).unwrap_or(body))
+            } else {
+                response
+            })
         })
     }
 }
@@ -446,18 +481,31 @@ async fn checked_network_send(
     }
     Ok(response)
 }
-type Client = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
+type Client =
+    BasicClient<EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
+type TokenError = RequestTokenError<HookError, BasicErrorResponse>;
 fn fail(code: AuthErrorCode) -> HookError {
     HookError::authentication(code)
 }
 fn random_id() -> String {
     CsrfToken::new_random().secret().clone()
 }
-fn now() -> Result<u64, HookError> {
+fn now() -> u64 {
+    now_ms() / 1000
+}
+fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|v| v.as_secs())
-        .map_err(|_| fail(AuthErrorCode::ProviderFailed))
+        .map_or(0, |v| v.as_millis().min(u64::MAX as u128) as u64)
+}
+fn union(a: &[String], b: &[String]) -> Vec<String> {
+    let mut all = [a, b].concat();
+    all.sort();
+    all.dedup();
+    all
+}
+fn subset(scopes: &[String], of: &[String]) -> bool {
+    scopes.iter().all(|scope| of.contains(scope))
 }
 impl ManagedOAuth {
     pub fn new(
@@ -466,67 +514,41 @@ impl ManagedOAuth {
         policy: Arc<dyn OAuthPolicy>,
         store: Arc<dyn CredentialStore>,
     ) -> Result<Self, HookError> {
+        let invalid = || fail(AuthErrorCode::InvalidConfiguration);
         if config.allowed_scopes.is_empty() {
             config.allowed_scopes = config.requested_scopes.clone();
         }
-        config.allowed_scopes.sort();
-        config.allowed_scopes.dedup();
+        config.allowed_scopes = union(&config.allowed_scopes, &[]);
         if config
             .allowed_scopes
             .iter()
             .any(|scope| !valid_scope(scope))
-        {
-            return Err(fail(AuthErrorCode::InvalidConfiguration));
-        }
-        if config
-            .grant_partition
-            .as_ref()
-            .is_some_and(|p| p.is_empty())
+            || config
+                .grant_partition
+                .as_ref()
+                .is_some_and(|p| p.is_empty())
             || config.namespace.is_empty()
             || config.client_id.is_empty()
-            || config
-                .requested_scopes
-                .iter()
-                .any(|s| !config.allowed_scopes.contains(s) || !valid_scope(s))
+            || !subset(&config.requested_scopes, &config.allowed_scopes)
         {
-            return Err(fail(AuthErrorCode::InvalidConfiguration));
+            return Err(invalid());
         }
         if config.secret.as_ref().is_some_and(|(reference, secret)| {
             reference.is_empty()
                 || secret.secret().is_empty()
                 || config.method == TokenAuthMethod::None
-        }) {
-            return Err(fail(AuthErrorCode::InvalidConfiguration));
-        }
-        if config.method != TokenAuthMethod::None && config.secret.is_none() {
-            return Err(fail(AuthErrorCode::InvalidConfiguration));
+        }) || (config.method != TokenAuthMethod::None && config.secret.is_none())
+        {
+            return Err(invalid());
         }
         if config.flow == OAuthFlow::ClientCredentials && config.secret.is_none() {
             return Err(fail(AuthErrorCode::UnsupportedBinding));
         }
         if config.flow == OAuthFlow::AuthorizationCodePkce {
-            let uri = Url::parse(
-                config
-                    .redirect_uri
-                    .as_deref()
-                    .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))?,
-            )
-            .map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?;
-            if !(valid_https(&uri)
-                || (uri.scheme() == "http"
-                    && uri
-                        .host_str()
-                        .and_then(|host| {
-                            host.trim_matches(['[', ']'])
-                                .parse::<std::net::IpAddr>()
-                                .ok()
-                        })
-                        .is_some_and(|ip| ip.is_loopback())
-                    && uri.username().is_empty()
-                    && uri.password().is_none()
-                    && uri.fragment().is_none()))
-            {
-                return Err(fail(AuthErrorCode::InvalidConfiguration));
+            let uri = Url::parse(config.redirect_uri.as_deref().ok_or_else(invalid)?)
+                .map_err(|_| invalid())?;
+            if !valid_redirect(&uri) {
+                return Err(invalid());
             }
         }
         Ok(Self {
@@ -544,8 +566,8 @@ impl ManagedOAuth {
     }
     fn key(&self, target: &AuthTarget) -> SessionKey {
         let purpose = match target.purpose() {
-            crate::adapters::registered::AuthPurpose::Event => "event",
-            crate::adapters::registered::AuthPurpose::Upload => "upload",
+            AuthPurpose::Event => "event",
+            AuthPurpose::Upload => "upload",
         };
         SessionKey {
             storage_key: frame(
@@ -560,21 +582,15 @@ impl ManagedOAuth {
             namespace: self.config.namespace.clone(),
             backend_id: target.backend_id().into(),
             destination: target.destination().as_str().into(),
-            purpose: match target.purpose() {
-                crate::adapters::registered::AuthPurpose::Event => "event",
-                crate::adapters::registered::AuthPurpose::Upload => "upload",
-            }
-            .into(),
+            purpose: purpose.into(),
         }
     }
+    /// No ceiling, auth method or secret: changing those never orphans a grant.
     fn grant_key(&self, target: &AuthTarget, metadata: &TrustedMetadata) -> SessionKey {
-        let partition = self
-            .config
-            .grant_partition
-            .as_ref()
-            .map(|p| format!("shared:{p}"))
-            .unwrap_or_else(|| format!("binding:{}", self.key(target).as_str()));
-        let allowed = self.config.allowed_scopes.join(" ");
+        let partition = match &self.config.grant_partition {
+            Some(partition) => format!("shared:{partition}"),
+            None => format!("binding:{}", self.key(target).as_str()),
+        };
         SessionKey {
             storage_key: frame(
                 "ahp.oauth.grant:",
@@ -584,7 +600,6 @@ impl ManagedOAuth {
                     &metadata.resource,
                     &self.config.client_id,
                     self.flow_id(),
-                    &allowed,
                     &partition,
                 ],
             ),
@@ -594,30 +609,29 @@ impl ManagedOAuth {
             purpose: String::new(),
         }
     }
-    fn satisfies_requirements(&self, record: &SessionRecord) -> bool {
-        record.token.as_ref().is_some_and(|token| {
-            record
-                .challenge_scopes
-                .iter()
-                .all(|scope| token.authorized_scopes.contains(scope))
-        })
-    }
-    fn cached(&self, record: &SessionRecord) -> Option<BearerCredential> {
+    /// Requirements are judged on effective scopes (granted ∩ current ceiling).
+    fn cached(&self, record: &SessionRecord, required: &[String]) -> Option<BearerCredential> {
         record
             .token
             .as_ref()
             .filter(|token| {
-                !token.rejected
-                    && !token.access_rejected
+                !token.access_rejected
                     && token
                         .expires_at
-                        .is_none_or(|expiry| expiry > now().unwrap_or(u64::MAX).saturating_add(30))
-                    && self.satisfies_requirements(record)
+                        .is_none_or(|expiry| expiry > now().saturating_add(30))
+                    && subset(required, &self.effective(&token.scopes))
             })
             .map(|token| BearerCredential {
                 token: token.access_token.clone(),
                 attempt_id: token.generation.clone(),
             })
+    }
+    fn effective(&self, scopes: &[String]) -> Vec<String> {
+        scopes
+            .iter()
+            .filter(|scope| self.config.allowed_scopes.contains(scope))
+            .cloned()
+            .collect()
     }
     fn validate_target(&self, target: &AuthTarget) -> Result<(), HookError> {
         match target.binding() {
@@ -635,6 +649,15 @@ impl ManagedOAuth {
             }
             _ => Err(fail(AuthErrorCode::UnsupportedBinding)),
         }
+    }
+    /// A saved binding is only reused for the same principal as the current target.
+    fn compatible(&self, target: &AuthTarget, record: &SessionRecord) -> bool {
+        record.client_id == self.config.client_id
+            && record.flow == self.flow_id()
+            && target
+                .issuer()
+                .is_none_or(|issuer| issuer == record.metadata.issuer)
+            && !matches!(target.binding(), AuthBinding::OAuth { resource, .. } if resource != &record.metadata.resource)
     }
     pub(super) fn approve_metadata(
         &self,
@@ -654,13 +677,40 @@ impl ManagedOAuth {
             })
             .map_err(sanitize_provider_error)
     }
-    fn validate_saved(&self, target: &AuthTarget, record: &SessionRecord) -> Result<(), HookError> {
-        if record.client_id != self.config.client_id
-            || record.flow != self.flow_id()
-            || record.allowed_scopes != self.config.allowed_scopes
+    /// Apply local policy; returns the scopes to request. Configured requested
+    /// and operation-required scopes must be selected, all within the ceiling.
+    pub(super) fn select(
+        &self,
+        target: &AuthTarget,
+        resource: &ResourceMetadata,
+        required: &[String],
+    ) -> Result<TrustDecision, HookError> {
+        let mut decision = self
+            .policy
+            .select(target, resource, required)
+            .map_err(sanitize_provider_error)?;
+        decision.scopes = union(&decision.scopes, &[]);
+        if !resource.authorization_servers.contains(&decision.issuer)
+            || target
+                .issuer()
+                .is_some_and(|issuer| issuer != decision.issuer)
+            || !subset(&decision.scopes, &self.config.allowed_scopes)
+            || !subset(
+                &union(&self.config.requested_scopes, required),
+                &decision.scopes,
+            )
         {
-            return Err(fail(AuthErrorCode::InvalidConfiguration));
+            return Err(fail(AuthErrorCode::AccessDenied));
         }
+        Ok(decision)
+    }
+    /// Revalidate a saved binding against current local policy, without network.
+    fn validate_saved(
+        &self,
+        target: &AuthTarget,
+        record: &SessionRecord,
+        required: &[String],
+    ) -> Result<Vec<String>, HookError> {
         if matches!(target.binding(), AuthBinding::Unbound) && !record.configured_binding {
             discovery::validate_saved_source(
                 target.destination(),
@@ -674,37 +724,11 @@ impl ManagedOAuth {
                 Some(&record.metadata.resource),
             )?;
         }
-        if target
-            .issuer()
-            .is_some_and(|issuer| issuer != record.metadata.issuer)
-            || matches!(target.binding(), AuthBinding::OAuth { resource, .. } if resource != &record.metadata.resource)
-        {
-            return Err(fail(AuthErrorCode::UntrustedDestination));
-        }
-        let resource = ResourceMetadata {
-            resource: record.metadata.resource.clone(),
-            authorization_servers: vec![record.metadata.issuer.clone()],
-        };
-        let mut decision = self
-            .policy
-            .select(target, &resource, &record.challenge_scopes)
-            .map_err(sanitize_provider_error)?;
-        decision.scopes.sort();
-        decision.scopes.dedup();
-        if decision.issuer != record.metadata.issuer
-            || decision
-                .scopes
-                .iter()
-                .any(|scope| !self.config.allowed_scopes.contains(scope))
-            || target
-                .scopes()
-                .iter()
-                .chain(&record.challenge_scopes)
-                .any(|scope| !decision.scopes.contains(scope))
-        {
-            return Err(fail(AuthErrorCode::UntrustedDestination));
-        }
-        Ok(())
+        let resource = ResourceMetadata::new(
+            record.metadata.resource.clone(),
+            vec![record.metadata.issuer.clone()],
+        );
+        Ok(self.select(target, &resource, required)?.scopes)
     }
     pub(super) async fn check_url(
         &self,
@@ -727,16 +751,13 @@ impl ManagedOAuth {
     ) -> Result<oauth2::HttpResponse, HookError> {
         checked_network_send(&*self.network, request, usage, budget).await
     }
-    /// Host-initiated preparation; bounded by both the supplied budget and context.
-    pub async fn prepare(
+    async fn load(
         &self,
-        context: AuthContext,
+        key: &SessionKey,
         budget: OperationBudget,
-    ) -> Result<Preparation, HookError> {
-        let budget = OperationBudget::until(budget.deadline.min(context.deadline));
-        budget
-            .run(self.prepare_inner(context, None, None, budget, true))
-            .await
+    ) -> Result<Option<SessionRecord>, HookError> {
+        let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
+        budget.run(guard.load()).await
     }
     async fn persist(
         &self,
@@ -744,286 +765,241 @@ impl ManagedOAuth {
         record: &mut SessionRecord,
         budget: OperationBudget,
     ) -> Result<(), HookError> {
-        let expected = if record.version.is_empty() {
-            None
-        } else {
-            Some(record.version.clone())
-        };
-        let next = random_id();
+        let expected = Some(record.version.clone()).filter(|v| !v.is_empty());
         let mut replacement = record.clone();
-        replacement.version = next.clone();
+        replacement.version = random_id();
+        let version = replacement.version.clone();
         if !budget
             .run(guard.compare_and_swap(expected, replacement))
             .await?
         {
             return Err(fail(AuthErrorCode::ProviderFailed));
         }
-        record.version = next;
+        record.version = version;
         Ok(())
     }
-    async fn prepare_inner(
+    /// Host-initiated preparation; bounded by both the supplied budget and context.
+    /// The only operation that creates a pending login. To request step-up consent
+    /// after `interaction_required`, include the broader scopes in host policy or
+    /// the target's configured requirements; challenge requirements are not stored.
+    pub async fn prepare(
         &self,
         context: AuthContext,
-        challenge: Option<&str>,
+        budget: OperationBudget,
+    ) -> Result<Preparation, HookError> {
+        self.prepare_with_required(context, &[], budget).await
+    }
+    /// `prepare` with explicit operation requirements, such as the
+    /// `HookError::required_scopes` of an `interaction_required` step-up.
+    pub async fn prepare_with_required(
+        &self,
+        context: AuthContext,
+        required: &[String],
+        budget: OperationBudget,
+    ) -> Result<Preparation, HookError> {
+        if !required.iter().all(|scope| valid_scope(scope)) {
+            return Err(fail(AuthErrorCode::InvalidConfiguration));
+        }
+        let budget = OperationBudget::until(budget.deadline.min(context.deadline));
+        let pending = budget
+            .run(self.acquire(context, None, required, None, budget, Mode::Prepare))
+            .await?;
+        pending.ok_or_else(|| fail(AuthErrorCode::ProviderFailed))
+    }
+    /// `challenge` is present only for challenge recovery; its requirements, like
+    /// `extra`, apply to this operation only and are never stored.
+    async fn acquire(
+        &self,
+        context: AuthContext,
+        challenge: Option<&Challenge>,
+        extra: &[String],
         rejected_attempt: Option<&str>,
         budget: OperationBudget,
-        interactive: bool,
-    ) -> Result<Preparation, HookError> {
+        mode: Mode,
+    ) -> Result<Option<Preparation>, HookError> {
         let target = context.target()?;
         self.validate_target(&target)?;
+        let mut required = union(target.scopes(), extra);
+        if let Some(challenge) = challenge {
+            required = union(&required, &challenge.scopes);
+        }
+        let attach = |error: HookError| error.with_required_scopes(&required);
+        if !subset(&required, &self.config.allowed_scopes) {
+            return Err(attach(fail(AuthErrorCode::AccessDenied)));
+        }
+        self.acquire_inner(target, challenge, &required, rejected_attempt, budget, mode)
+            .await
+            .map_err(attach)
+    }
+    async fn acquire_inner(
+        &self,
+        target: AuthTarget,
+        challenge: Option<&Challenge>,
+        required: &[String],
+        rejected_attempt: Option<&str>,
+        budget: OperationBudget,
+        mode: Mode,
+    ) -> Result<Option<Preparation>, HookError> {
+        let required = required.to_vec();
         let binding_key = self.key(&target);
-        let mut binding_guard = budget
-            .run(self.store.acquire(binding_key.clone(), budget))
-            .await?;
-        let mut saved_binding = budget.run(binding_guard.load()).await?;
-        drop(binding_guard);
-        if saved_binding.as_ref().is_some_and(|record| record.client_id != self.config.client_id || record.flow != self.flow_id() || record.allowed_scopes != self.config.allowed_scopes
-            || target.issuer().is_some_and(|issuer| issuer != record.metadata.issuer)
-            || matches!(target.binding(), AuthBinding::OAuth {resource, ..} if resource != &record.metadata.resource)) {
-            saved_binding = None;
-        }
-        let mut required = discovery::challenge_scopes(challenge)?;
-        required.extend_from_slice(target.scopes());
-        if let Some(binding) = &saved_binding {
-            required.extend_from_slice(&binding.challenge_scopes);
-        }
-        required.sort();
-        required.dedup();
-        if required
-            .iter()
-            .any(|scope| !self.config.allowed_scopes.contains(scope))
-        {
-            return Err(fail(AuthErrorCode::AccessDenied));
-        }
-        // Validate local authorization before touching the grant; no network is needed on a cache hit.
-        if let Some(binding) = &saved_binding {
-            let mut current_binding = binding.clone();
-            current_binding.challenge_scopes = required.clone();
-            self.validate_saved(&target, &current_binding)?;
-            let endpoints_current = self.approve_metadata(&target, &binding.metadata).is_ok();
-            let key = self.grant_key(&target, &binding.metadata);
-            let mut guard = budget.run(self.store.acquire(key, budget)).await?;
-            if let Some(mut record) = budget.run(guard.load()).await?
-                && endpoints_current
-            {
-                record.metadata = binding.metadata.clone();
-                record.challenge_scopes = required.clone();
-                if let Some(token) = record.token.as_mut()
-                    && rejected_attempt == Some(token.generation.as_str())
-                {
-                    token.access_rejected = true;
-                    self.persist(&mut *guard, &mut record, budget).await?;
+        let saved = self.load(&binding_key, budget).await?;
+        // Local authorization of a saved binding needs no network; policy runs off-lock.
+        let mut usable = None;
+        if let Some(binding) = saved.as_ref().filter(|r| self.compatible(&target, r)) {
+            match self.validate_saved(&target, binding, &required) {
+                Ok(scopes) if self.approve_metadata(&target, &binding.metadata).is_ok() => {
+                    usable = Some((binding.clone(), scopes));
                 }
-                if challenge.is_none()
-                    || rejected_attempt.is_some_and(|attempt| {
-                        record
-                            .token
-                            .as_ref()
-                            .is_some_and(|token| token.generation != attempt)
-                    })
-                {
-                    if let Some(credential) = self.cached(&record) {
-                        return Ok(Preparation::Ready(credential));
+                Ok(_) => {}
+                Err(_) if mode == Mode::Lookup => return Ok(None),
+                Err(error) => return Err(error),
+            }
+        }
+        let (binding, scopes) = match usable {
+            Some(found) => found,
+            None if mode == Mode::Lookup => return Ok(None),
+            None => {
+                // Discovery never holds a credential-store guard.
+                let hint = saved
+                    .as_ref()
+                    .and_then(|r| r.resource_metadata_hint.as_ref());
+                let (metadata, hint, scopes) =
+                    discovery::discover(self, &target, challenge, hint, &required, budget).await?;
+                let mut binding = SessionRecord {
+                    version: String::new(),
+                    metadata,
+                    client_id: self.config.client_id.clone(),
+                    flow: self.flow_id().into(),
+                    configured_binding: !matches!(target.binding(), AuthBinding::Unbound),
+                    resource_metadata_hint: hint,
+                    token: None,
+                    pending: None,
+                };
+                let mut guard = budget.run(self.store.acquire(binding_key, budget)).await?;
+                match budget.run(guard.load()).await? {
+                    Some(current) if current.same_binding(&binding) => {}
+                    current => {
+                        binding.version = current.map(|r| r.version).unwrap_or_default();
+                        self.persist(&mut *guard, &mut binding, budget).await?;
                     }
                 }
-                if self.config.flow == OAuthFlow::AuthorizationCodePkce
-                    && record
-                        .token
-                        .as_ref()
-                        .is_some_and(|token| token.refresh_token.is_some() && !token.rejected)
-                    && self.satisfies_requirements(&record)
-                {
-                    return self
-                        .refresh(&mut *guard, &mut record, budget)
-                        .await
-                        .map(Preparation::Ready);
-                }
+                (binding, scopes)
             }
-        }
-        // Discovery must never hold a credential-store guard (including a binding guard).
-        let (mut metadata, hint) = discovery::discover(
-            self,
-            &target,
-            challenge,
-            saved_binding
-                .as_ref()
-                .and_then(|record| record.resource_metadata_hint.as_ref()),
-            &required,
-            budget,
-        )
-        .await?;
-        let mut binding = SessionRecord {
-            version: String::new(),
-            metadata: metadata.clone(),
-            client_id: self.config.client_id.clone(),
-            flow: self.flow_id().into(),
-            configured_binding: !matches!(target.binding(), AuthBinding::Unbound),
-            allowed_scopes: self.config.allowed_scopes.clone(),
-            resource_metadata_hint: hint.clone(),
-            challenge_scopes: required.clone(),
-            token: None,
-            pending: None,
         };
-        loop {
-            let mut binding_guard = budget
-                .run(self.store.acquire(binding_key.clone(), budget))
-                .await?;
-            let current = budget.run(binding_guard.load()).await?;
-            drop(binding_guard);
-            let expected = current.as_ref().map(|record| record.version.clone());
-            if let Some(current) = current
-                && current.client_id == self.config.client_id
-                && current.flow == self.flow_id()
-                && current.allowed_scopes == self.config.allowed_scopes
-                && current.metadata.issuer == metadata.issuer
-                && current.metadata.resource == metadata.resource
-            {
-                required.extend(current.challenge_scopes);
-            }
-            required.sort();
-            required.dedup();
-            let decision = self
-                .policy
-                .select(
-                    &target,
-                    &ResourceMetadata::new(
-                        metadata.resource.clone(),
-                        vec![metadata.issuer.clone()],
-                    ),
-                    &required,
-                )
-                .map_err(sanitize_provider_error)?;
-            if decision.issuer != metadata.issuer
-                || decision
-                    .scopes
-                    .iter()
-                    .any(|scope| !self.config.allowed_scopes.contains(scope))
-                || required
-                    .iter()
-                    .any(|scope| !decision.scopes.contains(scope))
-            {
-                return Err(fail(AuthErrorCode::AccessDenied));
-            }
-            metadata.scopes = decision.scopes;
-            binding.metadata = metadata.clone();
-            binding.challenge_scopes = required.clone();
-            binding.version = expected.clone().unwrap_or_default();
-            let mut binding_guard = budget
-                .run(self.store.acquire(binding_key.clone(), budget))
-                .await?;
-            if budget
-                .run(binding_guard.load())
-                .await?
-                .as_ref()
-                .map(|record| record.version.clone())
-                != expected
-            {
-                drop(binding_guard);
-                continue;
-            }
-            self.persist(&mut *binding_guard, &mut binding, budget)
-                .await?;
-            break;
-        }
-        let key = self.grant_key(&target, &metadata);
+        let key = self.grant_key(&target, &binding.metadata);
         let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
-        let mut record = match budget.run(guard.load()).await? {
-            Some(record) => record,
-            None => {
-                let mut record = binding.clone();
-                record.version.clear();
-                record
-            }
-        };
-        record.metadata = metadata;
-        record.resource_metadata_hint = hint;
-        record.challenge_scopes = required;
+        let loaded = budget.run(guard.load()).await?;
+        if mode == Mode::Lookup && loaded.is_none() {
+            return Ok(None);
+        }
+        let mut record = loaded.unwrap_or_else(|| SessionRecord {
+            version: String::new(),
+            ..binding.clone()
+        });
+        let mut dirty = record.metadata != binding.metadata;
+        record.metadata = binding.metadata;
+        // A 401 for this exact generation retires it; a stale 401 cannot reject a newer token.
         if let Some(token) = record.token.as_mut()
             && rejected_attempt == Some(token.generation.as_str())
+            && !token.access_rejected
         {
             token.access_rejected = true;
+            dirty = true;
         }
-        if let Some(credential) = self.cached(&record) {
-            return Ok(Preparation::Ready(credential));
-        }
-        if let Some(token) = &record.token {
-            // Explicit step-up needs new consent, not refresh with a widened scope request.
-            if self.config.flow == OAuthFlow::AuthorizationCodePkce
-                && token.refresh_token.is_some()
-                && !token.rejected
-                && self.satisfies_requirements(&record)
-            {
-                return self
-                    .refresh(&mut *guard, &mut record, budget)
-                    .await
-                    .map(Preparation::Ready);
-            }
-        }
-        match self.config.flow {
-            OAuthFlow::ClientCredentials => self
-                .client_credentials(&mut *guard, &mut record, budget)
-                .await
-                .map(Preparation::Ready),
-            OAuthFlow::AuthorizationCodePkce => {
-                if !interactive {
-                    return Err(fail(AuthErrorCode::InteractionRequired));
-                }
-                if let Some(login) = &record.pending
-                    && login.expires_at > now()?
-                    && login.host_deadline_ms.saturating_add(1) >= wall_deadline_ms(budget)?
-                    && login.host_deadline_ms > now_ms()?
-                    && login.binding_key == self.key(&target)
-                    && login.metadata.scopes == record.metadata.scopes
-                    && login.required_scopes == record.challenge_scopes
-                    && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
-                {
-                    let pending = pending(key, context, login)?;
-                    self.check_url(&pending.url, EndpointUse::Authorization, budget)
-                        .await?;
-                    return Ok(Preparation::InteractionRequired(pending));
-                }
-                let client = self.client(&record.metadata)?;
-                let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
-                let mut request = client
-                    .authorize_url(CsrfToken::new_random)
-                    .set_pkce_challenge(challenge)
-                    .add_extra_param("resource", &record.metadata.resource);
-                for scope in &record.metadata.scopes {
-                    request = request.add_scope(Scope::new(scope.clone()));
-                }
-                let (url, state) = request.url();
-                self.check_url(&url, EndpointUse::Authorization, budget)
-                    .await?;
-                let login = SavedLogin {
-                    id: random_id(),
-                    binding_key: self.key(&target),
-                    metadata: record.metadata.clone(),
-                    required_scopes: record.challenge_scopes.clone(),
-                    host_deadline_ms: wall_deadline_ms(budget)?,
-                    state: state.secret().clone(),
-                    verifier: verifier.secret().clone(),
-                    redirect_uri: self
-                        .config
-                        .redirect_uri
-                        .clone()
-                        .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))?,
-                    url: url.to_string(),
-                    expires_at: now()?.saturating_add(
-                        600.min(
-                            budget
-                                .deadline
-                                .saturating_duration_since(Instant::now())
-                                .as_secs()
-                                .max(1),
-                        ),
-                    ),
-                    in_flight: false,
-                };
-                record.pending = Some(login.clone());
+        if let Some(credential) = self.cached(&record, &required) {
+            if dirty {
                 self.persist(&mut *guard, &mut record, budget).await?;
-                pending(key, context, &login).map(Preparation::InteractionRequired)
             }
+            return Ok(Some(Preparation::Ready(credential)));
         }
+        // A refresh cannot broaden a grant, so it only helps when the grant suffices.
+        if self.config.flow == OAuthFlow::AuthorizationCodePkce
+            && let Some(token) = &record.token
+            && token.refresh_token.is_some()
+            && subset(&required, &self.effective(&token.scopes))
+        {
+            return self
+                .refresh(&mut *guard, &mut record, &required, budget)
+                .await
+                .map(|c| Some(Preparation::Ready(c)));
+        }
+        if mode == Mode::Lookup {
+            // Never acquires a new grant; a cached-metadata refresh is the only network use.
+            if dirty {
+                self.persist(&mut *guard, &mut record, budget).await?;
+            }
+            return Ok(None);
+        }
+        if self.config.flow == OAuthFlow::ClientCredentials {
+            return self
+                .client_credentials(&mut *guard, &mut record, &scopes, &required, budget)
+                .await
+                .map(|c| Some(Preparation::Ready(c)));
+        }
+        if mode != Mode::Prepare {
+            if dirty {
+                self.persist(&mut *guard, &mut record, budget).await?;
+            }
+            return Err(fail(AuthErrorCode::InteractionRequired));
+        }
+        let live = record
+            .pending
+            .as_ref()
+            .filter(|login| login.expires_at_ms > now_ms() && !login.in_flight);
+        if let Some(login) = live
+            && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
+            && subset(&scopes, &login.scopes)
+        {
+            let pending = PendingLogin::new(key, login)?;
+            if dirty {
+                self.persist(&mut *guard, &mut record, budget).await?;
+            }
+            self.check_url(&pending.url, EndpointUse::Authorization, budget)
+                .await?;
+            return Ok(Some(Preparation::InteractionRequired(pending)));
+        }
+        // Supersede with the union so alternating callers converge on one login.
+        let scopes = self.effective(&union(&scopes, live.map_or(&[], |l| &l.scopes)));
+        let authorization = record
+            .metadata
+            .authorization_endpoint
+            .clone()
+            .ok_or_else(|| fail(AuthErrorCode::DiscoveryFailed))?;
+        let client = self.client(&record.metadata)?.set_auth_uri(
+            AuthUrl::new(authorization).map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?,
+        );
+        let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
+        let mut request = client
+            .authorize_url(CsrfToken::new_random)
+            .set_pkce_challenge(challenge)
+            .add_extra_param("resource", &record.metadata.resource);
+        for scope in &scopes {
+            request = request.add_scope(Scope::new(scope.clone()));
+        }
+        let (url, state) = request.url();
+        self.check_url(&url, EndpointUse::Authorization, budget)
+            .await?;
+        let login = SavedLogin {
+            id: random_id(),
+            metadata: record.metadata.clone(),
+            scopes,
+            ceiling: self.config.allowed_scopes.clone(),
+            state: state.secret().clone(),
+            verifier: verifier.secret().clone(),
+            redirect_uri: self
+                .config
+                .redirect_uri
+                .clone()
+                .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))?,
+            url: url.to_string(),
+            expires_at_ms: now_ms().saturating_add(self.config.login_lifetime.as_millis() as u64),
+            in_flight: false,
+        };
+        let pending = PendingLogin::new(key, &login)?;
+        // Atomically supersedes any previous pending login; its callback then fails.
+        record.pending = Some(login);
+        self.persist(&mut *guard, &mut record, budget).await?;
+        Ok(Some(Preparation::InteractionRequired(pending)))
     }
     fn client(&self, metadata: &TrustedMetadata) -> Result<Client, HookError> {
         let method = match self.config.method {
@@ -1042,14 +1018,7 @@ impl ManagedOAuth {
         if !supported {
             return Err(fail(AuthErrorCode::UnsupportedBinding));
         }
-        let auth = metadata
-            .authorization_endpoint
-            .as_deref()
-            .unwrap_or(&metadata.token_endpoint);
         let mut client = BasicClient::new(ClientId::new(self.config.client_id.clone()))
-            .set_auth_uri(
-                AuthUrl::new(auth.into()).map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?,
-            )
             .set_token_uri(
                 TokenUrl::new(metadata.token_endpoint.clone())
                     .map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?,
@@ -1076,6 +1045,8 @@ impl ManagedOAuth {
         &self,
         guard: &mut dyn CredentialGuard,
         record: &mut SessionRecord,
+        scopes: &[String],
+        required: &[String],
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
         if !record
@@ -1090,186 +1061,205 @@ impl ManagedOAuth {
         let mut request = client
             .exchange_client_credentials()
             .add_extra_param("resource", &record.metadata.resource);
-        for scope in &record.metadata.scopes {
+        for scope in scopes {
             request = request.add_scope(Scope::new(scope.clone()));
         }
-        let http = TokenHttp {
-            network: self.network.clone(),
-            budget,
-            status: None,
-            safe_failure: None,
-        };
-        let response = request.request_async(&http).await.map_err(token_error)?;
-        self.save_token(guard, record, response, None, budget).await
+        let http = TokenHttp::new(self, budget);
+        match request.request_async(&http).await {
+            Ok(response) => {
+                let ceiling = self.config.allowed_scopes.clone();
+                self.save_token(
+                    guard, record, response, scopes, &ceiling, None, required, budget,
+                )
+                .await
+            }
+            Err(error) => Err(token_error(error)),
+        }
     }
     async fn refresh(
         &self,
         guard: &mut dyn CredentialGuard,
         record: &mut SessionRecord,
+        required: &[String],
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
         let token = record
             .token
-            .as_ref()
+            .as_mut()
             .ok_or_else(|| fail(AuthErrorCode::CredentialUnavailable))?;
         let generation = token.generation.clone();
+        let previous = token.scopes.clone();
         let refresh = RefreshToken::new(
             token
                 .refresh_token
                 .clone()
                 .ok_or_else(|| fail(AuthErrorCode::CredentialUnavailable))?,
         );
+        token.refresh_in_flight = true;
         let client = self.client(&record.metadata)?;
-        record.token.as_mut().unwrap().refresh_in_flight = true;
         self.persist(guard, record, budget).await?;
-        let mut request = client
+        // No scope parameter: the refresh keeps the full previous grant even when
+        // the current ceiling is narrower (RFC 6749 section 6).
+        let request = client
             .exchange_refresh_token(&refresh)
             .add_extra_param("resource", &record.metadata.resource);
-        for scope in &record.token.as_ref().unwrap().authorized_scopes {
-            request = request.add_scope(Scope::new(scope.clone()));
-        }
-        let status = Arc::new(std::sync::atomic::AtomicU16::new(0));
-        let safe_failure = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let http = TokenHttp {
-            network: self.network.clone(),
-            budget,
-            status: Some(status.clone()),
-            safe_failure: Some(safe_failure.clone()),
-        };
-        match request.request_async(&http).await {
+        let http = TokenHttp::new(self, budget);
+        let error = match request.request_async(&http).await {
             Ok(response) => {
-                self.save_token(
-                    guard,
-                    record,
-                    response,
-                    Some(refresh.secret().clone()),
-                    budget,
-                )
-                .await
+                return self
+                    .save_token(
+                        guard,
+                        record,
+                        response,
+                        &previous,
+                        &previous,
+                        Some(refresh.secret().clone()),
+                        required,
+                        budget,
+                    )
+                    .await;
             }
-            Err(RequestTokenError::ServerResponse(response)) => {
-                let status = status.load(std::sync::atomic::Ordering::Relaxed);
-                let known_oauth_error = status == 400
-                    && !matches!(response.error(), BasicErrorResponseType::Extension(_));
-                if !known_oauth_error && !safe_failure.load(std::sync::atomic::Ordering::Relaxed) {
-                    return Err(fail(AuthErrorCode::ProviderFailed));
-                }
-                let rejected = *response.error() == BasicErrorResponseType::InvalidGrant;
-                let token = record.token.as_mut().unwrap();
-                token.refresh_in_flight = false;
-                token.rejected = rejected;
-                self.persist(guard, record, budget).await?;
-                if rejected {
-                    budget.run(guard.on_refresh_rejected(generation)).await?;
-                    return Err(fail(AuthErrorCode::RefreshRejected));
-                }
-                Err(fail(AuthErrorCode::ProviderFailed))
+            Err(error) => error,
+        };
+        if let RequestTokenError::ServerResponse(response) = &error
+            && *response.error() == BasicErrorResponseType::InvalidGrant
+            && http.status.load(Ordering::Relaxed) == 400
+        {
+            // Definitive: drop both tokens, but only if the store still holds the
+            // presented refresh token (compare-and-delete); a newer record is kept.
+            if let Some(mut current) = budget.run(guard.load()).await?
+                && current
+                    .token
+                    .as_ref()
+                    .and_then(|t| t.refresh_token.as_ref())
+                    == Some(refresh.secret())
+            {
+                current.token = None;
+                self.persist(guard, &mut current, budget).await?;
+                *record = current;
+                budget.run(guard.on_refresh_rejected(generation)).await?;
             }
-            Err(error) => {
-                if safe_failure.load(std::sync::atomic::Ordering::Relaxed) {
-                    record.token.as_mut().unwrap().refresh_in_flight = false;
-                    self.persist(guard, record, budget).await?;
-                }
-                Err(token_error(error)) // uncertain transport/parse failure retains marker and secrets
+            return Err(fail(AuthErrorCode::RefreshRejected));
+        }
+        self.failed_refresh(guard, record, &error, budget).await?;
+        Err(token_error(error))
+    }
+    /// After a spent refresh token, an observed failure response clears the marker
+    /// and keeps a valid rotated refresh token (else the presented one). Without a
+    /// response the outcome is unknown: the marker remains and the token is retried.
+    async fn failed_refresh(
+        &self,
+        guard: &mut dyn CredentialGuard,
+        record: &mut SessionRecord,
+        error: &TokenError,
+        budget: OperationBudget,
+    ) -> Result<(), HookError> {
+        let body = match error {
+            RequestTokenError::ServerResponse(_) => None,
+            RequestTokenError::Parse(_, body) => Some(body.as_slice()),
+            _ => return Ok(()),
+        };
+        let rotated = body
+            .and_then(|body| serde_json::from_slice::<serde_json::Value>(body).ok())
+            .and_then(|value| value["refresh_token"].as_str().map(str::to_owned));
+        self.keep_refresh(record, rotated);
+        self.persist(guard, record, budget).await
+    }
+    /// The access token of a failed refresh is retired; the refresh token is kept.
+    fn keep_refresh(&self, record: &mut SessionRecord, rotated: Option<String>) {
+        if let Some(token) = record.token.as_mut() {
+            if let Some(rotated) = rotated.filter(|token| valid_token(token)) {
+                token.refresh_token = Some(rotated);
             }
+            token.access_rejected = true;
+            token.refresh_in_flight = false;
         }
     }
+    /// `requested` is the response scope set when `scope` is omitted: the
+    /// requested set initially, the previous grant on refresh. `bound` is the
+    /// acquiring ceiling initially, the previous grant on refresh.
+    #[allow(clippy::too_many_arguments)]
     async fn save_token(
         &self,
         guard: &mut dyn CredentialGuard,
         record: &mut SessionRecord,
         response: BasicTokenResponse,
+        requested: &[String],
+        bound: &[String],
         old_refresh: Option<String>,
+        required: &[String],
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
-        let invalid_access = *response.token_type() != BasicTokenType::Bearer
-            || response.access_token().secret().is_empty()
-            || !response
-                .access_token()
-                .secret()
-                .bytes()
-                .all(|b| b.is_ascii_graphic());
-        let expires = response.expires_in();
-        let invalid_expiry = expires.is_some_and(|v| v.as_secs() == 0);
-        let previous_scopes = if old_refresh.is_some() {
-            record
-                .token
-                .as_ref()
-                .map(|token| token.authorized_scopes.clone())
-                .unwrap_or_else(|| record.metadata.scopes.clone())
-        } else {
-            record.metadata.scopes.clone()
-        };
-        let mut scopes = response
+        let response_scopes = response
             .scopes()
             .map(|s| s.iter().map(|s| s.as_str().to_owned()).collect::<Vec<_>>())
-            .unwrap_or_else(|| previous_scopes.clone());
-        scopes.sort();
-        scopes.dedup();
-        let invalid_scopes = scopes.iter().any(|scope| {
-            !valid_scope(scope)
-                || !self.config.allowed_scopes.contains(scope)
-                || (old_refresh.is_some() && !previous_scopes.contains(scope))
-        });
+            .unwrap_or_else(|| requested.to_vec());
+        let refreshed = old_refresh.is_some();
+        let granted = union(&response_scopes, &[])
+            .into_iter()
+            .filter(|scope| bound.contains(scope))
+            .collect::<Vec<_>>();
+        let rotated = response.refresh_token().map(|s| s.secret().clone());
+        let expires = response.expires_in();
+        if *response.token_type() != BasicTokenType::Bearer
+            || !valid_token(response.access_token().secret())
+            || expires.is_some_and(|v| v.is_zero())
+        {
+            // A failed initial exchange persists nothing beyond releasing its login claim.
+            if refreshed {
+                self.keep_refresh(record, rotated);
+                self.persist(guard, record, budget).await?;
+            } else if record.pending.take().is_some() {
+                self.persist(guard, record, budget).await?;
+            }
+            return Err(fail(AuthErrorCode::ProviderFailed));
+        }
+        let refresh_token = rotated.filter(|token| valid_token(token)).or(old_refresh);
+        record.pending = None;
         let token = SavedToken {
             access_token: response.access_token().secret().clone(),
-            refresh_token: response
-                .refresh_token()
-                .map(|s| s.secret().clone())
-                .or(old_refresh.clone()),
-            expires_at: expires
-                .map(|expiry| now().unwrap_or(u64::MAX).saturating_add(expiry.as_secs())),
-            authorized_scopes: if invalid_scopes && old_refresh.is_some() {
-                previous_scopes
-            } else {
-                scopes
-                    .iter()
-                    .filter(|scope| self.config.allowed_scopes.contains(scope))
-                    .cloned()
-                    .collect()
-            },
-            scopes,
+            refresh_token,
+            expires_at: expires.map(|expiry| now().saturating_add(expiry.as_secs())),
+            scopes: granted,
             generation: random_id(),
-            rejected: false,
-            access_rejected: invalid_access || invalid_expiry || invalid_scopes,
+            access_rejected: false,
             refresh_in_flight: false,
         };
         let credential = BearerCredential {
             token: token.access_token.clone(),
             attempt_id: token.generation.clone(),
         };
+        let sufficient = subset(required, &self.effective(&token.scopes));
         record.token = Some(token);
-        record.pending = None;
         self.persist(guard, record, budget).await?;
-        if invalid_access || invalid_expiry {
-            return Err(fail(AuthErrorCode::CredentialUnavailable));
-        }
-        if invalid_scopes || !self.satisfies_requirements(record) {
+        if !sufficient {
             return Err(fail(AuthErrorCode::AccessDenied));
         }
         Ok(credential)
     }
-    /// Complete only this pending generation. Callback transport/UI remain host-owned.
-    /// Clone the handle before calling if the host needs generation-specific cancellation.
-    /// An uncertain exchange is never replayed; prepare returns a cancellation-only handle.
+    /// Complete the stored pending login for this target from any process sharing
+    /// the store. Callback transport/UI remain host-owned. Redirect, state and issuer
+    /// are validated before the login is claimed, so stray callbacks cannot consume it.
     pub async fn complete(
         &self,
-        login: PendingLogin,
+        context: AuthContext,
         callback: Url,
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
-        let budget = OperationBudget::until(budget.deadline.min(login.deadline));
+        let budget = OperationBudget::until(budget.deadline.min(context.deadline));
         budget
-            .run(self.complete_inner(login, callback, budget))
+            .run(self.complete_inner(context, callback, budget))
             .await
     }
     async fn complete_inner(
         &self,
-        login: PendingLogin,
+        context: AuthContext,
         callback: Url,
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
-        let target = login.context.target()?;
+        let denied = || fail(AuthErrorCode::AccessDenied);
+        let gone = || fail(AuthErrorCode::InteractionRequired);
+        let target = context.target()?;
         self.validate_target(&target)?;
         let redirect = Url::parse(
             self.config
@@ -1278,71 +1268,32 @@ impl ManagedOAuth {
                 .ok_or_else(|| fail(AuthErrorCode::UnsupportedBinding))?,
         )
         .map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?;
-        if callback.origin() != redirect.origin()
+        let fixed_query = |url: &Url| {
+            let mut pairs = url
+                .query_pairs()
+                .filter(|(key, _)| {
+                    !matches!(
+                        key.as_ref(),
+                        "state" | "code" | "error" | "iss" | "error_description" | "error_uri"
+                    )
+                })
+                .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                .collect::<Vec<_>>();
+            pairs.sort();
+            pairs
+        };
+        if callback.scheme() != redirect.scheme()
+            || callback.host_str() != redirect.host_str()
+            || callback.port_or_known_default() != redirect.port_or_known_default()
             || callback.path() != redirect.path()
             || callback.fragment().is_some()
             || !callback.username().is_empty()
             || callback.password().is_some()
+            || fixed_query(&callback) != fixed_query(&redirect)
         {
-            return Err(fail(AuthErrorCode::AccessDenied));
+            return Err(denied());
         }
-        let mut expected_query = redirect
-            .query_pairs()
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-            .collect::<Vec<_>>();
-        let mut fixed_query = callback
-            .query_pairs()
-            .filter(|(key, _)| {
-                !matches!(
-                    key.as_ref(),
-                    "state" | "code" | "error" | "iss" | "error_description" | "error_uri"
-                )
-            })
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-            .collect::<Vec<_>>();
-        expected_query.sort();
-        fixed_query.sort();
-        if expected_query != fixed_query {
-            return Err(fail(AuthErrorCode::AccessDenied));
-        }
-        let mut binding_guard = budget
-            .run(self.store.acquire(self.key(&target), budget))
-            .await?;
-        let binding = budget
-            .run(binding_guard.load())
-            .await?
-            .ok_or_else(|| fail(AuthErrorCode::InteractionRequired))?;
-        drop(binding_guard);
-        self.validate_saved(&target, &binding)?;
-        self.approve_metadata(&target, &binding.metadata)?;
-        let mut guard = budget
-            .run(self.store.acquire((*login.key).clone(), budget))
-            .await?;
-        let mut record = budget
-            .run(guard.load())
-            .await?
-            .ok_or_else(|| fail(AuthErrorCode::InteractionRequired))?;
-        drop(guard);
-        if *login.key != self.grant_key(&target, &record.metadata) {
-            return Err(fail(AuthErrorCode::InvalidConfiguration));
-        }
-
-        let saved = record
-            .pending
-            .as_ref()
-            .filter(|s| {
-                s.id == login.id
-                    && s.expires_at > now().unwrap_or(u64::MAX)
-                    && s.host_deadline_ms > now_ms().unwrap_or(u64::MAX)
-                    && !s.in_flight
-                    && self.config.redirect_uri.as_deref() == Some(s.redirect_uri.as_str())
-            })
-            .ok_or_else(|| fail(AuthErrorCode::InteractionRequired))?
-            .clone();
-        let mut state = None;
-        let mut code = None;
-        let mut error = None;
-        let mut issuer = None;
+        let (mut state, mut code, mut error, mut issuer) = (None, None, None, None);
         for (key, value) in callback.query_pairs() {
             let field = match key.as_ref() {
                 "state" => &mut state,
@@ -1352,132 +1303,95 @@ impl ManagedOAuth {
                 _ => continue,
             };
             if field.replace(value.into_owned()).is_some() {
-                return Err(fail(AuthErrorCode::AccessDenied));
+                return Err(denied());
             }
         }
-        if CsrfToken::new(state.ok_or_else(|| fail(AuthErrorCode::AccessDenied))?)
-            != CsrfToken::new(saved.state.clone())
-            || (saved
-                .metadata
-                .authorization_response_iss_parameter_supported
-                && issuer.is_none())
-            || issuer.as_ref().is_some_and(|i| i != &saved.metadata.issuer)
-            || (code.is_some() && error.is_some())
-        {
-            return Err(fail(AuthErrorCode::AccessDenied));
+        let state = CsrfToken::new(state.ok_or_else(denied)?);
+        if code.is_some() == error.is_some() {
+            return Err(denied());
         }
-        if saved.binding_key != self.key(&target) {
-            return Err(fail(AuthErrorCode::AccessDenied));
+        let binding = self
+            .load(&self.key(&target), budget)
+            .await?
+            .ok_or_else(gone)?;
+        if !self.compatible(&target, &binding) {
+            return Err(gone());
+        }
+        self.validate_saved(&target, &binding, target.scopes())?;
+        self.approve_metadata(&target, &binding.metadata)?;
+        let key = self.grant_key(&target, &binding.metadata);
+        let record = self.load(&key, budget).await?.ok_or_else(gone)?;
+        // Superseded, expired, claimed or foreign-state callbacks never consume a login.
+        let saved = record
+            .pending
+            .filter(|login| {
+                login.expires_at_ms > now_ms()
+                    && !login.in_flight
+                    && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
+                    && state == CsrfToken::new(login.state.clone())
+            })
+            .ok_or_else(gone)?;
+        if (saved
+            .metadata
+            .authorization_response_iss_parameter_supported
+            && issuer.is_none())
+            || issuer.is_some_and(|i| i != saved.metadata.issuer)
+        {
+            return Err(denied());
         }
         self.approve_metadata(&target, &saved.metadata)?;
-        let mut guard = budget
-            .run(self.store.acquire((*login.key).clone(), budget))
-            .await?;
-        record = budget
-            .run(guard.load())
-            .await?
-            .ok_or_else(|| fail(AuthErrorCode::InteractionRequired))?;
-        if !record.pending.as_ref().is_some_and(|pending| {
-            pending.id == saved.id
-                && !pending.in_flight
-                && pending.host_deadline_ms > now_ms().unwrap_or(u64::MAX)
+        let mut guard = budget.run(self.store.acquire(key, budget)).await?;
+        let mut record = budget.run(guard.load()).await?.ok_or_else(gone)?;
+        if !record.pending.as_ref().is_some_and(|login| {
+            login.id == saved.id && !login.in_flight && login.expires_at_ms > now_ms()
         }) {
-            return Err(fail(AuthErrorCode::InteractionRequired));
+            return Err(gone());
         }
         if error.is_some() {
             record.pending = None;
             self.persist(&mut *guard, &mut record, budget).await?;
-            return Err(fail(AuthErrorCode::AccessDenied));
+            return Err(denied());
         }
-        let code = code
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| fail(AuthErrorCode::AccessDenied))?;
-        record.metadata = saved.metadata.clone();
-        record.challenge_scopes = saved.required_scopes.clone();
+        let code = code.filter(|s| !s.is_empty()).ok_or_else(denied)?;
+        // Claim once before the exchange; a cancelled exchange is superseded by `prepare`.
         record.pending.as_mut().unwrap().in_flight = true;
         self.persist(&mut *guard, &mut record, budget).await?;
-        let client = self.client(&record.metadata)?;
-        let http = TokenHttp {
-            network: self.network.clone(),
-            budget,
-            status: None,
-            safe_failure: None,
-        };
-        let response = client
+        let http = TokenHttp::new(self, budget);
+        let response = self
+            .client(&saved.metadata)?
             .exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(PkceCodeVerifier::new(saved.verifier))
-            .add_extra_param("resource", &record.metadata.resource)
+            .add_extra_param("resource", &saved.metadata.resource)
             .request_async(&http)
             .await;
-        let response = match response {
-            Ok(response) => response,
+        match response {
+            Ok(response) => {
+                self.save_token(
+                    &mut *guard,
+                    &mut record,
+                    response,
+                    &saved.scopes,
+                    &saved.ceiling,
+                    None,
+                    target.scopes(),
+                    budget,
+                )
+                .await
+            }
             Err(error) => {
-                // A rejected code is not reusable. Transport/parse ambiguity retains
-                // the marker; hosts can cancel only this generation and start anew.
-                if matches!(&error, RequestTokenError::ServerResponse(_)) {
-                    record.pending = None;
-                    self.persist(&mut *guard, &mut record, budget).await?;
-                }
+                // The claimed login has ended; nothing else is persisted.
+                record.pending = None;
+                self.persist(&mut *guard, &mut record, budget).await?;
                 if matches!(&error, RequestTokenError::ServerResponse(response) if *response.error() == BasicErrorResponseType::InvalidGrant)
                 {
-                    return Err(fail(AuthErrorCode::InteractionRequired));
+                    return Err(gone());
                 }
-                return Err(token_error(error));
+                Err(token_error(error))
             }
-        };
-        self.save_token(&mut *guard, &mut record, response, None, budget)
-            .await
+        }
     }
-    /// Host-approved recovery after an uncertain rotation. This never retries the
-    /// old refresh token or deletes its evidence. Only the matching generation is
-    /// retired; a stale repair cannot reject a newer credential. Prepare again
-    /// afterward to restart PKCE or reacquire a client-credentials grant.
-    pub async fn abandon_uncertain_refresh(
-        &self,
-        context: AuthContext,
-        attempt_id: &str,
-        budget: OperationBudget,
-    ) -> Result<bool, HookError> {
-        budget
-            .run(async {
-                let target = context.target()?;
-                self.validate_target(&target)?;
-                let mut binding_guard = budget
-                    .run(self.store.acquire(self.key(&target), budget))
-                    .await?;
-                let Some(binding) = budget.run(binding_guard.load()).await? else {
-                    return Ok(false);
-                };
-                drop(binding_guard);
-                self.validate_saved(&target, &binding)?;
-                let mut guard = budget
-                    .run(
-                        self.store
-                            .acquire(self.grant_key(&target, &binding.metadata), budget),
-                    )
-                    .await?;
-                let Some(mut record) = budget.run(guard.load()).await? else {
-                    return Ok(false);
-                };
-                if self.grant_key(&target, &binding.metadata)
-                    != self.grant_key(&target, &record.metadata)
-                {
-                    return Err(fail(AuthErrorCode::InvalidConfiguration));
-                }
-                if let Some(token) = &mut record.token
-                    && token.generation == attempt_id
-                    && token.refresh_in_flight
-                {
-                    token.refresh_in_flight = false;
-                    token.rejected = true;
-                    self.persist(&mut *guard, &mut record, budget).await?;
-                    return Ok(true);
-                }
-                Ok(false)
-            })
-            .await
-    }
-    /// Cancel only this login generation. A stale cancellation cannot remove a newer login.
+    /// Cancel only this login generation. A stale cancellation cannot remove a newer
+    /// login, and cancellation never deletes a valid stored grant.
     pub async fn cancel_login(
         &self,
         login: PendingLogin,
@@ -1485,24 +1399,10 @@ impl ManagedOAuth {
     ) -> Result<(), HookError> {
         budget
             .run(async {
-                let target = login.context.target()?;
-                self.validate_target(&target)?;
-                let mut guard = budget
-                    .run(self.store.acquire((*login.key).clone(), budget))
-                    .await?;
+                let mut guard = budget.run(self.store.acquire(login.key, budget)).await?;
                 if let Some(mut record) = budget.run(guard.load()).await?
                     && record.pending.as_ref().is_some_and(|s| s.id == login.id)
                 {
-                    if record
-                        .pending
-                        .as_ref()
-                        .is_some_and(|pending| pending.binding_key != self.key(&target))
-                    {
-                        return Err(fail(AuthErrorCode::AccessDenied));
-                    }
-                    if *login.key != self.grant_key(&target, &record.metadata) {
-                        return Err(fail(AuthErrorCode::InvalidConfiguration));
-                    }
                     record.pending = None;
                     self.persist(&mut *guard, &mut record, budget).await?;
                 }
@@ -1511,44 +1411,9 @@ impl ManagedOAuth {
             .await
     }
 }
-fn pending(
-    key: SessionKey,
-    mut context: AuthContext,
-    login: &SavedLogin,
-) -> Result<PendingLogin, HookError> {
-    let remaining = login.host_deadline_ms.saturating_sub(now_ms()?);
-    let deadline = Instant::now() + std::time::Duration::from_millis(remaining);
-    context.deadline = deadline;
-    Ok(PendingLogin {
-        key: Box::new(key),
-        id: login.id.clone(),
-        url: Url::parse(&login.url).map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?,
-        expires_at: login.expires_at,
-        exchange_in_flight: login.in_flight,
-        deadline,
-        context: Box::new(context),
-    })
-}
-fn now_ms() -> Result<u64, HookError> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|v| v.as_millis().min(u64::MAX as u128) as u64)
-        .map_err(|_| fail(AuthErrorCode::ProviderFailed))
-}
-fn wall_deadline_ms(budget: OperationBudget) -> Result<u64, HookError> {
-    Ok(now_ms()?.saturating_add(
-        budget
-            .deadline
-            .saturating_duration_since(Instant::now())
-            .as_millis()
-            .min(u64::MAX as u128) as u64,
-    ))
-}
-fn valid_scope(scope: &str) -> bool {
-    !scope.is_empty()
-        && scope
-            .bytes()
-            .all(|b| b == 0x21 || (0x23..=0x5b).contains(&b) || (0x5d..=0x7e).contains(&b))
+use crate::auth::valid_scope;
+fn valid_token(token: &str) -> bool {
+    !token.is_empty() && token.bytes().all(|b| b.is_ascii_graphic())
 }
 fn frame(prefix: &str, fields: &[&str]) -> String {
     let mut key = prefix.to_owned();
@@ -1564,9 +1429,39 @@ fn valid_https(url: &Url) -> bool {
         && url.password().is_none()
         && url.fragment().is_none()
 }
-fn token_error(
-    error: RequestTokenError<HookError, oauth2::basic::BasicErrorResponse>,
-) -> HookError {
+/// HTTPS; HTTP only to a literal loopback IP; or an RFC 8252 section 7.1
+/// reverse-domain private-use scheme (one containing a period).
+fn valid_redirect(uri: &Url) -> bool {
+    let loopback = || {
+        uri.host_str()
+            .and_then(|host| {
+                host.trim_matches(['[', ']'])
+                    .parse::<std::net::IpAddr>()
+                    .ok()
+            })
+            .is_some_and(|ip| ip.is_loopback())
+    };
+    uri.username().is_empty()
+        && uri.password().is_none()
+        && uri.fragment().is_none()
+        && match uri.scheme() {
+            "https" => uri.host_str().is_some(),
+            "http" => loopback(),
+            scheme => scheme.contains('.'),
+        }
+}
+/// RFC 6749 permits `expires_in` as a positive integer; also accept a string of
+/// ASCII digits. Anything else (zero aside) is left to fail token parsing.
+fn normalize_token_body(body: &[u8]) -> Option<Vec<u8>> {
+    let mut value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let digits = value.get("expires_in")?.as_str()?;
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    value["expires_in"] = digits.parse::<u64>().ok()?.into();
+    serde_json::to_vec(&value).ok()
+}
+fn token_error(error: TokenError) -> HookError {
     match error {
         RequestTokenError::Request(error) => sanitize_provider_error(error),
         RequestTokenError::ServerResponse(response)
@@ -1581,32 +1476,33 @@ fn token_error(
     }
 }
 impl AuthProvider for ManagedOAuth {
+    /// Bound targets acquire without ever creating a login. Unbound targets only
+    /// look up a stored usable token (no discovery); otherwise they go anonymous.
     fn credential(
         &self,
         context: AuthContext,
     ) -> LocalFuture<'_, Result<Option<BearerCredential>, HookError>> {
         Box::pin(async move {
             let budget = OperationBudget::until(context.deadline);
-            if context.authentication.is_none() {
-                let target = context.target()?;
-                let mut guard = budget
-                    .run(self.store.acquire(self.key(&target), budget))
-                    .await?;
-                if budget.run(guard.load()).await?.is_none() {
-                    return Ok(None);
-                }
-            }
+            let mode = if context.authentication.is_none() {
+                Mode::Lookup
+            } else {
+                Mode::Deliver
+            };
             match budget
-                .run(self.prepare_inner(context, None, None, budget, false))
+                .run(self.acquire(context, None, &[], None, budget, mode))
                 .await?
             {
-                Preparation::Ready(credential) => Ok(Some(credential)),
-                Preparation::InteractionRequired(_) => {
+                Some(Preparation::Ready(credential)) => Ok(Some(credential)),
+                Some(Preparation::InteractionRequired(_)) => {
                     Err(fail(AuthErrorCode::InteractionRequired))
                 }
+                None => Ok(None),
             }
         })
     }
+    /// A 401 retires the rejected generation. A Bearer 403 `insufficient_scope`
+    /// requirement applies to this operation's acquisition only.
     fn challenge(
         &self,
         context: AuthContext,
@@ -1624,37 +1520,28 @@ impl AuthProvider for ManagedOAuth {
                 .map(|(_, value)| value.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            if challenge.status == 403
-                && (!discovery::insufficient_scope(&headers)?
-                    || (discovery::challenge_scopes(Some(&headers))?.is_empty()
-                        && context.target()?.scopes().is_empty()))
+            let parsed = crate::auth::challenge::parse(&headers)
+                .map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?;
+            let rejected = if challenge.status == 401 {
+                challenge.attempt_id.as_deref()
+            } else if !parsed.insufficient_scope
+                || (parsed.scopes.is_empty() && context.target()?.scopes().is_empty())
             {
                 return Err(fail(AuthErrorCode::AccessDenied));
-            }
-            let header = if headers.is_empty() {
-                None
             } else {
-                Some(headers.as_str())
+                None
             };
             match budget
-                .run(self.prepare_inner(
-                    context,
-                    header,
-                    challenge.attempt_id.as_deref(),
-                    budget,
-                    false,
-                ))
+                .run(self.acquire(context, Some(&parsed), &[], rejected, budget, Mode::Deliver))
                 .await?
             {
-                Preparation::Ready(_) => Ok(()),
-                Preparation::InteractionRequired(_) => {
-                    Err(fail(AuthErrorCode::InteractionRequired))
-                }
+                Some(Preparation::Ready(_)) => Ok(()),
+                _ => Err(fail(AuthErrorCode::InteractionRequired)),
             }
         })
     }
 }
 
 #[cfg(test)]
-#[path = "managed/tests.rs"]
+#[path = "managed/tests/mod.rs"]
 mod tests;

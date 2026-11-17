@@ -1,9 +1,7 @@
 //! Strict, policy-gated MCP 2025-11-25 OAuth discovery.
-use super::{
-    EndpointUse, ManagedOAuth, OperationBudget, ResourceMetadata, TrustDecision, TrustedMetadata,
-};
+use super::{EndpointUse, ManagedOAuth, OperationBudget, ResourceMetadata, TrustedMetadata};
 use crate::{
-    auth::{AuthBinding, AuthErrorCode, AuthTarget, OAuthFlow},
+    auth::{AuthBinding, AuthErrorCode, AuthTarget, OAuthFlow, challenge::Challenge},
     client::HookError,
 };
 use serde::{Deserialize, Serialize};
@@ -11,159 +9,6 @@ use url::Url;
 
 fn failed() -> HookError {
     HookError::authentication(AuthErrorCode::DiscoveryFailed)
-}
-fn denied() -> HookError {
-    HookError::authentication(AuthErrorCode::AccessDenied)
-}
-
-#[derive(Default, Debug, PartialEq, Eq)]
-struct Challenge {
-    resource_metadata: Option<String>,
-    scopes: Vec<String>,
-    insufficient_scope: bool,
-}
-
-fn token(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
-}
-
-/// Split only outside quoted strings; a quoted-pair can escape a comma or quote.
-fn challenge_parts(header: &str) -> Result<Vec<&str>, HookError> {
-    let mut parts = Vec::new();
-    let (mut start, mut quoted, mut escaped) = (0, false, false);
-    for (index, byte) in header.bytes().enumerate() {
-        if escaped {
-            escaped = false;
-        } else if quoted && byte == b'\\' {
-            escaped = true;
-        } else if byte == b'"' {
-            quoted = !quoted;
-        } else if !quoted && byte == b',' {
-            parts.push(header[start..index].trim());
-            start = index + 1;
-        }
-        if byte < 0x20 && byte != b'\t' || byte == 0x7f {
-            return Err(failed());
-        }
-    }
-    if quoted || escaped {
-        return Err(failed());
-    }
-    parts.push(header[start..].trim());
-    Ok(parts)
-}
-
-fn parameter(value: &str) -> Result<String, HookError> {
-    let value = value.trim();
-    if value.starts_with('"') {
-        if !value.ends_with('"') || value.len() < 2 {
-            return Err(failed());
-        }
-        let mut result = String::new();
-        let mut escaped = false;
-        for ch in value[1..value.len() - 1].chars() {
-            if escaped {
-                result.push(ch);
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                return Err(failed());
-            } else {
-                result.push(ch);
-            }
-        }
-        if escaped {
-            return Err(failed());
-        }
-        Ok(result)
-    } else if !value.is_empty() && value.bytes().all(token) {
-        Ok(value.to_owned())
-    } else {
-        Err(failed())
-    }
-}
-
-fn parse_challenge(header: Option<&str>) -> Result<Challenge, HookError> {
-    let mut result = Challenge::default();
-    let Some(header) = header else {
-        return Ok(result);
-    };
-    let (mut bearer, mut scheme_seen) = (false, false);
-    let mut bearer_parameters = Vec::new();
-    for part in challenge_parts(header)? {
-        if part.is_empty() {
-            return Err(failed());
-        }
-        let end = part.bytes().take_while(|b| token(*b)).count();
-        if end == 0 {
-            return Err(failed());
-        }
-        let rest = part[end..].trim_start();
-        let param = if rest.starts_with('=') {
-            if !scheme_seen {
-                return Err(failed());
-            }
-            part
-        } else {
-            // A new scheme must be separated from its credentials. Unknown
-            // credentials can be token68 (including trailing '=' padding), not
-            // necessarily auth-params; do not parse them as Bearer parameters.
-            if end < part.len() && !part.as_bytes()[end].is_ascii_whitespace() {
-                return Err(failed());
-            }
-            scheme_seen = true;
-            bearer = part[..end].eq_ignore_ascii_case("bearer");
-            rest
-        };
-        if !bearer || param.is_empty() {
-            continue;
-        }
-        let (name, value) = param.split_once('=').ok_or_else(failed)?;
-        let name = name.trim();
-        if name.is_empty() || !name.bytes().all(token) {
-            return Err(failed());
-        }
-        let normalized_name = name.to_ascii_lowercase();
-        if bearer_parameters.contains(&normalized_name) {
-            return Err(failed());
-        }
-        bearer_parameters.push(normalized_name);
-        let value = parameter(value)?;
-        if name.eq_ignore_ascii_case("resource_metadata") {
-            if value.is_empty() {
-                return Err(failed());
-            }
-            result.resource_metadata = Some(value);
-        } else if name.eq_ignore_ascii_case("error") {
-            result.insufficient_scope = value == "insufficient_scope";
-        } else if name.eq_ignore_ascii_case("scope") {
-            if value.is_empty() || !value.bytes().all(|b| b == b' ' || scope_byte(b)) {
-                return Err(failed());
-            }
-            result.scopes = value
-                .split(' ')
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned)
-                .collect();
-        }
-    }
-    Ok(result)
-}
-
-pub(super) fn insufficient_scope(header: &str) -> Result<bool, HookError> {
-    if header.is_empty() {
-        return Ok(false);
-    }
-    Ok(parse_challenge(Some(header))?.insufficient_scope)
-}
-
-pub(super) fn challenge_scopes(header: Option<&str>) -> Result<Vec<String>, HookError> {
-    Ok(parse_challenge(header)?.scopes)
-}
-
-fn scope_byte(byte: u8) -> bool {
-    byte == 0x21 || (0x23..=0x5b).contains(&byte) || (0x5d..=0x7e).contains(&byte)
 }
 
 fn https(value: &str, issuer: bool) -> Result<Url, HookError> {
@@ -313,13 +158,13 @@ async fn fetch<T: serde::de::DeserializeOwned>(
     Err(failed())
 }
 
+/// A current challenge (even without `resource_metadata`) overrides a saved hint.
 fn resource_candidates(
     resource: &Url,
-    current_header: Option<&str>,
-    challenge: &Challenge,
+    challenge: Option<&Challenge>,
     saved_hint: Option<&ResourceMetadataHint>,
 ) -> Result<Vec<ResourceMetadataHint>, HookError> {
-    if let Some(explicit) = &challenge.resource_metadata {
+    if let Some(explicit) = challenge.and_then(|c| c.resource_metadata.as_ref()) {
         return Ok(vec![ResourceMetadataHint {
             url: https(explicit, false)?.to_string(),
             expected_resource: resource.as_str().to_owned(),
@@ -327,7 +172,7 @@ fn resource_candidates(
         }]);
     }
     let locations = resource_locations(resource);
-    if current_header.is_none()
+    if challenge.is_none()
         && let Some(hint) = saved_hint
     {
         https(&hint.url, false)?;
@@ -350,16 +195,26 @@ pub(super) fn validate_saved_source(
     hint: Option<&ResourceMetadataHint>,
 ) -> Result<(), HookError> {
     let hint = hint.ok_or_else(failed)?;
-    resource_candidates(destination, None, &Challenge::default(), Some(hint))?;
+    resource_candidates(destination, None, Some(hint))?;
     validate_resource_source(identifier, hint)?;
     validate_resource(identifier, destination, None)
 }
 
+/// Exact identity, except that an origin root may be spelled with or without
+/// its RFC 3986-equivalent trailing slash (`https://host` and `https://host/`).
 fn validate_resource_source(
     identifier: &str,
     hint: &ResourceMetadataHint,
 ) -> Result<(), HookError> {
-    if identifier != hint.expected_resource {
+    let root = |value: &str| {
+        Url::parse(value)
+            .ok()
+            .filter(|url| url.path() == "/" && url.query().is_none())
+            .map(|url| url.origin().ascii_serialization())
+    };
+    if identifier != hint.expected_resource
+        && (root(identifier).is_none() || root(identifier) != root(&hint.expected_resource))
+    {
         return Err(failed());
     }
     Ok(())
@@ -408,34 +263,15 @@ fn default_auth_methods() -> Vec<String> {
     vec!["client_secret_basic".to_owned()]
 }
 
+/// Returns trusted metadata, its retrieval provenance and the scopes to request.
 pub(super) async fn discover(
     owner: &ManagedOAuth,
     target: &AuthTarget,
-    challenge: Option<&str>,
+    challenge: Option<&Challenge>,
     saved_hint: Option<&ResourceMetadataHint>,
-    saved_scopes: &[String],
+    required: &[String],
     budget: OperationBudget,
-) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>), HookError> {
-    let current_header = challenge;
-    let mut challenge = parse_challenge(current_header)?;
-    challenge.scopes.extend_from_slice(saved_scopes);
-    challenge.scopes.sort();
-    challenge.scopes.dedup();
-    // Reject requests outside the local scope ceiling before any discovery request.
-    if owner
-        .config
-        .requested_scopes
-        .iter()
-        .chain(target.scopes())
-        .chain(&challenge.scopes)
-        .any(|scope| {
-            scope.is_empty()
-                || !scope.bytes().all(scope_byte)
-                || !owner.config.allowed_scopes.contains(scope)
-        })
-    {
-        return Err(denied());
-    }
+) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>, Vec<String>), HookError> {
     let resource_url = https(target.destination().as_str(), false)?;
     let (metadata, hint) = match target.binding() {
         AuthBinding::OAuth { resource, .. } => {
@@ -444,16 +280,12 @@ pub(super) async fn discover(
             https(issuer, true)?;
             // Presets identify the principal; PRM is only needed to learn an unbound one.
             (
-                ResourceMetadata {
-                    resource: resource.clone(),
-                    authorization_servers: vec![issuer.to_owned()],
-                },
+                ResourceMetadata::new(resource.clone(), vec![issuer.to_owned()]),
                 None,
             )
         }
         AuthBinding::Unbound => {
-            let candidates =
-                resource_candidates(&resource_url, current_header, &challenge, saved_hint)?;
+            let candidates = resource_candidates(&resource_url, challenge, saved_hint)?;
             let urls = candidates
                 .iter()
                 .map(|candidate| https(&candidate.url, false))
@@ -477,29 +309,8 @@ pub(super) async fn discover(
     for issuer in &metadata.authorization_servers {
         https(issuer, true)?;
     }
-    let TrustDecision { issuer, mut scopes } =
-        owner.policy.select(target, &metadata, &challenge.scopes)?;
-    scopes.sort();
-    scopes.dedup();
-    if !metadata.authorization_servers.contains(&issuer)
-        || target.issuer().is_some_and(|required| required != issuer)
-    {
-        return Err(denied());
-    }
-    let required = owner
-        .config
-        .requested_scopes
-        .iter()
-        .chain(target.scopes())
-        .chain(&challenge.scopes);
-    if scopes.iter().any(|scope| {
-        scope.is_empty()
-            || !scope.bytes().all(scope_byte)
-            || !owner.config.allowed_scopes.contains(scope)
-    }) || required.into_iter().any(|scope| !scopes.contains(scope))
-    {
-        return Err(denied());
-    }
+    let decision = owner.select(target, &metadata, required)?;
+    let (issuer, scopes) = (decision.issuer, decision.scopes);
     let issuer_url = https(&issuer, true)?;
     let (as_metadata, _): (IssuerMetadata, _) = fetch(
         owner,
@@ -553,7 +364,6 @@ pub(super) async fn discover(
         issuer,
         authorization_endpoint: as_metadata.authorization_endpoint,
         token_endpoint: as_metadata.token_endpoint,
-        scopes,
         grant_types_supported: as_metadata.grant_types_supported,
         token_endpoint_auth_methods_supported: as_metadata.token_endpoint_auth_methods_supported,
         code_challenge_methods_supported: as_metadata.code_challenge_methods_supported,
@@ -561,7 +371,7 @@ pub(super) async fn discover(
             .authorization_response_iss_parameter_supported,
     };
     owner.approve_metadata(target, &metadata)?;
-    Ok((metadata, hint))
+    Ok((metadata, hint, scopes))
 }
 
 #[cfg(test)]
@@ -690,102 +500,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn exposed_challenge_scopes_use_strict_parser() {
-        assert_eq!(
-            challenge_scopes(Some(r#"Bearer scope="read write""#)).unwrap(),
-            ["read", "write"]
-        );
-        assert!(challenge_scopes(None).unwrap().is_empty());
-        assert!(challenge_scopes(Some(r#"Bearer scope="read", scope="write""#)).is_err());
-    }
-
-    #[test]
-    fn bearer_case_quotes_escapes_and_other_challenges() {
-        let parsed = parse_challenge(Some(r#"Basic realm="ignored, realm", bEaReR ReSoUrCe_MeTaDaTa="https://resource.example/meta?x=a,b", scope="read write", error_description="say \"hello\"", Digest realm="other""#)).unwrap();
-        assert_eq!(
-            parsed.resource_metadata.as_deref(),
-            Some("https://resource.example/meta?x=a,b")
-        );
-        assert_eq!(parsed.scopes, ["read", "write"]);
-        assert_eq!(
-            parse_challenge(Some("Basic realm=example")).unwrap(),
-            Challenge::default()
-        );
-    }
-
-    #[test]
-    fn unknown_schemes_with_padded_token68_do_not_hide_following_bearer() {
-        for credentials in ["abc=", "abc==", "/+abc==", "a-b._~+/==="] {
-            let header = format!(
-                "Negotiate {credentials}, Bearer scope=\"read\", resource_metadata=\"https://api.example/meta\", Other {credentials}"
-            );
-            let parsed = parse_challenge(Some(&header)).unwrap();
-            assert_eq!(parsed.scopes, ["read"]);
-            assert_eq!(
-                parsed.resource_metadata.as_deref(),
-                Some("https://api.example/meta")
-            );
-        }
-        assert_eq!(
-            parse_challenge(Some("Unknown /+abc==")).unwrap(),
-            Challenge::default()
-        );
-    }
-
-    #[test]
-    fn insufficient_scope_requires_an_unambiguous_bearer_error() {
-        assert!(insufficient_scope("Unknown abc==, Bearer error=insufficient_scope").unwrap());
-        for header in [
-            "",
-            "Bearer",
-            "Bearer error=invalid_token",
-            "Unknown error=insufficient_scope",
-        ] {
-            assert!(!insufficient_scope(header).unwrap(), "{header}");
-        }
-        assert!(
-            insufficient_scope("Bearer error=insufficient_scope, error=invalid_token").is_err()
-        );
-    }
-
-    #[test]
-    fn malformed_or_ambiguous_bearer_parameters_fail_closed() {
-        for header in [
-            "Bearer scope=read==",
-            "Bearer scope=",
-            "Bearer scope",
-            "Bearer/scope=read",
-            "scope=read, Bearer",
-            "Bearer error=invalid_token, ERROR=insufficient_scope",
-            "Bearer extension=one, extension=two",
-            "Bearer scope=read, Unknown abc==, Bearer scope=write",
-        ] {
-            assert!(parse_challenge(Some(header)).is_err(), "{header}");
-        }
-    }
-
-    #[test]
-    fn duplicate_recognized_parameters_are_ambiguous_even_across_bearer_challenges() {
-        for header in [
-            r#"Bearer scope="read", Scope="read""#,
-            r#"Bearer resource_metadata="https://a", Bearer resource_metadata="https://a""#,
-            r#"Bearer scope="read", Bearer scope="write""#,
-            r#"Bearer scope="unterminated"#,
-            r#"Bearer resource_metadata="""#,
-            "Bearer scope=read\n",
-        ] {
-            assert!(parse_challenge(Some(header)).is_err(), "{header}");
-        }
-    }
-
-    #[test]
-    fn escaped_parameter_values_are_unescaped() {
-        assert_eq!(parameter(r#""a\\b\"c""#).unwrap(), "a\\b\"c");
-        assert!(parameter(r#""a"garbage""#).is_err());
-        assert!(parse_challenge(Some(r#"Bearer scope="bad\\scope""#)).is_err());
-    }
-
     fn strings(urls: Vec<Url>) -> Vec<String> {
         urls.into_iter().map(|url| url.to_string()).collect()
     }
@@ -847,19 +561,17 @@ mod tests {
             expected_resource: resource.as_str().into(),
             source: ResourceMetadataSource::Challenge,
         };
-        let absent = Challenge::default();
+        let bare = Challenge::default();
+        assert!(resource_candidates(&resource, None, Some(&saved)).unwrap() == vec![saved.clone()]);
         assert!(
-            resource_candidates(&resource, None, &absent, Some(&saved)).unwrap()
-                == vec![saved.clone()]
-        );
-        assert!(
-            resource_candidates(&resource, Some("Bearer"), &absent, Some(&saved)).unwrap()
+            resource_candidates(&resource, Some(&bare), Some(&saved)).unwrap()
                 == resource_locations(&resource)
         );
-        let header = r#"Bearer resource_metadata="https://current.example/meta""#;
-        let challenge = parse_challenge(Some(header)).unwrap();
-        let current =
-            resource_candidates(&resource, Some(header), &challenge, Some(&saved)).unwrap();
+        let challenge = Challenge {
+            resource_metadata: Some("https://current.example/meta".into()),
+            ..Default::default()
+        };
+        let current = resource_candidates(&resource, Some(&challenge), Some(&saved)).unwrap();
         assert_eq!(current[0].url, "https://current.example/meta");
         assert_eq!(current[0].expected_resource, resource.as_str());
         assert!(matches!(
@@ -868,21 +580,20 @@ mod tests {
         ));
         let mut invalid = saved.clone();
         invalid.expected_resource = "https://mcp.example".into();
-        assert!(resource_candidates(&resource, None, &absent, Some(&invalid)).is_err());
+        assert!(resource_candidates(&resource, None, Some(&invalid)).is_err());
         invalid = saved.clone();
         invalid.source = ResourceMetadataSource::WellKnown;
-        assert!(resource_candidates(&resource, None, &absent, Some(&invalid)).is_err());
+        assert!(resource_candidates(&resource, None, Some(&invalid)).is_err());
         invalid = saved.clone();
         invalid.url = "http://insecure.example".into();
-        assert!(resource_candidates(&resource, None, &absent, Some(&invalid)).is_err());
+        assert!(resource_candidates(&resource, None, Some(&invalid)).is_err());
         for valid in resource_locations(&resource) {
             assert!(
-                resource_candidates(&resource, None, &absent, Some(&valid)).unwrap()
-                    == vec![valid.clone()]
+                resource_candidates(&resource, None, Some(&valid)).unwrap() == vec![valid.clone()]
             );
             let mut invalid = valid;
             invalid.expected_resource.push('/');
-            assert!(resource_candidates(&resource, None, &absent, Some(&invalid)).is_err());
+            assert!(resource_candidates(&resource, None, Some(&invalid)).is_err());
         }
     }
 
@@ -890,17 +601,21 @@ mod tests {
     fn covering_parent_cannot_impersonate_an_exact_metadata_source() {
         let resource = https("https://mcp.example/api/hooks?x=1", false).unwrap();
         assert!(validate_saved_source(&resource, resource.as_str(), None).is_err());
-        let challenge = parse_challenge(Some(
-            r#"Bearer resource_metadata="https://metadata.example/meta""#,
-        ))
-        .unwrap();
-        let mut sources = resource_candidates(&resource, Some("Bearer"), &challenge, None).unwrap();
+        let challenge = Challenge {
+            resource_metadata: Some("https://metadata.example/meta".into()),
+            ..Default::default()
+        };
+        let mut sources = resource_candidates(&resource, Some(&challenge), None).unwrap();
         sources.extend(resource_locations(&resource));
         for hint in sources {
             assert!(validate_resource(&hint.expected_resource, &resource, None).is_ok());
             assert!(validate_resource_source(&hint.expected_resource, &hint).is_ok());
             assert!(validate_saved_source(&resource, &hint.expected_resource, Some(&hint)).is_ok());
-            for covering in ["https://mcp.example/", "https://mcp.example/api"] {
+            let root = hint.expected_resource == "https://mcp.example";
+            for covering in ["https://mcp.example/", "https://mcp.example/api"]
+                .into_iter()
+                .filter(|covering| !(root && *covering == "https://mcp.example/"))
+            {
                 assert!(validate_resource(covering, &resource, None).is_ok());
                 assert!(validate_resource_source(covering, &hint).is_err());
                 assert!(validate_saved_source(&resource, covering, Some(&hint)).is_err());
@@ -909,6 +624,28 @@ mod tests {
             assert!(
                 validate_resource_source("https://mcp.example:443/api/hooks?x=1", &hint).is_err()
             );
+        }
+    }
+
+    #[test]
+    fn origin_root_accepts_both_trailing_slash_spellings() {
+        for destination in ["https://mcp.example/", "https://mcp.example/api"] {
+            let destination = https(destination, false).unwrap();
+            let root = resource_locations(&destination).pop().unwrap();
+            let challenge = Challenge {
+                resource_metadata: Some("https://mcp.example/meta".into()),
+                ..Default::default()
+            };
+            let explicit = resource_candidates(&destination, Some(&challenge), None).unwrap();
+            for identifier in ["https://mcp.example", "https://mcp.example/"] {
+                assert!(validate_resource_source(identifier, &root).is_ok());
+                assert!(validate_saved_source(&destination, identifier, Some(&root)).is_ok());
+                if destination.path() == "/" {
+                    assert!(validate_resource_source(identifier, &explicit[0]).is_ok());
+                }
+            }
+            assert!(validate_resource_source("https://mcp.example/?x", &root).is_err());
+            assert!(validate_resource_source("https://mcp.example:444/", &root).is_err());
         }
     }
 
