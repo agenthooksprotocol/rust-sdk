@@ -167,18 +167,14 @@ struct Route {
     backend: Arc<dyn ManagedBackend>,
 }
 impl Route {
-    fn observation_diagnostic(
-        &self,
-        code: generated::DeliveryDiagnosticCode,
-    ) -> DeliveryDiagnostic {
-        DeliveryDiagnostic {
-            code,
-            stage: DeliveryStage::Observe,
-            subscription_id: self.id.clone(),
-            backend_id: Some(self.backend_id.clone()),
-            policy: None,
-            synthetic_denial: false,
-        }
+    fn observation_diagnostic(&self, error: &HookError) -> DeliveryDiagnostic {
+        DeliveryDiagnostic::new(
+            error,
+            DeliveryStage::Observe,
+            self.id.clone(),
+            Some(self.backend_id.clone()),
+            None,
+        )
     }
 }
 type UploadPlans = BTreeMap<String, Result<crate::hooks_content::Receipts, HookError>>;
@@ -326,9 +322,23 @@ fn filtered(config: &Value, event: &Value) -> bool {
     false
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ObservationFailure {
     pub subscription_id: String,
     pub error: String,
+    /// The typed authentication failure, if any; see `DeliveryDiagnostic::auth_code`.
+    pub auth_code: Option<crate::auth::AuthErrorCode>,
+    pub required_scopes: Vec<String>,
+}
+impl ObservationFailure {
+    fn new(subscription_id: String, error: impl Into<String>, cause: Option<&HookError>) -> Self {
+        Self {
+            subscription_id,
+            error: error.into(),
+            auth_code: cause.and_then(HookError::auth_code),
+            required_scopes: cause.map_or(Vec::new(), |e| e.required_scopes().to_vec()),
+        }
+    }
 }
 #[derive(Clone, Debug, Default)]
 pub struct ObservationReport {
@@ -469,10 +479,11 @@ struct Delivery<'a> {
 impl Drop for Delivery<'_> {
     fn drop(&mut self) {
         if !self.finished {
-            self.life.failure(ObservationFailure {
-                subscription_id: self.id.clone(),
-                error: "observation delivery cancelled; not retried".into(),
-            });
+            self.life.failure(ObservationFailure::new(
+                self.id.clone(),
+                "observation delivery cancelled; not retried",
+                None,
+            ));
         }
     }
 }
@@ -1103,12 +1114,16 @@ impl Hooks {
             }
             if index >= self.options.max_observations {
                 diagnostics.push(
-                    route.observation_diagnostic(generated::DeliveryDiagnosticCode::Capacity),
+                    route.observation_diagnostic(
+                        &err("observation operation limit reached")
+                            .classified(generated::DeliveryDiagnosticCode::Capacity),
+                    ),
                 );
-                self.life.failure(ObservationFailure {
-                    subscription_id: route.id.clone(),
-                    error: "observation operation limit reached".into(),
-                });
+                self.life.failure(ObservationFailure::new(
+                    route.id.clone(),
+                    "observation operation limit reached",
+                    None,
+                ));
                 continue;
             }
             let mut delivery = Delivery {
@@ -1139,11 +1154,12 @@ impl Hooks {
                 }),
                 Err(e) => {
                     delivery.finished = true;
-                    diagnostics.push(route.observation_diagnostic(e.code()));
-                    self.life.failure(ObservationFailure {
-                        subscription_id: route.id.clone(),
-                        error: format!("observation preparation failed ({:?})", e.code()),
-                    });
+                    diagnostics.push(route.observation_diagnostic(&e));
+                    self.life.failure(ObservationFailure::new(
+                        route.id.clone(),
+                        format!("observation preparation failed ({:?})", e.code()),
+                        Some(&e),
+                    ));
                 }
             }
         }
@@ -1185,11 +1201,12 @@ impl Hooks {
             match result {
                 Ok(_) => self.life.report.lock().unwrap().delivered += 1,
                 Err(e) => {
-                    diagnostics.push(route.observation_diagnostic(e.code()));
-                    self.life.failure(ObservationFailure {
-                        subscription_id: route.id.clone(),
-                        error: format!("observation delivery failed ({:?})", e.code()),
-                    });
+                    diagnostics.push(route.observation_diagnostic(&e));
+                    self.life.failure(ObservationFailure::new(
+                        route.id.clone(),
+                        format!("observation delivery failed ({:?})", e.code()),
+                        Some(&e),
+                    ));
                 }
             }
         }

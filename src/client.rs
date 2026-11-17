@@ -714,7 +714,9 @@ impl Drop for ProgressGuard {
     }
 }
 
+/// Redacted: classifications only, never messages, tokens or transport details.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct DeliveryDiagnostic {
     pub code: crate::generated::DeliveryDiagnosticCode,
     pub stage: DeliveryStage,
@@ -722,6 +724,31 @@ pub struct DeliveryDiagnostic {
     pub backend_id: Option<String>,
     pub policy: Option<FailurePolicy>,
     pub synthetic_denial: bool,
+    /// The typed authentication failure, such as `interaction_required` when the
+    /// backend's login must be prepared, as opposed to a transport failure.
+    pub auth_code: Option<crate::auth::AuthErrorCode>,
+    /// Validated scopes required by an `interaction_required`/`access_denied` failure.
+    pub required_scopes: Vec<String>,
+}
+impl DeliveryDiagnostic {
+    pub(crate) fn new(
+        error: &HookError,
+        stage: DeliveryStage,
+        subscription_id: String,
+        backend_id: Option<String>,
+        policy: Option<FailurePolicy>,
+    ) -> Self {
+        Self {
+            code: error.code(),
+            stage,
+            subscription_id,
+            backend_id,
+            policy,
+            synthetic_denial: policy == Some(FailurePolicy::Closed),
+            auth_code: error.auth_code(),
+            required_scopes: error.required_scopes().to_vec(),
+        }
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeliveryStage {
@@ -771,18 +798,20 @@ pub(crate) fn delivery_diagnostics(state: &RawProtocolOutcome) -> Vec<DeliveryDi
     state
         .failures
         .iter()
-        .map(|failure| DeliveryDiagnostic {
-            code: failure.error.code(),
-            stage: if failure.error.code() == crate::generated::DeliveryDiagnosticCode::Preparation
-            {
-                DeliveryStage::Preparation
-            } else {
-                DeliveryStage::Intercept
-            },
-            subscription_id: failure.subscription_id.clone(),
-            backend_id: None,
-            policy: Some(failure.policy),
-            synthetic_denial: failure.policy == FailurePolicy::Closed,
+        .map(|failure| {
+            let stage =
+                if failure.error.code() == crate::generated::DeliveryDiagnosticCode::Preparation {
+                    DeliveryStage::Preparation
+                } else {
+                    DeliveryStage::Intercept
+                };
+            DeliveryDiagnostic::new(
+                &failure.error,
+                stage,
+                failure.subscription_id.clone(),
+                None,
+                Some(failure.policy),
+            )
         })
         .collect()
 }

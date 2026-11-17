@@ -627,6 +627,50 @@ fn diagnostics_attribute_backend_without_exposing_transport_details() {
 }
 
 #[test]
+fn diagnostics_carry_typed_auth_failure_and_required_scopes() {
+    use agenthooksprotocol::auth::AuthErrorCode;
+    struct LoginNeeded;
+    impl ManagedBackend for LoginNeeded {
+        fn shutdown(&self) -> LocalFuture<'_, Result<(), HookError>> {
+            Box::pin(async { Ok(()) })
+        }
+        fn call(&self, _: Value, _: Duration) -> LocalFuture<'_, Result<Value, HookError>> {
+            Box::pin(async {
+                Err(
+                    HookError::authentication(AuthErrorCode::InteractionRequired)
+                        .with_required_scopes(&["write".into(), "bad scope".into()]),
+                )
+            })
+        }
+    }
+    let hooks = Hooks::new(registration(true), options(Arc::new(LoginNeeded), true)).unwrap();
+    let result = block_on(
+        hooks
+            .tool_input(input())
+            .context(context())
+            .initial_state(Permission::Allow),
+    )
+    .unwrap();
+    assert_eq!(result.diagnostics.len(), 2);
+    for diagnostic in &result.diagnostics {
+        assert_eq!(
+            diagnostic.auth_code,
+            Some(AuthErrorCode::InteractionRequired)
+        );
+        assert_eq!(diagnostic.required_scopes, ["write"]);
+        assert_eq!(diagnostic.backend_id.as_deref(), Some("org.example.hook"));
+    }
+    let report = block_on(hooks.wait_until_idle());
+    assert_eq!(report.failures.len(), 1);
+    assert_eq!(
+        report.failures[0].auth_code,
+        Some(AuthErrorCode::InteractionRequired)
+    );
+    assert_eq!(report.failures[0].required_scopes, ["write"]);
+    block_on(hooks.shutdown()).unwrap();
+}
+
+#[test]
 fn signals_raised_during_final_delivery_poll_never_return_permission() {
     use agenthooksprotocol::DeliveryDiagnosticCode;
     struct Signals(Mutex<Option<futures::channel::oneshot::Sender<()>>>);
