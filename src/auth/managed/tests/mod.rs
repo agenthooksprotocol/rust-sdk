@@ -684,8 +684,9 @@ async fn canonical_token_vectors() {
         let id = &vector["id"];
         let host = Host::new();
         let mut oauth = host.pkce(|c| c);
-        oauth.config.requested_scopes = strings(&vector["requested"]);
-        oauth.config.allowed_scopes = strings(&vector["allowed"]);
+        let config = Arc::get_mut(&mut oauth.config).unwrap();
+        config.requested_scopes = strings(&vector["requested"]);
+        config.allowed_scopes = strings(&vector["allowed"]);
         let required = strings(&vector["required"]);
         let mut record = SessionRecord {
             client_id: "client".into(),

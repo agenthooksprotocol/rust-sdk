@@ -99,6 +99,21 @@ fn renewal_due(host: &Host, registered_ago: u64, expires_in: u64) {
         registration.client_secret_expires_at = Some(now() + expires_in);
     });
 }
+/// Proactive renewal runs in the background: let it start, then wait until it
+/// releases every store lock.
+async fn renewed(host: &Host) {
+    for _ in 0..16 {
+        tokio::task::yield_now().await;
+    }
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while host.store.held.load(Ordering::SeqCst) != 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "renewal never settled"
+        );
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+}
 fn elapse_marker(host: &Host) {
     host.store
         .edit_registration(|r| r.marker.as_mut().unwrap().next_attempt_at = 0);
@@ -1162,6 +1177,7 @@ pub(super) async fn cc_proactive_reregistration_before_expiry() {
     host.network.reply(200, token("inside"));
     let credential = oauth.credential(unbound()).await.unwrap().unwrap();
     assert_eq!(credential.token, "inside");
+    renewed(&host).await;
     let seen = host.network.seen.lock().unwrap().clone();
     let n = seen.len();
     assert_eq!(
@@ -1175,6 +1191,7 @@ pub(super) async fn cc_proactive_reregistration_before_expiry() {
     host.store.expire();
     host.network.reply(200, token("capped"));
     assert!(oauth.credential(unbound()).await.unwrap().is_some());
+    renewed(&host).await;
     assert_eq!(host.network.registrations().len(), 2);
     let wider = host.owner(
         OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
@@ -1186,6 +1203,7 @@ pub(super) async fn cc_proactive_reregistration_before_expiry() {
     host.store.expire();
     host.network.reply(200, token("wider"));
     assert!(wider.credential(unbound()).await.unwrap().is_some());
+    renewed(&host).await;
     assert_eq!(host.network.registrations().len(), 3);
 }
 
@@ -1377,6 +1395,7 @@ pub(super) async fn proactive_reregistration_once_across_processes() {
         b.credential(backend("backend2"))
     );
     assert!(x.unwrap().is_some() && y.unwrap().is_some());
+    renewed(&host).await;
     assert_eq!(host.network.registrations().len(), 2);
     assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-2");
 }
@@ -1395,6 +1414,7 @@ pub(super) async fn proactive_renewal_failure_keeps_current_registration() {
         oauth.credential(unbound()).await.unwrap().unwrap().token,
         "kept"
     );
+    renewed(&host).await;
     assert_eq!(host.network.registrations().len(), 2);
     let current = host.store.registration().unwrap();
     assert_eq!(current.generation, generation);
@@ -1407,6 +1427,7 @@ pub(super) async fn proactive_renewal_failure_keeps_current_registration() {
         oauth.credential(unbound()).await.unwrap().unwrap().token,
         "still"
     );
+    renewed(&host).await;
     assert_eq!(host.network.registrations().len(), 2);
     assert_eq!(
         host.network.tokens().last().unwrap().authorization,
@@ -1493,6 +1514,7 @@ async fn prepare_clears_failed_marker_with_usable_registration() {
     host.network.register_reply(503, json!({}), None);
     host.network.reply(200, token("kept"));
     oauth.credential(unbound()).await.unwrap();
+    renewed(&host).await;
     assert!(host.store.marker().is_some());
     // The cached token is served, and the marker is still cleared.
     assert_eq!(
@@ -1557,4 +1579,115 @@ async fn forced_reregistration_clears_binding_scoped_old_grant() {
         .find(|(k, _)| k.contains("dcr-client-1"))
         .unwrap();
     assert!(old.token.is_none() && old.pending.is_none());
+}
+
+// A shared grant partition is never cleared, so only the registration
+// generation guard stops a login started under the old client being reused.
+#[tokio::test]
+async fn shared_partition_stale_login_not_reused() {
+    let host = dcr_host();
+    for _ in 0..2 {
+        host.network
+            .register_reply(201, json!({"client_id": "same"}), None);
+    }
+    let oauth = host.owner(
+        OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .redirect_uri(REDIRECT)
+            .grant_partition("shared")
+            .dynamic_registration(RegistrationPolicy::new(
+                "https://issuer.example",
+                "Example Adapter",
+            )),
+    );
+    let first = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    let second = login(
+        oauth
+            .prepare_with(
+                unbound(),
+                PrepareOptions::new().force_registration(),
+                budget(),
+            )
+            .await
+            .unwrap(),
+    );
+    assert_ne!(first.id, second.id, "stale-generation login reused");
+}
+
+// The failed marker is shared per registration key: a prepare for a binding
+// that has not resolved yet still clears it.
+#[tokio::test]
+async fn prepare_for_new_binding_clears_marker() {
+    let host = dcr_host();
+    let oauth = dcr_cc(&host);
+    cc_ready(&host, &oauth, backend("backend")).await;
+    renewal_due(&host, 950, 50);
+    host.store.expire();
+    host.network.register_reply(503, json!({}), None);
+    host.network.reply(200, token("kept"));
+    oauth.credential(backend("backend")).await.unwrap();
+    renewed(&host).await;
+    assert!(host.store.marker().is_some());
+    host.network.reply(200, token("other"));
+    ready(oauth.prepare(backend("backend2"), budget()).await.unwrap());
+    assert!(
+        host.store.marker().is_none(),
+        "prepare left the failed marker"
+    );
+}
+
+// The token is committed before proactive renewal: a renewal slower than the
+// caller's deadline neither fails the operation nor is cut short by it.
+#[tokio::test]
+async fn slow_proactive_renewal_does_not_fail_operation() {
+    let host = dcr_host();
+    let oauth = dcr_cc(&host);
+    cc_ready(&host, &oauth, backend("backend")).await;
+    renewal_due(&host, 950, 50);
+    host.store.expire();
+    host.network.registration_delay.store(800, Ordering::SeqCst);
+    host.network.reply(200, token("kept"));
+    let ctx = AuthContext {
+        deadline: std::time::Instant::now() + Duration::from_millis(300),
+        ..backend("backend")
+    };
+    let credential = oauth.credential(ctx).await.unwrap().unwrap();
+    assert_eq!(credential.token, "kept");
+    renewed(&host).await;
+    assert_eq!(host.network.registrations().len(), 2);
+    assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-2");
+}
+
+// Retry-After as an HTTP-date sets the wait, capped at the maximum backoff; a
+// past date leaves the normal backoff.
+#[tokio::test]
+async fn retry_after_http_date() {
+    async fn wait(retry_after: &str) -> u64 {
+        // The mock network keeps header values for the test's lifetime.
+        let retry_after: &'static str = Box::leak(retry_after.to_owned().into_boxed_str());
+        let host = dcr_host();
+        let oauth = dcr_cc(&host);
+        host.network
+            .register_reply(429, json!({}), Some(retry_after));
+        let _ = oauth
+            .challenge(unbound(), challenge(401, "Bearer", None))
+            .await;
+        let m = host.store.marker().unwrap();
+        m.next_attempt_at - m.failed_at
+    }
+    let at = |offset: i64| {
+        let now = std::time::SystemTime::now();
+        let when = if offset >= 0 {
+            now + Duration::from_secs(offset as u64)
+        } else {
+            now - Duration::from_secs(offset.unsigned_abs())
+        };
+        httpdate::fmt_http_date(when)
+    };
+    let near = wait(&at(300)).await;
+    assert!((299..=300).contains(&near), "{near}");
+    assert_eq!(wait("Wed, 21 Oct 2099 07:28:00 GMT").await, 3600);
+    assert_eq!(wait(&at(-300)).await, 60);
+    assert_eq!(wait("120").await, 120);
+    assert_eq!(wait("not a date").await, 60);
 }

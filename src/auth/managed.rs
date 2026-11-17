@@ -292,7 +292,8 @@ impl OAuthClientConfig {
         self
     }
     /// Failed-registration backoff: `initial` doubling per attempt, capped at `max`
-    /// (defaults 1 minute and 1 hour). `max` also caps a later `Retry-After`.
+    /// (defaults 1 minute and 1 hour). `max` also caps a later `Retry-After`
+    /// (delta-seconds or HTTP-date).
     pub fn registration_backoff(mut self, initial: Duration, max: Duration) -> Self {
         self.registration_backoff = (initial, max);
         self
@@ -555,7 +556,7 @@ impl PrepareOptions {
 }
 #[non_exhaustive]
 pub struct ManagedOAuth {
-    pub(super) config: OAuthClientConfig,
+    pub(super) config: Arc<OAuthClientConfig>,
     pub(super) network: Arc<dyn OAuthNetwork>,
     pub(super) policy: Arc<dyn OAuthPolicy>,
     store: Arc<dyn CredentialStore>,
@@ -799,11 +800,21 @@ impl ManagedOAuth {
             }
         }
         Ok(Self {
-            config,
+            config: Arc::new(config),
             network,
             policy,
             store,
         })
+    }
+    /// A second handle on the same configuration, network, policy and store,
+    /// for work that outlives the caller.
+    fn handle(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            network: self.network.clone(),
+            policy: self.policy.clone(),
+            store: self.store.clone(),
+        }
     }
     fn flow_id(&self) -> &'static str {
         match self.config.flow {
@@ -1447,9 +1458,21 @@ impl ManagedOAuth {
             drop(guard);
             if result.is_ok()
                 && choice.renew
-                && let Some(generation) = &choice.generation
+                && let Some(generation) = choice.generation.clone()
             {
-                self.renew(&binding.metadata, generation, budget).await;
+                // The token is committed: renewal never delays or fails this
+                // operation. It runs on its own commit budget, fire-and-forget.
+                let owner = self.handle();
+                let metadata = binding.metadata.clone();
+                let renewal = async move {
+                    let budget = commit_budget(owner.config.commit_timeout);
+                    owner.renew(&metadata, &generation, budget).await;
+                };
+                if tokio::runtime::Handle::try_current().is_ok() {
+                    tokio::spawn(renewal);
+                } else {
+                    renewal.await;
+                }
             }
             return self
                 .client_failure(result, &choice, &binding, budget)

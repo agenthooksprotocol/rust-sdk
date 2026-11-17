@@ -324,13 +324,17 @@ pub(super) fn accept_registration(
     })
 }
 
+/// `Retry-After` as delta-seconds or an HTTP-date (a past date is no wait).
 fn retry_after(response: &oauth2::HttpResponse) -> Option<u64> {
     let value = response.headers().get("retry-after")?.to_str().ok()?.trim();
-    value
-        .bytes()
-        .all(|b| b.is_ascii_digit())
-        .then(|| value.parse().ok())
-        .flatten()
+    if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) {
+        return value.parse().ok();
+    }
+    let at = httpdate::parse_http_date(value).ok()?;
+    Some(
+        at.duration_since(std::time::SystemTime::now())
+            .map_or(0, |wait| wait.as_secs()),
+    )
 }
 
 impl ManagedOAuth {
@@ -495,7 +499,8 @@ impl ManagedOAuth {
         Ok((guard, record))
     }
     /// Under the registration-key lock: drop records and markers for a changed
-    /// policy, reuse a usable record, else register when this path may.
+    /// policy (and any marker for a host `prepare`), reuse a usable record, else
+    /// register when this path may.
     async fn registered(
         &self,
         metadata: &TrustedMetadata,
@@ -517,7 +522,7 @@ impl ManagedOAuth {
         let unmark = record
             .marker
             .as_ref()
-            .is_some_and(|m| m.request_digest != digest);
+            .is_some_and(|m| mode == Mode::Prepare || m.request_digest != digest);
         if unmark {
             record.marker = None;
         }
