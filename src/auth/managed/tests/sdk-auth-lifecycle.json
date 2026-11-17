@@ -655,6 +655,10 @@
       "expect": "binding record lacking persisted authorization-server metadata fetches only the stored issuer's metadata, never protected-resource metadata; failure is discovery_failed"
     },
     {
+      "id": "stale-metadata-refetch-once",
+      "expect": "renewal failing on persisted metadata without an OAuth error refetches the stored issuer's metadata once, persists it if the issuer is unchanged and retries once; OAuth errors never refetch; changed issuer or failed refetch is discovery_failed"
+    },
+    {
       "id": "up-front-refresh-failure-no-anonymous-fallback",
       "expect": "known binding whose non-interactive refresh fails (transient, invalid_grant, missing cached metadata) fails the operation with that error, never sends anonymously"
     },

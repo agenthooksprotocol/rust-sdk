@@ -38,7 +38,7 @@ use std::{
     future::Future,
     sync::{
         Arc,
-        atomic::{AtomicU16, Ordering},
+        atomic::{AtomicBool, AtomicU16, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -445,6 +445,19 @@ impl TokenHttp {
         }
     }
 }
+impl TokenHttp {
+    /// No OAuth error response: a transport/TLS failure, redirect (moved
+    /// endpoint) or 404/410 suggests stale persisted metadata.
+    fn mark_stale(&self, error: &TokenError, stale: &AtomicBool) {
+        let status = self.status.load(Ordering::Relaxed);
+        if matches!(error, RequestTokenError::Request(_))
+            || (matches!(error, RequestTokenError::Parse(..))
+                && matches!(status, 0 | 300..=399 | 404 | 410))
+        {
+            stale.store(true, Ordering::Relaxed);
+        }
+    }
+}
 impl<'c> oauth2::AsyncHttpClient<'c> for TokenHttp {
     type Error = HookError;
     type Future = LocalFuture<'c, Result<oauth2::HttpResponse, HookError>>;
@@ -831,19 +844,74 @@ impl ManagedOAuth {
         if !subset(&required, &self.config.allowed_scopes) {
             return Err(attach(fail(AuthErrorCode::AccessDenied)));
         }
-        self.acquire_inner(target, challenge, &required, rejected_attempt, budget, mode)
-            .await
-            .map_err(attach)
+        let stale = AtomicBool::new(false);
+        let result = self
+            .acquire_inner(
+                &target,
+                challenge,
+                &required,
+                rejected_attempt,
+                budget,
+                mode,
+                &stale,
+            )
+            .await;
+        if result.is_err() && stale.load(Ordering::Relaxed) {
+            // A renewal failed on persisted metadata without an OAuth error: refetch the
+            // stored issuer's metadata once (never protected-resource) and retry once.
+            self.refetch_issuer(&target, budget).await?;
+            return self
+                .acquire_inner(
+                    &target,
+                    challenge,
+                    &required,
+                    rejected_attempt,
+                    budget,
+                    mode,
+                    &stale,
+                )
+                .await
+                .map_err(attach);
+        }
+        result.map_err(attach)
     }
+    async fn refetch_issuer(
+        &self,
+        target: &AuthTarget,
+        budget: OperationBudget,
+    ) -> Result<(), HookError> {
+        let discovery = || fail(AuthErrorCode::DiscoveryFailed);
+        let key = self.key(target);
+        let binding = self.load(&key, budget).await?.ok_or_else(discovery)?;
+        let metadata = discovery::issuer_metadata(
+            self,
+            target,
+            binding.metadata.resource.clone(),
+            binding.metadata.issuer.clone(),
+            budget,
+        )
+        .await
+        .map_err(|_| discovery())?;
+        let mut guard = budget.run(self.store.acquire(key, budget)).await?;
+        let mut current = budget.run(guard.load()).await?.ok_or_else(discovery)?;
+        if current.metadata.issuer != metadata.issuer {
+            return Err(discovery());
+        }
+        current.metadata = metadata;
+        self.persist(&mut *guard, &mut current, budget).await
+    }
+    #[allow(clippy::too_many_arguments)]
     async fn acquire_inner(
         &self,
-        target: AuthTarget,
+        target: &AuthTarget,
         challenge: Option<&Challenge>,
         required: &[String],
         rejected_attempt: Option<&str>,
         budget: OperationBudget,
         mode: Mode,
+        stale: &AtomicBool,
     ) -> Result<Option<Preparation>, HookError> {
+        let target = target.clone();
         let required = required.to_vec();
         let binding_key = self.key(&target);
         let saved = self.load(&binding_key, budget).await?;
@@ -953,7 +1021,7 @@ impl ManagedOAuth {
             && subset(&required, &self.effective(&token.scopes))
         {
             return self
-                .refresh(&mut *guard, &mut record, &required, budget)
+                .refresh(&mut *guard, &mut record, &required, budget, stale)
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -972,6 +1040,7 @@ impl ManagedOAuth {
                     &previous,
                     &required,
                     budget,
+                    stale,
                 )
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
@@ -1086,6 +1155,7 @@ impl ManagedOAuth {
         }
         Ok(client)
     }
+    #[allow(clippy::too_many_arguments)]
     async fn client_credentials(
         &self,
         guard: &mut dyn CredentialGuard,
@@ -1094,6 +1164,7 @@ impl ManagedOAuth {
         previous: &[String],
         required: &[String],
         budget: OperationBudget,
+        stale: &AtomicBool,
     ) -> Result<BearerCredential, HookError> {
         if !record
             .metadata
@@ -1119,7 +1190,10 @@ impl ManagedOAuth {
                 )
                 .await
             }
-            Err(error) => Err(token_error(error)),
+            Err(error) => {
+                http.mark_stale(&error, stale);
+                Err(token_error(error))
+            }
         }
     }
     async fn refresh(
@@ -1128,6 +1202,7 @@ impl ManagedOAuth {
         record: &mut SessionRecord,
         required: &[String],
         budget: OperationBudget,
+        stale: &AtomicBool,
     ) -> Result<BearerCredential, HookError> {
         let token = record
             .token
@@ -1187,6 +1262,7 @@ impl ManagedOAuth {
             }
             return Err(fail(AuthErrorCode::RefreshRejected));
         }
+        http.mark_stale(&error, stale);
         self.failed_refresh(guard, record, &error, budget).await?;
         Err(token_error(error))
     }

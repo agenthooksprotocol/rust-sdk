@@ -192,7 +192,7 @@ struct Network {
     replies: Mutex<VecDeque<(u16, Value)>>,
     issuer_patch: Mutex<Value>,
     offline: AtomicBool,
-    transport_failure: AtomicBool,
+    transport_failures: AtomicUsize,
     on_token: Mutex<Option<Hook>>,
 }
 impl Network {
@@ -254,8 +254,18 @@ impl OAuthNetwork for Network {
                     if let Some(hook) = self.on_token.lock().unwrap().take() {
                         hook();
                     }
-                    if self.transport_failure.swap(false, Ordering::SeqCst) {
+                    let failures = &self.transport_failures;
+                    if failures.load(Ordering::SeqCst) > 0 {
+                        failures.fetch_sub(1, Ordering::SeqCst);
                         return Err(fail(AuthErrorCode::ProviderFailed));
+                    }
+                    // A moved token endpoint answers 404 at its old address.
+                    let current = self.issuer_patch.lock().unwrap()["token_endpoint"].clone();
+                    if current.as_str().is_some_and(|uri| request.uri() != uri) {
+                        return Ok(http::Response::builder()
+                            .status(404)
+                            .body(b"gone".to_vec())
+                            .unwrap());
                     }
                     self.replies
                         .lock()
@@ -719,6 +729,7 @@ fn lifecycle_manifest_maps_to_native_tests() {
             known_binding_without_token_requires_login,
         ),
         ("step-up-keeps-previous-grant", step_up_keeps_previous_grant),
+        ("stale-metadata-refetch-once", stale_metadata_refetch_once),
     ];
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     let ids: Vec<&str> = fixture["lifecycle"]
@@ -867,7 +878,8 @@ async fn transient_refresh_failure() {
         !token.refresh_in_flight,
         "an observed response clears the marker"
     );
-    host.network.transport_failure.store(true, Ordering::SeqCst);
+    // A transport failure refetches issuer metadata once and retries once.
+    host.network.transport_failures.store(2, Ordering::SeqCst);
     assert_eq!(
         code(oauth.prepare(context(), budget()).await),
         AuthErrorCode::ProviderFailed
@@ -2055,4 +2067,66 @@ async fn step_up_keeps_previous_grant() {
     );
     let ready_files = files.credential(context()).await.unwrap().unwrap();
     assert_eq!(ready_files.token, "b");
+}
+
+#[tokio::test]
+async fn stale_metadata_refetch_once() {
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    let old = host.network.tokens()[0].uri.clone();
+    let prm = |host: &Host| {
+        let requests = host.network.metadata_requests();
+        requests
+            .iter()
+            .filter(|uri| uri.contains("oauth-protected-resource"))
+            .count()
+    };
+    let learned = prm(&host);
+    // The issuer moves its token endpoint; the persisted one now answers 404.
+    *host.network.issuer_patch.lock().unwrap() =
+        json!({"token_endpoint":"https://issuer.example/token2"});
+    host.store.expire();
+    let before = host.network.metadata_requests().len();
+    host.network
+        .reply(200, json!({"access_token":"moved","token_type":"Bearer"}));
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "moved"
+    );
+    let tokens: Vec<_> = host
+        .network
+        .tokens()
+        .iter()
+        .map(|t| t.uri.clone())
+        .collect();
+    assert_eq!(tokens[1..], [old, "https://issuer.example/token2".into()]);
+    assert_eq!(
+        host.network.metadata_requests()[before..],
+        ["https://issuer.example/.well-known/oauth-authorization-server"]
+    );
+    assert!(
+        host.store
+            .binding()
+            .unwrap()
+            .metadata
+            .token_endpoint
+            .ends_with("/token2")
+    );
+    // An OAuth error response never refetches.
+    host.store.expire();
+    let before = host.network.metadata_requests().len();
+    host.network.reply(401, json!({"error":"invalid_client"}));
+    assert_eq!(
+        code(oauth.credential(unbound()).await),
+        AuthErrorCode::CredentialUnavailable
+    );
+    assert_eq!(host.network.metadata_requests().len(), before);
+    // A changed issuer is discovery_failed, repaired by the host with prepare.
+    host.store.expire();
+    *host.network.issuer_patch.lock().unwrap() =
+        json!({"issuer":"https://other.example","token_endpoint":"https://issuer.example/token3"});
+    let error = oauth.credential(unbound()).await.err().unwrap();
+    assert_eq!(error.auth_code(), Some(AuthErrorCode::DiscoveryFailed));
+    assert_eq!(error.auth_recovery(), Some(AuthRecovery::Retry));
+    assert_eq!(prm(&host), learned, "never protected-resource discovery");
 }
