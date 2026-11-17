@@ -4,8 +4,8 @@ version = "0.11.0"
 edition = "2024"
 rust-version = "1.88"
 publish = ["crates-io"]
-# Test-only modules and vendored fixtures are compiled only under cfg(test).
-exclude = ["src/auth/managed/tests/"]
+# Tests and their fixtures are not part of the published crate.
+exclude = ["src/auth/managed/tests/", "tests/"]
 description = "Official non-normative Rust SDK for the Agent Hooks Protocol"
 license = "Apache-2.0"
 repository = "https://github.com/agenthooksprotocol/rust-sdk"

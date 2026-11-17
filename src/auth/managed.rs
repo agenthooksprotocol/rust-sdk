@@ -847,13 +847,46 @@ impl ManagedOAuth {
         let mut usable = None;
         if let Some(binding) = saved.as_ref().filter(|r| self.compatible(&target, r)) {
             match self.validate_saved(&target, binding, &required) {
-                Ok(scopes) if self.approve_metadata(&target, &binding.metadata).is_ok() => {
-                    usable = Some((binding.clone(), scopes));
+                Ok(scopes) => {
+                    let mut binding = binding.clone();
+                    // Absent persisted authorization-server metadata: fetch only the
+                    // stored issuer's metadata, never protected-resource metadata.
+                    if binding.metadata.token_endpoint.is_empty() && mode != Mode::Prepare {
+                        binding.metadata = discovery::issuer_metadata(
+                            self,
+                            &target,
+                            binding.metadata.resource.clone(),
+                            binding.metadata.issuer.clone(),
+                            budget,
+                        )
+                        .await?;
+                        let mut guard = budget
+                            .run(self.store.acquire(binding_key.clone(), budget))
+                            .await?;
+                        self.persist(&mut *guard, &mut binding, budget).await?;
+                    }
+                    if self.approve_metadata(&target, &binding.metadata).is_ok() {
+                        usable = Some((binding, scopes));
+                    }
                 }
-                Ok(_) => {}
                 Err(_) if mode == Mode::Lookup => return Ok(None),
                 Err(error) => return Err(error),
             }
+        }
+        // `prepare` serves a usable cached token, otherwise rebuilds binding metadata
+        // so stale persisted metadata always has a repair path.
+        if mode == Mode::Prepare
+            && let Some((binding, _)) = &usable
+        {
+            let key = self.grant_key(&target, &binding.metadata);
+            if let Some(credential) = self
+                .load(&key, budget)
+                .await?
+                .and_then(|record| self.cached(&record, &required))
+            {
+                return Ok(Some(Preparation::Ready(credential)));
+            }
+            usable = None;
         }
         let (binding, scopes) = match usable {
             Some(found) => found,
@@ -889,9 +922,6 @@ impl ManagedOAuth {
         let key = self.grant_key(&target, &binding.metadata);
         let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
         let loaded = budget.run(guard.load()).await?;
-        if mode == Mode::Lookup && loaded.is_none() {
-            return Ok(None);
-        }
         let mut record = loaded.unwrap_or_else(|| SessionRecord {
             version: String::new(),
             ..binding.clone()
@@ -923,16 +953,22 @@ impl ManagedOAuth {
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
-        if mode == Mode::Lookup {
-            // Never acquires a new grant; a cached-metadata refresh is the only network use.
-            if dirty {
-                self.persist(&mut *guard, &mut record, budget).await?;
-            }
-            return Ok(None);
-        }
+        // An acquisition for an existing grant keeps what was previously granted.
+        let previous = record
+            .token
+            .as_ref()
+            .map_or(Vec::new(), |t| t.scopes.clone());
+        let scopes = union(&previous, &scopes);
         if self.config.flow == OAuthFlow::ClientCredentials {
             return self
-                .client_credentials(&mut *guard, &mut record, &scopes, &required, budget)
+                .client_credentials(
+                    &mut *guard,
+                    &mut record,
+                    &scopes,
+                    &previous,
+                    &required,
+                    budget,
+                )
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -958,8 +994,12 @@ impl ManagedOAuth {
                 .await?;
             return Ok(Some(Preparation::InteractionRequired(pending)));
         }
-        // Supersede with the union so alternating callers converge on one login.
-        let scopes = self.effective(&union(&scopes, live.map_or(&[], |l| &l.scopes)));
+        // Supersede with growing scope and ceiling unions so alternating callers converge.
+        let ceiling = union(
+            &self.config.allowed_scopes,
+            live.map_or(&[], |l| l.ceiling.as_slice()),
+        );
+        let scopes = union(&scopes, live.map_or(&[], |l| l.scopes.as_slice()));
         let authorization = record
             .metadata
             .authorization_endpoint
@@ -983,7 +1023,7 @@ impl ManagedOAuth {
             id: random_id(),
             metadata: record.metadata.clone(),
             scopes,
-            ceiling: self.config.allowed_scopes.clone(),
+            ceiling,
             state: state.secret().clone(),
             verifier: verifier.secret().clone(),
             redirect_uri: self
@@ -1046,6 +1086,7 @@ impl ManagedOAuth {
         guard: &mut dyn CredentialGuard,
         record: &mut SessionRecord,
         scopes: &[String],
+        previous: &[String],
         required: &[String],
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
@@ -1067,9 +1108,9 @@ impl ManagedOAuth {
         let http = TokenHttp::new(self, budget);
         match request.request_async(&http).await {
             Ok(response) => {
-                let ceiling = self.config.allowed_scopes.clone();
+                let bound = union(previous, &self.config.allowed_scopes);
                 self.save_token(
-                    guard, record, response, scopes, &ceiling, None, required, budget,
+                    guard, record, response, scopes, &bound, None, required, budget,
                 )
                 .await
             }
@@ -1364,6 +1405,11 @@ impl ManagedOAuth {
             .add_extra_param("resource", &saved.metadata.resource)
             .request_async(&http)
             .await;
+        let previous = record
+            .token
+            .as_ref()
+            .map_or(Vec::new(), |t| t.scopes.clone());
+        let bound = union(&saved.ceiling, &previous);
         match response {
             Ok(response) => {
                 self.save_token(
@@ -1371,7 +1417,7 @@ impl ManagedOAuth {
                     &mut record,
                     response,
                     &saved.scopes,
-                    &saved.ceiling,
+                    &bound,
                     None,
                     target.scopes(),
                     budget,

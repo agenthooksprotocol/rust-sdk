@@ -311,6 +311,18 @@ pub(super) async fn discover(
     }
     let decision = owner.select(target, &metadata, required)?;
     let (issuer, scopes) = (decision.issuer, decision.scopes);
+    let metadata = issuer_metadata(owner, target, metadata.resource, issuer, budget).await?;
+    Ok((metadata, hint, scopes))
+}
+
+/// Fetch, validate and approve the authorization-server metadata of a trusted issuer.
+pub(super) async fn issuer_metadata(
+    owner: &ManagedOAuth,
+    target: &AuthTarget,
+    resource: String,
+    issuer: String,
+    budget: OperationBudget,
+) -> Result<TrustedMetadata, HookError> {
     let issuer_url = https(&issuer, true)?;
     let (as_metadata, _): (IssuerMetadata, _) = fetch(
         owner,
@@ -360,7 +372,7 @@ pub(super) async fn discover(
         _ => return Err(failed()),
     }
     let metadata = TrustedMetadata {
-        resource: metadata.resource,
+        resource,
         issuer,
         authorization_endpoint: as_metadata.authorization_endpoint,
         token_endpoint: as_metadata.token_endpoint,
@@ -371,7 +383,7 @@ pub(super) async fn discover(
             .authorization_response_iss_parameter_supported,
     };
     owner.approve_metadata(target, &metadata)?;
-    Ok((metadata, hint, scopes))
+    Ok(metadata)
 }
 
 #[cfg(test)]

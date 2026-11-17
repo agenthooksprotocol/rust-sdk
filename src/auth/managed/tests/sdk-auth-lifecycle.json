@@ -576,6 +576,45 @@
         "read"
       ],
       "refresh_preserved": true
+    },
+    {
+      "id": "step-up-keeps-previous-grant",
+      "exchange": "reacquire",
+      "requested": [
+        "files",
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "files",
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [
+        "write"
+      ],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "files read write openid"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "files",
+        "read",
+        "write"
+      ],
+      "effective": [
+        "read",
+        "write"
+      ],
+      "refresh_preserved": true
     }
   ],
   "lifecycle": [
@@ -592,16 +631,32 @@
       "expect": "401/insufficient_scope on a notification or upload is not replayed but runs challenge handling (discovery, client-credentials acquisition, no login creation); the next operation sends a credential"
     },
     {
+      "id": "challenge-renews-rejected-unexpired-token",
+      "expect": "401 for a stored token with unknown or future expiry marks it stale and renews it, so the next operation does not resend the rejected token"
+    },
+    {
       "id": "unbound-lookup-anonymous-fallback",
-      "expect": "up-front lookup never creates a pending login or performs discovery; only a store miss or host policy refusal sends an anonymous attempt"
+      "expect": "up-front lookup never creates a pending login or performs protected-resource discovery; only a store miss or host policy refusal sends an anonymous attempt"
     },
     {
       "id": "unbound-lookup-refreshes-expired-token",
       "expect": "up-front lookup refreshes an expired stored token non-interactively using cached authorization-server metadata"
     },
     {
+      "id": "up-front-client-credentials-reacquire",
+      "expect": "expired client-credentials token without refresh token is re-acquired non-interactively by the up-front lookup using persisted metadata"
+    },
+    {
+      "id": "up-front-lookup-issuer-metadata-only",
+      "expect": "binding record lacking persisted authorization-server metadata fetches only the stored issuer's metadata, never protected-resource metadata; failure is discovery_failed"
+    },
+    {
       "id": "up-front-refresh-failure-no-anonymous-fallback",
       "expect": "known binding whose non-interactive refresh fails (transient, invalid_grant, missing cached metadata) fails the operation with that error, never sends anonymously"
+    },
+    {
+      "id": "known-binding-without-token-requires-login",
+      "expect": "known PKCE binding whose tokens were dropped fails interaction_required at lookup; a later prepare restores it"
     },
     {
       "id": "refresh-unknown-expiry-rotation",
@@ -649,7 +704,7 @@
     },
     {
       "id": "pending-login-supersede-scope-union",
-      "expect": "superseding login requests the union of old pending, new requested and new required scopes, intersected with the new ceiling; alternating callers converge without looping"
+      "expect": "superseding login requests old pending scopes plus the new caller's ceiling-filtered requested+required scopes and stores the union of both ceilings; alternating callers with different ceilings converge"
     },
     {
       "id": "pending-login-end-states",
@@ -674,6 +729,10 @@
     {
       "id": "step-up-requirement-operation-scoped",
       "expect": "a challenge requirement is not persisted on the binding; later operations use the stored grant, including scopes added by step-up consent"
+    },
+    {
+      "id": "step-up-keeps-previous-grant",
+      "expect": "step-up or re-acquisition requests previously granted plus new ceiling-filtered scopes and records response scopes within previously granted plus acquisition ceiling; earlier scopes are not lost"
     },
     {
       "id": "step-up-required-scopes-round-trip",

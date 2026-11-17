@@ -485,7 +485,18 @@ async fn canonical_token_vectors() {
             pending: None,
         };
         let refresh = vector["exchange"] == "refresh";
-        let requested = if refresh {
+        let previous = if vector["previous_granted"].is_array() {
+            strings(&vector["previous_granted"])
+        } else {
+            Vec::new()
+        };
+        // Initial and re-acquisition responses are bounded by previous ∪ ceiling.
+        let bound = if refresh {
+            previous.clone()
+        } else {
+            union(&previous, &oauth.config.allowed_scopes)
+        };
+        if !previous.is_empty() {
             record.token = Some(SavedToken {
                 access_token: "old".into(),
                 refresh_token: Some("old-refresh".into()),
@@ -493,9 +504,11 @@ async fn canonical_token_vectors() {
                 scopes: strings(&vector["previous_granted"]),
                 generation: "old".into(),
                 access_rejected: false,
-                refresh_in_flight: true,
+                refresh_in_flight: refresh,
             });
-            strings(&vector["previous_granted"])
+        }
+        let requested = if refresh {
+            previous.clone()
         } else {
             strings(&vector["requested"])
         };
@@ -514,11 +527,7 @@ async fn canonical_token_vectors() {
                         &mut record,
                         response,
                         &requested,
-                        if refresh {
-                            &requested
-                        } else {
-                            &oauth.config.allowed_scopes
-                        },
+                        &bound,
                         refresh.then(|| "old-refresh".into()),
                         &required,
                         budget(),
@@ -688,6 +697,23 @@ fn lifecycle_manifest_maps_to_native_tests() {
             refresh_broadening_scope_ignored,
         ),
         ("extra-granted-scope-ignored", extra_granted_scope_ignored),
+        (
+            "challenge-renews-rejected-unexpired-token",
+            challenge_renews_rejected_unexpired_token,
+        ),
+        (
+            "up-front-client-credentials-reacquire",
+            up_front_client_credentials_reacquire,
+        ),
+        (
+            "up-front-lookup-issuer-metadata-only",
+            up_front_lookup_issuer_metadata_only,
+        ),
+        (
+            "known-binding-without-token-requires-login",
+            known_binding_without_token_requires_login,
+        ),
+        ("step-up-keeps-previous-grant", step_up_keeps_previous_grant),
     ];
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     let ids: Vec<&str> = fixture["lifecycle"]
@@ -696,7 +722,10 @@ fn lifecycle_manifest_maps_to_native_tests() {
         .iter()
         .map(|entry| entry["id"].as_str().unwrap())
         .collect();
-    let mapped: Vec<&str> = mapping.iter().map(|(id, _)| *id).collect();
+    let mut ids = ids;
+    let mut mapped: Vec<&str> = mapping.iter().map(|(id, _)| *id).collect();
+    ids.sort();
+    mapped.sort();
     assert_eq!(ids, mapped);
 }
 
@@ -731,19 +760,6 @@ async fn unbound_lookup_anonymous_fallback() {
     host.policy.deny.store(true, Ordering::SeqCst);
     assert!(oauth.credential(unbound()).await.unwrap().is_none());
     host.policy.deny.store(false, Ordering::SeqCst);
-    // Even a usable-less record never creates a login from the lookup path.
-    host.store.expire();
-    host.store
-        .records
-        .lock()
-        .unwrap()
-        .values_mut()
-        .for_each(|r| {
-            if let Some(token) = r.token.as_mut() {
-                token.refresh_token = None;
-            }
-        });
-    assert!(oauth.credential(unbound()).await.unwrap().is_none());
     assert!(host.store.pending().is_empty());
     assert_eq!(
         host.network.metadata_requests().len(),
@@ -1183,12 +1199,13 @@ async fn pending_login_supersede() {
 #[tokio::test]
 async fn pending_login_supersede_scope_union() {
     let host = Host::new();
-    let reader = host.pkce(|c| c);
+    let reader = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["read"])));
+    let writer = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["read", "write"])));
     let first = login(reader.prepare(context(), budget()).await.unwrap());
     assert_eq!(query(first.authorization_url(), "scope").unwrap(), "read");
     let write = scopes(&["write"]);
     let union = login(
-        reader
+        writer
             .prepare_with_required(context(), &write, budget())
             .await
             .unwrap(),
@@ -1198,15 +1215,30 @@ async fn pending_login_supersede_scope_union() {
         query(union.authorization_url(), "scope").unwrap(),
         "read write"
     );
-    // Alternating callers converge on the union instead of looping.
+    assert_eq!(host.store.pending()[0].ceiling, scopes(&["read", "write"]));
+    // Alternating callers with different ceilings converge instead of looping.
     for _ in 0..2 {
         assert_eq!(
             login(reader.prepare(context(), budget()).await.unwrap()).id,
             union.id
         );
-        let again = reader.prepare_with_required(context(), &write, budget());
+        let again = writer.prepare_with_required(context(), &write, budget());
         assert_eq!(login(again.await.unwrap()).id, union.id);
     }
+    // Completion is bounded by the stored union ceiling; each caller filters at use.
+    host.network.reply(
+        200,
+        json!({"access_token":"t","token_type":"Bearer","scope":"read write"}),
+    );
+    reader
+        .complete(context(), callback(&union), budget())
+        .await
+        .unwrap();
+    assert_eq!(host.store.token().scopes, scopes(&["read", "write"]));
+    assert_eq!(
+        reader.effective(&host.store.token().scopes),
+        scopes(&["read"])
+    );
 }
 
 #[tokio::test]
@@ -1410,8 +1442,8 @@ async fn step_up_requirement_operation_scoped() {
     oauth.credential(cc_context()).await.unwrap().unwrap();
     assert_eq!(
         host.network.last_form()["scope"],
-        "read",
-        "later operations request no step-up"
+        "read write",
+        "re-acquisition keeps the stored grant, not a binding requirement"
     );
 }
 
@@ -1717,7 +1749,7 @@ async fn extra_granted_scope_ignored() {
 }
 
 #[tokio::test]
-async fn rejected_generation_is_retired_but_stale_401_is_ignored() {
+async fn challenge_renews_rejected_unexpired_token() {
     let host = Host::new();
     let oauth = host.pkce(|c| c);
     let first = host.seed(&oauth, context()).await;
@@ -1820,4 +1852,190 @@ async fn prepare_required_outside_ceiling_denied() {
     assert_eq!(error.required_scopes(), ["admin"], "diagnostics only");
     assert!(host.network.seen.lock().unwrap().is_empty());
     assert!(host.store.pending().is_empty());
+}
+
+#[tokio::test]
+async fn challenge_renews_rejected_unexpired_token_without_expiry() {
+    // Unknown expiry: a 401 still marks the token stale, and client credentials re-acquire.
+    let host = Host::new();
+    let oauth = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    host.network
+        .reply(200, json!({"access_token":"revoked","token_type":"Bearer"}));
+    let revoked = oauth.credential(cc_context()).await.unwrap().unwrap();
+    host.network
+        .reply(200, json!({"access_token":"renewed","token_type":"Bearer"}));
+    oauth
+        .challenge(
+            cc_context(),
+            challenge(401, "Bearer", Some(&revoked.attempt_id)),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        oauth.credential(cc_context()).await.unwrap().unwrap().token,
+        "renewed"
+    );
+}
+
+/// Client-credentials binding learned for an unbound endpoint.
+async fn learned_cc(host: &Host) -> ManagedOAuth {
+    let oauth = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    host.network.reply(
+        200,
+        json!({"access_token":"first","token_type":"Bearer","expires_in":60}),
+    );
+    oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .unwrap();
+    oauth
+}
+
+#[tokio::test]
+async fn up_front_client_credentials_reacquire() {
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    host.store.expire();
+    host.network.offline.store(true, Ordering::SeqCst);
+    host.network
+        .reply(200, json!({"access_token":"again","token_type":"Bearer"}));
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "again"
+    );
+    assert_eq!(host.network.last_form()["grant_type"], "client_credentials");
+    assert!(host.store.pending().is_empty());
+}
+
+#[tokio::test]
+async fn up_front_lookup_issuer_metadata_only() {
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    let strip = || {
+        for (key, record) in host.store.records.lock().unwrap().iter_mut() {
+            if key.starts_with("ahp.oauth.binding:") {
+                record.metadata = TrustedMetadata::new(
+                    record.metadata.resource.clone(),
+                    record.metadata.issuer.clone(),
+                    String::new(),
+                );
+            }
+        }
+    };
+    strip();
+    host.store.expire();
+    let before = host.network.metadata_requests().len();
+    host.network
+        .reply(200, json!({"access_token":"rebuilt","token_type":"Bearer"}));
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "rebuilt"
+    );
+    let fetched = host.network.metadata_requests()[before..].to_vec();
+    assert_eq!(
+        fetched,
+        ["https://issuer.example/.well-known/oauth-authorization-server"]
+    );
+    assert!(
+        !host
+            .store
+            .binding()
+            .unwrap()
+            .metadata
+            .token_endpoint
+            .is_empty()
+    );
+    // A failed issuer fetch is discovery_failed, not an anonymous attempt.
+    strip();
+    host.store.expire();
+    *host.network.issuer_patch.lock().unwrap() = json!({"issuer":"https://other.example"});
+    assert_eq!(
+        code(oauth.credential(unbound()).await),
+        AuthErrorCode::DiscoveryFailed
+    );
+    let after = host.network.metadata_requests();
+    assert!(
+        after[before..]
+            .iter()
+            .all(|uri| !uri.contains("oauth-protected-resource"))
+    );
+}
+
+#[tokio::test]
+async fn known_binding_without_token_requires_login() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    host.seed(&oauth, context()).await;
+    host.store
+        .records
+        .lock()
+        .unwrap()
+        .values_mut()
+        .for_each(|r| r.token = None);
+    assert_eq!(
+        code(oauth.credential(unbound()).await),
+        AuthErrorCode::InteractionRequired
+    );
+    assert!(host.store.pending().is_empty());
+    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    host.network.reply(
+        200,
+        json!({"access_token":"restored","token_type":"Bearer"}),
+    );
+    oauth
+        .complete(unbound(), callback(&pending), budget())
+        .await
+        .unwrap();
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "restored"
+    );
+}
+
+#[tokio::test]
+async fn step_up_keeps_previous_grant() {
+    let host = Host::new();
+    *host.policy.select.lock().unwrap() = scopes(&["files", "read"]);
+    let files = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["files", "read"])));
+    let pending = login(files.prepare(context(), budget()).await.unwrap());
+    host.network.reply(
+        200,
+        json!({"access_token":"a","token_type":"Bearer","scope":"files read"}),
+    );
+    files
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    // A caller with a different ceiling steps up; earlier scopes are requested and kept.
+    *host.policy.select.lock().unwrap() = scopes(&["read"]);
+    let writer = host.pkce(|c| c);
+    let write = scopes(&["write"]);
+    let pending = login(
+        writer
+            .prepare_with_required(context(), &write, budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        query(pending.authorization_url(), "scope").unwrap(),
+        "files read write"
+    );
+    host.network.reply(
+        200,
+        json!({"access_token":"b","token_type":"Bearer","scope":"files read write openid"}),
+    );
+    writer
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    assert_eq!(
+        host.store.token().scopes,
+        scopes(&["files", "read", "write"])
+    );
+    assert_eq!(
+        writer.effective(&host.store.token().scopes),
+        scopes(&["read", "write"])
+    );
+    let ready_files = files.credential(context()).await.unwrap().unwrap();
+    assert_eq!(ready_files.token, "b");
 }
