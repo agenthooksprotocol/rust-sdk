@@ -115,11 +115,27 @@ mod runtime {
             .unwrap()
     }
     fn configured(endpoint: String, missing_upload_token: bool) -> (Hooks, Arc<Recorded>) {
+        configured_with_provider(endpoint, missing_upload_token, false)
+    }
+    fn configured_with_provider(
+        endpoint: String,
+        missing_upload_token: bool,
+        composed: bool,
+    ) -> (Hooks, Arc<Recorded>) {
         let backend = Arc::new(Recorded::default());
         let mut options = options().with_backend("org.example.review", backend.clone());
         options.backend.allow_loopback_http = true;
         if missing_upload_token {
             options.backend.credentials.remove("upload");
+        }
+        if composed {
+            options.backend.auth_provider = Some(Arc::new(
+                agenthooksprotocol::auth::AuthProviders::builder()
+                    .bearer(agenthooksprotocol::auth::BearerAuth::from_credentials(
+                        options.backend.credentials.clone(),
+                    ))
+                    .build(),
+            ));
         }
         let mut registration = registration();
         registration["hooks"][0]["subscriptions"][0]["upload"]["endpoint"] = json!(endpoint);
@@ -127,17 +143,21 @@ mod runtime {
     }
     #[tokio::test]
     async fn actual_upload_uses_only_upload_token_ref() {
-        actual_upload_headers(None, false).await;
+        actual_upload_headers(None, false, false).await;
+    }
+    #[tokio::test]
+    async fn composed_provider_keeps_upload_credentials_independent() {
+        actual_upload_headers(None, false, true).await;
     }
     #[tokio::test]
     async fn actual_upload_registration_headers_override_auth_and_defaults() {
         for value in [json!("Bearer abc123"), json!({"valueRef":"explicit"})] {
-            actual_upload_headers(Some(value), false).await;
+            actual_upload_headers(Some(value), false, false).await;
         }
     }
     #[tokio::test]
     async fn configured_upload_authorization_suppresses_oauth_challenges() {
-        actual_upload_headers(Some(json!("Bearer abc123")), true).await;
+        actual_upload_headers(Some(json!("Bearer abc123")), true, false).await;
     }
     struct NoUploadOAuth;
     impl agenthooksprotocol::adapters::registered::AuthProvider for NoUploadOAuth {
@@ -158,7 +178,7 @@ mod runtime {
             panic!("configured Authorization must suppress upload challenge")
         }
     }
-    async fn actual_upload_headers(explicit: Option<Value>, reject: bool) {
+    async fn actual_upload_headers(explicit: Option<Value>, reject: bool, composed: bool) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}/content", listener.local_addr().unwrap());
         let configured_headers = explicit.is_some();
@@ -176,7 +196,7 @@ mod runtime {
             registration["hooks"][0]["subscriptions"][0]["upload"]["auth"] = json!({"type":"oauth","flow":"client_credentials","resource":"https://resource.example", "issuer":"https://issuer.example", "clientId":"client", "clientSecretRef":"unused"});
             (Hooks::new(registration, opts).unwrap(), backend)
         } else {
-            configured(endpoint, false)
+            configured_with_provider(endpoint, false, composed)
         };
         let server = async {
             let (socket, _) = listener.accept().await.unwrap();
@@ -379,8 +399,9 @@ mod provider_auth {
         assert_eq!(contexts[0].backend_id, "org.example.auth");
         assert_eq!(contexts[0].destination, endpoint);
         assert_eq!(contexts[0].purpose, AuthPurpose::Event);
+        // One challenge per operation: a replayed rejection fails without another.
         let challenges = provider.challenges.lock().unwrap();
-        assert_eq!(challenges.len(), expected_calls);
+        assert_eq!(challenges.len(), 1);
         assert_eq!(challenges[0].attempt_id.as_deref(), Some("generation-7"));
         assert_eq!(challenges[0].status, 401);
         assert!(challenges[0].headers["www-authenticate"].contains("invalid_token"));
@@ -395,8 +416,8 @@ mod provider_auth {
         exercise(json!({"jsonrpc":"2.0","id":"caps","method":"hooks/capabilities","params":{"protocolVersion":"draft"}}), 2, None).await;
     }
     #[tokio::test]
-    async fn intercept_challenge_does_not_authorize_replay() {
-        exercise(json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","harness":{"name":"test","version":"1"},"source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}}), 1,
+    async fn intercept_challenge_replays_once() {
+        exercise(json!({"jsonrpc":"2.0","id":"evt_demo","method":"hooks/intercept","params":{"protocolVersion":"draft","event":{"id":"evt_demo","harness":{"name":"test","version":"1"},"source":"urn:example:demo","type":"tool.before","time":"2026-08-24T08:51:14Z","session":{"id":"sess_demo","cwd":"/repo","workspaceRoots":["/repo"]},"tool":{"name":"Bash","kind":"shell","input":{"command":"echo hello"},"origin":"native"},"call":{"id":"call_demo"},"path":"example"},"capabilities":{"effects":["deny"]}}}), 2,
             Some(json!({"type":"bearer","tokenRef":"host-reference"}))).await;
     }
     #[tokio::test]

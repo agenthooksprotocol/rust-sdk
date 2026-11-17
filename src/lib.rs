@@ -19,6 +19,8 @@ pub mod compaction;
 
 /// Explicit opt-in runtime integrations and bounded stdio framing.
 pub mod adapters;
+/// Explicit binding-based authentication composition and safe recovery.
+pub mod auth;
 /// Scoped immutable raw-byte upload binding.
 pub mod content;
 /// Validated protocol callbacks, shared by all server adapters.

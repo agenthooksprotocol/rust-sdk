@@ -4,6 +4,8 @@ version = "0.11.0"
 edition = "2024"
 rust-version = "1.88"
 publish = ["crates-io"]
+# Tests and their fixtures are not part of the published crate.
+exclude = ["src/auth/managed/tests/", "tests/"]
 description = "Official non-normative Rust SDK for the Agent Hooks Protocol"
 license = "Apache-2.0"
 repository = "https://github.com/agenthooksprotocol/rust-sdk"
@@ -12,15 +14,18 @@ repository = "https://github.com/agenthooksprotocol/rust-sdk"
 default = []
 # Single-declaration typed MCP elicitation forms.
 typed-form = ["dep:schemars"]
-reqwest = ["dep:reqwest", "dep:tokio"]
+# Host-driven OAuth; no bundled HTTP client, browser, listener or store.
+managed-oauth = ["dep:oauth2", "dep:tokio", "tokio/time", "tokio/rt", "tokio/sync"]
+reqwest = ["dep:reqwest", "dep:tokio", "tokio/time"]
 axum = ["dep:axum"]
-tokio-process = ["dep:tokio"]
+tokio-process = ["dep:tokio", "tokio/process", "tokio/time", "tokio/io-util", "tokio/sync", "tokio/rt"]
 # Existing executable interoperability harnesses, not the core SDK.
 interop = ["reqwest", "reqwest/blocking", "reqwest/form", "dep:tiny_http", "dep:jsonwebtoken", "dep:rustls", "dep:rustls-pemfile", "dep:base64", "dep:futures"]
 
 [dependencies]
 http = "1"
-tokio = { version = "1", features = ["process", "time", "io-util", "sync", "rt"], optional = true }
+oauth2 = { version = "5", optional = true, default-features = false, features = ["timing-resistant-secret-traits"] }
+tokio = { version = "1", default-features = false, optional = true }
 sha2 = "0.11"
 time = { version = "0.3", features = ["formatting"] }
 url = "2"
@@ -44,7 +49,7 @@ required-features = ["reqwest", "axum"]
 
 [dev-dependencies]
 futures = "0.3"
-tokio = { version = "1", features = ["macros", "rt", "net"] }
+tokio = { version = "1", features = ["macros", "rt", "net", "sync", "time", "io-util"] }
 
 [[bin]]
 name = "lifecycle_server"
@@ -96,3 +101,7 @@ required-features = ["reqwest", "tokio-process"]
 [[example]]
 name = "form_answers"
 required-features = ["typed-form"]
+
+[[example]]
+name = "managed_oauth"
+required-features = ["managed-oauth"]

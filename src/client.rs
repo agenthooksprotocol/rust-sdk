@@ -19,6 +19,10 @@ pub struct HookError {
     message: String,
     code: Option<crate::generated::DeliveryDiagnosticCode>,
     accepted_settlement: Option<Value>,
+    auth_code: Option<crate::auth::AuthErrorCode>,
+    required_scopes: Option<Box<[String]>>,
+    unsent: bool,
+    transient: bool,
 }
 impl HookError {
     /// Construct an unclassified transport failure.
@@ -27,7 +31,66 @@ impl HookError {
             message: message.into(),
             code: None,
             accepted_settlement: None,
+            auth_code: None,
+            required_scopes: None,
+            unsent: false,
+            transient: false,
         }
+    }
+    /// Construct a redacted authentication failure with no provider message or cause.
+    pub fn authentication(code: crate::auth::AuthErrorCode) -> Self {
+        let mut error = Self::new(code.as_str())
+            .classified(crate::generated::DeliveryDiagnosticCode::Transport);
+        error.auth_code = Some(code);
+        error
+    }
+    pub fn auth_code(&self) -> Option<crate::auth::AuthErrorCode> {
+        self.auth_code
+    }
+    pub fn auth_recovery(&self) -> Option<crate::auth::AuthRecovery> {
+        self.auth_code.map(crate::auth::AuthErrorCode::recovery)
+    }
+    /// Mark a failure that provably happened before the request reached its
+    /// destination: DNS resolution, TCP connect or TLS handshake failure.
+    pub fn request_not_sent(mut self) -> Self {
+        self.unsent = true;
+        self
+    }
+    pub fn is_request_not_sent(&self) -> bool {
+        self.unsent
+    }
+    /// A transport failure or 5xx: retrying may succeed without any repair.
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn transient_if(mut self, transient: bool) -> Self {
+        self.transient = transient;
+        self
+    }
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn is_transient(&self) -> bool {
+        self.transient
+    }
+    pub(crate) fn request_not_sent_if(mut self, unsent: bool) -> Self {
+        self.unsent = unsent;
+        self
+    }
+    /// Validated scopes an operation required, carried only by `interaction_required`
+    /// and `access_denied`. Pass them back to an explicit host `prepare` for step-up.
+    pub fn required_scopes(&self) -> &[String] {
+        self.required_scopes.as_deref().unwrap_or(&[])
+    }
+    /// Attach required scopes to `interaction_required`/`access_denied`; other codes
+    /// and anything other than RFC 6749 scope tokens are dropped.
+    pub fn with_required_scopes(mut self, scopes: &[String]) -> Self {
+        use crate::auth::AuthErrorCode::{AccessDenied, InteractionRequired};
+        let scopes: Vec<_> = scopes
+            .iter()
+            .filter(|scope| crate::auth::valid_scope(scope))
+            .cloned()
+            .collect();
+        self.required_scopes = (matches!(self.auth_code, Some(AccessDenied | InteractionRequired))
+            && !scopes.is_empty())
+        .then(|| scopes.into_boxed_slice());
+        self
     }
     /// Raw canonical evidence retained when the consumer cannot decode an accepted settlement.
     /// This is not execution authorization and does not roll back accepted protocol effects.
