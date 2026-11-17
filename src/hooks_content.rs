@@ -278,6 +278,31 @@ struct ChallengeHttp<'a, H> {
     context: &'a AuthContext,
     attempt_id: Option<&'a str>,
     headers: &'a BTreeMap<String, String>,
+    /// The provider's typed auth error, which `TransportError` cannot carry.
+    failure: std::sync::Mutex<Option<HookError>>,
+}
+#[cfg(any(feature = "reqwest", test))]
+impl<'a, H> ChallengeHttp<'a, H> {
+    fn new(
+        inner: &'a H,
+        provider: Option<&'a dyn crate::adapters::registered::AuthProvider>,
+        context: &'a AuthContext,
+        attempt_id: Option<&'a str>,
+        headers: &'a BTreeMap<String, String>,
+    ) -> Self {
+        Self {
+            inner,
+            provider,
+            context,
+            attempt_id,
+            headers,
+            failure: std::sync::Mutex::new(None),
+        }
+    }
+    /// Prefer the provider's classified error over the uploader's transport error.
+    fn error(&self, fallback: HookError) -> HookError {
+        self.failure.lock().unwrap().take().unwrap_or(fallback)
+    }
 }
 #[cfg(any(feature = "reqwest", test))]
 impl<H: crate::transport::Http> crate::transport::Http for ChallengeHttp<'_, H> {
@@ -298,7 +323,16 @@ impl<H: crate::transport::Http> crate::transport::Http for ChallengeHttp<'_, H> 
                 .retain(|name, _| !self.headers.contains_key(&name.to_ascii_lowercase()));
             request.headers.extend(self.headers.clone());
             let response = self.inner.send(request).await?;
-            if response.status == 401
+            let challenge = response
+                .headers
+                .iter()
+                .filter(|(key, _)| key.eq_ignore_ascii_case("www-authenticate"))
+                .map(|(_, value)| value.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            if (response.status == 401
+                || (response.status == 403
+                    && crate::auth::challenge::insufficient_scope(&challenge)))
                 && let Some(provider) = self.provider
             {
                 remaining_upload_budget(self.context.deadline)
@@ -325,7 +359,11 @@ impl<H: crate::transport::Http> crate::transport::Http for ChallengeHttp<'_, H> 
                         })
                 })
                 .await
-                .map_err(|e| TransportError(e.to_string()))?;
+                .map_err(|e| {
+                    let message = TransportError(e.to_string());
+                    *self.failure.lock().unwrap() = Some(e);
+                    message
+                })?;
             }
             // Upload allocation is effectful: authentication recovery does not grant replay.
             Ok(response)
@@ -635,13 +673,13 @@ pub(crate) async fn preupload(
                         limiter,
                         deadline,
                     };
-                    let http = ChallengeHttp {
-                        inner: &limited,
-                        provider: options.auth_provider.as_deref().filter(|_| !explicit_auth),
-                        headers,
-                        context: auth_context,
+                    let http = ChallengeHttp::new(
+                        &limited,
+                        options.auth_provider.as_deref().filter(|_| !explicit_auth),
+                        auth_context,
                         attempt_id,
-                    };
+                        headers,
+                    );
                     let uploader = crate::content::Uploader::new(
                         &http,
                         endpoint,
@@ -651,7 +689,10 @@ pub(crate) async fn preupload(
                     )
                     .map_err(error)?;
                     let receipt = await_upload_phase(deadline, async {
-                        uploader.upload(&bytes).await.map_err(error)
+                        uploader
+                            .upload(&bytes)
+                            .await
+                            .map_err(|e| http.error(error(e)))
                     })
                     .await?;
                     remaining_upload_budget(deadline)?;
@@ -873,13 +914,14 @@ async fn project_inner(
                 remaining,
             )
             .map_err(error)?;
-            let http = ChallengeHttp {
-                inner: &transport,
-                provider: options.auth_provider.as_deref(),
-                headers: &BTreeMap::new(),
-                context: &auth_context,
-                attempt_id: attempt_id.as_deref(),
-            };
+            let no_headers = BTreeMap::new();
+            let http = ChallengeHttp::new(
+                &transport,
+                options.auth_provider.as_deref(),
+                &auth_context,
+                attempt_id.as_deref(),
+                &no_headers,
+            );
             let uploader = crate::content::Uploader::new(
                 &http,
                 endpoint,
@@ -890,7 +932,7 @@ async fn project_inner(
             .map_err(error)?;
             let result = uploader.upload(&bytes).await;
             remaining_upload_budget(deadline)?;
-            let reference = result.map_err(error)?;
+            let reference = result.map_err(|e| http.error(error(e)))?;
             let reference = serde_json::to_value(reference.reference()).map_err(error)?;
             let item = event
                 .pointer_mut(&path)
@@ -1059,6 +1101,7 @@ mod tests {
         challenges: std::sync::Mutex<Vec<crate::adapters::registered::AuthChallenge>>,
         missing: bool,
         fail: bool,
+        step_up: bool,
     }
     impl crate::adapters::registered::AuthProvider for Provider {
         fn credential(
@@ -1091,9 +1134,65 @@ mod tests {
             Box::pin(async move {
                 self.contexts.lock().unwrap().push(context);
                 self.challenges.lock().unwrap().push(challenge);
+                if self.step_up {
+                    return Err(HookError::authentication(
+                        crate::auth::AuthErrorCode::InteractionRequired,
+                    )
+                    .with_required_scopes(&["write".into()]));
+                }
                 Ok(())
             })
         }
+    }
+
+    #[tokio::test]
+    async fn upload_insufficient_scope_runs_challenge_and_keeps_typed_error() {
+        struct Forbidden;
+        impl crate::transport::Http for Forbidden {
+            fn send(
+                &self,
+                _: crate::transport::Request,
+            ) -> crate::client::LocalFuture<
+                '_,
+                Result<crate::transport::Response, crate::transport::TransportError>,
+            > {
+                Box::pin(async {
+                    Ok(crate::transport::Response {
+                        status: 403,
+                        headers: BTreeMap::from([(
+                            "WWW-Authenticate".into(),
+                            r#"Bearer error="insufficient_scope", scope="write""#.into(),
+                        )]),
+                        body: vec![],
+                    })
+                })
+            }
+        }
+        let provider = Provider {
+            step_up: true,
+            ..Default::default()
+        };
+        let context = AuthContext {
+            backend_id: "backend".into(),
+            authentication: None,
+            destination: "https://upload.example.test/content".into(),
+            purpose: AuthPurpose::Upload,
+            deadline: Instant::now() + Duration::from_secs(10),
+        };
+        let no_headers = BTreeMap::new();
+        let http = ChallengeHttp::new(&Forbidden, Some(&provider), &context, None, &no_headers);
+        let uploader =
+            crate::content::Uploader::new(&http, &context.destination, 8, None, false).unwrap();
+        let failure = uploader.upload(b"body").await.err().unwrap();
+        let failure = http.error(error(failure));
+        assert_eq!(
+            failure.auth_code(),
+            Some(crate::auth::AuthErrorCode::InteractionRequired)
+        );
+        assert_eq!(failure.required_scopes(), ["write"]);
+        let challenges = provider.challenges.lock().unwrap();
+        assert_eq!(challenges.len(), 1);
+        assert_eq!(challenges[0].status, 403);
     }
 
     #[tokio::test]
@@ -1142,13 +1241,14 @@ mod tests {
             futures::executor::block_on(prepare_upload_credential(&upload, &options, &context))
                 .unwrap();
         let inner = Rejected(std::sync::atomic::AtomicUsize::new(0));
-        let http = ChallengeHttp {
-            inner: &inner,
-            provider: Some(provider.as_ref()),
-            headers: &BTreeMap::new(),
-            context: &context,
-            attempt_id: attempt.as_deref(),
-        };
+        let no_headers = BTreeMap::new();
+        let http = ChallengeHttp::new(
+            &inner,
+            Some(provider.as_ref()),
+            &context,
+            attempt.as_deref(),
+            &no_headers,
+        );
         let uploader =
             crate::content::Uploader::new(&http, &context.destination, 8, credential, false)
                 .unwrap();

@@ -191,6 +191,8 @@ struct Network {
     seen: Mutex<Vec<Seen>>,
     replies: Mutex<VecDeque<(u16, Value)>>,
     issuer_patch: Mutex<Value>,
+    /// Authorization server advertised by protected-resource metadata.
+    prm_issuer: Mutex<Option<String>>,
     offline: AtomicBool,
     transport_failures: AtomicUsize,
     unsent_failures: AtomicUsize,
@@ -286,10 +288,14 @@ impl OAuthNetwork for Network {
                 _ if self.offline.load(Ordering::SeqCst) => {
                     panic!("metadata HTTP while offline: {}", request.uri())
                 }
-                EndpointUse::ResourceMetadata => (
-                    200,
-                    json!({"resource":"https://api.example/hooks","authorization_servers":["https://issuer.example"]}),
-                ),
+                EndpointUse::ResourceMetadata => {
+                    let issuer = self.prm_issuer.lock().unwrap().clone();
+                    let issuer = issuer.unwrap_or_else(|| "https://issuer.example".into());
+                    (
+                        200,
+                        json!({"resource":"https://api.example/hooks","authorization_servers":[issuer]}),
+                    )
+                }
                 _ => {
                     let mut body = json!({"issuer":"https://issuer.example","authorization_endpoint":"https://issuer.example/authorize","token_endpoint":"https://issuer.example/token","grant_types_supported":["authorization_code","refresh_token","client_credentials"],"token_endpoint_auth_methods_supported":["none","client_secret_basic","client_secret_post"],"code_challenge_methods_supported":["S256"]});
                     if let Value::Object(patch) = &*self.issuer_patch.lock().unwrap() {
@@ -1242,10 +1248,16 @@ async fn pending_login_supersede() {
 #[tokio::test]
 async fn pending_login_supersede_scope_union() {
     let host = Host::new();
-    let reader = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["read"])));
+    *host.policy.select.lock().unwrap() = scopes(&["files", "read"]);
+    let files = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["files", "read"])));
     let writer = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["read", "write"])));
-    let first = login(reader.prepare(context(), budget()).await.unwrap());
-    assert_eq!(query(first.authorization_url(), "scope").unwrap(), "read");
+    let first = login(files.prepare(context(), budget()).await.unwrap());
+    assert_eq!(
+        query(first.authorization_url(), "scope").unwrap(),
+        "files read"
+    );
+    // The writer's ceiling excludes `files`; the same grant and redirect still merge.
+    *host.policy.select.lock().unwrap() = scopes(&["read"]);
     let write = scopes(&["write"]);
     let union = login(
         writer
@@ -1256,31 +1268,43 @@ async fn pending_login_supersede_scope_union() {
     assert_ne!(union.id, first.id);
     assert_eq!(
         query(union.authorization_url(), "scope").unwrap(),
-        "read write"
+        "files read write"
     );
-    assert_eq!(host.store.pending()[0].ceiling, scopes(&["read", "write"]));
+    assert_eq!(
+        host.store.pending()[0].ceiling,
+        scopes(&["files", "read", "write"])
+    );
     // Alternating callers with different ceilings converge instead of looping.
     for _ in 0..2 {
+        *host.policy.select.lock().unwrap() = scopes(&["files", "read"]);
         assert_eq!(
-            login(reader.prepare(context(), budget()).await.unwrap()).id,
+            login(files.prepare(context(), budget()).await.unwrap()).id,
             union.id
         );
+        *host.policy.select.lock().unwrap() = scopes(&["read"]);
         let again = writer.prepare_with_required(context(), &write, budget());
         assert_eq!(login(again.await.unwrap()).id, union.id);
     }
     // Completion is bounded by the stored union ceiling; each caller filters at use.
     host.network.reply(
         200,
-        json!({"access_token":"t","token_type":"Bearer","scope":"read write"}),
+        json!({"access_token":"t","token_type":"Bearer","scope":"files read write admin"}),
     );
-    reader
+    writer
         .complete(context(), callback(&union), budget())
         .await
         .unwrap();
-    assert_eq!(host.store.token().scopes, scopes(&["read", "write"]));
     assert_eq!(
-        reader.effective(&host.store.token().scopes),
-        scopes(&["read"])
+        host.store.token().scopes,
+        scopes(&["files", "read", "write"])
+    );
+    assert_eq!(
+        writer.effective(&host.store.token().scopes),
+        scopes(&["read", "write"])
+    );
+    assert_eq!(
+        files.effective(&host.store.token().scopes),
+        scopes(&["files", "read"])
     );
 }
 
@@ -2178,7 +2202,8 @@ async fn ambiguous_renewal_failure_no_refetch() {
             Some(status) => host.network.reply(status, body),
         }
         let error = oauth.credential(unbound()).await.err().unwrap();
-        assert_ne!(error.auth_recovery(), Some(AuthRecovery::Login));
+        assert_eq!(error.auth_code(), Some(AuthErrorCode::ProviderFailed));
+        assert_eq!(error.auth_recovery(), Some(AuthRecovery::Retry));
         assert_eq!(
             host.network.tokens().len(),
             presented + 1,
@@ -2189,5 +2214,82 @@ async fn ambiguous_renewal_failure_no_refetch() {
     assert_eq!(
         host.store.token().refresh_token.as_deref(),
         Some("seed-refresh")
+    );
+}
+
+#[tokio::test]
+async fn rejected_token_is_persisted_before_failed_renewal() {
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    let revoked = oauth.credential(unbound()).await.unwrap().unwrap();
+    host.network
+        .reply(503, json!({"error":"temporarily_unavailable"}));
+    let rejected = challenge(401, "Bearer", Some(&revoked.attempt_id));
+    assert_eq!(
+        code(oauth.challenge(unbound(), rejected).await),
+        AuthErrorCode::ProviderFailed
+    );
+    assert!(
+        host.store.token().access_rejected,
+        "rejection survives the failed renewal"
+    );
+    host.network
+        .reply(200, json!({"access_token":"renewed","token_type":"Bearer"}));
+    let next = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    assert_eq!(
+        next.credential(unbound()).await.unwrap().unwrap().token,
+        "renewed"
+    );
+}
+
+#[tokio::test]
+async fn challenge_rediscovers_moved_issuer() {
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    let revoked = oauth.credential(unbound()).await.unwrap().unwrap();
+    // The resource moves to a new issuer; the old token endpoint is gone.
+    *host.network.prm_issuer.lock().unwrap() = Some("https://issuer2.example".into());
+    *host.network.issuer_patch.lock().unwrap() = json!({
+        "issuer":"https://issuer2.example",
+        "token_endpoint":"https://issuer2.example/token"
+    });
+    host.network
+        .reply(200, json!({"access_token":"moved","token_type":"Bearer"}));
+    let header = r#"Bearer resource_metadata="https://api.example/.well-known/oauth-protected-resource/hooks""#;
+    oauth
+        .challenge(unbound(), challenge(401, header, Some(&revoked.attempt_id)))
+        .await
+        .unwrap();
+    assert_eq!(
+        host.store.binding().unwrap().metadata.issuer,
+        "https://issuer2.example"
+    );
+    assert_eq!(
+        host.network.tokens().last().unwrap().uri,
+        "https://issuer2.example/token"
+    );
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "moved"
+    );
+}
+
+#[tokio::test]
+async fn lookup_with_changed_client_or_flow_is_discovery_failed() {
+    let host = Host::new();
+    host.seed(&host.pkce(|c| c), context()).await;
+    let other = host.owner(
+        OAuthClientConfig::new("account", "other-client", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read"]))
+            .redirect_uri("http://127.0.0.1/callback"),
+    );
+    assert_eq!(
+        code(other.credential(unbound()).await),
+        AuthErrorCode::DiscoveryFailed
+    );
+    let flow = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    assert_eq!(
+        code(flow.credential(unbound()).await),
+        AuthErrorCode::DiscoveryFailed
     );
 }

@@ -12,7 +12,7 @@ use crate::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-#[cfg(any(feature = "reqwest", feature = "managed-oauth"))]
+#[cfg(any(feature = "reqwest", feature = "managed-oauth", test))]
 pub(crate) mod challenge;
 
 /// Optional host-driven PKCE and client-credentials OAuth implementation.

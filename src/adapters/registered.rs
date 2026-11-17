@@ -316,9 +316,7 @@ pub fn from_registration(
 }
 // Classification only: providers still validate the complete challenge and scope policy.
 #[cfg(feature = "reqwest")]
-fn insufficient_scope(header: &str) -> bool {
-    crate::auth::challenge::parse(header).is_ok_and(|challenge| challenge.insufficient_scope)
-}
+use crate::auth::challenge::insufficient_scope;
 
 #[cfg(any(feature = "reqwest", feature = "tokio-process"))]
 fn validate_request(request: &Value) -> Result<bool, HookError> {

@@ -38,7 +38,7 @@ use std::{
     future::Future,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU16, Ordering},
+        atomic::{AtomicU16, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -452,10 +452,29 @@ impl TokenHttp {
     /// request suggest stale metadata: a request the network reports as not
     /// sent (DNS, connect, TLS handshake) or a 404/410. Ambiguous post-send
     /// failures are never retried, so a rotated refresh token is not replayed.
-    fn mark_stale(&self, error: &TokenError, stale: &AtomicBool) {
+    fn failure(&self, error: &TokenError, classified: HookError) -> Renewal {
         let unsent = matches!(error, RequestTokenError::Request(e) if e.is_request_not_sent());
         if unsent || matches!(self.status.load(Ordering::Relaxed), 404 | 410) {
-            stale.store(true, Ordering::Relaxed);
+            Renewal::Stale(classified)
+        } else {
+            Renewal::Failed(classified)
+        }
+    }
+}
+/// Acquisition failure; `Stale` means persisted metadata may be outdated.
+enum Renewal {
+    Stale(HookError),
+    Failed(HookError),
+}
+impl From<HookError> for Renewal {
+    fn from(error: HookError) -> Self {
+        Self::Failed(error)
+    }
+}
+impl From<Renewal> for HookError {
+    fn from(error: Renewal) -> Self {
+        match error {
+            Renewal::Stale(error) | Renewal::Failed(error) => error,
         }
     }
 }
@@ -491,7 +510,12 @@ async fn checked_network_send(
     budget.run(network.check(url, usage, budget)).await?;
     let response = budget.run(network.send(request, usage, budget)).await?;
     if response.status().is_redirection() || response.body().len() > 1024 * 1024 {
-        return Err(fail(AuthErrorCode::UntrustedDestination));
+        // Never followed. At the token endpoint the request may have been processed.
+        return Err(fail(if usage == EndpointUse::Token {
+            AuthErrorCode::ProviderFailed
+        } else {
+            AuthErrorCode::UntrustedDestination
+        }));
     }
     Ok(response)
 }
@@ -845,36 +869,35 @@ impl ManagedOAuth {
         if !subset(&required, &self.config.allowed_scopes) {
             return Err(attach(fail(AuthErrorCode::AccessDenied)));
         }
-        let stale = AtomicBool::new(false);
-        let result = self
-            .acquire_inner(
+        let attempt = |rediscover| {
+            self.acquire_inner(
                 &target,
                 challenge,
                 &required,
                 rejected_attempt,
                 budget,
                 mode,
-                &stale,
+                rediscover,
             )
-            .await;
-        if result.is_err() && stale.load(Ordering::Relaxed) {
-            // A renewal failed on persisted metadata without an OAuth error: refetch the
+        };
+        let result = match attempt(false).await {
+            // The token endpoint provably did not process the renewal: refetch the
             // stored issuer's metadata once (never protected-resource) and retry once.
-            self.refetch_issuer(&target, budget).await?;
-            return self
-                .acquire_inner(
-                    &target,
-                    challenge,
-                    &required,
-                    rejected_attempt,
-                    budget,
-                    mode,
-                    &stale,
-                )
-                .await
-                .map_err(attach);
-        }
-        result.map_err(attach)
+            Err(Renewal::Stale(_)) => match self.refetch_issuer(&target, budget).await {
+                Ok(()) => attempt(false).await,
+                Err(error) => Err(Renewal::Stale(error)),
+            },
+            result => result,
+        };
+        // Challenge handling and `prepare` may repair the binding with full
+        // protected-resource discovery (honouring a challenge's resource_metadata).
+        let result = match result {
+            Err(Renewal::Stale(_)) if challenge.is_some() || mode == Mode::Prepare => {
+                attempt(true).await
+            }
+            result => result,
+        };
+        result.map_err(|error| attach(error.into()))
     }
     async fn refetch_issuer(
         &self,
@@ -910,14 +933,18 @@ impl ManagedOAuth {
         rejected_attempt: Option<&str>,
         budget: OperationBudget,
         mode: Mode,
-        stale: &AtomicBool,
-    ) -> Result<Option<Preparation>, HookError> {
+        rediscover: bool,
+    ) -> Result<Option<Preparation>, Renewal> {
         let target = target.clone();
         let required = required.to_vec();
         let binding_key = self.key(&target);
         let saved = self.load(&binding_key, budget).await?;
         // Local authorization of a saved binding needs no network; policy runs off-lock.
         let mut usable = None;
+        // A known binding for another client or flow needs `prepare`, not anonymity.
+        if mode == Mode::Lookup && saved.as_ref().is_some_and(|r| !self.compatible(&target, r)) {
+            return Err(fail(AuthErrorCode::DiscoveryFailed).into());
+        }
         if let Some(binding) = saved.as_ref().filter(|r| self.compatible(&target, r)) {
             match self.validate_saved(&target, binding, &required) {
                 Ok(scopes) => {
@@ -932,7 +959,8 @@ impl ManagedOAuth {
                             binding.metadata.issuer.clone(),
                             budget,
                         )
-                        .await?;
+                        .await
+                        .map_err(Renewal::Stale)?;
                         let mut guard = budget
                             .run(self.store.acquire(binding_key.clone(), budget))
                             .await?;
@@ -943,11 +971,14 @@ impl ManagedOAuth {
                     }
                 }
                 Err(_) if mode == Mode::Lookup => return Ok(None),
-                Err(error) => return Err(error),
+                Err(error) => return Err(error.into()),
             }
         }
         // `prepare` serves a usable cached token, otherwise rebuilds binding metadata
         // so stale persisted metadata always has a repair path.
+        if rediscover {
+            usable = None;
+        }
         if mode == Mode::Prepare
             && let Some((binding, _)) = &usable
         {
@@ -1009,10 +1040,12 @@ impl ManagedOAuth {
             token.access_rejected = true;
             dirty = true;
         }
+        // Persist a rejection before any renewal that can fail, so the revoked
+        // token is never served again from the store.
+        if dirty {
+            self.persist(&mut *guard, &mut record, budget).await?;
+        }
         if let Some(credential) = self.cached(&record, &required) {
-            if dirty {
-                self.persist(&mut *guard, &mut record, budget).await?;
-            }
             return Ok(Some(Preparation::Ready(credential)));
         }
         // A refresh cannot broaden a grant, so it only helps when the grant suffices.
@@ -1022,7 +1055,7 @@ impl ManagedOAuth {
             && subset(&required, &self.effective(&token.scopes))
         {
             return self
-                .refresh(&mut *guard, &mut record, &required, budget, stale)
+                .refresh(&mut *guard, &mut record, &required, budget)
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -1041,16 +1074,12 @@ impl ManagedOAuth {
                     &previous,
                     &required,
                     budget,
-                    stale,
                 )
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
         if mode != Mode::Prepare {
-            if dirty {
-                self.persist(&mut *guard, &mut record, budget).await?;
-            }
-            return Err(fail(AuthErrorCode::InteractionRequired));
+            return Err(fail(AuthErrorCode::InteractionRequired).into());
         }
         // Only a live login for the same grant key and redirect is reused or merged.
         let live = record.pending.as_ref().filter(|login| {
@@ -1062,9 +1091,6 @@ impl ManagedOAuth {
             && subset(&scopes, &login.scopes)
         {
             let pending = PendingLogin::new(key, login)?;
-            if dirty {
-                self.persist(&mut *guard, &mut record, budget).await?;
-            }
             self.check_url(&pending.url, EndpointUse::Authorization, budget)
                 .await?;
             return Ok(Some(Preparation::InteractionRequired(pending)));
@@ -1165,15 +1191,14 @@ impl ManagedOAuth {
         previous: &[String],
         required: &[String],
         budget: OperationBudget,
-        stale: &AtomicBool,
-    ) -> Result<BearerCredential, HookError> {
+    ) -> Result<BearerCredential, Renewal> {
         if !record
             .metadata
             .grant_types_supported
             .iter()
             .any(|g| g == "client_credentials")
         {
-            return Err(fail(AuthErrorCode::UnsupportedBinding));
+            return Err(fail(AuthErrorCode::UnsupportedBinding).into());
         }
         let client = self.client(&record.metadata)?;
         let mut request = client
@@ -1186,14 +1211,15 @@ impl ManagedOAuth {
         match request.request_async(&http).await {
             Ok(response) => {
                 let bound = union(previous, &self.config.allowed_scopes);
-                self.save_token(
-                    guard, record, response, scopes, &bound, None, required, budget,
-                )
-                .await
+                Ok(self
+                    .save_token(
+                        guard, record, response, scopes, &bound, None, required, budget,
+                    )
+                    .await?)
             }
             Err(error) => {
-                http.mark_stale(&error, stale);
-                Err(token_error(error))
+                let classified = token_error(&error);
+                Err(http.failure(&error, classified))
             }
         }
     }
@@ -1203,8 +1229,7 @@ impl ManagedOAuth {
         record: &mut SessionRecord,
         required: &[String],
         budget: OperationBudget,
-        stale: &AtomicBool,
-    ) -> Result<BearerCredential, HookError> {
+    ) -> Result<BearerCredential, Renewal> {
         let token = record
             .token
             .as_mut()
@@ -1228,7 +1253,7 @@ impl ManagedOAuth {
         let http = TokenHttp::new(self, budget);
         let error = match request.request_async(&http).await {
             Ok(response) => {
-                return self
+                return Ok(self
                     .save_token(
                         guard,
                         record,
@@ -1239,7 +1264,7 @@ impl ManagedOAuth {
                         required,
                         budget,
                     )
-                    .await;
+                    .await?);
             }
             Err(error) => error,
         };
@@ -1261,11 +1286,11 @@ impl ManagedOAuth {
                 *record = current;
                 budget.run(guard.on_refresh_rejected(generation)).await?;
             }
-            return Err(fail(AuthErrorCode::RefreshRejected));
+            return Err(fail(AuthErrorCode::RefreshRejected).into());
         }
-        http.mark_stale(&error, stale);
         self.failed_refresh(guard, record, &error, budget).await?;
-        Err(token_error(error))
+        let classified = token_error(&error);
+        Err(http.failure(&error, classified))
     }
     /// After a spent refresh token, an observed failure response clears the marker
     /// and keeps a valid rotated refresh token (else the presented one). Without a
@@ -1514,7 +1539,7 @@ impl ManagedOAuth {
                 {
                     return Err(gone());
                 }
-                Err(token_error(error))
+                Err(token_error(&error))
             }
         }
     }
@@ -1589,9 +1614,9 @@ fn normalize_token_body(body: &[u8]) -> Option<Vec<u8>> {
     value["expires_in"] = digits.parse::<u64>().ok()?.into();
     serde_json::to_vec(&value).ok()
 }
-fn token_error(error: TokenError) -> HookError {
+fn token_error(error: &TokenError) -> HookError {
     match error {
-        RequestTokenError::Request(error) => sanitize_provider_error(error),
+        RequestTokenError::Request(error) => sanitize_provider_error(error.clone()),
         RequestTokenError::ServerResponse(response)
             if matches!(
                 response.error(),

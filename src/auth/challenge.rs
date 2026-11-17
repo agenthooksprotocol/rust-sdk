@@ -131,6 +131,13 @@ pub(crate) fn parse(header: &str) -> Result<Challenge, Malformed> {
     Ok(result)
 }
 
+/// A Bearer 403 `insufficient_scope` triggers challenge handling; anything
+/// malformed or ambiguous does not.
+#[cfg(any(feature = "reqwest", test))]
+pub(crate) fn insufficient_scope(header: &str) -> bool {
+    parse(header).is_ok_and(|challenge| challenge.insufficient_scope)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
