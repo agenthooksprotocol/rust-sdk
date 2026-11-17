@@ -93,6 +93,8 @@ pub enum EndpointUse {
 /// validates the host-displayed authorization URL too; `send` must repeat/pin
 /// that validation at actual connection time, not trust an earlier DNS lookup.
 /// Adapter requests and responses MUST NOT be logged, even at DEBUG level.
+/// Mark DNS, TCP connect and TLS handshake failures from `send` with
+/// `HookError::request_not_sent`; only those (and 404/410) refetch metadata.
 pub trait OAuthNetwork: Send + Sync {
     fn check(
         &self,
@@ -446,14 +448,13 @@ impl TokenHttp {
     }
 }
 impl TokenHttp {
-    /// No OAuth error response: a transport/TLS failure, redirect (moved
-    /// endpoint) or 404/410 suggests stale persisted metadata.
+    /// Only failures where the token endpoint provably did not process the
+    /// request suggest stale metadata: a request the network reports as not
+    /// sent (DNS, connect, TLS handshake) or a 404/410. Ambiguous post-send
+    /// failures are never retried, so a rotated refresh token is not replayed.
     fn mark_stale(&self, error: &TokenError, stale: &AtomicBool) {
-        let status = self.status.load(Ordering::Relaxed);
-        if matches!(error, RequestTokenError::Request(_))
-            || (matches!(error, RequestTokenError::Parse(..))
-                && matches!(status, 0 | 300..=399 | 404 | 410))
-        {
+        let unsent = matches!(error, RequestTokenError::Request(e) if e.is_request_not_sent());
+        if unsent || matches!(self.status.load(Ordering::Relaxed), 404 | 410) {
             stale.store(true, Ordering::Relaxed);
         }
     }

@@ -193,6 +193,7 @@ struct Network {
     issuer_patch: Mutex<Value>,
     offline: AtomicBool,
     transport_failures: AtomicUsize,
+    unsent_failures: AtomicUsize,
     on_token: Mutex<Option<Hook>>,
 }
 impl Network {
@@ -254,10 +255,19 @@ impl OAuthNetwork for Network {
                     if let Some(hook) = self.on_token.lock().unwrap().take() {
                         hook();
                     }
-                    let failures = &self.transport_failures;
-                    if failures.load(Ordering::SeqCst) > 0 {
-                        failures.fetch_sub(1, Ordering::SeqCst);
-                        return Err(fail(AuthErrorCode::ProviderFailed));
+                    for (failures, unsent) in [
+                        (&self.transport_failures, false),
+                        (&self.unsent_failures, true),
+                    ] {
+                        if failures.load(Ordering::SeqCst) > 0 {
+                            failures.fetch_sub(1, Ordering::SeqCst);
+                            let error = fail(AuthErrorCode::ProviderFailed);
+                            return Err(if unsent {
+                                error.request_not_sent()
+                            } else {
+                                error
+                            });
+                        }
                     }
                     // A moved token endpoint answers 404 at its old address.
                     let current = self.issuer_patch.lock().unwrap()["token_endpoint"].clone();
@@ -730,6 +740,10 @@ fn lifecycle_manifest_maps_to_native_tests() {
         ),
         ("step-up-keeps-previous-grant", step_up_keeps_previous_grant),
         ("stale-metadata-refetch-once", stale_metadata_refetch_once),
+        (
+            "ambiguous-renewal-failure-no-refetch",
+            ambiguous_renewal_failure_no_refetch,
+        ),
     ];
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     let ids: Vec<&str> = fixture["lifecycle"]
@@ -878,8 +892,8 @@ async fn transient_refresh_failure() {
         !token.refresh_in_flight,
         "an observed response clears the marker"
     );
-    // A transport failure refetches issuer metadata once and retries once.
-    host.network.transport_failures.store(2, Ordering::SeqCst);
+    // An ambiguous transport failure is neither refetched nor retried.
+    host.network.transport_failures.store(1, Ordering::SeqCst);
     assert_eq!(
         code(oauth.prepare(context(), budget()).await),
         AuthErrorCode::ProviderFailed
@@ -2112,6 +2126,19 @@ async fn stale_metadata_refetch_once() {
             .token_endpoint
             .ends_with("/token2")
     );
+    // A connect/DNS/TLS failure (request provably not sent) also refetches once.
+    host.store.expire();
+    let before = host.network.metadata_requests().len();
+    host.network.unsent_failures.store(1, Ordering::SeqCst);
+    host.network.reply(
+        200,
+        json!({"access_token":"reconnected","token_type":"Bearer"}),
+    );
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "reconnected"
+    );
+    assert_eq!(host.network.metadata_requests().len(), before + 1);
     // An OAuth error response never refetches.
     host.store.expire();
     let before = host.network.metadata_requests().len();
@@ -2129,4 +2156,38 @@ async fn stale_metadata_refetch_once() {
     assert_eq!(error.auth_code(), Some(AuthErrorCode::DiscoveryFailed));
     assert_eq!(error.auth_recovery(), Some(AuthRecovery::Retry));
     assert_eq!(prm(&host), learned, "never protected-resource discovery");
+}
+
+#[tokio::test]
+async fn ambiguous_renewal_failure_no_refetch() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    host.seed(&oauth, context()).await;
+    host.network.offline.store(true, Ordering::SeqCst);
+    // Read timeout/reset after send, 5xx, non-OAuth body and redirects are ambiguous.
+    for (status, body) in [
+        (None, Value::Null),
+        (Some(503), json!({"error":"temporarily_unavailable"})),
+        (Some(500), Value::String("<html>oops</html>".into())),
+        (Some(302), Value::String(String::new())),
+    ] {
+        host.store.expire();
+        let presented = host.network.tokens().len();
+        match status {
+            None => host.network.transport_failures.store(1, Ordering::SeqCst),
+            Some(status) => host.network.reply(status, body),
+        }
+        let error = oauth.credential(unbound()).await.err().unwrap();
+        assert_ne!(error.auth_recovery(), Some(AuthRecovery::Login));
+        assert_eq!(
+            host.network.tokens().len(),
+            presented + 1,
+            "no immediate retry"
+        );
+    }
+    // Offline metadata would have panicked on any refetch; the token is retained.
+    assert_eq!(
+        host.store.token().refresh_token.as_deref(),
+        Some("seed-refresh")
+    );
 }

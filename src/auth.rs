@@ -408,6 +408,7 @@ pub(crate) fn sanitize_provider_error(error: HookError) -> HookError {
     HookError::authentication(error.auth_code().unwrap_or(AuthErrorCode::ProviderFailed))
         .classified(error.code())
         .with_required_scopes(error.required_scopes())
+        .request_not_sent_if(error.is_request_not_sent())
 }
 /// RFC 6749 section 3.3 scope-token grammar.
 pub(crate) fn valid_scope(scope: &str) -> bool {

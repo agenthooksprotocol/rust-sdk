@@ -21,6 +21,7 @@ pub struct HookError {
     accepted_settlement: Option<Value>,
     auth_code: Option<crate::auth::AuthErrorCode>,
     required_scopes: Option<Box<[String]>>,
+    unsent: bool,
 }
 impl HookError {
     /// Construct an unclassified transport failure.
@@ -31,6 +32,7 @@ impl HookError {
             accepted_settlement: None,
             auth_code: None,
             required_scopes: None,
+            unsent: false,
         }
     }
     /// Construct a redacted authentication failure with no provider message or cause.
@@ -45,6 +47,19 @@ impl HookError {
     }
     pub fn auth_recovery(&self) -> Option<crate::auth::AuthRecovery> {
         self.auth_code.map(crate::auth::AuthErrorCode::recovery)
+    }
+    /// Mark a failure that provably happened before the request reached its
+    /// destination: DNS resolution, TCP connect or TLS handshake failure.
+    pub fn request_not_sent(mut self) -> Self {
+        self.unsent = true;
+        self
+    }
+    pub fn is_request_not_sent(&self) -> bool {
+        self.unsent
+    }
+    pub(crate) fn request_not_sent_if(mut self, unsent: bool) -> Self {
+        self.unsent = unsent;
+        self
     }
     /// Validated scopes an operation required, carried only by `interaction_required`
     /// and `access_denied`. Pass them back to an explicit host `prepare` for step-up.

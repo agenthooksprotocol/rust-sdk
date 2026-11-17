@@ -656,7 +656,11 @@
     },
     {
       "id": "stale-metadata-refetch-once",
-      "expect": "renewal failing on persisted metadata without an OAuth error refetches the stored issuer's metadata once, persists it if the issuer is unchanged and retries once; OAuth errors never refetch; changed issuer or failed refetch is discovery_failed"
+      "expect": "renewal failing before the token endpoint processed it (DNS, TCP connect, TLS handshake, token-endpoint 404/410) refetches the stored issuer's metadata once, persists it if the issuer is unchanged and retries once; changed issuer or failed refetch is discovery_failed"
+    },
+    {
+      "id": "ambiguous-renewal-failure-no-refetch",
+      "expect": "read timeout, reset after send, 5xx, non-OAuth body or OAuth error during renewal returns its error (provider_failed/retry for ambiguous failures) with no metadata refetch and no immediate retry; the presented refresh token is not replayed"
     },
     {
       "id": "up-front-refresh-failure-no-anonymous-fallback",
