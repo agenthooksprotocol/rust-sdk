@@ -448,7 +448,10 @@ struct TokenHttp {
     network: Arc<dyn OAuthNetwork>,
     budget: OperationBudget,
     commit_timeout: Duration,
-    salvage: Option<Salvage>,
+    /// For a refresh: the presented token and the grant guard, which moves into
+    /// the detached exchange so the lock outlives a cancelled caller.
+    presented: Option<String>,
+    guard: std::sync::Mutex<Option<Box<dyn CredentialGuard>>>,
     status: AtomicU16,
     /// The raw received body; oauth2 does not keep it for every failure.
     body: std::sync::Mutex<Option<Vec<u8>>>,
@@ -460,6 +463,11 @@ struct TokenHttp {
 #[derive(Clone, Default)]
 pub struct RequestWritten(Arc<std::sync::atomic::AtomicBool>);
 impl RequestWritten {
+    /// Call once the request bytes are written to the token endpoint. From then
+    /// on the exchange, and the grant lock, outlive caller cancellation until
+    /// its outcome is committed. Clients that cannot observe write completion
+    /// (such as reqwest) should mark once the connection is established, or when
+    /// the send future is first polled after connecting, as an approximation.
     pub fn mark(&self) {
         self.0.store(true, Ordering::SeqCst);
     }
@@ -478,23 +486,22 @@ impl Drop for AbortUnlessWritten {
         }
     }
 }
-/// Saves a refresh response's rotated token when the caller is gone.
-#[derive(Clone)]
-struct Salvage {
-    store: Arc<dyn CredentialStore>,
-    key: SessionKey,
-    presented: String,
-}
-impl Salvage {
-    async fn save(self, body: &[u8], budget: OperationBudget) -> Result<(), HookError> {
-        let mut guard = budget.run(self.store.acquire(self.key, budget)).await?;
+/// Saves a refresh response's rotated token, under the still-held grant lock,
+/// when the caller is gone.
+async fn salvage(
+    guard: &mut dyn CredentialGuard,
+    presented: &str,
+    body: &[u8],
+    budget: OperationBudget,
+) -> Result<(), HookError> {
+    {
         let Some(mut record) = budget.run(guard.load()).await? else {
             return Ok(());
         };
         let Some(token) = record.token.as_mut() else {
             return Ok(());
         };
-        if token.refresh_token.as_deref() != Some(self.presented.as_str()) {
+        if token.refresh_token.as_deref() != Some(presented) {
             return Ok(());
         }
         if let Some(rotated) = rotated_refresh(body) {
@@ -503,7 +510,7 @@ impl Salvage {
         // The new access token is not recovered; the next use refreshes again.
         token.access_rejected = true;
         token.refresh_in_flight = false;
-        persist(&mut *guard, &mut record, budget).await
+        persist(guard, &mut record, budget).await
     }
 }
 impl TokenHttp {
@@ -512,7 +519,8 @@ impl TokenHttp {
             network: owner.network.clone(),
             budget,
             commit_timeout: owner.config.commit_timeout,
-            salvage: None,
+            presented: None,
+            guard: std::sync::Mutex::new(None),
             status: AtomicU16::new(0),
             body: std::sync::Mutex::new(None),
         }
@@ -537,7 +545,8 @@ impl TokenHttp {
         }
         let commit = commit_budget(self.commit_timeout);
         let network = self.network.clone();
-        let salvage = self.salvage.clone();
+        let presented = self.presented.clone();
+        let guard = self.guard.lock().unwrap().take();
         let written = RequestWritten::default();
         let mut request = request;
         request.extensions_mut().insert(written.clone());
@@ -546,18 +555,23 @@ impl TokenHttp {
             let result = commit
                 .run(network.send(request, EndpointUse::Token, commit))
                 .await;
-            if let Err(Ok(response)) = sender.send(result)
-                && let Some(salvage) = salvage
+            // The caller is gone: commit the rotated token while still holding the
+            // grant lock, so no concurrent caller can re-present the spent token.
+            if let Err((Ok(response), Some(mut guard))) = sender.send((result, guard))
+                && let Some(presented) = presented
             {
-                let _ = salvage.save(response.body(), commit).await;
+                let _ = salvage(&mut *guard, &presented, response.body(), commit).await;
             }
         });
         // Before the request is written (DNS, connect, TLS), caller cancellation
-        // still aborts the exchange; afterwards it runs to completion detached.
+        // still aborts the exchange and drops the guard; afterwards it runs to
+        // completion detached and keeps the lock until committed.
         let _abort = AbortUnlessWritten { task, written };
-        receiver
+        let (result, guard) = receiver
             .await
-            .map_err(|_| fail(AuthErrorCode::ProviderFailed))?
+            .map_err(|_| fail(AuthErrorCode::ProviderFailed))?;
+        *self.guard.lock().unwrap() = guard;
+        result
     }
 }
 impl TokenHttp {
@@ -624,7 +638,10 @@ async fn checked_network_send(
         return Err(fail(AuthErrorCode::UntrustedDestination));
     }
     budget.run(network.check(url, usage, budget)).await?;
-    let response = budget.run(network.send(request, usage, budget)).await?;
+    let response = budget
+        .run(network.send(request, usage, budget))
+        .await
+        .map_err(|error| error.transient_if(true))?;
     if response.status().is_redirection() || response.body().len() > 1024 * 1024 {
         return Err(fail(AuthErrorCode::UntrustedDestination));
     }
@@ -1071,17 +1088,27 @@ impl ManagedOAuth {
         Ok(())
     }
     /// Full discovery (outside any store guard) and a write-on-change binding update.
+    #[allow(clippy::too_many_arguments)]
     async fn rebind(
         &self,
         target: &AuthTarget,
         challenge: Option<&Challenge>,
         hint: Option<&discovery::ResourceMetadataHint>,
+        cached_issuer: Option<&str>,
         required: &[String],
         binding_key: SessionKey,
         budget: OperationBudget,
     ) -> Result<(SessionRecord, Vec<String>), HookError> {
-        let (metadata, hint, scopes) =
-            discovery::discover(self, target, challenge, hint, required, budget).await?;
+        let (metadata, hint, scopes) = discovery::discover(
+            self,
+            target,
+            challenge,
+            hint,
+            cached_issuer,
+            required,
+            budget,
+        )
+        .await?;
         let mut binding = SessionRecord {
             version: String::new(),
             metadata,
@@ -1191,22 +1218,25 @@ impl ManagedOAuth {
                 let hint = saved
                     .as_ref()
                     .and_then(|r| r.resource_metadata_hint.as_ref());
+                let cached_issuer = cached.as_ref().map(|(b, _)| b.metadata.issuer.as_str());
                 match self
-                    .rebind(&target, challenge, hint, &required, binding_key, budget)
+                    .rebind(
+                        &target,
+                        challenge,
+                        hint,
+                        cached_issuer,
+                        &required,
+                        binding_key,
+                        budget,
+                    )
                     .await
                 {
                     Ok(found) => found,
-                    // A transient discovery outage during challenge handling renews
-                    // through the still-valid cached binding instead of failing.
+                    // A transient discovery outage (transport failure or 5xx) during
+                    // challenge handling renews through the still-valid cached binding.
+                    // Definitive failures, or metadata naming another issuer, never do.
                     Err(error)
-                        if challenge.is_some()
-                            && cached.is_some()
-                            && matches!(
-                                error.auth_code(),
-                                Some(
-                                    AuthErrorCode::DiscoveryFailed | AuthErrorCode::ProviderFailed
-                                )
-                            ) =>
+                        if challenge.is_some() && cached.is_some() && error.is_transient() =>
                     {
                         cached.unwrap()
                     }
@@ -1246,7 +1276,7 @@ impl ManagedOAuth {
             && subset(&required, &self.effective(&token.scopes))
         {
             return self
-                .refresh(&key, &mut guard, &mut record, &required, budget)
+                .refresh(&mut guard, &mut record, &required, budget)
                 .await
                 .map(|c| Some(Preparation::Ready(c)));
         }
@@ -1414,7 +1444,6 @@ impl ManagedOAuth {
     }
     async fn refresh(
         &self,
-        key: &SessionKey,
         guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
         required: &[String],
@@ -1441,12 +1470,14 @@ impl ManagedOAuth {
             .exchange_refresh_token(&refresh)
             .add_extra_param("resource", &record.metadata.resource);
         let mut http = TokenHttp::new(self, budget);
-        http.salvage = Some(Salvage {
-            store: self.store.clone(),
-            key: key.clone(),
-            presented: refresh.secret().clone(),
-        });
-        let error = match request.request_async(&http).await {
+        http.presented = Some(refresh.secret().clone());
+        *http.guard.lock().unwrap() = Some(std::mem::replace(guard, Box::new(Committing)));
+        let outcome = request.request_async(&http).await;
+        // The exchange hands the guard back unless the request never ran.
+        if let Some(returned) = http.guard.lock().unwrap().take() {
+            *guard = returned;
+        }
+        let error = match outcome {
             Ok(response) => {
                 return Ok(self
                     .save_token(

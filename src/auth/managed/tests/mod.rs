@@ -154,6 +154,15 @@ struct Policy {
     select: Mutex<Vec<String>>,
     /// When set, only this issuer is approved.
     only: Mutex<Option<String>>,
+    /// Another holder (a detached exchange) may legitimately own a guard.
+    shared_lock: AtomicBool,
+}
+impl Policy {
+    fn off_lock(&self) {
+        if !self.shared_lock.load(Ordering::SeqCst) {
+            assert_eq!(self.held.load(Ordering::SeqCst), 0, "policy under lock");
+        }
+    }
 }
 impl Policy {
     fn new(store: &Store) -> Arc<Self> {
@@ -162,12 +171,13 @@ impl Policy {
             deny: AtomicBool::new(false),
             select: Mutex::new(scopes(&["read"])),
             only: Mutex::new(None),
+            shared_lock: AtomicBool::new(false),
         })
     }
 }
 impl OAuthPolicy for Policy {
     fn approve_endpoints(&self, _: EndpointTrust<'_>) -> Result<(), HookError> {
-        assert_eq!(self.held.load(Ordering::SeqCst), 0, "policy under lock");
+        self.off_lock();
         Ok(())
     }
     fn select(
@@ -176,7 +186,7 @@ impl OAuthPolicy for Policy {
         resource: &ResourceMetadata,
         required: &[String],
     ) -> Result<TrustDecision, HookError> {
-        assert_eq!(self.held.load(Ordering::SeqCst), 0, "policy under lock");
+        self.off_lock();
         if self.deny.load(Ordering::SeqCst) {
             return Err(fail(AuthErrorCode::UntrustedDestination));
         }
@@ -210,6 +220,10 @@ struct Network {
     /// Authorization server advertised by protected-resource metadata.
     prm_issuer: Mutex<Option<String>>,
     prm_outage: AtomicBool,
+    /// Issuer host whose authorization-server metadata answers 503.
+    issuer_outage: Mutex<Option<String>>,
+    /// One-shot delay (ms) between writing a token request and its response.
+    token_delay: AtomicUsize,
     offline: AtomicBool,
     transport_failures: AtomicUsize,
     unsent_failures: AtomicUsize,
@@ -274,6 +288,8 @@ impl OAuthNetwork for Network {
                     if let Some(written) = request.extensions().get::<RequestWritten>() {
                         written.mark();
                     }
+                    let delay = self.token_delay.swap(0, Ordering::SeqCst) as u64;
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
                     if let Some(hook) = self.on_token.lock().unwrap().take() {
                         hook();
                     }
@@ -309,6 +325,14 @@ impl OAuthNetwork for Network {
                     panic!("metadata HTTP while offline: {}", request.uri())
                 }
                 EndpointUse::ResourceMetadata if self.prm_outage.load(Ordering::SeqCst) => {
+                    (503, json!({}))
+                }
+                EndpointUse::ResourceMetadata if request.uri().path().contains("missing") => {
+                    (404, json!({}))
+                }
+                EndpointUse::IssuerMetadata
+                    if self.issuer_outage.lock().unwrap().as_deref() == request.uri().host() =>
+                {
                     (503, json!({}))
                 }
                 EndpointUse::ResourceMetadata => {
@@ -2591,4 +2615,78 @@ async fn form_encoded_refresh_failure_keeps_valid_rotated_token() {
         );
         assert_eq!(host.store.token().refresh_token.as_deref(), Some(kept));
     }
+}
+
+#[tokio::test]
+async fn detached_refresh_keeps_grant_lock_from_concurrent_caller() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    host.seed(&oauth, context()).await;
+    host.store.expire();
+    host.network.reply(
+        200,
+        json!({"access_token":"a","refresh_token":"rotated","token_type":"Bearer"}),
+    );
+    host.network.token_delay.store(300, Ordering::SeqCst);
+    host.policy.shared_lock.store(true, Ordering::SeqCst);
+    // Caller A gives up after the request was written.
+    let a = tokio::time::timeout(Duration::from_millis(100), oauth.credential(context()));
+    assert!(a.await.is_err());
+    // Caller B retries at once: it waits for the lock instead of re-presenting.
+    host.network.reply(
+        200,
+        json!({"access_token":"b","refresh_token":"next","token_type":"Bearer"}),
+    );
+    assert_eq!(
+        oauth.credential(context()).await.unwrap().unwrap().token,
+        "b"
+    );
+    let presented: Vec<String> = host
+        .network
+        .tokens()
+        .iter()
+        .skip(1)
+        .map(|seen| {
+            url::form_urlencoded::parse(seen.body.as_bytes())
+                .find(|(k, _)| k == "refresh_token")
+                .unwrap()
+                .1
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(presented, ["seed-refresh", "rotated"]);
+    assert_eq!(host.store.token().refresh_token.as_deref(), Some("next"));
+}
+
+#[tokio::test]
+async fn definitive_discovery_failure_never_falls_back_to_cached_binding() {
+    // A hinted protected-resource metadata URL that is gone.
+    let host = Host::new();
+    let oauth = learned_cc(&host).await;
+    let tokens = host.network.tokens().len();
+    let header = r#"Bearer resource_metadata="https://api.example/missing""#;
+    assert!(
+        oauth
+            .challenge(unbound(), challenge(401, header, None))
+            .await
+            .is_err()
+    );
+    // Metadata naming another issuer whose metadata is temporarily unavailable.
+    *host.network.prm_issuer.lock().unwrap() = Some("https://issuer2.example".into());
+    *host.network.issuer_outage.lock().unwrap() = Some("issuer2.example".into());
+    assert!(
+        oauth
+            .challenge(unbound(), challenge(401, "Bearer", None))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        host.network.tokens().len(),
+        tokens,
+        "no renewal against the old issuer"
+    );
+    assert_eq!(
+        host.store.binding().unwrap().metadata.issuer,
+        "https://issuer.example"
+    );
 }

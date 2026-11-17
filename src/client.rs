@@ -22,6 +22,7 @@ pub struct HookError {
     auth_code: Option<crate::auth::AuthErrorCode>,
     required_scopes: Option<Box<[String]>>,
     unsent: bool,
+    transient: bool,
 }
 impl HookError {
     /// Construct an unclassified transport failure.
@@ -33,6 +34,7 @@ impl HookError {
             auth_code: None,
             required_scopes: None,
             unsent: false,
+            transient: false,
         }
     }
     /// Construct a redacted authentication failure with no provider message or cause.
@@ -56,6 +58,16 @@ impl HookError {
     }
     pub fn is_request_not_sent(&self) -> bool {
         self.unsent
+    }
+    /// A transport failure or 5xx: retrying may succeed without any repair.
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn transient_if(mut self, transient: bool) -> Self {
+        self.transient = transient;
+        self
+    }
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn is_transient(&self) -> bool {
+        self.transient
     }
     pub(crate) fn request_not_sent_if(mut self, unsent: bool) -> Self {
         self.unsent = unsent;

@@ -223,6 +223,11 @@ impl OAuthNetwork for Loopback {
         }
         Box::pin(async move {
             let (parts, body) = request.into_parts();
+            // reqwest cannot report write completion; as documented, mark when the
+            // send is first polled (connect to loopback is immediate).
+            if let Some(written) = parts.extensions.get::<RequestWritten>() {
+                written.mark();
+            }
             let response = reqwest::Client::new()
                 .post(&self.token)
                 .headers(parts.headers)
@@ -230,10 +235,6 @@ impl OAuthNetwork for Loopback {
                 .send()
                 .await
                 .map_err(|_| fail(AuthErrorCode::ProviderFailed))?;
-            // reqwest exposes no write-completion hook; response headers prove it.
-            if let Some(written) = parts.extensions.get::<RequestWritten>() {
-                written.mark();
-            }
             let status = response.status();
             let body = response
                 .bytes()

@@ -150,7 +150,7 @@ async fn fetch<T: serde::de::DeserializeOwned>(
             continue;
         }
         if !response.status().is_success() || response.body().len() > 1024 * 1024 {
-            return Err(failed());
+            return Err(failed().transient_if(response.status().is_server_error()));
         }
         let metadata = serde_json::from_slice(response.body()).map_err(|_| failed())?;
         return Ok((metadata, url.as_str().to_owned()));
@@ -269,6 +269,7 @@ pub(super) async fn discover(
     target: &AuthTarget,
     challenge: Option<&Challenge>,
     saved_hint: Option<&ResourceMetadataHint>,
+    cached_issuer: Option<&str>,
     required: &[String],
     budget: OperationBudget,
 ) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>, Vec<String>), HookError> {
@@ -311,7 +312,17 @@ pub(super) async fn discover(
     }
     let decision = owner.select(target, &metadata, required)?;
     let (issuer, scopes) = (decision.issuer, decision.scopes);
-    let metadata = issuer_metadata(owner, target, metadata.resource, issuer, budget).await?;
+    // Validated metadata naming another issuer is a move, never a transient outage.
+    let moved = cached_issuer.is_some_and(|cached| cached != issuer);
+    let metadata = issuer_metadata(owner, target, metadata.resource, issuer, budget)
+        .await
+        .map_err(|error| {
+            if moved {
+                error.transient_if(false)
+            } else {
+                error
+            }
+        })?;
     Ok((metadata, hint, scopes))
 }
 
