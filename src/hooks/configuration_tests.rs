@@ -543,3 +543,38 @@ fn prepare_during_attempt_is_not_lost() {
     assert_eq!(a.configuration_calls(), 3);
     assert!(hooks.intercepts(generated::EventType::ToolBefore));
 }
+
+/// A successful host prepare resets the backoff to its initial delay.
+#[test]
+fn prepare_resets_backoff() {
+    let initial = Duration::from_secs(10);
+    let backend = Scripted::new((0..5).map(|_| Reply::Fail(unavailable())));
+    let provider = Arc::new(Prepared::default());
+    let (options, _) = options(
+        &[("com.a", backend.clone())],
+        Some(provider.clone()),
+        initial,
+    );
+    let hooks = Hooks::new(registration(&["com.a"]), options).unwrap();
+    let delay = |hooks: &Hooks, before: Instant| {
+        let pending = hooks.pending.lock().unwrap();
+        (pending[0].retry_at.unwrap() - before).as_secs()
+    };
+    let mut before = Instant::now();
+    block_on(hooks.initialize()).unwrap();
+    assert_eq!(delay(&hooks, before), 10);
+    // Two elapsed backoffs grow the delay to 40s.
+    for expected in [20, 40] {
+        before = Instant::now();
+        hooks.pending.lock().unwrap()[0].retry_at = Some(before);
+        block_on(hooks.initialize()).unwrap();
+        assert_eq!(delay(&hooks, before), expected);
+    }
+    // A prepare makes it eligible at once and the failed attempt starts over.
+    provider.0.fetch_add(1, Ordering::SeqCst);
+    before = Instant::now();
+    block_on(hooks.initialize()).unwrap();
+    assert_eq!(backend.configuration_calls(), 4);
+    assert_eq!(delay(&hooks, before), 10);
+    assert_eq!(hooks.pending.lock().unwrap()[0].delay, initial * 2);
+}
