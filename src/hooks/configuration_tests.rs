@@ -663,3 +663,72 @@ fn prepare_resets_backoff() {
         initial * 2
     );
 }
+
+/// Nothing drives a queued task without a runtime; drop and shutdown release
+/// it, so the routes and transports it holds are freed.
+#[test]
+fn drop_and_shutdown_release_undriven_discovery() {
+    for shutdown in [false, true] {
+        let backoff = Duration::from_millis(5);
+        let (_never, wait) = oneshot::channel::<Value>();
+        let (_never_too, wait_too) = oneshot::channel::<Value>();
+        let a = Scripted::new([Reply::Subscriptions(intercept())]);
+        let b = Scripted::new([Reply::Fail(unavailable()), Reply::Wait(wait)]);
+        let c = Scripted::new([Reply::Wait(wait_too)]);
+        let (first, _) = options(&[("com.a", a.clone()), ("com.b", b.clone())], None, backoff);
+        let hooks = Hooks::new(registration(&["com.a", "com.b"]), first).unwrap();
+        block_on(hooks.initialize()).unwrap();
+        std::thread::sleep(backoff * 2);
+        // An event queues a re-attempt of `b` and returns; nothing polls it again.
+        event(&hooks);
+        assert_eq!(b.configuration_calls(), 2);
+        assert!(hooks.discovery.task.lock().unwrap().is_some());
+        // An undriven first initialization of another client.
+        let (second, _) = options(&[("com.c", c.clone())], None, backoff);
+        let other = Hooks::new(registration(&["com.c"]), second).unwrap();
+        {
+            let mut first = Box::pin(other.initialize());
+            let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
+            assert!(first.as_mut().poll(&mut cx).is_pending());
+        }
+        if shutdown {
+            block_on(hooks.shutdown()).unwrap();
+            block_on(other.shutdown()).unwrap();
+            assert!(hooks.discovery.task.lock().unwrap().is_none());
+            assert!(other.discovery.task.lock().unwrap().is_none());
+        }
+        drop(hooks);
+        drop(other);
+        assert_eq!(
+            (
+                Arc::strong_count(&a),
+                Arc::strong_count(&b),
+                Arc::strong_count(&c)
+            ),
+            (1, 1, 1),
+            "shutdown first: {shutdown}"
+        );
+    }
+}
+
+/// A dropped event does not cancel the first initialization it waited on:
+/// the next caller continues the same attempt.
+#[test]
+fn dropped_event_does_not_cancel_first_initialization() {
+    let (release, wait) = oneshot::channel::<Value>();
+    let a = Scripted::new([Reply::Wait(wait), Reply::Subscriptions(intercept())]);
+    let (options, seen) = options(&[("com.a", a.clone())], None, Duration::from_secs(60));
+    let hooks = Hooks::new(registration(&["com.a"]), options).unwrap();
+    {
+        let mut admitted = Box::pin(admit(&hooks));
+        let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
+        assert!(admitted.as_mut().poll(&mut cx).is_pending());
+    }
+    assert_eq!(a.configuration_calls(), 1);
+    release.send(intercept()).unwrap();
+    event(&hooks);
+    assert_eq!(a.configuration_calls(), 1, "the same attempt completed");
+    assert!(hooks.intercepts(generated::EventType::ToolBefore));
+    assert_eq!(a.count("hooks/intercept"), 1);
+    assert!(seen.lock().unwrap().is_empty());
+}

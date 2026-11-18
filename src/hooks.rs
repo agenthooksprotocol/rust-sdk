@@ -324,9 +324,14 @@ impl Discovery {
     fn routes(&self) -> Arc<Vec<Route>> {
         self.routes.lock().unwrap().clone()
     }
-    fn wake(&self) {
-        if let Some(task) = self.task.lock().unwrap().as_ref() {
-            std::task::Wake::wake_by_ref(&task.wakers);
+    /// Drop the in-flight task, which holds this `Discovery`, and wake its
+    /// pollers. Without it, a task nothing polls would keep the routes and
+    /// pending transports alive after shutdown or drop.
+    fn cancel(&self) {
+        let task = self.task.lock().unwrap().take();
+        if let Some(DiscoveryTask { future, wakers }) = task {
+            drop(future);
+            std::task::Wake::wake(wakers);
         }
     }
     /// Host preparations for a pending backend's event endpoint.
@@ -1019,6 +1024,7 @@ impl Drop for Hooks {
     fn drop(&mut self) {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
+        self.discovery.cancel();
     }
 }
 impl Hooks {
@@ -1623,7 +1629,7 @@ impl Hooks {
     pub async fn shutdown(&self) -> Result<ObservationReport, HookError> {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
-        self.discovery.wake();
+        self.discovery.cancel();
         poll_fn(|cx| {
             let mut waiters = self.life.waiters.lock().unwrap();
             if !self.life.cleaning.swap(true, Ordering::SeqCst) {
