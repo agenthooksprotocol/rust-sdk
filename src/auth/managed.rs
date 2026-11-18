@@ -560,6 +560,8 @@ pub struct ManagedOAuth {
     pub(super) network: Arc<dyn OAuthNetwork>,
     pub(super) policy: Arc<dyn OAuthPolicy>,
     store: Arc<dyn CredentialStore>,
+    /// Successful host preparations by backend, purpose and destination.
+    prepared: Arc<std::sync::Mutex<std::collections::BTreeMap<String, u64>>>,
 }
 /// Which caller drives acquisition. Only `Prepare` may create a pending login.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -804,6 +806,7 @@ impl ManagedOAuth {
             network,
             policy,
             store,
+            prepared: Arc::default(),
         })
     }
     /// A second handle on the same configuration, network, policy and store,
@@ -814,6 +817,25 @@ impl ManagedOAuth {
             network: self.network.clone(),
             policy: self.policy.clone(),
             store: self.store.clone(),
+            prepared: self.prepared.clone(),
+        }
+    }
+    fn prepared_key(context: &AuthContext) -> Option<String> {
+        let target = context.target().ok()?;
+        let purpose = match target.purpose() {
+            AuthPurpose::Event => "event",
+            AuthPurpose::Upload => "upload",
+        };
+        Some(frame(
+            "ahp.oauth.prepared:",
+            &[target.backend_id(), purpose, target.destination().as_str()],
+        ))
+    }
+    fn mark_prepared(&self, context: &AuthContext) {
+        if let Some(key) = Self::prepared_key(context) {
+            let mut prepared = self.prepared.lock().unwrap();
+            let count = prepared.entry(key).or_default();
+            *count = count.saturating_add(1);
         }
     }
     fn flow_id(&self) -> &'static str {
@@ -1077,7 +1099,7 @@ impl ManagedOAuth {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
-        budget
+        let prepared = budget
             .run(async {
                 let target = context.target()?;
                 self.validate_target(&target)?;
@@ -1085,11 +1107,15 @@ impl ManagedOAuth {
                     .await?;
                 let required = &options.required;
                 let pending = self
-                    .acquire(context, None, required, None, budget, Mode::Prepare)
+                    .acquire(context.clone(), None, required, None, budget, Mode::Prepare)
                     .await?;
                 pending.ok_or_else(|| fail(AuthErrorCode::ProviderFailed))
             })
-            .await
+            .await?;
+        if matches!(prepared, Preparation::Ready(_)) {
+            self.mark_prepared(&context);
+        }
+        Ok(prepared)
     }
     /// `challenge` is present only for challenge recovery; its requirements, like
     /// `extra`, apply to this operation only and are never stored.
@@ -1807,9 +1833,11 @@ impl ManagedOAuth {
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
-        budget
-            .run(self.complete_inner(context, callback, budget))
-            .await
+        let credential = budget
+            .run(self.complete_inner(context.clone(), callback, budget))
+            .await?;
+        self.mark_prepared(&context);
+        Ok(credential)
     }
     async fn complete_inner(
         &self,
@@ -2083,29 +2111,31 @@ impl Committer {
         old_refresh: Option<String>,
         required: &[String],
     ) -> Result<BearerCredential, HookError> {
-        let response_scopes = response
-            .scopes()
-            .map(|s| s.iter().map(|s| s.as_str().to_owned()).collect::<Vec<_>>())
-            .unwrap_or_else(|| requested.to_vec());
+        let response_scopes = response_scopes(
+            response
+                .scopes()
+                .map(|s| s.iter().map(|s| s.as_str()).collect::<Vec<_>>()),
+            requested,
+        );
         let refreshed = old_refresh.is_some();
+        let rotated = response.refresh_token().map(|s| s.secret().clone());
+        let expires = response.expires_in();
+        let Some(response_scopes) = response_scopes else {
+            return self
+                .reject_response(guard, record, refreshed, rotated)
+                .await;
+        };
         let granted = union(&response_scopes, &[])
             .into_iter()
             .filter(|scope| bound.contains(scope))
             .collect::<Vec<_>>();
-        let rotated = response.refresh_token().map(|s| s.secret().clone());
-        let expires = response.expires_in();
         if *response.token_type() != BasicTokenType::Bearer
             || !valid_token(response.access_token().secret())
             || expires.is_some_and(|v| v.is_zero())
         {
-            // A failed initial exchange persists nothing beyond releasing its login claim.
-            if refreshed {
-                keep_refresh(record, rotated);
-                self.persist(guard, record).await?;
-            } else if record.pending.take().is_some() {
-                self.persist(guard, record).await?;
-            }
-            return Err(fail(AuthErrorCode::ProviderFailed));
+            return self
+                .reject_response(guard, record, refreshed, rotated)
+                .await;
         }
         let refresh_token = rotated.filter(|token| valid_token(token)).or(old_refresh);
         record.pending = None;
@@ -2130,6 +2160,44 @@ impl Committer {
         }
         Ok(credential)
     }
+    /// A token response failing basic validity. A failed initial exchange
+    /// persists nothing beyond releasing its login claim.
+    async fn reject_response(
+        &self,
+        guard: &mut dyn CredentialGuard,
+        record: &mut SessionRecord,
+        refreshed: bool,
+        rotated: Option<String>,
+    ) -> Result<BearerCredential, HookError> {
+        if refreshed {
+            keep_refresh(record, rotated);
+            self.persist(guard, record).await?;
+        } else if record.pending.take().is_some() {
+            self.persist(guard, record).await?;
+        }
+        Err(fail(AuthErrorCode::ProviderFailed))
+    }
+}
+/// The response scope set, or `None` when `scope` is malformed. `oauth2` splits
+/// the string on single SP, so rejoining recovers it exactly. Absent, null
+/// (`None`) and blank (only SP, HTAB, CR, LF) mean omitted and inherit
+/// `inherited`; anything else must be RFC 6749 scope tokens separated by
+/// exactly one SP.
+fn response_scopes(split: Option<Vec<&str>>, inherited: &[String]) -> Option<Vec<String>> {
+    let Some(split) = split else {
+        return Some(inherited.to_vec());
+    };
+    let raw = split.join(" ");
+    if raw
+        .bytes()
+        .all(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+    {
+        return Some(inherited.to_vec());
+    }
+    split
+        .iter()
+        .all(|scope| valid_scope(scope))
+        .then(|| split.iter().map(|scope| (*scope).to_owned()).collect())
 }
 /// The access token of a failed refresh is retired; the refresh token is kept.
 fn keep_refresh(record: &mut SessionRecord, rotated: Option<String>) {
@@ -2334,6 +2402,12 @@ impl AuthProvider for ManagedOAuth {
                 _ => Err(fail(AuthErrorCode::InteractionRequired)),
             }
         })
+    }
+    /// Counts `prepare` calls that returned a credential and completed logins.
+    fn preparations(&self, context: &AuthContext) -> u64 {
+        Self::prepared_key(context)
+            .and_then(|key| self.prepared.lock().unwrap().get(&key).copied())
+            .unwrap_or(0)
     }
 }
 

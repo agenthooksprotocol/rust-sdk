@@ -1,5 +1,5 @@
 {
-  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's requested set (within allowed for acquisitions; the original request for refreshes); wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. registration_request_digests hash host registration policy; a record whose digest differs is unusable.",
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's requested set (within allowed for acquisitions; the original request for refreshes); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. registration_request_digests hash host registration policy; a record whose digest differs is unusable.",
   "recovery": [
     {
       "code": "invalid_configuration",
@@ -638,6 +638,404 @@
         "write"
       ],
       "refresh_preserved": true
+    },
+    {
+      "id": "initial-empty-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": ""
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "initial-whitespace-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": " \t "
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "initial-null-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": null
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "initial-numeric-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": 123
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "initial-array-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": [
+          "read"
+        ]
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "refresh-empty-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": ""
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-whitespace-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": " \t "
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-null-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": null
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-numeric-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": 123
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-array-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": [
+          "read"
+        ]
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
+    },
+    {
+      "id": "initial-repeated-separator-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read  write"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "initial-leading-separator-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": " read"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "initial-tab-separator-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read\twrite"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "refresh-repeated-separator-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": "read  write"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-leading-separator-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": " read"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-tab-separator-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": "read\twrite"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
     }
   ],
   "lifecycle": [
@@ -952,6 +1350,30 @@
     {
       "id": "proactive-renewal-failure-keeps-current-registration",
       "expect": "a proactive re-registration failing (e.g. 5xx or 429) inside the renewal margin updates the failed marker, but the operation succeeds with the current still-usable registration and token until that registration actually expires"
+    },
+    {
+      "id": "configuration-401-diagnostic-carries-auth-code",
+      "expect": "discovery answered 401 with no usable grant skips the backend and emits a host-visible diagnostic {backendId, code configuration_unavailable, authError interaction_required, recovery login}; no credentials or bodies; cancellation emits no diagnostic and propagates"
+    },
+    {
+      "id": "configuration-unavailable-retried-after-prepare",
+      "expect": "after a successful host prepare for the skipped backend's event endpoint, the next event admission re-attempts discovery without waiting for backoff and admits the backend's routes"
+    },
+    {
+      "id": "configuration-unavailable-backoff",
+      "expect": "a configuration_unavailable skip with no authError, or with recovery retry, is re-attempted only at the first admission or initialize after backoff (30s, doubling, capped at 1h, host-configurable); earlier admissions do not contact the backend"
+    },
+    {
+      "id": "configuration-auth-failure-not-retried-on-backoff",
+      "expect": "a configuration_unavailable skip whose recovery is login, configure or none is not re-attempted when backoff elapses; only a successful host prepare for that backend's endpoint or reinitialization re-attempts it"
+    },
+    {
+      "id": "configuration-invalid-not-retried",
+      "expect": "configuration_invalid, no_applicable_subscriptions and configuration_local_secret skips are never re-attempted before reinitialization, even after prepare or backoff elapses"
+    },
+    {
+      "id": "configuration-retry-atomic-routes",
+      "expect": "a retry runs inside the single shared admission: concurrent callers observe old or complete new routes, never partial; events admitted before the retry succeeded are not replayed"
     }
   ],
   "registration_keys": [

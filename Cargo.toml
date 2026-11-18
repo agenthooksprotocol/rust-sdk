@@ -16,7 +16,7 @@ default = []
 typed-form = ["dep:schemars"]
 # Host-driven OAuth; no bundled HTTP client, browser, listener or store.
 managed-oauth = ["dep:oauth2", "dep:httpdate", "dep:tokio", "tokio/time", "tokio/rt", "tokio/sync"]
-reqwest = ["dep:reqwest", "dep:tokio", "tokio/time"]
+reqwest = ["dep:reqwest", "dep:tokio", "tokio/time", "tokio/rt"]
 axum = ["dep:axum"]
 tokio-process = ["dep:tokio", "tokio/process", "tokio/time", "tokio/io-util", "tokio/sync", "tokio/rt"]
 # Existing executable interoperability harnesses, not the core SDK.

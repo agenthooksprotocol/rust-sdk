@@ -755,8 +755,14 @@ async fn canonical_token_vectors() {
                     )
                     .await
             }
-            // Unparseable responses are never accepted.
-            Err(_) => Err(fail(AuthErrorCode::ProviderFailed)),
+            // Unparseable responses are never accepted; as in `refresh`, an
+            // observed refresh response keeps a valid rotated refresh token.
+            Err(_) => {
+                if refresh {
+                    super::keep_refresh(&mut record, super::rotated_refresh(&body));
+                }
+                Err(fail(AuthErrorCode::ProviderFailed))
+            }
         };
         assert_eq!(result.is_ok(), vector["usable"] == true, "{id}");
         if let Some(error) = vector["error"].as_str() {
@@ -1083,6 +1089,30 @@ fn lifecycle_manifest_maps_to_native_tests() {
         (
             "proactive-renewal-failure-keeps-current-registration",
             client_registration::proactive_renewal_failure_keeps_current_registration,
+        ),
+        (
+            "configuration-401-diagnostic-carries-auth-code",
+            transport::configuration_401_diagnostic_carries_auth_code,
+        ),
+        (
+            "configuration-unavailable-retried-after-prepare",
+            transport::configuration_unavailable_retried_after_prepare,
+        ),
+        (
+            "configuration-unavailable-backoff",
+            crate::hooks::configuration_tests::configuration_unavailable_backoff,
+        ),
+        (
+            "configuration-auth-failure-not-retried-on-backoff",
+            crate::hooks::configuration_tests::configuration_auth_failure_not_retried_on_backoff,
+        ),
+        (
+            "configuration-invalid-not-retried",
+            crate::hooks::configuration_tests::configuration_invalid_not_retried,
+        ),
+        (
+            "configuration-retry-atomic-routes",
+            crate::hooks::configuration_tests::configuration_retry_atomic_routes,
         ),
     ];
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
@@ -3031,4 +3061,145 @@ async fn slow_issuer_then_slow_store_commit_within_fresh_budget_after_drop() {
     let token = host.store.token();
     assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
     assert!(!token.refresh_in_flight);
+}
+
+/// Blank or null `scope` inherits on every token path (PKCE initial, refresh,
+/// client credentials); malformed grammar or a non-string fails basic validity.
+#[tokio::test]
+async fn response_scope_blank_inherits_and_malformed_fails_every_path() {
+    let blank = [json!(""), json!(" \t\r\n"), Value::Null];
+    let malformed = [
+        json!("read  write"),
+        json!(" read"),
+        json!("read "),
+        json!("read\twrite"),
+        json!("read\nwrite"),
+        json!(123),
+        json!(true),
+        json!(["read"]),
+        json!({"read": true}),
+    ];
+    let body = |scope: &Value| json!({"access_token":"a","refresh_token":"r","token_type":"Bearer","scope":scope});
+    // PKCE initial: requested is ["read"].
+    for (scope, ok) in blank
+        .iter()
+        .map(|s| (s, true))
+        .chain(malformed.iter().map(|s| (s, false)))
+    {
+        let host = Host::new();
+        let oauth = host.pkce(|c| c);
+        let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+        host.network.reply(200, body(scope));
+        let result = oauth
+            .complete(context(), callback(&pending), budget())
+            .await;
+        if ok {
+            result.unwrap();
+            assert_eq!(host.store.token().scopes, scopes(&["read"]), "{scope}");
+        } else {
+            assert_eq!(code(result), AuthErrorCode::ProviderFailed, "{scope}");
+            assert!(
+                host.store.grant().and_then(|g| g.token).is_none(),
+                "{scope}"
+            );
+        }
+    }
+    // Refresh inherits the previous grant.
+    for (scope, ok) in blank
+        .iter()
+        .map(|s| (s, true))
+        .chain(malformed.iter().map(|s| (s, false)))
+    {
+        let host = Host::new();
+        let oauth = host.pkce(|c| c);
+        host.seed(&oauth, context()).await;
+        host.store.expire();
+        host.network.reply(200, body(scope));
+        let result = oauth.credential(context()).await;
+        let token = host.store.token();
+        if ok {
+            assert_eq!(result.unwrap().unwrap().token, "a", "{scope}");
+            assert_eq!(token.scopes, scopes(&["read"]), "{scope}");
+        } else {
+            assert_eq!(code(result), AuthErrorCode::ProviderFailed, "{scope}");
+            assert_eq!(token.refresh_token.as_deref(), Some("r"), "{scope}");
+            assert!(token.access_rejected && !token.refresh_in_flight, "{scope}");
+        }
+    }
+    // Client credentials: requested ["read"] within ceiling ["read", "write"].
+    for (scope, ok) in blank
+        .iter()
+        .map(|s| (s, true))
+        .chain(malformed.iter().map(|s| (s, false)))
+    {
+        let host = Host::new();
+        let oauth = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+        host.network.reply(200, body(scope));
+        let result = oauth.credential(cc_context()).await;
+        if ok {
+            assert_eq!(result.unwrap().unwrap().token, "a", "{scope}");
+            assert_eq!(host.store.token().scopes, scopes(&["read"]), "{scope}");
+        } else {
+            assert_eq!(code(result), AuthErrorCode::ProviderFailed, "{scope}");
+            assert!(
+                host.store.grant().and_then(|g| g.token).is_none(),
+                "{scope}"
+            );
+        }
+    }
+}
+
+#[test]
+fn response_scope_grammar() {
+    let inherited = scopes(&["read"]);
+    let parse = |raw: &str| super::response_scopes(Some(raw.split(' ').collect()), &inherited);
+    assert_eq!(
+        super::response_scopes(None, &inherited),
+        Some(inherited.clone())
+    );
+    for blank in ["", " ", "\t", "\r\n", " \t\r\n "] {
+        assert_eq!(parse(blank), Some(inherited.clone()), "{blank:?}");
+    }
+    assert_eq!(parse("write"), Some(scopes(&["write"])));
+    assert_eq!(parse("a b"), Some(scopes(&["a", "b"])));
+    for bad in [
+        "a  b", " a", "a ", "a\tb", "a\rb", "a\nb", "\ta", "a\"b", "a\\b",
+    ] {
+        assert_eq!(parse(bad), None, "{bad:?}");
+    }
+}
+
+/// Successful prepares are counted per backend, purpose and normalized
+/// destination; a prepare that only creates a login is not counted.
+#[tokio::test]
+async fn preparations_match_normalized_endpoint() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    assert_eq!(oauth.preparations(&context()), 0);
+    host.network.reply(
+        200,
+        json!({"access_token":"a","refresh_token":"r","token_type":"Bearer","expires_in":3600}),
+    );
+    oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    ready(oauth.prepare(context(), budget()).await.unwrap());
+    let variant = AuthContext {
+        destination: "HTTPS://API.Example:443/hooks".into(),
+        authentication: None,
+        ..context()
+    };
+    assert_eq!(oauth.preparations(&variant), 2);
+    let other = AuthContext {
+        destination: "https://api.example/other".into(),
+        ..context()
+    };
+    assert_eq!(oauth.preparations(&other), 0);
+    let upload = AuthContext {
+        purpose: AuthPurpose::Upload,
+        ..context()
+    };
+    assert_eq!(oauth.preparations(&upload), 0);
 }

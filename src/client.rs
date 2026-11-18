@@ -23,6 +23,8 @@ pub struct HookError {
     required_scopes: Option<Box<[String]>>,
     unsent: bool,
     transient: bool,
+    /// A well-formed backend JSON-RPC error with code -32601 (method not found).
+    method_not_found: bool,
 }
 impl HookError {
     /// Construct an unclassified transport failure.
@@ -35,6 +37,7 @@ impl HookError {
             required_scopes: None,
             unsent: false,
             transient: false,
+            method_not_found: false,
         }
     }
     /// Construct a redacted authentication failure with no provider message or cause.
@@ -68,6 +71,9 @@ impl HookError {
     #[cfg(feature = "managed-oauth")]
     pub(crate) fn is_transient(&self) -> bool {
         self.transient
+    }
+    pub(crate) fn is_method_not_found(&self) -> bool {
+        self.method_not_found
     }
     pub(crate) fn request_not_sent_if(mut self, unsent: bool) -> Self {
         self.unsent = unsent;
@@ -923,8 +929,10 @@ pub(crate) fn check_rpc_error(response: &Value, expected_id: &Value) -> Result<(
             && remote["code"].as_i64().is_some()
             && remote["message"].is_string();
         return Err(if valid {
-            error("backend JSON-RPC error")
-                .classified(crate::generated::DeliveryDiagnosticCode::RemoteRpc)
+            let mut error = error("backend JSON-RPC error")
+                .classified(crate::generated::DeliveryDiagnosticCode::RemoteRpc);
+            error.method_not_found = remote["code"].as_i64() == Some(-32601);
+            error
         } else {
             error("malformed JSON-RPC error envelope")
                 .classified(crate::generated::DeliveryDiagnosticCode::ProtocolRejection)

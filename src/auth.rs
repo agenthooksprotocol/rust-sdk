@@ -401,6 +401,12 @@ impl AuthProvider for AuthProviders {
             }
         })
     }
+    fn preparations(&self, context: &AuthContext) -> u64 {
+        match self.route(context) {
+            Ok(Some(provider)) => provider.preparations(context),
+            _ => 0,
+        }
+    }
 }
 /// Only typed safe classifications cross a provider boundary, never arbitrary
 /// messages, attached settlements, or source chains from a third-party provider.

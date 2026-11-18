@@ -3,6 +3,7 @@
 use crate::{
     adapters::registered::{self, BackendOptions, ManagedBackend},
     attachment::{Budget, InvocationAttachments},
+    auth::{AuthErrorCode, AuthRecovery},
     client::{
         Client, DeliveryDiagnostic, DeliveryStage, FailurePolicy, Hook, HookError, LocalFuture,
         Mode, Permission, ProtocolOutcome, Subscription, ToolContext,
@@ -17,7 +18,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     future::{Future, IntoFuture, poll_fn},
     sync::{
-        Arc, Mutex, OnceLock, Weak,
+        Arc, Mutex, Weak,
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     task::{Poll, Waker},
@@ -119,7 +120,10 @@ pub struct HooksOptions {
     /// Active attachment owner budget; returned results release this accounting.
     pub max_stored_entries: usize,
     backends: BTreeMap<String, Arc<dyn ManagedBackend>>,
+    configuration_diagnostics: Option<ConfigurationDiagnosticSink>,
+    configuration_backoff: (Duration, Duration),
 }
+type ConfigurationDiagnosticSink = Arc<dyn Fn(&ConfigurationDiagnostic) + Send + Sync>;
 impl HooksOptions {
     pub fn new(
         source: impl Into<String>,
@@ -139,6 +143,8 @@ impl HooksOptions {
             max_stored_bytes: 64 * 1024 * 1024,
             max_stored_entries: 4096,
             backends: BTreeMap::new(),
+            configuration_diagnostics: None,
+            configuration_backoff: (Duration::from_secs(30), Duration::from_secs(3600)),
         }
     }
     /// Optional low-level escape hatch for a host-owned neutral transport.
@@ -146,6 +152,422 @@ impl HooksOptions {
     pub fn with_backend(mut self, id: impl Into<String>, backend: Arc<dyn ManagedBackend>) -> Self {
         self.backends.insert(id.into(), backend);
         self
+    }
+    /// Receive a [`ConfigurationDiagnostic`] for every backend that server-driven
+    /// configuration skips, at construction, initialization or a failed
+    /// re-attempt. Called synchronously on the admitting task; it must not block.
+    pub fn on_configuration_skipped(
+        mut self,
+        sink: impl Fn(&ConfigurationDiagnostic) + Send + Sync + 'static,
+    ) -> Self {
+        self.configuration_diagnostics = Some(Arc::new(sink));
+        self
+    }
+    /// Backoff before a backend skipped with
+    /// [`ConfigurationSkipCode::Unavailable`] is re-attempted at the next event
+    /// admission or initialization: `initial`, doubling after each failed
+    /// attempt, capped at `max`. Defaults to 30 seconds and 1 hour. Skips whose
+    /// auth recovery is not `retry` are never re-attempted on backoff.
+    pub fn configuration_backoff(mut self, initial: Duration, max: Duration) -> Self {
+        self.configuration_backoff = (initial, max);
+        self
+    }
+}
+
+/// Why server-driven configuration skipped a backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ConfigurationSkipCode {
+    /// Transport failure, timeout, non-success HTTP status, a JSON-RPC error
+    /// other than method-not-found, or an endpoint authentication failure.
+    /// Re-attempted after a successful host `prepare` for the backend's event
+    /// endpoint, or on backoff when there is no auth error or its recovery is
+    /// `retry`.
+    Unavailable,
+    /// Method-not-found, or an uncorrelated, malformed or version-incompatible
+    /// response. Not re-attempted.
+    Invalid,
+    /// A valid advertisement with no supported subscriptions. Not re-attempted.
+    NoApplicableSubscriptions,
+    /// Discovered upload authentication names a local secret reference. Not
+    /// re-attempted.
+    LocalSecret,
+}
+impl ConfigurationSkipCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "configuration_unavailable",
+            Self::Invalid => "configuration_invalid",
+            Self::NoApplicableSubscriptions => "no_applicable_subscriptions",
+            Self::LocalSecret => "configuration_local_secret",
+        }
+    }
+}
+
+/// Host-visible diagnostic for a backend that server-driven configuration
+/// skipped. Redacted: never credentials, tokens, response bodies or event
+/// content. Serializes as `{backendId, code, authError?, recovery?}`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ConfigurationDiagnostic {
+    pub backend_id: String,
+    pub code: ConfigurationSkipCode,
+    /// The safe authentication code, when an endpoint authentication error
+    /// caused the skip.
+    pub auth_error: Option<AuthErrorCode>,
+    /// The recovery paired with `auth_error`.
+    pub recovery: Option<AuthRecovery>,
+}
+impl ConfigurationDiagnostic {
+    fn new(
+        backend_id: &str,
+        code: ConfigurationSkipCode,
+        auth_error: Option<AuthErrorCode>,
+    ) -> Self {
+        Self {
+            backend_id: backend_id.into(),
+            code,
+            auth_error,
+            recovery: auth_error.map(AuthErrorCode::recovery),
+        }
+    }
+    /// Whether backoff may re-attempt this skip: only `Unavailable` without an
+    /// auth error or with recovery `retry`.
+    fn backoff_retry(&self) -> bool {
+        self.code == ConfigurationSkipCode::Unavailable
+            && self.recovery.is_none_or(|r| r == AuthRecovery::Retry)
+    }
+}
+impl Serialize for ConfigurationDiagnostic {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("backendId", &self.backend_id)?;
+        map.serialize_entry("code", self.code.as_str())?;
+        if let Some(auth_error) = self.auth_error {
+            map.serialize_entry("authError", auth_error.as_str())?;
+        }
+        if let Some(recovery) = self.recovery {
+            map.serialize_entry("recovery", recovery.as_str())?;
+        }
+        map.end()
+    }
+}
+/// The skip for a failed discovery exchange, keeping only a safe auth code.
+fn configuration_failure(error: &HookError) -> (ConfigurationSkipCode, Option<AuthErrorCode>) {
+    if let Some(code) = error.auth_code() {
+        (ConfigurationSkipCode::Unavailable, Some(code))
+    } else if error.is_method_not_found()
+        || error.code() == generated::DeliveryDiagnosticCode::ProtocolRejection
+    {
+        (ConfigurationSkipCode::Invalid, None)
+    } else {
+        (ConfigurationSkipCode::Unavailable, None)
+    }
+}
+/// A backend without explicit subscriptions awaiting discovery: all of them
+/// before initialization, then only those skipped as unavailable.
+struct PendingBackend {
+    id: String,
+    backend: Value,
+    transport: Arc<dyn ManagedBackend>,
+    /// The event endpoint a host prepares, for HTTP backends.
+    endpoint: Option<crate::adapters::registered::AuthContext>,
+    /// Host preparations observed before the last attempt.
+    prepared: u64,
+    /// When backoff makes the backend eligible; `None` means never.
+    retry_at: Option<Instant>,
+    delay: Duration,
+}
+
+/// Admitted routes and server-driven configuration state, shared by `Hooks`
+/// and its detached discovery task.
+struct Discovery {
+    /// A re-attempt replaces the whole set, never an element, so an event's
+    /// snapshot never changes under it.
+    routes: Mutex<Arc<Vec<Route>>>,
+    initialized: AtomicBool,
+    /// Changed only by the discovery task, after all its attempts finished.
+    pending: Mutex<Vec<PendingBackend>>,
+    /// The single in-flight discovery: initialization or a re-attempt.
+    task: Mutex<Option<DiscoveryTask>>,
+    backend_order: Vec<String>,
+    grants: BTreeMap<generated::EventType, Value>,
+    observation_timeout: Duration,
+    backoff: (Duration, Duration),
+    sink: Option<ConfigurationDiagnosticSink>,
+    auth_provider: Option<Arc<dyn crate::adapters::registered::AuthProvider>>,
+    life: Arc<Lifecycle>,
+    next_id: AtomicU64,
+}
+struct DiscoveryTask {
+    future: LocalFuture<'static, Vec<ConfigurationDiagnostic>>,
+    wakers: Arc<Wakers>,
+}
+/// Every poller's waker; waking the task wakes all of them.
+#[derive(Default)]
+struct Wakers(Mutex<Vec<Waker>>);
+impl std::task::Wake for Wakers {
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+    fn wake_by_ref(self: &Arc<Self>) {
+        let wakers = std::mem::take(&mut *self.0.lock().unwrap());
+        for waker in wakers {
+            waker.wake();
+        }
+    }
+}
+type Attempt = (usize, Value, Arc<dyn ManagedBackend>, u64, bool);
+type Discovered = Result<Vec<Route>, (ConfigurationSkipCode, Option<AuthErrorCode>)>;
+impl Discovery {
+    fn routes(&self) -> Arc<Vec<Route>> {
+        self.routes.lock().unwrap().clone()
+    }
+    /// Drop the in-flight task, which holds this `Discovery`, and wake its
+    /// pollers. Without it, a task nothing polls would keep the routes and
+    /// pending transports alive after shutdown or drop.
+    fn cancel(&self) {
+        let task = self.task.lock().unwrap().take();
+        if let Some(DiscoveryTask { future, wakers }) = task {
+            drop(future);
+            std::task::Wake::wake(wakers);
+        }
+    }
+    /// Host preparations for a pending backend's event endpoint.
+    fn preparations(&self, pending: &PendingBackend) -> u64 {
+        match (&self.auth_provider, &pending.endpoint) {
+            (Some(provider), Some(endpoint)) => provider.preparations(endpoint),
+            _ => 0,
+        }
+    }
+    /// `Some(prepared)` when `pending` may be re-attempted; `prepared` is true
+    /// when a host prepare, not backoff, made it eligible.
+    fn eligible(&self, pending: &PendingBackend, now: Instant) -> Option<bool> {
+        if self.preparations(pending) > pending.prepared {
+            Some(true)
+        } else {
+            pending
+                .retry_at
+                .is_some_and(|at| now >= at)
+                .then_some(false)
+        }
+    }
+    /// Start the discovery task if none runs and initialization or a
+    /// re-attempt is due: the shared admission.
+    fn start(self: &Arc<Self>) {
+        if self.life.closing.load(Ordering::SeqCst) {
+            return;
+        }
+        let mut task = self.task.lock().unwrap();
+        if task.is_some() {
+            return;
+        }
+        let first = !self.initialized.load(Ordering::SeqCst);
+        let attempts: Vec<Attempt> = {
+            let now = Instant::now();
+            let pending = self.pending.lock().unwrap();
+            pending
+                .iter()
+                .enumerate()
+                .filter_map(|(index, p)| {
+                    let prepared = if first {
+                        Some(false)
+                    } else {
+                        self.eligible(p, now)
+                    }?;
+                    Some((
+                        index,
+                        p.backend.clone(),
+                        Arc::clone(&p.transport),
+                        self.preparations(p),
+                        prepared,
+                    ))
+                })
+                .collect()
+        };
+        if attempts.is_empty() {
+            if first {
+                self.initialized.store(true, Ordering::SeqCst);
+            }
+            return;
+        }
+        let this = Arc::clone(self);
+        *task = Some(DiscoveryTask {
+            future: Box::pin(async move { this.run(attempts).await }),
+            wakers: Arc::default(),
+        });
+        drop(task);
+        #[cfg(any(
+            feature = "managed-oauth",
+            feature = "reqwest",
+            feature = "tokio-process"
+        ))]
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let this = Arc::clone(self);
+            drop(runtime.spawn(poll_fn(move |cx| this.poll(Some(cx.waker())))));
+        }
+    }
+    /// Advance the discovery task; `Ready` once none is in flight. Without a
+    /// waker this never waits: a contended task is left to its other poller.
+    fn poll(&self, waker: Option<&Waker>) -> Poll<()> {
+        let mut slot = match waker {
+            Some(_) => self.task.lock().unwrap(),
+            None => match self.task.try_lock() {
+                Ok(slot) => slot,
+                Err(_) => return Poll::Pending,
+            },
+        };
+        let Some(task) = slot.as_mut() else {
+            return Poll::Ready(());
+        };
+        if let Some(waker) = waker {
+            let mut wakers = task.wakers.0.lock().unwrap();
+            if !wakers.iter().any(|w| w.will_wake(waker)) {
+                wakers.push(waker.clone());
+            }
+        }
+        let task_waker = Waker::from(Arc::clone(&task.wakers));
+        let Poll::Ready(diagnostics) = task
+            .future
+            .as_mut()
+            .poll(&mut std::task::Context::from_waker(&task_waker))
+        else {
+            return Poll::Pending;
+        };
+        let finished = slot.take().expect("discovery task");
+        drop(slot);
+        std::task::Wake::wake(finished.wakers);
+        if let Some(sink) = &self.sink {
+            for diagnostic in &diagnostics {
+                sink(diagnostic);
+            }
+        }
+        Poll::Ready(())
+    }
+    /// Run every attempt, then record the outcome at once. A cancelled
+    /// (shutdown) task changes nothing.
+    async fn run(&self, attempts: Vec<Attempt>) -> Vec<ConfigurationDiagnostic> {
+        let mut outcomes = Vec::with_capacity(attempts.len());
+        for (index, backend, transport, observed, prepared) in attempts {
+            match self.discover(&backend, &transport).await {
+                Ok(outcome) => outcomes.push((index, outcome, observed, prepared)),
+                Err(_) => return Vec::new(),
+            }
+        }
+        let mut diagnostics = Vec::new();
+        let now = Instant::now();
+        let (initial, max) = self.backoff;
+        let mut pending = self.pending.lock().unwrap();
+        let mut admitted = Vec::new();
+        let mut finished = Vec::new();
+        for (index, outcome, observed, prepared) in outcomes {
+            let entry = &mut pending[index];
+            match outcome {
+                Ok(routes) => {
+                    admitted.extend(routes);
+                    finished.push(index);
+                }
+                Err((code, auth_error)) => {
+                    let diagnostic = ConfigurationDiagnostic::new(&entry.id, code, auth_error);
+                    if code == ConfigurationSkipCode::Unavailable {
+                        if prepared {
+                            entry.delay = initial;
+                        }
+                        entry.prepared = observed;
+                        entry.retry_at = diagnostic
+                            .backoff_retry()
+                            .then(|| now.checked_add(entry.delay))
+                            .flatten();
+                        entry.delay = entry.delay.saturating_mul(2).min(max);
+                    } else {
+                        finished.push(index);
+                    }
+                    diagnostics.push(diagnostic);
+                }
+            }
+        }
+        for index in finished.into_iter().rev() {
+            pending.remove(index);
+        }
+        if !admitted.is_empty() {
+            let mut current = self.routes.lock().unwrap();
+            let mut routes = Vec::clone(&current);
+            routes.extend(admitted);
+            routes.sort_by_key(|route| {
+                self.backend_order
+                    .iter()
+                    .position(|id| id == &route.backend_id)
+                    .unwrap()
+            });
+            *current = Arc::new(routes);
+        }
+        self.initialized.store(true, Ordering::SeqCst);
+        diagnostics
+    }
+    /// One discovery exchange: the backend's routes, or why it is skipped.
+    /// Only cancellation is an error.
+    async fn discover(
+        &self,
+        backend: &Value,
+        transport: &Arc<dyn ManagedBackend>,
+    ) -> Result<Discovered, HookError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": format!("configuration-{}", self.next_id.fetch_add(1, Ordering::SeqCst)),
+            "method": "hooks/configuration",
+            "params": {"protocolVersion": generated::PROTOCOL_VERSION}
+        });
+        let expected_id = request["id"].clone();
+        let owned_transport = Arc::clone(transport);
+        let timeout = self.observation_timeout;
+        let response = self
+            .life
+            .run(Box::pin(async move {
+                owned_transport.call(request, timeout).await
+            }))
+            .await;
+        if self.life.closing.load(Ordering::SeqCst) {
+            return Err(err("configuration discovery cancelled by shutdown")
+                .classified(generated::DeliveryDiagnosticCode::Cancelled));
+        }
+        let response = match response {
+            Ok(response) => response,
+            Err(error) if error.code() == generated::DeliveryDiagnosticCode::Cancelled => {
+                return Err(error);
+            }
+            Err(error) => return Ok(Err(configuration_failure(&error))),
+        };
+        // Built-in transports already reject JSON-RPC errors; host transports may not.
+        if let Err(error) = crate::client::check_rpc_error(&response, &expected_id) {
+            return Ok(Err(configuration_failure(&error)));
+        }
+        if response["id"] != expected_id
+            || crate::canonical::validate("configuration-response", &response).is_err()
+        {
+            return Ok(Err((ConfigurationSkipCode::Invalid, None)));
+        }
+        let configuration = &response["result"]["configuration"];
+        if names_local_secret(configuration) {
+            return Ok(Err((ConfigurationSkipCode::LocalSecret, None)));
+        }
+        let mut resolved = backend.clone();
+        resolved["subscriptions"] = configuration["subscriptions"].clone();
+        Ok(
+            match routes_for(
+                &resolved,
+                transport,
+                &self.grants,
+                self.observation_timeout,
+                true,
+            ) {
+                Ok(routes) if routes.is_empty() => {
+                    Err((ConfigurationSkipCode::NoApplicableSubscriptions, None))
+                }
+                Ok(routes) => Ok(routes),
+                Err(_) => Err((ConfigurationSkipCode::Invalid, None)),
+            },
+        )
     }
 }
 
@@ -588,12 +1010,9 @@ fn routes_for(
 pub struct Hooks {
     options: HooksOptions,
     harness: Value,
-    routes: Vec<Route>,
-    initialized_routes: OnceLock<Vec<Route>>,
-    pending: Vec<(Value, Arc<dyn ManagedBackend>)>,
-    backend_order: Vec<String>,
-    initializing: AtomicBool,
-    initialization_waiters: Mutex<Vec<Waker>>,
+    /// Admitted routes and server-driven configuration, shared with the
+    /// detached discovery task.
+    discovery: Arc<Discovery>,
     grants: BTreeMap<generated::EventType, Value>,
     backends: Vec<Arc<dyn ManagedBackend>>,
     budget: Arc<Budget>,
@@ -601,24 +1020,11 @@ pub struct Hooks {
     next_id: AtomicU64,
     upload_limiter: crate::upload_plan::UploadLimiter,
 }
-struct Initializing<'a>(&'a Hooks);
-impl Drop for Initializing<'_> {
-    fn drop(&mut self) {
-        let waiters = {
-            let mut waiters = self.0.initialization_waiters.lock().unwrap();
-            self.0.initializing.store(false, Ordering::SeqCst);
-            std::mem::take(&mut *waiters)
-        };
-        for waiter in waiters {
-            waiter.wake();
-        }
-    }
-}
-
 impl Drop for Hooks {
     fn drop(&mut self) {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
+        self.discovery.cancel();
     }
 }
 impl Hooks {
@@ -635,6 +1041,12 @@ impl Hooks {
             || options.max_stored_entries == 0
         {
             return Err(err("Hooks bounds must be positive"));
+        }
+        let (initial, max) = options.configuration_backoff;
+        if initial.is_zero() || max < initial {
+            return Err(err(
+                "configuration backoff must be positive and capped above it",
+            ));
         }
         let registration = serde_json::to_value(registration).map_err(err)?;
         crate::canonical::validate("registration", &registration)
@@ -674,7 +1086,19 @@ impl Hooks {
             } else {
                 match registered::from_registration(backend, &options.backend) {
                     Ok(transport) => transport,
-                    Err(_) if backend.get("subscriptions").is_none() => continue,
+                    Err(_) if backend.get("subscriptions").is_none() => {
+                        // A transport local configuration cannot build (including
+                        // an unresolvable bearer reference or an unsupported
+                        // binding) is invalid and never retried.
+                        if let Some(sink) = &options.configuration_diagnostics {
+                            sink(&ConfigurationDiagnostic::new(
+                                id,
+                                ConfigurationSkipCode::Invalid,
+                                None,
+                            ));
+                        }
+                        continue;
+                    }
                     Err(error) => return Err(error),
                 }
             };
@@ -687,122 +1111,100 @@ impl Hooks {
                     false,
                 )?);
             } else {
-                pending.push((backend.clone(), Arc::clone(&transport)));
+                let endpoint = (backend["transport"]["type"] == "http")
+                    .then(|| backend["transport"]["url"].as_str())
+                    .flatten()
+                    .map(|url| crate::adapters::registered::AuthContext {
+                        backend_id: id.into(),
+                        authentication: backend.get("authentication").cloned(),
+                        destination: url.into(),
+                        purpose: crate::adapters::registered::AuthPurpose::Event,
+                        deadline: Instant::now(),
+                    });
+                pending.push(PendingBackend {
+                    id: id.into(),
+                    backend: backend.clone(),
+                    transport: Arc::clone(&transport),
+                    endpoint,
+                    prepared: 0,
+                    retry_at: None,
+                    delay: initial,
+                });
             }
             backends.push(transport);
         }
         let budget = Budget::new(options.max_stored_bytes, options.max_stored_entries);
+        let life = Arc::new(Lifecycle::default());
+        let discovery = Arc::new(Discovery {
+            routes: Mutex::new(Arc::new(routes)),
+            initialized: AtomicBool::new(false),
+            pending: Mutex::new(pending),
+            task: Mutex::new(None),
+            backend_order,
+            grants: grants.clone(),
+            observation_timeout: options.observation_timeout,
+            backoff: options.configuration_backoff,
+            sink: options.configuration_diagnostics.clone(),
+            auth_provider: options.backend.auth_provider.clone(),
+            life: Arc::clone(&life),
+            next_id: AtomicU64::new(0),
+        });
         Ok(Self {
             upload_limiter: crate::upload_plan::UploadLimiter::new(options.max_concurrent_uploads),
             options,
             harness,
-            routes,
-            initialized_routes: OnceLock::new(),
-            pending,
-            backend_order,
-            initializing: AtomicBool::new(false),
-            initialization_waiters: Mutex::new(Vec::new()),
+            discovery,
             grants,
             backends,
             budget,
-            life: Arc::new(Lifecycle::default()),
+            life,
             next_id: AtomicU64::new(0),
         })
     }
-    fn routes(&self) -> &[Route] {
-        self.initialized_routes
-            .get()
-            .map(Vec::as_slice)
-            .unwrap_or(&self.routes)
+    /// The current admitted routes; an event uses one snapshot throughout.
+    fn routes(&self) -> Arc<Vec<Route>> {
+        self.discovery.routes()
     }
 
-    /// Resolve backend defaults once, without creating an executor or worker.
+    /// Resolve backend defaults without creating an executor or worker.
     /// Explicit subscriptions never perform discovery. Awaited event delivery
-    /// calls this automatically; hosts may await it before inspecting interest.
+    /// waits for the first initialization; hosts may await it before
+    /// inspecting interest.
+    ///
+    /// Every skipped backend is reported to
+    /// [`HooksOptions::on_configuration_skipped`]. A backend skipped with
+    /// [`ConfigurationSkipCode::Unavailable`] is re-attempted at the next
+    /// event admission or `initialize`, once a host `prepare` for its event
+    /// endpoint succeeded or its backoff elapsed. Discovery is one shared task
+    /// bounded by `observation_timeout` per backend, never by a caller: dropping
+    /// a caller does not cancel it, and a later caller continues it. It is
+    /// driven by a Tokio task when a Tokio runtime is current, and otherwise by
+    /// whoever polls `initialize` or admits an event. `initialize` waits for
+    /// it; event admission waits only for the first initialization and
+    /// otherwise uses the current routes. A successful re-attempt installs the
+    /// backend's routes at once; earlier events are not replayed to it.
     pub async fn initialize(&self) -> Result<(), HookError> {
         let _active = self.life.begin()?;
-        if self.pending.is_empty() || self.initialized_routes.get().is_some() {
+        self.discovery.start();
+        poll_fn(|cx| self.discovery.poll(Some(cx.waker()))).await;
+        self.check_open()
+    }
+    /// Event admission: the first initialization is awaited; a re-attempt is
+    /// started or advanced without waiting.
+    async fn admit(&self) -> Result<(), HookError> {
+        self.discovery.start();
+        if self.discovery.initialized.load(Ordering::SeqCst) {
+            let _ = self.discovery.poll(None);
             return Ok(());
         }
-        poll_fn(|cx| {
-            let mut waiters = self.initialization_waiters.lock().unwrap();
-            if self.life.closing.load(Ordering::SeqCst) {
-                return Poll::Ready(Err(err(
-                    "configuration initialization cancelled by shutdown",
-                )
-                .classified(generated::DeliveryDiagnosticCode::Cancelled)));
-            }
-            if !self.initializing.swap(true, Ordering::SeqCst) {
-                Poll::Ready(Ok(()))
-            } else {
-                if !waiters.iter().any(|w| w.will_wake(cx.waker())) {
-                    waiters.push(cx.waker().clone());
-                }
-                Poll::Pending
-            }
-        })
-        .await?;
-        let _initializing = Initializing(self);
-        if self.initialized_routes.get().is_some() {
-            return Ok(());
+        poll_fn(|cx| self.discovery.poll(Some(cx.waker()))).await;
+        self.check_open()
+    }
+    fn check_open(&self) -> Result<(), HookError> {
+        if self.life.closing.load(Ordering::SeqCst) {
+            return Err(err("configuration initialization cancelled by shutdown")
+                .classified(generated::DeliveryDiagnosticCode::Cancelled));
         }
-        let mut routes = self.routes.clone();
-        for (backend, transport) in &self.pending {
-            let request = json!({
-                "jsonrpc": "2.0",
-                "id": format!("configuration-{}", self.next_id.fetch_add(1, Ordering::SeqCst)),
-                "method": "hooks/configuration",
-                "params": {"protocolVersion": generated::PROTOCOL_VERSION}
-            });
-            let expected_id = request["id"].clone();
-            let owned_transport = Arc::clone(transport);
-            let timeout = self.options.observation_timeout;
-            let response = self
-                .life
-                .run(Box::pin(async move {
-                    owned_transport.call(request, timeout).await
-                }))
-                .await;
-            if self.life.closing.load(Ordering::SeqCst) {
-                return Err(err("configuration discovery cancelled by shutdown")
-                    .classified(generated::DeliveryDiagnosticCode::Cancelled));
-            }
-            let response = match response {
-                Ok(response) => response,
-                Err(error) if error.code() == generated::DeliveryDiagnosticCode::Cancelled => {
-                    return Err(error);
-                }
-                Err(_) => continue,
-            };
-            if response["id"] != expected_id
-                || crate::canonical::validate("configuration-response", &response).is_err()
-            {
-                continue;
-            }
-            let configuration = &response["result"]["configuration"];
-            if names_local_secret(configuration) {
-                continue;
-            }
-            let mut resolved = backend.clone();
-            resolved["subscriptions"] =
-                response["result"]["configuration"]["subscriptions"].clone();
-            if let Ok(discovered) = routes_for(
-                &resolved,
-                transport,
-                &self.grants,
-                self.options.observation_timeout,
-                true,
-            ) {
-                routes.extend(discovered);
-            }
-        }
-        routes.sort_by_key(|route| {
-            self.backend_order
-                .iter()
-                .position(|id| id == &route.backend_id)
-                .unwrap()
-        });
-        let _ = self.initialized_routes.set(routes);
         Ok(())
     }
 
@@ -993,6 +1395,7 @@ impl Hooks {
     }
     async fn plan_uploads(
         &self,
+        routes: &[Route],
         event: &Value,
         name: &generated::EventType,
         deadline: Option<Instant>,
@@ -1003,7 +1406,7 @@ impl Hooks {
         let mut jobs: Vec<
             LocalFuture<'static, (String, Result<crate::hooks_content::Receipts, HookError>)>,
         > = Vec::new();
-        for route in self.routes().iter().filter(|route| {
+        for route in routes.iter().filter(|route| {
             route.events.contains(name)
                 && !filtered(&route.configuration, event)
                 && (route.mode != Mode::Observe || observes(&self.grants[name]))
@@ -1053,13 +1456,14 @@ impl Hooks {
     }
     fn client(
         &self,
+        routes: &[Route],
         event: &Value,
         name: &generated::EventType,
         deadline: Option<Instant>,
         attachments: &InvocationAttachments,
         uploads: &Arc<UploadPlans>,
     ) -> Client {
-        self.routes()
+        routes
             .iter()
             .filter(|route| route.events.contains(name) && !filtered(&route.configuration, event))
             .fold(
@@ -1092,6 +1496,7 @@ impl Hooks {
     }
     async fn prepare_observations<'a>(
         &'a self,
+        routes: &[Route],
         name: &generated::EventType,
         observations: Vec<crate::client::Observation<'_>>,
         deadline: Option<Instant>,
@@ -1104,8 +1509,7 @@ impl Hooks {
             return (prepared, diagnostics);
         }
         for (index, observation) in observations.into_iter().enumerate() {
-            let route = self
-                .routes()
+            let route = routes
                 .iter()
                 .find(|r| r.id == observation.subscription_id)
                 .expect("owned route");
@@ -1224,10 +1628,7 @@ impl Hooks {
     pub async fn shutdown(&self) -> Result<ObservationReport, HookError> {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
-        let waiters = std::mem::take(&mut *self.initialization_waiters.lock().unwrap());
-        for waiter in waiters {
-            waiter.wake();
-        }
+        self.discovery.cancel();
         poll_fn(|cx| {
             let mut waiters = self.life.waiters.lock().unwrap();
             if !self.life.cleaning.swap(true, Ordering::SeqCst) {
@@ -1452,7 +1853,9 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
             cancellation,
             Box::pin(async move {
                 let _active = self.hooks.life.begin()?;
-                self.hooks.initialize().await?;
+                self.hooks.admit().await?;
+                // One route snapshot for the whole event.
+                let routes = self.hooks.routes();
                 let mut event = serde_json::to_value(self.event).map_err(err)?;
                 if let Some(expected) = self.name {
                     let object = event
@@ -1479,11 +1882,16 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
                 let caps = granted;
                 let uploads = self
                     .hooks
-                    .plan_uploads(&event, &name, self.settings.deadline, &content)
+                    .plan_uploads(&routes, &event, &name, self.settings.deadline, &content)
                     .await;
-                let client =
-                    self.hooks
-                        .client(&event, &name, self.settings.deadline, &content, &uploads);
+                let client = self.hooks.client(
+                    &routes,
+                    &event,
+                    &name,
+                    self.settings.deadline,
+                    &content,
+                    &uploads,
+                );
                 let mut boundary = client
                     .event(event)
                     .capabilities(caps)
@@ -1527,9 +1935,7 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
                     ..
                 } = result;
                 for diagnostic in &mut diagnostics {
-                    diagnostic.backend_id = self
-                        .hooks
-                        .routes
+                    diagnostic.backend_id = routes
                         .iter()
                         .find(|route| route.id == diagnostic.subscription_id)
                         .map(|route| route.backend_id.clone());
@@ -1537,6 +1943,7 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
                 let (observations, preparation_diagnostics) = self
                     .hooks
                     .prepare_observations(
+                        &routes,
                         &name,
                         observations,
                         self.settings.deadline,
@@ -1662,7 +2069,9 @@ where
             cancellation,
             Box::pin(async move {
                 let _active = self.hooks.life.begin()?;
-                self.hooks.initialize().await?;
+                self.hooks.admit().await?;
+                // One route snapshot for the whole event.
+                let routes = self.hooks.routes();
                 let (input, mut context) = match self.input {
                     ToolInput::Host(host) => {
                         let host = *host;
@@ -1696,11 +2105,16 @@ where
                 let caps = narrow(self.settings.capabilities, granted)?;
                 let uploads = self
                     .hooks
-                    .plan_uploads(&context, &name, self.settings.deadline, &content)
+                    .plan_uploads(&routes, &context, &name, self.settings.deadline, &content)
                     .await;
-                let client =
-                    self.hooks
-                        .client(&context, &name, self.settings.deadline, &content, &uploads);
+                let client = self.hooks.client(
+                    &routes,
+                    &context,
+                    &name,
+                    self.settings.deadline,
+                    &content,
+                    &uploads,
+                );
                 let mut boundary = client
                     .tool_before(input)
                     .capabilities(caps)
@@ -1744,9 +2158,7 @@ where
                     )
                 })?;
                 for diagnostic in &mut diagnostics {
-                    diagnostic.backend_id = self
-                        .hooks
-                        .routes
+                    diagnostic.backend_id = routes
                         .iter()
                         .find(|route| route.id == diagnostic.subscription_id)
                         .map(|route| route.backend_id.clone());
@@ -1754,6 +2166,7 @@ where
                 let (observations, preparation_diagnostics) = self
                     .hooks
                     .prepare_observations(
+                        &routes,
                         &name,
                         observations,
                         self.settings.deadline,
@@ -1986,3 +2399,6 @@ impl<'a, A: Serialize + DeserializeOwned, R, P> ToolBoundary<'a, A, R, P> {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod configuration_tests;
