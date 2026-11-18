@@ -381,6 +381,31 @@ pub(crate) fn configuration_invalid_not_retried() {
         *seen.lock().unwrap(),
         [diagnostic("com.a", "configuration_invalid")]
     );
+    // So is one whose local auth cannot be built: invalid, with no auth fields.
+    for authentication in [
+        json!({"type":"bearer","tokenEnv":"AHP_TEST_UNSET_TOKEN_ENV"}),
+        json!({"type":"oauth","flow":"client_credentials","issuer":"https://issuer.example",
+            "resource":"https://com.a/hooks","clientId":"client"}),
+    ] {
+        let seen: Seen = Arc::default();
+        let sink = seen.clone();
+        let mut unbuildable = registration(&["com.a"]);
+        unbuildable["hooks"][0]["authentication"] = authentication;
+        let options = HooksOptions::new(
+            "urn:example:host",
+            Harness::new("test", "1"),
+            HostCapabilities::default(),
+        )
+        .on_configuration_skipped(move |d| {
+            sink.lock().unwrap().push(serde_json::to_value(d).unwrap())
+        });
+        let hooks = Hooks::new(unbuildable, options).unwrap();
+        block_on(hooks.initialize()).unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [diagnostic("com.a", "configuration_invalid")]
+        );
+    }
 }
 
 #[test]

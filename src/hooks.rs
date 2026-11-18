@@ -1086,17 +1086,16 @@ impl Hooks {
             } else {
                 match registered::from_registration(backend, &options.backend) {
                     Ok(transport) => transport,
-                    Err(error) if backend.get("subscriptions").is_none() => {
-                        // Without a provider that could ever be prepared, an auth
-                        // failure here (an unresolvable bearer reference or an
-                        // unsupported binding) cannot become eligible again.
-                        let code = if error.auth_code().is_some() {
-                            ConfigurationSkipCode::Unavailable
-                        } else {
-                            ConfigurationSkipCode::Invalid
-                        };
+                    Err(_) if backend.get("subscriptions").is_none() => {
+                        // A transport local configuration cannot build (including
+                        // an unresolvable bearer reference or an unsupported
+                        // binding) is invalid and never retried.
                         if let Some(sink) = &options.configuration_diagnostics {
-                            sink(&ConfigurationDiagnostic::new(id, code, error.auth_code()));
+                            sink(&ConfigurationDiagnostic::new(
+                                id,
+                                ConfigurationSkipCode::Invalid,
+                                None,
+                            ));
                         }
                         continue;
                     }
