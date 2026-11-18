@@ -2083,29 +2083,31 @@ impl Committer {
         old_refresh: Option<String>,
         required: &[String],
     ) -> Result<BearerCredential, HookError> {
-        let response_scopes = response
-            .scopes()
-            .map(|s| s.iter().map(|s| s.as_str().to_owned()).collect::<Vec<_>>())
-            .unwrap_or_else(|| requested.to_vec());
+        let response_scopes = response_scopes(
+            response
+                .scopes()
+                .map(|s| s.iter().map(|s| s.as_str()).collect::<Vec<_>>()),
+            requested,
+        );
         let refreshed = old_refresh.is_some();
+        let rotated = response.refresh_token().map(|s| s.secret().clone());
+        let expires = response.expires_in();
+        let Some(response_scopes) = response_scopes else {
+            return self
+                .reject_response(guard, record, refreshed, rotated)
+                .await;
+        };
         let granted = union(&response_scopes, &[])
             .into_iter()
             .filter(|scope| bound.contains(scope))
             .collect::<Vec<_>>();
-        let rotated = response.refresh_token().map(|s| s.secret().clone());
-        let expires = response.expires_in();
         if *response.token_type() != BasicTokenType::Bearer
             || !valid_token(response.access_token().secret())
             || expires.is_some_and(|v| v.is_zero())
         {
-            // A failed initial exchange persists nothing beyond releasing its login claim.
-            if refreshed {
-                keep_refresh(record, rotated);
-                self.persist(guard, record).await?;
-            } else if record.pending.take().is_some() {
-                self.persist(guard, record).await?;
-            }
-            return Err(fail(AuthErrorCode::ProviderFailed));
+            return self
+                .reject_response(guard, record, refreshed, rotated)
+                .await;
         }
         let refresh_token = rotated.filter(|token| valid_token(token)).or(old_refresh);
         record.pending = None;
@@ -2130,6 +2132,44 @@ impl Committer {
         }
         Ok(credential)
     }
+    /// A token response failing basic validity. A failed initial exchange
+    /// persists nothing beyond releasing its login claim.
+    async fn reject_response(
+        &self,
+        guard: &mut dyn CredentialGuard,
+        record: &mut SessionRecord,
+        refreshed: bool,
+        rotated: Option<String>,
+    ) -> Result<BearerCredential, HookError> {
+        if refreshed {
+            keep_refresh(record, rotated);
+            self.persist(guard, record).await?;
+        } else if record.pending.take().is_some() {
+            self.persist(guard, record).await?;
+        }
+        Err(fail(AuthErrorCode::ProviderFailed))
+    }
+}
+/// The response scope set, or `None` when `scope` is malformed. `oauth2` splits
+/// the string on single SP, so rejoining recovers it exactly. Absent, null
+/// (`None`) and blank (only SP, HTAB, CR, LF) mean omitted and inherit
+/// `inherited`; anything else must be RFC 6749 scope tokens separated by
+/// exactly one SP.
+fn response_scopes(split: Option<Vec<&str>>, inherited: &[String]) -> Option<Vec<String>> {
+    let Some(split) = split else {
+        return Some(inherited.to_vec());
+    };
+    let raw = split.join(" ");
+    if raw
+        .bytes()
+        .all(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+    {
+        return Some(inherited.to_vec());
+    }
+    split
+        .iter()
+        .all(|scope| valid_scope(scope))
+        .then(|| split.iter().map(|scope| (*scope).to_owned()).collect())
 }
 /// The access token of a failed refresh is retired; the refresh token is kept.
 fn keep_refresh(record: &mut SessionRecord, rotated: Option<String>) {
