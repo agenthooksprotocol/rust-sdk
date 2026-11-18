@@ -1090,6 +1090,30 @@ fn lifecycle_manifest_maps_to_native_tests() {
             "proactive-renewal-failure-keeps-current-registration",
             client_registration::proactive_renewal_failure_keeps_current_registration,
         ),
+        (
+            "configuration-401-diagnostic-carries-auth-code",
+            transport::configuration_401_diagnostic_carries_auth_code,
+        ),
+        (
+            "configuration-unavailable-retried-after-prepare",
+            transport::configuration_unavailable_retried_after_prepare,
+        ),
+        (
+            "configuration-unavailable-backoff",
+            crate::hooks::configuration_tests::configuration_unavailable_backoff,
+        ),
+        (
+            "configuration-auth-failure-not-retried-on-backoff",
+            crate::hooks::configuration_tests::configuration_auth_failure_not_retried_on_backoff,
+        ),
+        (
+            "configuration-invalid-not-retried",
+            crate::hooks::configuration_tests::configuration_invalid_not_retried,
+        ),
+        (
+            "configuration-retry-atomic-routes",
+            crate::hooks::configuration_tests::configuration_retry_atomic_routes,
+        ),
     ];
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     let ids: Vec<&str> = fixture["lifecycle"]
@@ -3143,4 +3167,39 @@ fn response_scope_grammar() {
     ] {
         assert_eq!(parse(bad), None, "{bad:?}");
     }
+}
+
+/// Successful prepares are counted per backend, purpose and normalized
+/// destination; a prepare that only creates a login is not counted.
+#[tokio::test]
+async fn preparations_match_normalized_endpoint() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    assert_eq!(oauth.preparations(&context()), 0);
+    host.network.reply(
+        200,
+        json!({"access_token":"a","refresh_token":"r","token_type":"Bearer","expires_in":3600}),
+    );
+    oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    ready(oauth.prepare(context(), budget()).await.unwrap());
+    let variant = AuthContext {
+        destination: "HTTPS://API.Example:443/hooks".into(),
+        authentication: None,
+        ..context()
+    };
+    assert_eq!(oauth.preparations(&variant), 2);
+    let other = AuthContext {
+        destination: "https://api.example/other".into(),
+        ..context()
+    };
+    assert_eq!(oauth.preparations(&other), 0);
+    let upload = AuthContext {
+        purpose: AuthPurpose::Upload,
+        ..context()
+    };
+    assert_eq!(oauth.preparations(&upload), 0);
 }

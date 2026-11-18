@@ -518,12 +518,27 @@ share initialization, and completed discovery is not repeated. Reconstruct the
 client to reload configuration.
 
 Discovery uses the configured event transport, authentication, and headers,
-bounded by `HooksOptions::observation_timeout`. Failed or malformed discovery
-skips that backend. Supported event/mode matches are retained without rewriting
-subscription settings; a backend with no applicable subscriptions is skipped.
-Explicit registrations retain their ordinary validation behavior. Cancellation
-propagates, and shutdown cancels owned discovery I/O. Per-interception capability
-grants remain authoritative regardless of the advertised configuration.
+bounded by `HooksOptions::observation_timeout`. Supported event/mode matches are
+retained without rewriting subscription settings. Explicit registrations retain
+their ordinary validation behavior. Cancellation propagates, and shutdown cancels
+owned discovery I/O. Per-interception capability grants remain authoritative
+regardless of the advertised configuration.
+
+Every skipped backend is reported to `HooksOptions::on_configuration_skipped` as
+a redacted `hooks::ConfigurationDiagnostic` (`{backendId, code, authError?,
+recovery?}`), with one `ConfigurationSkipCode`: `configuration_unavailable`
+(transport, timeout, HTTP status, JSON-RPC error other than method-not-found, or
+an endpoint authentication error, which also sets `authError` and `recovery`),
+`configuration_invalid` (method-not-found, or an uncorrelated, malformed or
+version-incompatible response), `no_applicable_subscriptions`, or
+`configuration_local_secret`. Only `configuration_unavailable` is re-attempted,
+at the next event admission or `initialize()`: immediately after a successful
+host `prepare` (or completed login) for the backend's event endpoint, reported
+through `AuthProvider::preparations`; and after a backoff (30 seconds doubling
+to 1 hour, `HooksOptions::configuration_backoff`) only when there is no
+`authError` or its recovery is `retry`. A re-attempt is one shared operation:
+concurrent callers keep the previous routes, a success installs the backend's
+routes at once, and earlier events are not replayed to it.
 
 Discovered `upload` settings are admitted like any other discovered subscription
 setting, with no separate approval: the backend already receives the content and

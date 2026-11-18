@@ -560,6 +560,8 @@ pub struct ManagedOAuth {
     pub(super) network: Arc<dyn OAuthNetwork>,
     pub(super) policy: Arc<dyn OAuthPolicy>,
     store: Arc<dyn CredentialStore>,
+    /// Successful host preparations by backend, purpose and destination.
+    prepared: Arc<std::sync::Mutex<std::collections::BTreeMap<String, u64>>>,
 }
 /// Which caller drives acquisition. Only `Prepare` may create a pending login.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -804,6 +806,7 @@ impl ManagedOAuth {
             network,
             policy,
             store,
+            prepared: Arc::default(),
         })
     }
     /// A second handle on the same configuration, network, policy and store,
@@ -814,6 +817,25 @@ impl ManagedOAuth {
             network: self.network.clone(),
             policy: self.policy.clone(),
             store: self.store.clone(),
+            prepared: self.prepared.clone(),
+        }
+    }
+    fn prepared_key(context: &AuthContext) -> Option<String> {
+        let target = context.target().ok()?;
+        let purpose = match target.purpose() {
+            AuthPurpose::Event => "event",
+            AuthPurpose::Upload => "upload",
+        };
+        Some(frame(
+            "ahp.oauth.prepared:",
+            &[target.backend_id(), purpose, target.destination().as_str()],
+        ))
+    }
+    fn mark_prepared(&self, context: &AuthContext) {
+        if let Some(key) = Self::prepared_key(context) {
+            let mut prepared = self.prepared.lock().unwrap();
+            let count = prepared.entry(key).or_default();
+            *count = count.saturating_add(1);
         }
     }
     fn flow_id(&self) -> &'static str {
@@ -1077,7 +1099,7 @@ impl ManagedOAuth {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
-        budget
+        let prepared = budget
             .run(async {
                 let target = context.target()?;
                 self.validate_target(&target)?;
@@ -1085,11 +1107,15 @@ impl ManagedOAuth {
                     .await?;
                 let required = &options.required;
                 let pending = self
-                    .acquire(context, None, required, None, budget, Mode::Prepare)
+                    .acquire(context.clone(), None, required, None, budget, Mode::Prepare)
                     .await?;
                 pending.ok_or_else(|| fail(AuthErrorCode::ProviderFailed))
             })
-            .await
+            .await?;
+        if matches!(prepared, Preparation::Ready(_)) {
+            self.mark_prepared(&context);
+        }
+        Ok(prepared)
     }
     /// `challenge` is present only for challenge recovery; its requirements, like
     /// `extra`, apply to this operation only and are never stored.
@@ -1807,9 +1833,11 @@ impl ManagedOAuth {
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
-        budget
-            .run(self.complete_inner(context, callback, budget))
-            .await
+        let credential = budget
+            .run(self.complete_inner(context.clone(), callback, budget))
+            .await?;
+        self.mark_prepared(&context);
+        Ok(credential)
     }
     async fn complete_inner(
         &self,
@@ -2374,6 +2402,12 @@ impl AuthProvider for ManagedOAuth {
                 _ => Err(fail(AuthErrorCode::InteractionRequired)),
             }
         })
+    }
+    /// Counts `prepare` calls that returned a credential and completed logins.
+    fn preparations(&self, context: &AuthContext) -> u64 {
+        Self::prepared_key(context)
+            .and_then(|key| self.prepared.lock().unwrap().get(&key).copied())
+            .unwrap_or(0)
     }
 }
 

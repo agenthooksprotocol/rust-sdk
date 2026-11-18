@@ -50,6 +50,17 @@ pub trait AuthProvider: Send + Sync {
         context: AuthContext,
         challenge: AuthChallenge,
     ) -> LocalFuture<'_, Result<(), HookError>>;
+    /// A process-local count of successful explicit host preparations for
+    /// `context`'s backend, purpose and destination, such as a `ManagedOAuth`
+    /// `prepare` that returned a credential or a completed login. `Hooks`
+    /// re-attempts server-driven configuration for a backend skipped as
+    /// unavailable once this count grows. It must be cheap and must not block
+    /// or perform I/O; the context's deadline and binding are ignored. Wrapping
+    /// providers should forward it. Defaults to 0 (never prepared).
+    fn preparations(&self, context: &AuthContext) -> u64 {
+        let _ = context;
+        0
+    }
 }
 
 /// A backend owns its transport and can be shared across subscriptions.
