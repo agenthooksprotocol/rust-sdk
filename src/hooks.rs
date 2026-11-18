@@ -280,6 +280,292 @@ struct PendingBackend {
     delay: Duration,
 }
 
+/// Admitted routes and server-driven configuration state, shared by `Hooks`
+/// and its detached discovery task.
+struct Discovery {
+    /// A re-attempt replaces the whole set, never an element, so an event's
+    /// snapshot never changes under it.
+    routes: Mutex<Arc<Vec<Route>>>,
+    initialized: AtomicBool,
+    /// Changed only by the discovery task, after all its attempts finished.
+    pending: Mutex<Vec<PendingBackend>>,
+    /// The single in-flight discovery: initialization or a re-attempt.
+    task: Mutex<Option<DiscoveryTask>>,
+    backend_order: Vec<String>,
+    grants: BTreeMap<generated::EventType, Value>,
+    observation_timeout: Duration,
+    backoff: (Duration, Duration),
+    sink: Option<ConfigurationDiagnosticSink>,
+    auth_provider: Option<Arc<dyn crate::adapters::registered::AuthProvider>>,
+    life: Arc<Lifecycle>,
+    next_id: AtomicU64,
+}
+struct DiscoveryTask {
+    future: LocalFuture<'static, Vec<ConfigurationDiagnostic>>,
+    wakers: Arc<Wakers>,
+}
+/// Every poller's waker; waking the task wakes all of them.
+#[derive(Default)]
+struct Wakers(Mutex<Vec<Waker>>);
+impl std::task::Wake for Wakers {
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+    fn wake_by_ref(self: &Arc<Self>) {
+        let wakers = std::mem::take(&mut *self.0.lock().unwrap());
+        for waker in wakers {
+            waker.wake();
+        }
+    }
+}
+type Attempt = (usize, Value, Arc<dyn ManagedBackend>, u64, bool);
+type Discovered = Result<Vec<Route>, (ConfigurationSkipCode, Option<AuthErrorCode>)>;
+impl Discovery {
+    fn routes(&self) -> Arc<Vec<Route>> {
+        self.routes.lock().unwrap().clone()
+    }
+    fn wake(&self) {
+        if let Some(task) = self.task.lock().unwrap().as_ref() {
+            std::task::Wake::wake_by_ref(&task.wakers);
+        }
+    }
+    /// Host preparations for a pending backend's event endpoint.
+    fn preparations(&self, pending: &PendingBackend) -> u64 {
+        match (&self.auth_provider, &pending.endpoint) {
+            (Some(provider), Some(endpoint)) => provider.preparations(endpoint),
+            _ => 0,
+        }
+    }
+    /// `Some(prepared)` when `pending` may be re-attempted; `prepared` is true
+    /// when a host prepare, not backoff, made it eligible.
+    fn eligible(&self, pending: &PendingBackend, now: Instant) -> Option<bool> {
+        if self.preparations(pending) > pending.prepared {
+            Some(true)
+        } else {
+            pending
+                .retry_at
+                .is_some_and(|at| now >= at)
+                .then_some(false)
+        }
+    }
+    /// Start the discovery task if none runs and initialization or a
+    /// re-attempt is due: the shared admission.
+    fn start(self: &Arc<Self>) {
+        if self.life.closing.load(Ordering::SeqCst) {
+            return;
+        }
+        let mut task = self.task.lock().unwrap();
+        if task.is_some() {
+            return;
+        }
+        let first = !self.initialized.load(Ordering::SeqCst);
+        let attempts: Vec<Attempt> = {
+            let now = Instant::now();
+            let pending = self.pending.lock().unwrap();
+            pending
+                .iter()
+                .enumerate()
+                .filter_map(|(index, p)| {
+                    let prepared = if first {
+                        Some(false)
+                    } else {
+                        self.eligible(p, now)
+                    }?;
+                    Some((
+                        index,
+                        p.backend.clone(),
+                        Arc::clone(&p.transport),
+                        self.preparations(p),
+                        prepared,
+                    ))
+                })
+                .collect()
+        };
+        if attempts.is_empty() {
+            if first {
+                self.initialized.store(true, Ordering::SeqCst);
+            }
+            return;
+        }
+        let this = Arc::clone(self);
+        *task = Some(DiscoveryTask {
+            future: Box::pin(async move { this.run(attempts).await }),
+            wakers: Arc::default(),
+        });
+        drop(task);
+        #[cfg(any(
+            feature = "managed-oauth",
+            feature = "reqwest",
+            feature = "tokio-process"
+        ))]
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let this = Arc::clone(self);
+            drop(runtime.spawn(poll_fn(move |cx| this.poll(Some(cx.waker())))));
+        }
+    }
+    /// Advance the discovery task; `Ready` once none is in flight. Without a
+    /// waker this never waits: a contended task is left to its other poller.
+    fn poll(&self, waker: Option<&Waker>) -> Poll<()> {
+        let mut slot = match waker {
+            Some(_) => self.task.lock().unwrap(),
+            None => match self.task.try_lock() {
+                Ok(slot) => slot,
+                Err(_) => return Poll::Pending,
+            },
+        };
+        let Some(task) = slot.as_mut() else {
+            return Poll::Ready(());
+        };
+        if let Some(waker) = waker {
+            let mut wakers = task.wakers.0.lock().unwrap();
+            if !wakers.iter().any(|w| w.will_wake(waker)) {
+                wakers.push(waker.clone());
+            }
+        }
+        let task_waker = Waker::from(Arc::clone(&task.wakers));
+        let Poll::Ready(diagnostics) = task
+            .future
+            .as_mut()
+            .poll(&mut std::task::Context::from_waker(&task_waker))
+        else {
+            return Poll::Pending;
+        };
+        let finished = slot.take().expect("discovery task");
+        drop(slot);
+        std::task::Wake::wake(finished.wakers);
+        if let Some(sink) = &self.sink {
+            for diagnostic in &diagnostics {
+                sink(diagnostic);
+            }
+        }
+        Poll::Ready(())
+    }
+    /// Run every attempt, then record the outcome at once. A cancelled
+    /// (shutdown) task changes nothing.
+    async fn run(&self, attempts: Vec<Attempt>) -> Vec<ConfigurationDiagnostic> {
+        let mut outcomes = Vec::with_capacity(attempts.len());
+        for (index, backend, transport, observed, prepared) in attempts {
+            match self.discover(&backend, &transport).await {
+                Ok(outcome) => outcomes.push((index, outcome, observed, prepared)),
+                Err(_) => return Vec::new(),
+            }
+        }
+        let mut diagnostics = Vec::new();
+        let now = Instant::now();
+        let (initial, max) = self.backoff;
+        let mut pending = self.pending.lock().unwrap();
+        let mut admitted = Vec::new();
+        let mut finished = Vec::new();
+        for (index, outcome, observed, prepared) in outcomes {
+            let entry = &mut pending[index];
+            match outcome {
+                Ok(routes) => {
+                    admitted.extend(routes);
+                    finished.push(index);
+                }
+                Err((code, auth_error)) => {
+                    let diagnostic = ConfigurationDiagnostic::new(&entry.id, code, auth_error);
+                    if code == ConfigurationSkipCode::Unavailable {
+                        if prepared {
+                            entry.delay = initial;
+                        }
+                        entry.prepared = observed;
+                        entry.retry_at = diagnostic
+                            .backoff_retry()
+                            .then(|| now.checked_add(entry.delay))
+                            .flatten();
+                        entry.delay = entry.delay.saturating_mul(2).min(max);
+                    } else {
+                        finished.push(index);
+                    }
+                    diagnostics.push(diagnostic);
+                }
+            }
+        }
+        for index in finished.into_iter().rev() {
+            pending.remove(index);
+        }
+        if !admitted.is_empty() {
+            let mut current = self.routes.lock().unwrap();
+            let mut routes = Vec::clone(&current);
+            routes.extend(admitted);
+            routes.sort_by_key(|route| {
+                self.backend_order
+                    .iter()
+                    .position(|id| id == &route.backend_id)
+                    .unwrap()
+            });
+            *current = Arc::new(routes);
+        }
+        self.initialized.store(true, Ordering::SeqCst);
+        diagnostics
+    }
+    /// One discovery exchange: the backend's routes, or why it is skipped.
+    /// Only cancellation is an error.
+    async fn discover(
+        &self,
+        backend: &Value,
+        transport: &Arc<dyn ManagedBackend>,
+    ) -> Result<Discovered, HookError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": format!("configuration-{}", self.next_id.fetch_add(1, Ordering::SeqCst)),
+            "method": "hooks/configuration",
+            "params": {"protocolVersion": generated::PROTOCOL_VERSION}
+        });
+        let expected_id = request["id"].clone();
+        let owned_transport = Arc::clone(transport);
+        let timeout = self.observation_timeout;
+        let response = self
+            .life
+            .run(Box::pin(async move {
+                owned_transport.call(request, timeout).await
+            }))
+            .await;
+        if self.life.closing.load(Ordering::SeqCst) {
+            return Err(err("configuration discovery cancelled by shutdown")
+                .classified(generated::DeliveryDiagnosticCode::Cancelled));
+        }
+        let response = match response {
+            Ok(response) => response,
+            Err(error) if error.code() == generated::DeliveryDiagnosticCode::Cancelled => {
+                return Err(error);
+            }
+            Err(error) => return Ok(Err(configuration_failure(&error))),
+        };
+        // Built-in transports already reject JSON-RPC errors; host transports may not.
+        if let Err(error) = crate::client::check_rpc_error(&response, &expected_id) {
+            return Ok(Err(configuration_failure(&error)));
+        }
+        if response["id"] != expected_id
+            || crate::canonical::validate("configuration-response", &response).is_err()
+        {
+            return Ok(Err((ConfigurationSkipCode::Invalid, None)));
+        }
+        let configuration = &response["result"]["configuration"];
+        if names_local_secret(configuration) {
+            return Ok(Err((ConfigurationSkipCode::LocalSecret, None)));
+        }
+        let mut resolved = backend.clone();
+        resolved["subscriptions"] = configuration["subscriptions"].clone();
+        Ok(
+            match routes_for(
+                &resolved,
+                transport,
+                &self.grants,
+                self.observation_timeout,
+                true,
+            ) {
+                Ok(routes) if routes.is_empty() => {
+                    Err((ConfigurationSkipCode::NoApplicableSubscriptions, None))
+                }
+                Ok(routes) => Ok(routes),
+                Err(_) => Err((ConfigurationSkipCode::Invalid, None)),
+            },
+        )
+    }
+}
+
 fn observes(grant: &Value) -> bool {
     grant["modes"]
         .as_array()
@@ -719,15 +1005,9 @@ fn routes_for(
 pub struct Hooks {
     options: HooksOptions,
     harness: Value,
-    /// The admitted routes. A re-attempt replaces the whole set, never an
-    /// element, so an event's snapshot never changes under it.
-    routes: Mutex<Arc<Vec<Route>>>,
-    initialized: AtomicBool,
-    /// Owned by whoever holds `initializing`.
-    pending: Mutex<Vec<PendingBackend>>,
-    backend_order: Vec<String>,
-    initializing: AtomicBool,
-    initialization_waiters: Mutex<Vec<Waker>>,
+    /// Admitted routes and server-driven configuration, shared with the
+    /// detached discovery task.
+    discovery: Arc<Discovery>,
     grants: BTreeMap<generated::EventType, Value>,
     backends: Vec<Arc<dyn ManagedBackend>>,
     budget: Arc<Budget>,
@@ -735,20 +1015,6 @@ pub struct Hooks {
     next_id: AtomicU64,
     upload_limiter: crate::upload_plan::UploadLimiter,
 }
-struct Initializing<'a>(&'a Hooks);
-impl Drop for Initializing<'_> {
-    fn drop(&mut self) {
-        let waiters = {
-            let mut waiters = self.0.initialization_waiters.lock().unwrap();
-            self.0.initializing.store(false, Ordering::SeqCst);
-            std::mem::take(&mut *waiters)
-        };
-        for waiter in waiters {
-            waiter.wake();
-        }
-    }
-}
-
 impl Drop for Hooks {
     fn drop(&mut self) {
         self.life.closing.store(true, Ordering::SeqCst);
@@ -863,253 +1129,78 @@ impl Hooks {
             backends.push(transport);
         }
         let budget = Budget::new(options.max_stored_bytes, options.max_stored_entries);
+        let life = Arc::new(Lifecycle::default());
+        let discovery = Arc::new(Discovery {
+            routes: Mutex::new(Arc::new(routes)),
+            initialized: AtomicBool::new(false),
+            pending: Mutex::new(pending),
+            task: Mutex::new(None),
+            backend_order,
+            grants: grants.clone(),
+            observation_timeout: options.observation_timeout,
+            backoff: options.configuration_backoff,
+            sink: options.configuration_diagnostics.clone(),
+            auth_provider: options.backend.auth_provider.clone(),
+            life: Arc::clone(&life),
+            next_id: AtomicU64::new(0),
+        });
         Ok(Self {
             upload_limiter: crate::upload_plan::UploadLimiter::new(options.max_concurrent_uploads),
             options,
             harness,
-            routes: Mutex::new(Arc::new(routes)),
-            initialized: AtomicBool::new(false),
-            pending: Mutex::new(pending),
-            backend_order,
-            initializing: AtomicBool::new(false),
-            initialization_waiters: Mutex::new(Vec::new()),
+            discovery,
             grants,
             backends,
             budget,
-            life: Arc::new(Lifecycle::default()),
+            life,
             next_id: AtomicU64::new(0),
         })
     }
     /// The current admitted routes; an event uses one snapshot throughout.
     fn routes(&self) -> Arc<Vec<Route>> {
-        self.routes.lock().unwrap().clone()
-    }
-    /// Host preparations for a pending backend's event endpoint.
-    fn preparations(&self, pending: &PendingBackend) -> u64 {
-        match (&self.options.backend.auth_provider, &pending.endpoint) {
-            (Some(provider), Some(endpoint)) => provider.preparations(endpoint),
-            _ => 0,
-        }
-    }
-    /// Whether discovery has work: initialization, or a skipped backend that a
-    /// host `prepare` or an elapsed backoff made eligible.
-    fn discovery_due(&self) -> bool {
-        let pending = self.pending.lock().unwrap();
-        if !self.initialized.load(Ordering::SeqCst) {
-            return !pending.is_empty();
-        }
-        let now = Instant::now();
-        pending.iter().any(|p| self.eligible(p, now).is_some())
-    }
-    /// `Some(prepared)` when `pending` may be re-attempted; `prepared` is true
-    /// when a host prepare, not backoff, made it eligible.
-    fn eligible(&self, pending: &PendingBackend, now: Instant) -> Option<bool> {
-        if self.preparations(pending) > pending.prepared {
-            Some(true)
-        } else {
-            pending
-                .retry_at
-                .is_some_and(|at| now >= at)
-                .then_some(false)
-        }
+        self.discovery.routes()
     }
 
     /// Resolve backend defaults without creating an executor or worker.
     /// Explicit subscriptions never perform discovery. Awaited event delivery
-    /// calls this automatically; hosts may await it before inspecting interest.
+    /// waits for the first initialization; hosts may await it before
+    /// inspecting interest.
     ///
     /// Every skipped backend is reported to
     /// [`HooksOptions::on_configuration_skipped`]. A backend skipped with
-    /// [`ConfigurationSkipCode::Unavailable`] is re-attempted here, and so at
-    /// event admission, once a host `prepare` for its event endpoint succeeded
-    /// or its backoff elapsed. Callers arriving while a re-attempt runs use the
-    /// previous routes; a successful re-attempt installs the backend's routes
-    /// at once, and events admitted earlier are not replayed to it.
+    /// [`ConfigurationSkipCode::Unavailable`] is re-attempted at the next
+    /// event admission or `initialize`, once a host `prepare` for its event
+    /// endpoint succeeded or its backoff elapsed. Discovery is one shared task
+    /// bounded by `observation_timeout` per backend, never by a caller: dropping
+    /// a caller does not cancel it, and a later caller continues it. It is
+    /// driven by a Tokio task when a Tokio runtime is current, and otherwise by
+    /// whoever polls `initialize` or admits an event. `initialize` waits for
+    /// it; event admission waits only for the first initialization and
+    /// otherwise uses the current routes. A successful re-attempt installs the
+    /// backend's routes at once; earlier events are not replayed to it.
     pub async fn initialize(&self) -> Result<(), HookError> {
         let _active = self.life.begin()?;
-        if !self.discovery_due() {
-            return Ok(());
-        }
-        let owner = poll_fn(|cx| {
-            let mut waiters = self.initialization_waiters.lock().unwrap();
-            if self.life.closing.load(Ordering::SeqCst) {
-                return Poll::Ready(Err(err(
-                    "configuration initialization cancelled by shutdown",
-                )
-                .classified(generated::DeliveryDiagnosticCode::Cancelled)));
-            }
-            if !self.initializing.swap(true, Ordering::SeqCst) {
-                Poll::Ready(Ok(true))
-            } else if self.initialized.load(Ordering::SeqCst) {
-                // A re-attempt is running: observe the previous routes.
-                Poll::Ready(Ok(false))
-            } else {
-                if !waiters.iter().any(|w| w.will_wake(cx.waker())) {
-                    waiters.push(cx.waker().clone());
-                }
-                Poll::Pending
-            }
-        })
-        .await?;
-        if !owner {
-            return Ok(());
-        }
-        let _initializing = Initializing(self);
-        if !self.discovery_due() {
-            return Ok(());
-        }
-        let first = !self.initialized.load(Ordering::SeqCst);
-        // Attempt from clones; pending state changes only once every attempt
-        // finished, so a cancelled admission leaves it as it was.
-        let attempts: Vec<_> = {
-            let now = Instant::now();
-            let pending = self.pending.lock().unwrap();
-            pending
-                .iter()
-                .enumerate()
-                .filter_map(|(index, p)| {
-                    let prepared = if first {
-                        Some(false)
-                    } else {
-                        self.eligible(p, now)
-                    }?;
-                    Some((
-                        index,
-                        p.backend.clone(),
-                        Arc::clone(&p.transport),
-                        self.preparations(p),
-                        prepared,
-                    ))
-                })
-                .collect()
-        };
-        let mut outcomes = Vec::with_capacity(attempts.len());
-        for (index, backend, transport, observed, prepared) in attempts {
-            let outcome = self.discover(&backend, &transport).await?;
-            outcomes.push((index, outcome, observed, prepared));
-        }
-        let mut diagnostics = Vec::new();
-        {
-            let now = Instant::now();
-            let (_, max) = self.options.configuration_backoff;
-            let initial = self.options.configuration_backoff.0;
-            let mut pending = self.pending.lock().unwrap();
-            let mut admitted = Vec::new();
-            let mut finished = Vec::new();
-            for (index, outcome, observed, prepared) in outcomes {
-                let entry = &mut pending[index];
-                match outcome {
-                    Ok(routes) => {
-                        admitted.extend(routes);
-                        finished.push(index);
-                    }
-                    Err((code, auth_error)) => {
-                        let diagnostic = ConfigurationDiagnostic::new(&entry.id, code, auth_error);
-                        if code == ConfigurationSkipCode::Unavailable {
-                            if prepared {
-                                entry.delay = initial;
-                            }
-                            entry.prepared = observed;
-                            entry.retry_at = diagnostic
-                                .backoff_retry()
-                                .then(|| now.checked_add(entry.delay))
-                                .flatten();
-                            entry.delay = entry.delay.saturating_mul(2).min(max);
-                        } else {
-                            finished.push(index);
-                        }
-                        diagnostics.push(diagnostic);
-                    }
-                }
-            }
-            for index in finished.into_iter().rev() {
-                pending.remove(index);
-            }
-            if !admitted.is_empty() {
-                let mut current = self.routes.lock().unwrap();
-                let mut routes = Vec::clone(&current);
-                routes.extend(admitted);
-                routes.sort_by_key(|route| {
-                    self.backend_order
-                        .iter()
-                        .position(|id| id == &route.backend_id)
-                        .unwrap()
-                });
-                *current = Arc::new(routes);
-            }
-            self.initialized.store(true, Ordering::SeqCst);
-        }
-        if let Some(sink) = &self.options.configuration_diagnostics {
-            for diagnostic in &diagnostics {
-                sink(diagnostic);
-            }
-        }
-        Ok(())
+        self.discovery.start();
+        poll_fn(|cx| self.discovery.poll(Some(cx.waker()))).await;
+        self.check_open()
     }
-    /// One discovery exchange: the backend's routes, or why it is skipped.
-    /// Only cancellation is an error.
-    #[allow(clippy::type_complexity)]
-    async fn discover(
-        &self,
-        backend: &Value,
-        transport: &Arc<dyn ManagedBackend>,
-    ) -> Result<Result<Vec<Route>, (ConfigurationSkipCode, Option<AuthErrorCode>)>, HookError> {
-        let request = json!({
-            "jsonrpc": "2.0",
-            "id": format!("configuration-{}", self.next_id.fetch_add(1, Ordering::SeqCst)),
-            "method": "hooks/configuration",
-            "params": {"protocolVersion": generated::PROTOCOL_VERSION}
-        });
-        let expected_id = request["id"].clone();
-        let owned_transport = Arc::clone(transport);
-        let timeout = self.options.observation_timeout;
-        let response = self
-            .life
-            .run(Box::pin(async move {
-                owned_transport.call(request, timeout).await
-            }))
-            .await;
+    /// Event admission: the first initialization is awaited; a re-attempt is
+    /// started or advanced without waiting.
+    async fn admit(&self) -> Result<(), HookError> {
+        self.discovery.start();
+        if self.discovery.initialized.load(Ordering::SeqCst) {
+            let _ = self.discovery.poll(None);
+            return Ok(());
+        }
+        poll_fn(|cx| self.discovery.poll(Some(cx.waker()))).await;
+        self.check_open()
+    }
+    fn check_open(&self) -> Result<(), HookError> {
         if self.life.closing.load(Ordering::SeqCst) {
-            return Err(err("configuration discovery cancelled by shutdown")
+            return Err(err("configuration initialization cancelled by shutdown")
                 .classified(generated::DeliveryDiagnosticCode::Cancelled));
         }
-        let response = match response {
-            Ok(response) => response,
-            Err(error) if error.code() == generated::DeliveryDiagnosticCode::Cancelled => {
-                return Err(error);
-            }
-            Err(error) => return Ok(Err(configuration_failure(&error))),
-        };
-        // Built-in transports already reject JSON-RPC errors; host transports may not.
-        if let Err(error) = crate::client::check_rpc_error(&response, &expected_id) {
-            return Ok(Err(configuration_failure(&error)));
-        }
-        if response["id"] != expected_id
-            || crate::canonical::validate("configuration-response", &response).is_err()
-        {
-            return Ok(Err((ConfigurationSkipCode::Invalid, None)));
-        }
-        let configuration = &response["result"]["configuration"];
-        if names_local_secret(configuration) {
-            return Ok(Err((ConfigurationSkipCode::LocalSecret, None)));
-        }
-        let mut resolved = backend.clone();
-        resolved["subscriptions"] = configuration["subscriptions"].clone();
-        Ok(
-            match routes_for(
-                &resolved,
-                transport,
-                &self.grants,
-                self.options.observation_timeout,
-                true,
-            ) {
-                Ok(routes) if routes.is_empty() => {
-                    Err((ConfigurationSkipCode::NoApplicableSubscriptions, None))
-                }
-                Ok(routes) => Ok(routes),
-                Err(_) => Err((ConfigurationSkipCode::Invalid, None)),
-            },
-        )
+        Ok(())
     }
 
     /// Static subscription interest for a canonical event.
@@ -1532,10 +1623,7 @@ impl Hooks {
     pub async fn shutdown(&self) -> Result<ObservationReport, HookError> {
         self.life.closing.store(true, Ordering::SeqCst);
         self.life.cancel_work();
-        let waiters = std::mem::take(&mut *self.initialization_waiters.lock().unwrap());
-        for waiter in waiters {
-            waiter.wake();
-        }
+        self.discovery.wake();
         poll_fn(|cx| {
             let mut waiters = self.life.waiters.lock().unwrap();
             if !self.life.cleaning.swap(true, Ordering::SeqCst) {
@@ -1760,7 +1848,7 @@ impl<'a, T: Serialize + Send + 'a> IntoFuture for EventBoundary<'a, T> {
             cancellation,
             Box::pin(async move {
                 let _active = self.hooks.life.begin()?;
-                self.hooks.initialize().await?;
+                self.hooks.admit().await?;
                 // One route snapshot for the whole event.
                 let routes = self.hooks.routes();
                 let mut event = serde_json::to_value(self.event).map_err(err)?;
@@ -1976,7 +2064,7 @@ where
             cancellation,
             Box::pin(async move {
                 let _active = self.hooks.life.begin()?;
-                self.hooks.initialize().await?;
+                self.hooks.admit().await?;
                 // One route snapshot for the whole event.
                 let routes = self.hooks.routes();
                 let (input, mut context) = match self.input {

@@ -552,13 +552,14 @@ pub(super) async fn configuration_unavailable_retried_after_prepare() {
         .complete(endpoint(), super::callback(&login), budget())
         .await
         .unwrap();
-    // The next admission re-attempts at once, with the prepared credential, and
-    // that same event already reaches the admitted route.
+    // The next admission starts the re-attempt at once, with the prepared
+    // credential, on its own task: that event does not wait and uses the
+    // routes current at admission.
     let (_, seen) = tokio::join!(admit(&hooks), serve_rpc(&listener, 2, configuration_reply));
-    assert_eq!(seen.len(), 2);
+    assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].1, "hooks/configuration");
     assert!(seen[0].0.contains("authorization: bearer prepared\r\n"));
-    assert_eq!(seen[1].1, "hooks/observe");
+    hooks.initialize().await.unwrap();
     assert!(hooks.subscribes(crate::generated::EventType::ToolBefore));
     assert_eq!(diagnostics.lock().unwrap().len(), 1);
     // Admitted: no further discovery.

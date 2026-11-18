@@ -230,11 +230,11 @@ fn configuration_backoff_defaults_double_and_cap() {
     for _ in 0..9 {
         let before = Instant::now();
         // Force eligibility; the schedule is what is under test.
-        if let Some(p) = hooks.pending.lock().unwrap().first_mut() {
+        if let Some(p) = hooks.discovery.pending.lock().unwrap().first_mut() {
             p.retry_at = p.retry_at.map(|_| before);
         }
         block_on(hooks.initialize()).unwrap();
-        let pending = hooks.pending.lock().unwrap();
+        let pending = hooks.discovery.pending.lock().unwrap();
         let at = pending[0].retry_at.unwrap();
         delays.push((at - before).as_secs());
     }
@@ -471,27 +471,26 @@ fn many_admissions_share_one_retry() {
 }
 
 #[test]
-fn cancelled_retry_keeps_state_and_emits_nothing() {
+fn dropped_caller_does_not_cancel_discovery() {
     let backoff = Duration::from_millis(5);
-    let (_release, wait) = oneshot::channel::<Value>();
-    let a = Scripted::new([
-        Reply::Fail(unavailable()),
-        Reply::Wait(wait),
-        Reply::Subscriptions(intercept()),
-    ]);
+    let (release, wait) = oneshot::channel::<Value>();
+    let a = Scripted::new([Reply::Fail(unavailable()), Reply::Wait(wait)]);
     let (first, seen) = options(&[("com.a", a.clone())], None, backoff);
     let hooks = Hooks::new(registration(&["com.a"]), first).unwrap();
     block_on(hooks.initialize()).unwrap();
     std::thread::sleep(backoff * 2);
-    // A dropped admission abandons its attempt without changing pending state.
+    // A dropped caller leaves the re-attempt in flight; nothing restarts it.
     {
         let mut retry = Box::pin(hooks.initialize());
         let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
         assert!(retry.as_mut().poll(&mut cx).is_pending());
     }
+    event(&hooks);
+    assert_eq!(a.configuration_calls(), 2);
     assert_eq!(seen.lock().unwrap().len(), 1);
+    release.send(intercept()).unwrap();
     block_on(hooks.initialize()).unwrap();
-    assert_eq!(a.configuration_calls(), 3);
+    assert_eq!(a.configuration_calls(), 2);
     assert!(hooks.intercepts(generated::EventType::ToolBefore));
     // Retries reuse the transport Hooks owns, so none is left open.
     block_on(hooks.shutdown()).unwrap();
@@ -499,7 +498,7 @@ fn cancelled_retry_keeps_state_and_emits_nothing() {
     // Shutdown cancels an in-flight discovery: an error, never a diagnostic.
     let (_release, wait) = oneshot::channel::<Value>();
     let b = Scripted::new([Reply::Wait(wait)]);
-    let (second, seen) = options(&[("com.b", b)], None, backoff);
+    let (second, seen) = options(&[("com.b", b.clone())], None, backoff);
     let hooks = Hooks::new(registration(&["com.b"]), second).unwrap();
     let mut initialization = Box::pin(hooks.initialize());
     let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
@@ -510,6 +509,89 @@ fn cancelled_retry_keeps_state_and_emits_nothing() {
         generated::DeliveryDiagnosticCode::Cancelled
     );
     assert!(seen.lock().unwrap().is_empty());
+    assert_eq!(b.shutdowns.load(Ordering::SeqCst), 1);
+}
+
+/// An explicit fail-closed backend beside a discovered one.
+fn mixed() -> Value {
+    let mut registration = registration(&["com.e", "com.s"]);
+    let mut explicit = intercept();
+    explicit[0]["failurePolicy"] = json!("fail-closed");
+    registration["hooks"][0]["subscriptions"] = explicit;
+    registration
+}
+/// A runtime-free wakeup for an event deadline.
+fn timer(within: Duration) -> impl Future<Output = ()> + Send {
+    let (fire, fired) = oneshot::channel::<()>();
+    std::thread::spawn(move || {
+        std::thread::sleep(within);
+        let _ = fire.send(());
+    });
+    async move {
+        let _ = fired.await;
+    }
+}
+fn deadline_event(hooks: &Hooks, within: Duration) -> Result<(), HookError> {
+    block_on(
+        hooks
+            .tool_input(json!({"command":"x"}))
+            .context(ToolContext::new(
+                json!({"tool":{"name":"shell","kind":"shell","origin":"native"},
+                "call":{"id":"call-1"},"path":"native"}),
+            ))
+            .deadline_with(Instant::now() + within, timer(within))
+            .into_future(),
+    )
+    .map(|_| ())
+}
+
+#[test]
+fn hung_retry_does_not_delay_fail_closed_delivery() {
+    let backoff = Duration::from_millis(5);
+    let (_never, wait) = oneshot::channel::<Value>();
+    let e = Scripted::new([]);
+    let s = Scripted::new([Reply::Fail(unavailable()), Reply::Wait(wait)]);
+    let (options, _) = options(&[("com.e", e.clone()), ("com.s", s.clone())], None, backoff);
+    let hooks = Hooks::new(mixed(), options).unwrap();
+    block_on(hooks.initialize()).unwrap();
+    std::thread::sleep(backoff * 2);
+    let started = Instant::now();
+    for _ in 0..3 {
+        deadline_event(&hooks, Duration::from_millis(200)).unwrap();
+    }
+    assert!(started.elapsed() < Duration::from_millis(200));
+    assert_eq!(e.count("hooks/intercept"), 3);
+    assert_eq!(
+        s.configuration_calls(),
+        2,
+        "one hung re-attempt, never restarted"
+    );
+}
+
+#[test]
+fn short_deadlines_do_not_starve_slow_discovery() {
+    let backoff = Duration::from_millis(5);
+    let (release, wait) = oneshot::channel::<Value>();
+    let e = Scripted::new([]);
+    let s = Scripted::new([Reply::Fail(unavailable()), Reply::Wait(wait)]);
+    let (options, _) = options(&[("com.e", e.clone()), ("com.s", s.clone())], None, backoff);
+    let hooks = Hooks::new(mixed(), options).unwrap();
+    block_on(hooks.initialize()).unwrap();
+    std::thread::sleep(backoff * 2);
+    for _ in 0..5 {
+        deadline_event(&hooks, Duration::from_millis(1)).ok();
+    }
+    assert_eq!(
+        s.configuration_calls(),
+        2,
+        "short deadlines never restart it"
+    );
+    // The slow backend answers; the same in-flight attempt completes.
+    release.send(intercept()).unwrap();
+    deadline_event(&hooks, Duration::from_millis(200)).unwrap();
+    deadline_event(&hooks, Duration::from_millis(200)).unwrap();
+    assert_eq!(s.configuration_calls(), 2);
+    assert!(s.count("hooks/intercept") >= 1);
 }
 
 /// A host prepare that lands while an attempt is in flight is not lost: the
@@ -557,7 +639,7 @@ fn prepare_resets_backoff() {
     );
     let hooks = Hooks::new(registration(&["com.a"]), options).unwrap();
     let delay = |hooks: &Hooks, before: Instant| {
-        let pending = hooks.pending.lock().unwrap();
+        let pending = hooks.discovery.pending.lock().unwrap();
         (pending[0].retry_at.unwrap() - before).as_secs()
     };
     let mut before = Instant::now();
@@ -566,7 +648,7 @@ fn prepare_resets_backoff() {
     // Two elapsed backoffs grow the delay to 40s.
     for expected in [20, 40] {
         before = Instant::now();
-        hooks.pending.lock().unwrap()[0].retry_at = Some(before);
+        hooks.discovery.pending.lock().unwrap()[0].retry_at = Some(before);
         block_on(hooks.initialize()).unwrap();
         assert_eq!(delay(&hooks, before), expected);
     }
@@ -576,5 +658,8 @@ fn prepare_resets_backoff() {
     block_on(hooks.initialize()).unwrap();
     assert_eq!(backend.configuration_calls(), 4);
     assert_eq!(delay(&hooks, before), 10);
-    assert_eq!(hooks.pending.lock().unwrap()[0].delay, initial * 2);
+    assert_eq!(
+        hooks.discovery.pending.lock().unwrap()[0].delay,
+        initial * 2
+    );
 }

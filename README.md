@@ -536,9 +536,12 @@ at the next event admission or `initialize()`: immediately after a successful
 host `prepare` (or completed login) for the backend's event endpoint, reported
 through `AuthProvider::preparations`; and after a backoff (30 seconds doubling
 to 1 hour, `HooksOptions::configuration_backoff`) only when there is no
-`authError` or its recovery is `retry`. A re-attempt is one shared operation:
-concurrent callers keep the previous routes, a success installs the backend's
-routes at once, and earlier events are not replayed to it.
+`authError` or its recovery is `retry`. Discovery is one shared task with its
+own `observation_timeout` per backend: a caller's deadline or cancellation never
+cancels it, and it runs on a Tokio task when a runtime is current (otherwise
+callers advance it). `initialize()` waits for it; event admission waits only for
+the first initialization and otherwise uses the current routes. A success
+installs the backend's routes at once, and earlier events are not replayed to it.
 
 Discovered `upload` settings are admitted like any other discovered subscription
 setting, with no separate approval: the backend already receives the content and
