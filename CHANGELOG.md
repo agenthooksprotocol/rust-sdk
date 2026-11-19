@@ -5,6 +5,17 @@
 - Check original structural descriptors at generated Serde decode boundaries, preserving the richer `parse_*` diagnostics API. Direct decoding is stricter; primitive constrained aliases can become transparent newtypes.
 - Add schema-derived `EffectId` and typed, allocation-free `Capabilities::supports` effect-family membership queries, including custom identifiers, without changing authorization or admission policy. `capability::EffectType` aliases `EffectId`; `as_str()` is retained, but the identifier is no longer a closed `Copy` enum.
 
+## [0.14.0](https://github.com/agenthooksprotocol/rust-sdk/compare/v0.13.1...v0.14.0) (2026-11-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **auth:** grants are keyed by the configured client identity, so stored grants from earlier versions are not found and users sign in again. PKCE logins register per login with their own redirect; pending logins are process-owned unless persisted, capped, and completed by state; loopback CIMD redirects match without the port and localhost is rejected. Client-credentials registration re-registers on invalid_client with a growing backoff and is replaced on host prepare only when forced. Options for removed mechanisms (PKCE registration records, proactive renewal, stable redirects, supersede) are gone.
+
+### Features
+
+* **auth:** align client registration and pending logins with MCP clients ([#62](https://github.com/agenthooksprotocol/rust-sdk/issues/62)) ([f103212](https://github.com/agenthooksprotocol/rust-sdk/commit/f103212fe5af768f4e9d074e50123d6b54fd2e45))
+
 ## [0.13.1](https://github.com/agenthooksprotocol/rust-sdk/compare/v0.13.0...v0.13.1) (2026-11-18)
 
 
