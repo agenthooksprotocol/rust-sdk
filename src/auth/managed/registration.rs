@@ -439,16 +439,12 @@ impl ManagedOAuth {
         Ok(())
     }
     /// Select a client source for new binding metadata, without network access.
-    /// A login's `redirect`, when known, is checked first.
+    /// A login's redirect is checked when a host `prepare` creates the login.
     pub(super) fn select_source(
         &self,
         target: &AuthTarget,
         metadata: &TrustedMetadata,
-        redirect: Option<&str>,
     ) -> Result<ClientSource, HookError> {
-        if let Some(redirect) = redirect {
-            self.check_login_redirect(ClientSource::Preregistered, redirect)?;
-        }
         if self.preregistered(target).is_some() {
             return Ok(ClientSource::Preregistered);
         }
@@ -456,7 +452,7 @@ impl ManagedOAuth {
         if let Some(cimd) = self.config.cimd.as_ref().filter(|_| pkce)
             && metadata.client_id_metadata_document_supported
         {
-            if !valid_cimd_url(&cimd.url) || redirect.is_some_and(|r| !self.cimd_redirect_ok(r)) {
+            if !valid_cimd_url(&cimd.url) {
                 return Err(fail(AuthErrorCode::InvalidConfiguration));
             }
             return Ok(ClientSource::Cimd);

@@ -1119,19 +1119,7 @@ impl ManagedOAuth {
         if !options.required.iter().all(|scope| valid_scope(scope)) {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
-        // A login's redirect is checked before client selection or any request.
-        let redirect = match self.config.flow {
-            OAuthFlow::AuthorizationCodePkce => {
-                let redirect = options
-                    .redirect_uri
-                    .as_deref()
-                    .or(self.config.redirect_uri.as_deref())
-                    .filter(|uri| Url::parse(uri).is_ok_and(|uri| valid_redirect(&uri)))
-                    .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))?;
-                Some(redirect)
-            }
-            OAuthFlow::ClientCredentials => None,
-        };
+        let redirect = self.login_redirect(&options)?;
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
         let prepared = budget
             .run(async {
@@ -1149,6 +1137,23 @@ impl ManagedOAuth {
             self.mark_prepared(&context);
         }
         Ok(prepared)
+    }
+    /// A PKCE login's redirect, checked before client selection or any request:
+    /// HTTPS, a literal loopback IP (never `localhost`) or a private-use scheme.
+    fn login_redirect<'a>(
+        &'a self,
+        options: &'a PrepareOptions,
+    ) -> Result<Option<&'a str>, HookError> {
+        if self.config.flow != OAuthFlow::AuthorizationCodePkce {
+            return Ok(None);
+        }
+        options
+            .redirect_uri
+            .as_deref()
+            .or(self.config.redirect_uri.as_deref())
+            .filter(|uri| Url::parse(uri).is_ok_and(|uri| valid_redirect(&uri)))
+            .map(Some)
+            .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))
     }
     /// `challenge` is present only for challenge recovery; its requirements, like
     /// `extra`, apply to this operation only and are never stored.
@@ -1300,7 +1305,7 @@ impl ManagedOAuth {
                 binding.client_id = current.client_id.clone();
             }
             None => {
-                binding.client_source = self.select_source(target, &binding.metadata, None)?;
+                binding.client_source = self.select_source(target, &binding.metadata)?;
                 binding.client_id = match binding.client_source {
                     ClientSource::Preregistered => {
                         self.preregistered(target).unwrap_or_default().into()
@@ -1520,8 +1525,10 @@ impl ManagedOAuth {
             if result.is_ok()
                 && let Some(generation) = &choice.generation
             {
-                self.registration_worked(&binding.metadata.issuer, generation, budget)
-                    .await?;
+                // Best effort: the token is already committed.
+                let _ = self
+                    .registration_worked(&binding.metadata.issuer, generation, budget)
+                    .await;
             }
             return self
                 .client_failure(result, &choice, &binding, budget)

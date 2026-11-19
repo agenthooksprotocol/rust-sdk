@@ -163,9 +163,20 @@ fn client_selection_vectors() {
         }
         let target = unbound().target().unwrap();
         let expect = &vector["expect"];
-        // The login's redirect, when there is one, is checked with selection.
-        let redirect = v["redirect"].as_str().filter(|_| pkce);
-        match oauth.select_source(&target, &metadata, redirect) {
+        // As in `prepare_with`: the login's redirect is checked before selection,
+        // and a CIMD client's declared redirects when the login is created.
+        let options = match v["redirect"].as_str() {
+            Some(redirect) => PrepareOptions::new().redirect_uri(redirect),
+            None => PrepareOptions::new(),
+        };
+        let selected = oauth.login_redirect(&options).and_then(|redirect| {
+            let source = oauth.select_source(&target, &metadata)?;
+            if let Some(redirect) = redirect {
+                oauth.check_login_redirect(source, redirect)?;
+            }
+            Ok(source)
+        });
+        match selected {
             Ok(source) => {
                 let (name, client, method) = match source {
                     ClientSource::Preregistered => {

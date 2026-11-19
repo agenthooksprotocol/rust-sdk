@@ -1644,6 +1644,48 @@ async fn persisted_expired_logins_swept_on_prepare() {
     assert!(!host.store.dump().contains(&verifier));
 }
 
+// A prepare that rebinds through discovery (here: stale persisted metadata)
+// and is served from the cached token still sweeps expired persisted logins.
+#[tokio::test]
+async fn persisted_expired_logins_swept_on_rebinding_prepare() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| {
+        c.persist_pending_logins()
+            .login_lifetime(Duration::from_millis(30))
+    });
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    host.network
+        .reply(200, json!({"access_token":"t","token_type":"Bearer"}));
+    oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    login(
+        oauth
+            .prepare_with_required(context(), &scopes(&["write"]), budget())
+            .await
+            .unwrap(),
+    );
+    let verifier = host.pending()[0].verifier.clone();
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    for (key, record) in host.store.records.lock().unwrap().iter_mut() {
+        if key.starts_with("ahp.oauth.binding:") {
+            record.metadata.token_endpoint.clear();
+        }
+    }
+    let discovery = host.network.metadata_requests().len();
+    assert_eq!(
+        ready(oauth.prepare(context(), budget()).await.unwrap()).token,
+        "t"
+    );
+    assert!(
+        host.network.metadata_requests().len() > discovery,
+        "rebound"
+    );
+    assert!(host.pending().is_empty());
+    assert!(!host.store.dump().contains(&verifier));
+}
+
 #[tokio::test]
 async fn pending_logins_capped_per_grant_key() {
     for persisted in [false, true] {
