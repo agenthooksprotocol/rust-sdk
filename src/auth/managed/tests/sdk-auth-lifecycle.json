@@ -1,5 +1,5 @@
 {
-  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's requested set (within allowed for acquisitions; the original request for refreshes); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. registration_request_digests hash host registration policy; a record whose digest differs is unusable.",
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's requested set (within allowed for acquisitions; the original request for refreshes); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time.",
   "recovery": [
     {
       "code": "invalid_configuration",
@@ -48,7 +48,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example",
-        "client_id": "client",
+        "client_identity": "preregistered:client",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -56,7 +56,7 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example20:preregistered:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     },
     {
       "id": "default-upload",
@@ -67,7 +67,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example",
-        "client_id": "client",
+        "client_identity": "preregistered:client",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -75,7 +75,7 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce80:binding:ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example20:preregistered:client23:authorization_code_pkce80:binding:ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks"
     },
     {
       "id": "shared-event",
@@ -86,7 +86,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example",
-        "client_id": "client",
+        "client_identity": "preregistered:client",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -95,7 +95,7 @@
         "grant_partition": "approved-events-and-uploads"
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce34:shared:approved-events-and-uploads"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example20:preregistered:client23:authorization_code_pkce34:shared:approved-events-and-uploads"
     },
     {
       "id": "shared-upload",
@@ -106,7 +106,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example",
-        "client_id": "client",
+        "client_identity": "preregistered:client",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -115,7 +115,7 @@
         "grant_partition": "approved-events-and-uploads"
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend6:upload25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce34:shared:approved-events-and-uploads"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example20:preregistered:client23:authorization_code_pkce34:shared:approved-events-and-uploads"
     },
     {
       "id": "unicode-namespace",
@@ -126,7 +126,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example",
-        "client_id": "client",
+        "client_identity": "preregistered:client",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -134,7 +134,7 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:12:account-\ud83d\ude007:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:12:account-\ud83d\ude0022:https://issuer.example19:https://api.example6:client23:authorization_code_pkce85:binding:ahp.oauth.binding:12:account-\ud83d\ude007:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:12:account-\ud83d\ude0022:https://issuer.example19:https://api.example20:preregistered:client23:authorization_code_pkce85:binding:ahp.oauth.binding:12:account-\ud83d\ude007:backend5:event25:https://api.example/hooks"
     },
     {
       "id": "scope-ceiling-widening",
@@ -145,7 +145,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example",
-        "client_id": "client",
+        "client_identity": "preregistered:client",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -154,7 +154,7 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example20:preregistered:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     },
     {
       "id": "resource-trailing-slash",
@@ -165,7 +165,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example/",
-        "client_id": "client",
+        "client_identity": "preregistered:client",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -173,7 +173,7 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example20:https://api.example/6:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example20:https://api.example/20:preregistered:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     },
     {
       "id": "secret-auth-method-and-capability-rotation",
@@ -184,7 +184,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example",
-        "client_id": "client",
+        "client_identity": "preregistered:client",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -201,7 +201,7 @@
         "token_endpoint_auth_method": "client_secret_basic"
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example6:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example20:preregistered:client23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     },
     {
       "id": "cimd-client-id",
@@ -212,7 +212,7 @@
         "destination": "https://api.example/hooks",
         "issuer": "https://issuer.example",
         "resource": "https://api.example",
-        "client_id": "https://adapter.example/oauth/client.json",
+        "client_identity": "cimd:https://adapter.example/oauth/client.json",
         "flow": "authorization_code_pkce",
         "allowed_scopes": [
           "read",
@@ -220,7 +220,47 @@
         ]
       },
       "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
-      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example41:https://adapter.example/oauth/client.json23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example46:cimd:https://adapter.example/oauth/client.json23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+    },
+    {
+      "id": "dcr-client-identity",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_identity": "dcr",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ],
+        "issued_client_id": "dcr-client-1"
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example3:dcr23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
+    },
+    {
+      "id": "dcr-reissued-client-same-key",
+      "input": {
+        "namespace": "account",
+        "backend_id": "backend",
+        "purpose": "event",
+        "destination": "https://api.example/hooks",
+        "issuer": "https://issuer.example",
+        "resource": "https://api.example",
+        "client_identity": "dcr",
+        "flow": "authorization_code_pkce",
+        "allowed_scopes": [
+          "read",
+          "offline_access"
+        ],
+        "issued_client_id": "dcr-client-2"
+      },
+      "binding_key": "ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks",
+      "grant_key": "ahp.oauth.grant:7:account22:https://issuer.example19:https://api.example3:dcr23:authorization_code_pkce79:binding:ahp.oauth.binding:7:account7:backend5:event25:https://api.example/hooks"
     }
   ],
   "token_responses": [
@@ -1120,24 +1160,28 @@
       "expect": "pending login lifetime is host-configured and bounded (default 10 minutes), fixed at creation and survives the creating prepare's deadline or cancellation"
     },
     {
-      "id": "pending-login-cross-process-completion",
-      "expect": "a pending login created in one process completes from another process sharing the store"
+      "id": "pending-login-owned-by-creating-process",
+      "expect": "by default a pending login lives in the creating process, which receives its callback on its own listener and completes it by state"
     },
     {
-      "id": "pending-login-reuse",
-      "expect": "later prepare with same grant key and exact redirect whose requested+required scopes are within the pending scopes reuses it regardless of deadline or ceiling; completion records scopes bounded by the stored creating ceiling"
+      "id": "pending-login-persisted-cross-process-completion",
+      "expect": "when the host opts to persist pending logins, another process sharing the store completes one by state (paste flow); the PKCE verifier stays only in the pending record, never in metadata or logs"
     },
     {
-      "id": "pending-login-supersede",
-      "expect": "later prepare with a different grant key or redirect, or scopes outside the pending scopes, supersedes it; a different grant key or redirect starts from the new caller's scopes and ceiling alone; old callback fails interaction_required"
+      "id": "pending-logins-concurrent-per-state",
+      "expect": "two prepares for one grant key create two pending logins keyed by state, each with its own redirect and client; each callback completes only its own login"
     },
     {
-      "id": "pending-login-supersede-scope-union",
-      "expect": "with the same grant key and redirect, a superseding login requests old pending scopes plus the new caller's ceiling-filtered requested+required scopes and stores the union of both ceilings; alternating callers with different ceilings converge"
+      "id": "pending-logins-capped-per-grant-key",
+      "expect": "a pending login beyond the host-configurable cap (default 5) for one grant key, per process or per store when persisted, cancels the oldest, atomically in a persisted store; expired pending logins are deleted"
+    },
+    {
+      "id": "pending-completion-newest-grant-wins",
+      "expect": "completing one pending login leaves the others valid; each completion replaces the grant's client and tokens, so the newest completed login wins"
     },
     {
       "id": "pending-login-end-states",
-      "expect": "a pending login ends exactly once by completion, supersede, cancel or expiry; later callbacks fail interaction_required"
+      "expect": "a pending login ends exactly once by completion, cancel (including by the cap) or expiry; later callbacks for it fail interaction_required"
     },
     {
       "id": "metadata-and-secret-rotation",
@@ -1192,6 +1236,14 @@
       "expect": "literal IPv4/IPv6 loopback HTTP redirect accepted; remote HTTP rejected"
     },
     {
+      "id": "loopback-redirect-ephemeral-port-per-login",
+      "expect": "each login may bind a new loopback port; authorization, DCR and token requests and callback validation use that login's exact redirect including the port"
+    },
+    {
+      "id": "cimd-portless-loopback-redirect-matches",
+      "expect": "a host-declared CIMD redirect_uris entry without a port, or with another port, matches a loopback http redirect without userinfo on any port; localhost is never accepted"
+    },
+    {
       "id": "narrowed-refresh-scope-inheritance",
       "expect": "initial request read+write grants read; refresh with no scope stays read and cannot fabricate write"
     },
@@ -1225,7 +1277,7 @@
     },
     {
       "id": "cimd-redirect-mismatch-invalid-configuration",
-      "expect": "a redirect not exactly listed in the host-declared CIMD redirect_uris fails invalid_configuration before any pending login or registration"
+      "expect": "a redirect matching no host-declared CIMD redirect_uris entry (loopback compared without port) fails invalid_configuration before any pending login"
     },
     {
       "id": "cimd-never-fetched-by-sdk",
@@ -1248,16 +1300,24 @@
       "expect": "non-HTTPS, destination-policy-refused or redirecting registration endpoint sends no further request and fails untrusted_destination"
     },
     {
-      "id": "dcr-pkce-registers-only-in-prepare",
-      "expect": "a PKCE client is registered only by host prepare; client-credentials registration may occur in prepare and any non-interactive acquisition, including the up-front lookup and challenge handling"
+      "id": "dcr-pkce-registers-per-login",
+      "expect": "only host prepare registers a PKCE client, inside the prepare that creates the pending login, with that login's exact redirect and application_type native for loopback; each new login registers anew; lookup and delivery never register"
+    },
+    {
+      "id": "dcr-issued-client-stored-with-grant",
+      "expect": "completion commits the issued client_id with the tokens into the grant record under the dcr client identity; a re-registered client replaces it without changing the grant key; refresh uses the stored client"
+    },
+    {
+      "id": "dcr-pkce-invalid-client-drops-grant",
+      "expect": "invalid_client at PKCE completion ends only that pending login (the stored grant is kept); at refresh it returns interaction_required and compare-and-deletes the grant only if it still holds the presented client_id and refresh token"
     },
     {
       "id": "dcr-registers-once-across-processes",
-      "expect": "concurrent processes needing the same registration_key send one registration request; the compare-and-set loser deletes its secret reference and uses the winner's record"
+      "expect": "client-credentials registration: concurrent processes register once under the registration-key lock; a compare-and-set loser deletes its secret reference and uses the winner's record"
     },
     {
       "id": "dcr-registration-reused-across-grants",
-      "expect": "grants in different bindings or partitions with the same registration_key reuse one registration"
+      "expect": "a client-credentials registration record is reused by every client-credentials grant with the same namespace and issuer"
     },
     {
       "id": "dcr-expired-secret-reregisters",
@@ -1265,11 +1325,7 @@
     },
     {
       "id": "dcr-invalid-client-reregisters-once",
-      "expect": "token-endpoint invalid_client for a DCR client compare-and-deletes that registration generation; where registration is allowed client credentials re-register once and re-acquire once; PKCE returns interaction_required and the next prepare registers anew; no metadata refetch"
-    },
-    {
-      "id": "dcr-new-client-id-new-grant",
-      "expect": "a replacement client_id yields a new grant key; the old grant is not migrated or presented; PKCE returns interaction_required, client credentials re-acquire"
+      "expect": "client credentials: token-endpoint invalid_client compare-and-deletes that registration generation, re-registers at most once and re-acquires once; a repeated invalid_client is credential_unavailable; no metadata refetch"
     },
     {
       "id": "dcr-secret-not-in-token-record",
@@ -1293,63 +1349,23 @@
     },
     {
       "id": "lookup-never-registers-pkce",
-      "expect": "the up-front lookup never registers a PKCE client and returns interaction_required when its registration is missing; for client credentials it may (re-)register under the failed-marker backoff"
-    },
-    {
-      "id": "dcr-failed-marker-bounds-registration",
-      "expect": "every failed registration outcome and a repeated invalid_client persist or update a failed marker with failure time, attempt count and next attempt time; until it elapses (default 1 minute doubling to 1 hour) no path but host prepare sends a registration request, across operations and processes; prepare, success or a request digest change clears it"
+      "expect": "the up-front lookup never registers a PKCE client and returns interaction_required; for client credentials it may register when no usable record exists, subject to the backoff"
     },
     {
       "id": "dcr-response-validation-invalid-configuration",
       "expect": "a 2xx JSON registration response failing validation (secret for PKCE, replaced redirect, swapped auth method) persists nothing and returns invalid_configuration, not retry"
     },
     {
-      "id": "prepare-force-reregistration",
-      "expect": "prepare with the explicit force-registration option compare-and-deletes the current registration generation and its secret reference, clears a failed marker and registers anew; an expired pending login alone never triggers re-registration"
-    },
-    {
-      "id": "dcr-policy-change-reregisters",
-      "expect": "a changed client_name, software identifier, registration scope or initial access token reference makes the record's request_digest stale; the record is compare-and-deleted and the next permitted registration uses the new policy"
-    },
-    {
       "id": "dcr-replaced-secret-deleted",
       "expect": "after a registration record is replaced or compare-and-deleted, the old secret reference is deleted through the host hook once the compare-and-set succeeds; a losing compare-and-set deletes only its own fresh reference"
     },
     {
-      "id": "cc-registration-auto-repairs-after-backoff",
-      "expect": "an unattended client-credentials host blocked by a failed marker sends no registration request during the backoff, then re-registers and acquires on the next operation after it elapses, without host prepare"
-    },
-    {
-      "id": "cc-proactive-reregistration-before-expiry",
-      "expect": "a successful client-credentials acquisition whose client_secret_expires_at is within min(0.1 x (client_secret_expires_at - local registered_at), 1 hour) re-registers under coordination, so the scheduled expiry causes no outage; client_id_issued_at is not relied on"
-    },
-    {
-      "id": "marker-blocks-only-registration",
-      "expect": "while a failed marker is active, a still-valid stored token is still sent and PKCE still returns interaction_required; only registration requests are suppressed"
-    },
-    {
-      "id": "stale-callback-does-not-delete-new-registration",
-      "expect": "a pending login records its registration generation; invalid_client at its completion after a forced re-registration compare-and-deletes only that generation and leaves the newer registration, even with the same reissued client_id"
-    },
-    {
       "id": "registration-transient-failure-backs-off",
-      "expect": "5xx, 408, 429, network and 401/403 registration failures update the failed marker, so repeated lookups and notifications across processes send no registration request until the backoff elapses"
+      "expect": "after a failed client-credentials registration, no registration request is sent for that key until the backoff (default 1 minute doubling, capped at 1 hour) passes, shared through a shared store; meanwhile the last failure's code is returned (provider_failed for retryable failures); host prepare bypasses it"
     },
     {
       "id": "registration-retry-after-honoured",
       "expect": "a registration response with Retry-After sets the next attempt no earlier than Retry-After and no earlier than the exponential backoff, capped at the host maximum"
-    },
-    {
-      "id": "marker-update-atomic-across-processes",
-      "expect": "under the registration-key lock each process reloads and checks the marker, then updates it by compare-and-set on its generation; concurrent failures increment the attempt count without loss and at most one process sends a registration request per permitted attempt"
-    },
-    {
-      "id": "proactive-reregistration-once-across-processes",
-      "expect": "concurrent processes inside the renewal margin reload and re-check under the registration-key lock; exactly one sends a registration request and the others use its new record"
-    },
-    {
-      "id": "proactive-renewal-failure-keeps-current-registration",
-      "expect": "a proactive re-registration failing (e.g. 5xx or 429) inside the renewal margin updates the failed marker, but the operation succeeds with the current still-usable registration and token until that registration actually expires"
     },
     {
       "id": "configuration-401-diagnostic-carries-auth-code",
@@ -1378,22 +1394,18 @@
   ],
   "registration_keys": [
     {
-      "id": "dcr-pkce-loopback",
+      "id": "cc-registration",
       "input": {
         "namespace": "account",
-        "issuer": "https://issuer.example",
-        "flow": "authorization_code_pkce",
-        "redirect": "http://127.0.0.1:8765/callback"
+        "issuer": "https://issuer.example"
       },
-      "registration_key": "ahp.oauth.registration:7:account22:https://issuer.example23:authorization_code_pkce30:http://127.0.0.1:8765/callback"
+      "registration_key": "ahp.oauth.registration:7:account22:https://issuer.example"
     },
     {
-      "id": "dcr-pkce-nonkey-metadata",
+      "id": "cc-registration-nonkey-metadata",
       "input": {
         "namespace": "account",
         "issuer": "https://issuer.example",
-        "flow": "authorization_code_pkce",
-        "redirect": "http://127.0.0.1:8765/callback",
         "client_name": "Example Adapter",
         "software_id": "example-adapter",
         "software_version": "1.2.3",
@@ -1404,47 +1416,23 @@
         "initial_access_token_ref": "vault:not-a-real-secret",
         "client_secret": "not-a-real-secret"
       },
-      "registration_key": "ahp.oauth.registration:7:account22:https://issuer.example23:authorization_code_pkce30:http://127.0.0.1:8765/callback"
+      "registration_key": "ahp.oauth.registration:7:account22:https://issuer.example"
     },
     {
-      "id": "dcr-pkce-other-redirect",
+      "id": "cc-issuer-trailing-slash",
       "input": {
         "namespace": "account",
-        "issuer": "https://issuer.example",
-        "flow": "authorization_code_pkce",
-        "redirect": "http://127.0.0.1:9999/callback"
+        "issuer": "https://issuer.example/"
       },
-      "registration_key": "ahp.oauth.registration:7:account22:https://issuer.example23:authorization_code_pkce30:http://127.0.0.1:9999/callback"
+      "registration_key": "ahp.oauth.registration:7:account23:https://issuer.example/"
     },
     {
-      "id": "dcr-issuer-trailing-slash",
-      "input": {
-        "namespace": "account",
-        "issuer": "https://issuer.example/",
-        "flow": "authorization_code_pkce",
-        "redirect": "http://127.0.0.1:8765/callback"
-      },
-      "registration_key": "ahp.oauth.registration:7:account23:https://issuer.example/23:authorization_code_pkce30:http://127.0.0.1:8765/callback"
-    },
-    {
-      "id": "dcr-client-credentials",
-      "input": {
-        "namespace": "account",
-        "issuer": "https://issuer.example",
-        "flow": "client_credentials",
-        "redirect": ""
-      },
-      "registration_key": "ahp.oauth.registration:7:account22:https://issuer.example18:client_credentials0:"
-    },
-    {
-      "id": "dcr-unicode-namespace",
+      "id": "cc-unicode-namespace",
       "input": {
         "namespace": "account-\ud83d\ude00",
-        "issuer": "https://issuer.example",
-        "flow": "authorization_code_pkce",
-        "redirect": "http://127.0.0.1:8765/callback"
+        "issuer": "https://issuer.example"
       },
-      "registration_key": "ahp.oauth.registration:12:account-\ud83d\ude0022:https://issuer.example23:authorization_code_pkce30:http://127.0.0.1:8765/callback"
+      "registration_key": "ahp.oauth.registration:12:account-\ud83d\ude0022:https://issuer.example"
     }
   ],
   "client_selection": [
@@ -1470,7 +1458,8 @@
       },
       "expect": {
         "source": "preregistered",
-        "client_id": "client"
+        "client_id": "client",
+        "client_identity": "preregistered:client"
       }
     },
     {
@@ -1496,7 +1485,8 @@
       "expect": {
         "source": "cimd",
         "client_id": "https://adapter.example/oauth/client.json",
-        "token_endpoint_auth_method": "none"
+        "token_endpoint_auth_method": "none",
+        "client_identity": "cimd:https://adapter.example/oauth/client.json"
       }
     },
     {
@@ -1520,7 +1510,8 @@
       },
       "expect": {
         "source": "dcr",
-        "token_endpoint_auth_method": "none"
+        "token_endpoint_auth_method": "none",
+        "client_identity": "dcr"
       }
     },
     {
@@ -1545,11 +1536,36 @@
       },
       "expect": {
         "source": "dcr",
-        "token_endpoint_auth_method": "none"
+        "token_endpoint_auth_method": "none",
+        "client_identity": "dcr"
       }
     },
     {
       "id": "cimd-redirect-mismatch-invalid-configuration",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": null,
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://127.0.0.1:8765/callback",
+            "https://adapter.example/callback"
+          ]
+        },
+        "redirect": "http://127.0.0.1:8765/other",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "cimd-loopback-port-mismatch-accepted",
       "input": {
         "flow": "authorization_code_pkce",
         "preregistered_client_id": null,
@@ -1569,7 +1585,132 @@
         "secret_hook": true
       },
       "expect": {
+        "source": "cimd",
+        "client_id": "https://adapter.example/oauth/client.json",
+        "token_endpoint_auth_method": "none",
+        "client_identity": "cimd:https://adapter.example/oauth/client.json"
+      }
+    },
+    {
+      "id": "cimd-portless-loopback-redirect-matches",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": null,
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://127.0.0.1/callback"
+          ]
+        },
+        "redirect": "http://127.0.0.1:51004/callback",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "source": "cimd",
+        "client_id": "https://adapter.example/oauth/client.json",
+        "token_endpoint_auth_method": "none",
+        "client_identity": "cimd:https://adapter.example/oauth/client.json"
+      }
+    },
+    {
+      "id": "cimd-loopback-userinfo-exact",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": null,
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://127.0.0.1/callback"
+          ]
+        },
+        "redirect": "http://user@127.0.0.1:51004/callback",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
         "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "localhost-redirect-invalid",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": null,
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://localhost:51004/callback"
+          ]
+        },
+        "redirect": "http://localhost:51004/callback",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "preregistered-localhost-redirect-invalid",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": "client",
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://127.0.0.1:8765/callback",
+            "https://adapter.example/callback"
+          ]
+        },
+        "redirect": "http://localhost:51004/callback",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "cimd-ipv6-loopback-redirect-matches",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": null,
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://[::1]/callback"
+          ]
+        },
+        "redirect": "http://[::1]:51004/callback",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "source": "cimd",
+        "client_id": "https://adapter.example/oauth/client.json",
+        "token_endpoint_auth_method": "none",
+        "client_identity": "cimd:https://adapter.example/oauth/client.json"
       }
     },
     {
@@ -1709,7 +1850,8 @@
       },
       "expect": {
         "source": "dcr",
-        "token_endpoint_auth_method": "client_secret_basic"
+        "token_endpoint_auth_method": "client_secret_basic",
+        "client_identity": "dcr"
       }
     },
     {
@@ -1731,7 +1873,8 @@
       },
       "expect": {
         "source": "dcr",
-        "token_endpoint_auth_method": "client_secret_post"
+        "token_endpoint_auth_method": "client_secret_post",
+        "client_identity": "dcr"
       }
     },
     {
@@ -1786,7 +1929,8 @@
       },
       "expect": {
         "source": "dcr",
-        "token_endpoint_auth_method": "none"
+        "token_endpoint_auth_method": "none",
+        "client_identity": "dcr"
       }
     },
     {
@@ -1871,7 +2015,8 @@
       },
       "expect": {
         "source": "dcr",
-        "token_endpoint_auth_method": "none"
+        "token_endpoint_auth_method": "none",
+        "client_identity": "dcr"
       }
     },
     {
@@ -1917,6 +2062,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -1949,6 +2095,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -1981,6 +2128,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2023,12 +2171,13 @@
       }
     },
     {
-      "id": "pkce-secret-rejected",
+      "id": "pkce-secret-ignored",
       "flow": "authorization_code_pkce",
       "request": {
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2047,8 +2196,13 @@
         "client_secret_expires_at": 0
       },
       "expect": {
-        "accepted": false,
-        "error": "invalid_configuration"
+        "accepted": true,
+        "expiry": "none",
+        "record": {
+          "client_id": "dcr-client",
+          "client_secret_expires_at": null,
+          "secret_ref": false
+        }
       }
     },
     {
@@ -2058,6 +2212,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2082,12 +2237,81 @@
       }
     },
     {
+      "id": "pkce-echo-superset-accepted",
+      "flow": "authorization_code_pkce",
+      "request": {
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback"
+        ],
+        "application_type": "native",
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none",
+        "client_name": "Example Adapter"
+      },
+      "now": 1800000000,
+      "status": 201,
+      "response": {
+        "client_id": "dcr-client",
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback",
+          "http://[::1]:8765/callback"
+        ]
+      },
+      "expect": {
+        "accepted": true,
+        "expiry": "none",
+        "record": {
+          "client_id": "dcr-client",
+          "client_secret_expires_at": null,
+          "secret_ref": false
+        }
+      }
+    },
+    {
+      "id": "pkce-echo-other-port-rejected",
+      "flow": "authorization_code_pkce",
+      "request": {
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback"
+        ],
+        "application_type": "native",
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none",
+        "client_name": "Example Adapter"
+      },
+      "now": 1800000000,
+      "status": 201,
+      "response": {
+        "client_id": "dcr-client",
+        "redirect_uris": [
+          "http://127.0.0.1:9999/callback"
+        ]
+      },
+      "expect": {
+        "accepted": false,
+        "error": "invalid_configuration"
+      }
+    },
+    {
       "id": "pkce-auth-method-changed",
       "flow": "authorization_code_pkce",
       "request": {
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2116,6 +2340,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2146,6 +2371,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2173,6 +2399,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2200,6 +2427,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2415,6 +2643,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2440,6 +2669,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2467,6 +2697,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2495,6 +2726,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2522,6 +2754,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2549,6 +2782,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2574,6 +2808,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2599,6 +2834,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2624,6 +2860,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2651,6 +2888,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2676,6 +2914,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2701,6 +2940,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2726,6 +2966,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2753,6 +2994,7 @@
         "redirect_uris": [
           "http://127.0.0.1:8765/callback"
         ],
+        "application_type": "native",
         "grant_types": [
           "authorization_code",
           "refresh_token"
@@ -2770,85 +3012,6 @@
         "accepted": false,
         "error": "provider_failed"
       }
-    }
-  ],
-  "registration_request_digests": [
-    {
-      "id": "policy-base",
-      "input": {
-        "client_name": "Example Adapter",
-        "software_id": "example-adapter",
-        "software_version": "1.2.3",
-        "registration_scope": [
-          "write",
-          "read"
-        ],
-        "initial_access_token_ref": "vault:iat"
-      },
-      "request_digest": "c2c48958f4ef5207355fec71fb7fe5c57ab7e55e4a72e33b5b006df3c4063c96"
-    },
-    {
-      "id": "policy-scope-reordered-duplicated",
-      "input": {
-        "client_name": "Example Adapter",
-        "software_id": "example-adapter",
-        "software_version": "1.2.3",
-        "registration_scope": [
-          "read",
-          "write",
-          "read"
-        ],
-        "initial_access_token_ref": "vault:iat"
-      },
-      "request_digest": "c2c48958f4ef5207355fec71fb7fe5c57ab7e55e4a72e33b5b006df3c4063c96"
-    },
-    {
-      "id": "policy-scope-changed",
-      "input": {
-        "client_name": "Example Adapter",
-        "software_id": "example-adapter",
-        "software_version": "1.2.3",
-        "registration_scope": [
-          "read"
-        ],
-        "initial_access_token_ref": "vault:iat"
-      },
-      "request_digest": "156174b3445620b76009a33b9dabfd84bf22083da4b42d3a6338e4d08c7bf205"
-    },
-    {
-      "id": "policy-client-name-changed",
-      "input": {
-        "client_name": "Renamed Adapter",
-        "software_id": "example-adapter",
-        "software_version": "1.2.3",
-        "registration_scope": [
-          "write",
-          "read"
-        ],
-        "initial_access_token_ref": "vault:iat"
-      },
-      "request_digest": "35edee98a82113b710075f6ab930137ba7ace8e555a499366f35714f1aa600ae"
-    },
-    {
-      "id": "policy-initial-access-token-changed",
-      "input": {
-        "client_name": "Example Adapter",
-        "software_id": "example-adapter",
-        "software_version": "1.2.3",
-        "registration_scope": [
-          "write",
-          "read"
-        ],
-        "initial_access_token_ref": "vault:iat-2"
-      },
-      "request_digest": "fb312db655334f008341d8e6bb255ad42c023284304bcac1169dc674a2140103"
-    },
-    {
-      "id": "policy-minimal",
-      "input": {
-        "client_name": "Example Adapter"
-      },
-      "request_digest": "c4858405b15e009a8c4074b5b25184ad3d5c51636369a1a951ac0faf5a2ba068"
     }
   ]
 }
