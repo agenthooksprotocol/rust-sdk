@@ -1500,19 +1500,22 @@ pub(super) async fn dcr_replaced_secret_deleted() {
     assert_eq!(sent(&registrations[3])["software_id"], "example-adapter");
     assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
     assert_eq!(*host.secrets.deleted.lock().unwrap(), [old, new, after]);
-    // A failed forced replacement keeps the current record, with no backoff.
+    // A failed forced replacement returns its error but keeps the current
+    // record, with no backoff, so the next operation still uses it.
     host.network.register_reply(503, json!({}), None);
     host.store.expire();
-    host.network.reply(200, token("kept"));
-    ready(
-        changed
-            .prepare_with(unbound(), force(), budget())
-            .await
-            .unwrap(),
+    let tokens = host.network.tokens().len();
+    assert_eq!(
+        code(changed.prepare_with(unbound(), force(), budget()).await),
+        AuthErrorCode::ProviderFailed
     );
     assert_eq!(host.network.registrations().len(), 5);
+    assert_eq!(host.network.tokens().len(), tokens);
     assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
     assert!(host.store.backoff().is_none());
+    host.network.reply(200, token("kept"));
+    assert!(changed.credential(unbound()).await.unwrap().is_some());
+    assert_eq!(host.network.registrations().len(), 5);
     assert_eq!(
         host.network.tokens().last().unwrap().authorization,
         basic("dcr-client-4", "issued-secret-4")

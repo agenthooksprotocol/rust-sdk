@@ -566,8 +566,8 @@ impl PrepareOptions {
     }
     /// Replace a usable client-credentials registration, for example so changed
     /// `RegistrationPolicy` settings take effect; otherwise it is never replaced
-    /// while usable. Once per `prepare`; a failed replacement keeps the current
-    /// record. PKCE registers per login anyway.
+    /// while usable. Once per `prepare`; a failed replacement returns its error
+    /// and keeps the current record. PKCE registers per login anyway.
     pub fn force_registration(mut self) -> Self {
         self.force_registration = true;
         self

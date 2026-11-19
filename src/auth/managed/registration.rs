@@ -659,7 +659,7 @@ impl ManagedOAuth {
             .await?;
         let registrar = Registrar {
             body,
-            fallback: current,
+            forced: current.is_some(),
             method,
             storage: self.config.secret_storage.clone(),
             backoff: self.config.registration_backoff,
@@ -804,8 +804,8 @@ fn back_off(
 /// The owned state a detached registration needs to commit its outcome.
 struct Registrar {
     body: Value,
-    /// The usable record a forced replacement keeps if it fails.
-    fallback: Option<ClientChoice>,
+    /// A forced replacement of a usable record: a failure keeps the record.
+    forced: bool,
     method: &'static str,
     storage: Option<Arc<dyn ClientSecretStorage>>,
     backoff: (Duration, Duration),
@@ -830,7 +830,8 @@ impl Registrar {
         let issued = match registration_outcome(OAuthFlow::ClientCredentials, &self.body, response)
         {
             Ok(issued) => issued,
-            Err((_, _)) if self.fallback.is_some() => return Ok(self.fallback.unwrap()),
+            // The current record stays, with no backoff; the error is reported.
+            Err((code, _)) if self.forced => return Err(fail(code)),
             Err((code, retry_after)) => {
                 back_off(record, code, retry_after, self.backoff);
                 cas(guard, record, budget).await?;
