@@ -1500,26 +1500,36 @@ pub(super) async fn dcr_replaced_secret_deleted() {
     assert_eq!(sent(&registrations[3])["software_id"], "example-adapter");
     assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
     assert_eq!(*host.secrets.deleted.lock().unwrap(), [old, new, after]);
-    // A failed forced replacement returns its error but keeps the current
-    // record, with no backoff, so the next operation still uses it.
-    host.network.register_reply(503, json!({}), None);
+    // A failed forced replacement returns its error, keeps the current record
+    // and counts toward the backoff, which a host `prepare` still bypasses.
     host.store.expire();
     let tokens = host.network.tokens().len();
-    assert_eq!(
-        code(changed.prepare_with(unbound(), force(), budget()).await),
-        AuthErrorCode::ProviderFailed
-    );
-    assert_eq!(host.network.registrations().len(), 5);
+    for (attempts, wait) in [(1, 60), (2, 120)] {
+        host.network.register_reply(503, json!({}), None);
+        assert_eq!(
+            code(changed.prepare_with(unbound(), force(), budget()).await),
+            AuthErrorCode::ProviderFailed
+        );
+        assert_eq!(host.network.registrations().len(), 4 + attempts as usize);
+        let backoff = host.store.backoff().unwrap();
+        assert_eq!(
+            (backoff.attempts, backoff.code.as_str()),
+            (attempts, "provider_failed")
+        );
+        assert!((wait - 1..=wait).contains(&backoff_wait(&host)));
+        assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
+    }
     assert_eq!(host.network.tokens().len(), tokens);
-    assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
-    assert!(host.store.backoff().is_none());
+    // The next operation still uses the kept record, and its token success
+    // resets the count.
     host.network.reply(200, token("kept"));
     assert!(changed.credential(unbound()).await.unwrap().is_some());
-    assert_eq!(host.network.registrations().len(), 5);
+    assert_eq!(host.network.registrations().len(), 6);
     assert_eq!(
         host.network.tokens().last().unwrap().authorization,
         basic("dcr-client-4", "issued-secret-4")
     );
+    assert!(host.store.backoff().is_none());
 }
 
 #[tokio::test]
