@@ -89,30 +89,6 @@ impl RegistrationPolicy {
             scopes.join(" ")
         })
     }
-    /// Digest of the settings a client-credentials record was registered with,
-    /// so a host `prepare` replaces a record made under other settings.
-    fn digest(&self) -> String {
-        use sha2::{Digest, Sha256};
-        let field = |value: &Option<String>| value.clone().unwrap_or_default();
-        let framed = frame(
-            "ahp.oauth.registration-request:",
-            &[
-                &self.client_name,
-                &field(&self.software_id),
-                &field(&self.software_version),
-                &self.scope_value().unwrap_or_default(),
-                &self
-                    .initial_access_token
-                    .as_ref()
-                    .map(|(r, _)| r.clone())
-                    .unwrap_or_default(),
-            ],
-        );
-        Sha256::digest(framed.as_bytes())
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect()
-    }
 }
 
 /// Host secret storage for issued client secrets. The SDK has no implicit store:
@@ -162,8 +138,6 @@ pub(super) struct SavedRegistration {
     pub(super) client_secret_expires_at: Option<u64>,
     pub(super) generation: String,
     pub(super) secret_ref: Option<String>,
-    /// The registration settings' digest; only a host `prepare` acts on a change.
-    pub(super) digest: String,
 }
 /// Shared backoff after a failed client-credentials registration.
 #[derive(Clone, Serialize, Deserialize)]
@@ -308,7 +282,13 @@ pub(super) fn accept_registration(
         _ => return Err(ProviderFailed),
     }
     let body = object.unwrap();
-    let present = |key: &str| body.get(key).filter(|v| !v.is_null());
+    // A JSON null is never treated as absent: it fails the member's checks.
+    let present = |key: &str| body.get(key);
+    let strings = |v: &Value| {
+        v.as_array()
+            .filter(|items| items.iter().all(Value::is_string))
+            .cloned()
+    };
     let pkce = flow == OAuthFlow::AuthorizationCodePkce;
     let grant = if pkce {
         "authorization_code"
@@ -324,14 +304,14 @@ pub(super) fn accept_registration(
         .as_array()
         .cloned()
         .unwrap_or_default();
-    if present("redirect_uris").is_some_and(|v| {
-        !v.as_array()
-            .is_some_and(|echoed| requested.iter().all(|r| echoed.contains(r)))
-    }) || present("grant_types").is_some_and(|v| {
-        !v.as_array()
-            .is_some_and(|grants| grants.iter().any(|g| g == grant))
-    }) || present("token_endpoint_auth_method")
-        .is_some_and(|v| Some(v) != request.get("token_endpoint_auth_method"))
+    // Client credentials request no redirect: any echoed list is accepted.
+    if present("redirect_uris").is_some_and(|v| match pkce {
+        true => !strings(v).is_some_and(|echoed| requested.iter().all(|r| echoed.contains(r))),
+        false => !v.is_array(),
+    }) || present("grant_types")
+        .is_some_and(|v| !strings(v).is_some_and(|grants| grants.iter().any(|g| g == grant)))
+        || present("token_endpoint_auth_method")
+            .is_some_and(|v| Some(v) != request.get("token_endpoint_auth_method"))
     {
         return Err(InvalidConfiguration);
     }
@@ -648,22 +628,22 @@ impl ManagedOAuth {
         })
     }
     /// The client-credentials registration, under its key's lock: reuse a usable
-    /// record (for a host `prepare`, one made with the current settings), else
-    /// register unless a backoff from a failed registration still applies.
+    /// record unless a host `prepare` forces its replacement, else register
+    /// unless a backoff from a failed registration still applies.
     pub(super) async fn registered(
         &self,
         metadata: &TrustedMetadata,
         mode: Mode,
+        force: bool,
         budget: OperationBudget,
     ) -> Result<ClientChoice, HookError> {
         let policy = self
             .registration_policy(&metadata.issuer)
             .ok_or_else(|| fail(AuthErrorCode::CredentialUnavailable))?;
-        let digest = policy.digest();
-        let current = (mode == Mode::Prepare).then_some(digest.as_str());
         let (mut guard, mut record) = self.locked(&metadata.issuer, budget).await?;
         let storage = self.config.secret_storage.as_deref();
-        if let Some(choice) = usable(storage, &record, current, budget).await? {
+        let current = usable(storage, &record, budget).await?;
+        if !force && let Some(choice) = current {
             return Ok(choice);
         }
         if mode != Mode::Prepare
@@ -679,7 +659,7 @@ impl ManagedOAuth {
             .await?;
         let registrar = Registrar {
             body,
-            digest,
+            fallback: current,
             method,
             storage: self.config.secret_storage.clone(),
             backoff: self.config.registration_backoff,
@@ -767,19 +747,13 @@ async fn delete_secret(
         let _ = budget.run(storage.delete(reference, budget)).await;
     }
 }
-/// A record is usable while its secret is unexpired and resolvable; `digest`,
-/// when given, must also match the current settings.
+/// A record is usable while its secret is unexpired and resolvable.
 async fn usable(
     storage: Option<&dyn ClientSecretStorage>,
     record: &SessionRecord,
-    digest: Option<&str>,
     budget: OperationBudget,
 ) -> Result<Option<ClientChoice>, HookError> {
-    let Some(saved) = record
-        .registration
-        .as_ref()
-        .filter(|r| !r.expired() && digest.is_none_or(|d| r.digest == d))
-    else {
+    let Some(saved) = record.registration.as_ref().filter(|r| !r.expired()) else {
         return Ok(None);
     };
     let secret = match &saved.secret_ref {
@@ -830,7 +804,8 @@ fn back_off(
 /// The owned state a detached registration needs to commit its outcome.
 struct Registrar {
     body: Value,
-    digest: String,
+    /// The usable record a forced replacement keeps if it fails.
+    fallback: Option<ClientChoice>,
     method: &'static str,
     storage: Option<Arc<dyn ClientSecretStorage>>,
     backoff: (Duration, Duration),
@@ -855,6 +830,7 @@ impl Registrar {
         let issued = match registration_outcome(OAuthFlow::ClientCredentials, &self.body, response)
         {
             Ok(issued) => issued,
+            Err((_, _)) if self.fallback.is_some() => return Ok(self.fallback.unwrap()),
             Err((code, retry_after)) => {
                 back_off(record, code, retry_after, self.backoff);
                 cas(guard, record, budget).await?;
@@ -888,7 +864,6 @@ impl Registrar {
             client_secret_expires_at: issued.expires_at,
             generation: generation.clone(),
             secret_ref: secret_ref.clone(),
-            digest: self.digest.clone(),
         });
         if !cas(guard, record, budget).await? {
             // A concurrent writer won: discard ours and use the winner's record.
@@ -896,7 +871,7 @@ impl Registrar {
             if let Some(current) = budget.run(guard.load()).await? {
                 *record = current;
             }
-            return usable(storage, record, None, budget)
+            return usable(storage, record, budget)
                 .await?
                 .ok_or_else(|| fail(AuthErrorCode::ProviderFailed));
         }

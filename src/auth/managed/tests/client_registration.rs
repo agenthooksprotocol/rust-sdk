@@ -596,7 +596,30 @@ pub(super) async fn cimd_invalid_client_no_dcr_fallback() {
             .client_id_metadata_document(CIMD, vec![REDIRECT.into()])
             .dynamic_registration(policy()),
     );
-    // At completion.
+    // On the authorization callback; the login is consumed.
+    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    let mut rejected = callback(&pending);
+    rejected.set_query(None);
+    rejected
+        .query_pairs_mut()
+        .append_pair(
+            "state",
+            &query(pending.authorization_url(), "state").unwrap(),
+        )
+        .append_pair("error", "invalid_client");
+    assert_eq!(
+        code(oauth.complete(unbound(), rejected, budget()).await),
+        AuthErrorCode::InvalidConfiguration
+    );
+    assert_eq!(
+        code(
+            oauth
+                .complete(unbound(), callback(&pending), budget())
+                .await
+        ),
+        AuthErrorCode::InteractionRequired
+    );
+    // At code exchange.
     let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
     host.network.reply(401, invalid_client());
     assert_eq!(
@@ -961,7 +984,6 @@ pub(super) async fn dcr_registers_once_across_processes() {
             client_secret_expires_at: None,
             generation: "winner-generation".into(),
             secret_ref: Some("winner-ref".into()),
-            digest: String::new(),
         }),
         ..SessionRecord::empty(
             TrustedMetadata::new(String::new(), ISSUER.into(), String::new()),
@@ -1117,6 +1139,60 @@ async fn cc_failure_count_resets_only_on_token_success() {
         "works"
     );
     assert!(host.store.backoff().is_none());
+}
+
+#[test]
+fn registration_response_null_is_not_absent() {
+    let accept = |flow, request: Value, body: Value| {
+        registration::accept_registration(
+            flow,
+            &request,
+            201,
+            &serde_json::to_vec(&body).unwrap(),
+            now(),
+        )
+    };
+    let cc = json!({"grant_types": ["client_credentials"], "token_endpoint_auth_method": "client_secret_basic"});
+    let pkce = json!({"redirect_uris": [REDIRECT], "grant_types": ["authorization_code", "refresh_token"], "token_endpoint_auth_method": "none"});
+    for (flow, request, field) in [
+        (
+            OAuthFlow::ClientCredentials,
+            &cc,
+            "client_secret_expires_at",
+        ),
+        (OAuthFlow::ClientCredentials, &cc, "redirect_uris"),
+        (OAuthFlow::ClientCredentials, &cc, "grant_types"),
+        (
+            OAuthFlow::ClientCredentials,
+            &cc,
+            "token_endpoint_auth_method",
+        ),
+        (OAuthFlow::ClientCredentials, &cc, "client_secret"),
+        (OAuthFlow::ClientCredentials, &cc, "client_id"),
+        (OAuthFlow::AuthorizationCodePkce, &pkce, "redirect_uris"),
+        (OAuthFlow::AuthorizationCodePkce, &pkce, "grant_types"),
+        (
+            OAuthFlow::AuthorizationCodePkce,
+            &pkce,
+            "token_endpoint_auth_method",
+        ),
+    ] {
+        let mut body = json!({"client_id": "c", "client_secret": "s"});
+        body[field] = Value::Null;
+        assert_eq!(
+            accept(flow, request.clone(), body).err(),
+            Some(AuthErrorCode::InvalidConfiguration),
+            "{field}"
+        );
+    }
+    // A public client's secret and its expiry are ignored, null or not.
+    let body = json!({"client_id": "c", "client_secret": null, "client_secret_expires_at": null});
+    assert_eq!(
+        accept(OAuthFlow::AuthorizationCodePkce, pkce, body)
+            .unwrap()
+            .client_id,
+        "c"
+    );
 }
 
 #[test]
@@ -1400,20 +1476,47 @@ pub(super) async fn dcr_replaced_secret_deleted() {
         *host.secrets.deleted.lock().unwrap(),
         [old.clone(), new.clone()]
     );
-    // Changed registration settings: delivery keeps the usable record, and a host
-    // `prepare` replaces it, deleting the old secret.
+    // Changed registration settings never replace a usable record by themselves,
+    // not even in a host `prepare`.
     let changed = cc_with(&host, policy().software_id("example-adapter"));
     host.store.expire();
     host.network.reply(200, token("delivered"));
     assert!(changed.credential(unbound()).await.unwrap().is_some());
-    assert_eq!(host.network.registrations().len(), 3);
     host.store.expire();
     host.network.reply(200, token("prepared"));
     ready(changed.prepare(unbound(), budget()).await.unwrap());
+    assert_eq!(host.network.registrations().len(), 3);
+    // Only an explicit force replaces it, once, deleting the old secret, even
+    // while a cached token is usable.
+    let force = || PrepareOptions::new().force_registration();
+    ready(
+        changed
+            .prepare_with(unbound(), force(), budget())
+            .await
+            .unwrap(),
+    );
     let registrations = host.network.registrations();
     assert_eq!(registrations.len(), 4);
     assert_eq!(sent(&registrations[3])["software_id"], "example-adapter");
+    assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
     assert_eq!(*host.secrets.deleted.lock().unwrap(), [old, new, after]);
+    // A failed forced replacement keeps the current record, with no backoff.
+    host.network.register_reply(503, json!({}), None);
+    host.store.expire();
+    host.network.reply(200, token("kept"));
+    ready(
+        changed
+            .prepare_with(unbound(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(host.network.registrations().len(), 5);
+    assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
+    assert!(host.store.backoff().is_none());
+    assert_eq!(
+        host.network.tokens().last().unwrap().authorization,
+        basic("dcr-client-4", "issued-secret-4")
+    );
 }
 
 #[tokio::test]

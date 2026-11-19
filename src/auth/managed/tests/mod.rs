@@ -2094,6 +2094,13 @@ async fn invalid_callback_does_not_consume() {
         .append_pair("tenant", "one");
     let mut duplicate = valid();
     duplicate.query_pairs_mut().append_pair("code", "again");
+    // No state matches no pending login, like an unknown state.
+    let mut stateless = valid();
+    stateless.set_query(Some("tenant=one&code=x&iss=https%3A%2F%2Fissuer.example"));
+    assert_eq!(
+        code(oauth.complete(context(), stateless, budget()).await),
+        AuthErrorCode::InteractionRequired
+    );
     for bad in [
         wrong_state,
         wrong_redirect,

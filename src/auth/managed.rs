@@ -38,7 +38,7 @@ use std::{
     future::Future,
     sync::{
         Arc,
-        atomic::{AtomicU16, Ordering},
+        atomic::{AtomicBool, AtomicU16, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -545,6 +545,7 @@ pub enum Preparation {
 pub struct PrepareOptions {
     required: Vec<String>,
     redirect_uri: Option<String>,
+    force_registration: bool,
 }
 impl PrepareOptions {
     pub fn new() -> Self {
@@ -561,6 +562,14 @@ impl PrepareOptions {
     /// to `OAuthClientConfig::redirect_uri`.
     pub fn redirect_uri(mut self, uri: impl Into<String>) -> Self {
         self.redirect_uri = Some(uri.into());
+        self
+    }
+    /// Replace a usable client-credentials registration, for example so changed
+    /// `RegistrationPolicy` settings take effect; otherwise it is never replaced
+    /// while usable. Once per `prepare`; a failed replacement keeps the current
+    /// record. PKCE registers per login anyway.
+    pub fn force_registration(mut self) -> Self {
+        self.force_registration = true;
         self
     }
 }
@@ -654,6 +663,13 @@ struct Presented {
 struct Login<'a> {
     redirect: Option<&'a str>,
     required: &'a [String],
+    /// `PrepareOptions::force_registration`, consumed by the first registration.
+    force: Option<&'a AtomicBool>,
+}
+impl Login<'_> {
+    fn forcing(&self) -> bool {
+        self.force.is_some_and(|force| force.load(Ordering::SeqCst))
+    }
 }
 /// The owned state a detached exchange needs after its response, so it can
 /// commit the outcome after the caller is gone.
@@ -1126,7 +1142,12 @@ impl ManagedOAuth {
                 let target = context.target()?;
                 self.validate_target(&target)?;
                 let required = &options.required;
-                let login = Login { redirect, required };
+                let force = AtomicBool::new(options.force_registration);
+                let login = Login {
+                    redirect,
+                    required,
+                    force: Some(&force),
+                };
                 let pending = self
                     .acquire(context.clone(), None, login, None, budget, Mode::Prepare)
                     .await?;
@@ -1181,7 +1202,7 @@ impl ManagedOAuth {
                 &target,
                 challenge,
                 &required,
-                login.redirect,
+                login,
                 rejected_attempt,
                 budget,
                 mode,
@@ -1330,12 +1351,13 @@ impl ManagedOAuth {
         target: &AuthTarget,
         challenge: Option<&Challenge>,
         required: &[String],
-        redirect: Option<&str>,
+        login: Login<'_>,
         rejected_attempt: Option<&str>,
         budget: OperationBudget,
         mode: Mode,
         rediscover: bool,
     ) -> Result<Option<Preparation>, Renewal> {
+        let redirect = login.redirect;
         let target = target.clone();
         let required = required.to_vec();
         let binding_key = self.key(&target);
@@ -1399,10 +1421,11 @@ impl ManagedOAuth {
             let key = self.binding_grant_key(&target, binding);
             // Every host `prepare` deletes the grant key's expired pending logins.
             self.end_login(&key, None, budget).await?;
-            if let Some(credential) = self
-                .load(&key, budget)
-                .await?
-                .and_then(|record| self.cached(&record, &required))
+            if !login.forcing()
+                && let Some(credential) = self
+                    .load(&key, budget)
+                    .await?
+                    .and_then(|record| self.cached(&record, &required))
             {
                 return Ok(Some(Preparation::Ready(credential)));
             }
@@ -1448,6 +1471,7 @@ impl ManagedOAuth {
             self.end_login(&key, None, budget).await?;
         }
         if rejected_attempt.is_none()
+            && !login.forcing()
             && let Some(credential) = self
                 .load(&key, budget)
                 .await?
@@ -1457,7 +1481,12 @@ impl ManagedOAuth {
         }
         let cc = self.config.flow == OAuthFlow::ClientCredentials;
         let mut choice = match binding.client_source {
-            ClientSource::Dcr if cc => self.registered(&binding.metadata, mode, budget).await?,
+            ClientSource::Dcr if cc => {
+                let force = mode == Mode::Prepare
+                    && login.force.is_some_and(|f| f.swap(false, Ordering::SeqCst));
+                self.registered(&binding.metadata, mode, force, budget)
+                    .await?
+            }
             _ => self.configured_choice(&target, &binding),
         };
         let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
@@ -1958,7 +1987,8 @@ impl ManagedOAuth {
                 return Err(denied());
             }
         }
-        let state = CsrfToken::new(state.ok_or_else(denied)?);
+        // No state, like an unknown one, matches no pending login.
+        let state = CsrfToken::new(state.ok_or_else(gone)?);
         if code.is_some() == error.is_some() {
             return Err(denied());
         }
@@ -2018,7 +2048,12 @@ impl ManagedOAuth {
             .end_login(&key, Some(&saved.id), budget)
             .await?
             .ok_or_else(gone)?;
-        if error.is_some() {
+        if let Some(error) = error {
+            // An authorization-endpoint invalid_client for a CIMD client is a
+            // misconfiguration, never a DCR fallback.
+            if error == "invalid_client" && binding.client_source == ClientSource::Cimd {
+                return Err(fail(AuthErrorCode::InvalidConfiguration));
+            }
             return Err(denied());
         }
         let code = code.filter(|s| !s.is_empty()).ok_or_else(denied)?;
