@@ -38,7 +38,7 @@ use std::{
     future::Future,
     sync::{
         Arc,
-        atomic::{AtomicU16, Ordering},
+        atomic::{AtomicBool, AtomicU16, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -231,7 +231,8 @@ pub struct OAuthClientConfig {
     registrations: Vec<RegistrationPolicy>,
     secret_storage: Option<Arc<dyn ClientSecretStorage>>,
     registration_backoff: (Duration, Duration),
-    renewal_margin: Duration,
+    max_pending_logins: usize,
+    persist_pending_logins: bool,
 }
 impl OAuthClientConfig {
     /// A pre-registered client. It always wins: CIMD and DCR are never attempted.
@@ -264,12 +265,14 @@ impl OAuthClientConfig {
             registrations: Vec::new(),
             secret_storage: None,
             registration_backoff: (Duration::from_secs(60), Duration::from_secs(3600)),
-            renewal_margin: Duration::from_secs(3600),
+            max_pending_logins: 5,
+            persist_pending_logins: false,
         }
     }
     /// PKCE only, used when issuer metadata has `client_id_metadata_document_supported`
-    /// `true`. `url` is the `client_id` verbatim; `redirect_uris` are the document's,
-    /// and the configured redirect must be one of them. The SDK never fetches `url`.
+    /// `true`. `url` is the `client_id` verbatim; `redirect_uris` are the document's.
+    /// Each login's redirect must be one of them, a loopback redirect compared
+    /// without its port (RFC 8252 section 7.3). The SDK never fetches `url`.
     pub fn client_id_metadata_document(
         mut self,
         url: impl Into<String>,
@@ -287,21 +290,30 @@ impl OAuthClientConfig {
         self
     }
     /// Host storage for issued client secrets; required for client-credentials DCR.
+    /// A PKCE client is registered per login and never has a secret.
     pub fn client_secret_storage(mut self, storage: Arc<dyn ClientSecretStorage>) -> Self {
         self.secret_storage = Some(storage);
         self
     }
-    /// Failed-registration backoff: `initial` doubling per attempt, capped at `max`
-    /// (defaults 1 minute and 1 hour). `max` also caps a later `Retry-After`
-    /// (delta-seconds or HTTP-date).
+    /// Client-credentials failed-registration backoff: `initial` doubling per
+    /// failure, capped at `max` (defaults 1 minute and 1 hour). `max` also caps a
+    /// later `Retry-After` (delta-seconds or HTTP-date).
     pub fn registration_backoff(mut self, initial: Duration, max: Duration) -> Self {
         self.registration_backoff = (initial, max);
         self
     }
-    /// Cap of the proactive re-registration margin before a client secret expires:
-    /// `min(0.1 x secret lifetime, cap)`, default 1 hour.
-    pub fn registration_renewal_margin(mut self, cap: Duration) -> Self {
-        self.renewal_margin = cap;
+    /// Concurrent pending logins per grant key (default 5, at least 1). Creating
+    /// one beyond the cap cancels the oldest.
+    pub fn max_pending_logins(mut self, cap: usize) -> Self {
+        self.max_pending_logins = cap.max(1);
+        self
+    }
+    /// Store pending logins (with their PKCE verifier) in the grant record so
+    /// any process sharing the store can complete one by `state`, for example
+    /// from a pasted callback URL. By default a pending login lives only in the
+    /// `ManagedOAuth` that created it, as in MCP clients.
+    pub fn persist_pending_logins(mut self) -> Self {
+        self.persist_pending_logins = true;
         self
     }
     /// Bound for persisting a received token response (default 30 seconds). The
@@ -313,6 +325,7 @@ impl OAuthClientConfig {
     }
     /// Fixed lifetime of each pending login, from its creation; at most 10 minutes.
     /// It is independent of the creating `prepare` call's budget or cancellation.
+    /// Expired pending logins are deleted.
     pub fn login_lifetime(mut self, lifetime: Duration) -> Self {
         self.login_lifetime = lifetime.min(MAX_LOGIN_LIFETIME);
         self
@@ -327,6 +340,9 @@ impl OAuthClientConfig {
         self.grant_partition = Some(partition.into());
         self
     }
+    /// The default PKCE redirect. A host binding a new loopback port per login
+    /// passes each login's redirect with `PrepareOptions::redirect_uri` instead.
+    /// HTTP is allowed only to a literal loopback IP, never `localhost`.
     pub fn redirect_uri(mut self, uri: impl Into<String>) -> Self {
         self.redirect_uri = Some(uri.into());
         self
@@ -375,30 +391,32 @@ impl SessionKey {
 /// Host-persisted secret record. Serialization is for host storage,
 /// not diagnostics or protocol messages. There is intentionally no Debug.
 ///
-/// Binding records hold validated discovery provenance; grant records also hold
-/// the token and any pending login. Only granted scopes are recorded: the local
-/// ceiling and operation requirements are re-applied at use.
+/// Binding records hold validated discovery provenance and the selected client
+/// source; grant records hold the token and the client it was issued to, plus
+/// pending logins when the host persists them. Only granted scopes are
+/// recorded: the local ceiling and operation requirements are re-applied at use.
 #[derive(Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct SessionRecord {
     version: String,
     metadata: TrustedMetadata,
+    /// Bindings: the pre-registered client or CIMD URL (empty for DCR).
+    /// Grants: the client the token was issued to, committed with it.
     client_id: String,
     flow: String,
     configured_binding: bool,
     resource_metadata_hint: Option<discovery::ResourceMetadataHint>,
     token: Option<SavedToken>,
-    pending: Option<SavedLogin>,
-    /// Binding records: the selected client's source and, for DCR, its registration key.
+    /// Oldest first; only with `OAuthClientConfig::persist_pending_logins`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending_logins: Vec<SavedLogin>,
     #[serde(default)]
     client_source: ClientSource,
-    #[serde(default)]
-    registration_key: Option<String>,
-    /// Registration records: the DCR client and its failed-registration marker.
-    #[serde(default)]
+    /// Client-credentials registration records: the DCR client and its backoff.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     registration: Option<registration::SavedRegistration>,
-    #[serde(default)]
-    marker: Option<registration::FailedMarker>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    backoff: Option<registration::Backoff>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct SavedToken {
@@ -412,6 +430,7 @@ struct SavedToken {
     access_rejected: bool,
     refresh_in_flight: bool,
 }
+/// One pending login: its exact redirect, client, PKCE verifier and ceiling.
 #[derive(Clone, Serialize, Deserialize)]
 struct SavedLogin {
     id: String,
@@ -422,14 +441,8 @@ struct SavedLogin {
     state: String,
     verifier: String,
     redirect_uri: String,
-    url: String,
     expires_at_ms: u64,
-    in_flight: bool,
-    /// The client and DCR registration generation the login was created under.
-    #[serde(default)]
     client_id: String,
-    #[serde(default)]
-    registration_generation: Option<String>,
 }
 impl SessionRecord {
     pub fn version(&self) -> &str {
@@ -454,11 +467,10 @@ impl SessionRecord {
             configured_binding: false,
             resource_metadata_hint: None,
             token: None,
-            pending: None,
+            pending_logins: Vec::new(),
             client_source: ClientSource::default(),
-            registration_key: None,
             registration: None,
-            marker: None,
+            backoff: None,
         }
     }
     fn same_binding(&self, other: &Self) -> bool {
@@ -468,7 +480,6 @@ impl SessionRecord {
             && self.flow == other.flow
             && self.configured_binding == other.configured_binding
             && self.client_source == other.client_source
-            && self.registration_key == other.registration_key
     }
 }
 /// Acquire MUST serialize all writers for this key across the host's processes.
@@ -498,31 +509,29 @@ pub trait CredentialGuard: Send {
         Box::pin(async { Ok(()) })
     }
 }
-/// A stored pending login. Any process sharing the store can complete it with
-/// `ManagedOAuth::complete`; this handle is only needed to display or cancel it.
+/// A pending login. The creating `ManagedOAuth` completes it by `state` with
+/// `ManagedOAuth::complete` (with `persist_pending_logins`, any process sharing
+/// the store can); this handle is only needed to display or cancel it.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct PendingLogin {
-    key: SessionKey,
+    key: Box<SessionKey>,
     id: String,
     url: Url,
+    redirect_uri: String,
     expires_at: SystemTime,
 }
 impl PendingLogin {
     pub fn authorization_url(&self) -> &Url {
         &self.url
     }
-    /// Fixed at creation; reuse by a later `prepare` never extends it.
+    /// The login's exact redirect, where its callback arrives.
+    pub fn redirect_uri(&self) -> &str {
+        &self.redirect_uri
+    }
+    /// Fixed at creation.
     pub fn expires_at(&self) -> SystemTime {
         self.expires_at
-    }
-    fn new(key: SessionKey, login: &SavedLogin) -> Result<Self, HookError> {
-        Ok(Self {
-            key,
-            id: login.id.clone(),
-            url: Url::parse(&login.url).map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?,
-            expires_at: UNIX_EPOCH + Duration::from_millis(login.expires_at_ms),
-        })
     }
 }
 #[non_exhaustive]
@@ -535,6 +544,7 @@ pub enum Preparation {
 #[non_exhaustive]
 pub struct PrepareOptions {
     required: Vec<String>,
+    redirect_uri: Option<String>,
     force_registration: bool,
 }
 impl PrepareOptions {
@@ -546,9 +556,19 @@ impl PrepareOptions {
         self.required = scopes;
         self
     }
-    /// Delete the current DCR registration (and its secret) and any failed
-    /// marker, then register anew. Use when the server deleted the client: it
-    /// sends no callback, so the SDK never infers this from an expired login.
+    /// The redirect of a login this `prepare` creates, such as a loopback
+    /// listener on a new ephemeral port (`http://127.0.0.1:<port>/callback`).
+    /// Authorization, registration and token requests use it exactly. Defaults
+    /// to `OAuthClientConfig::redirect_uri`.
+    pub fn redirect_uri(mut self, uri: impl Into<String>) -> Self {
+        self.redirect_uri = Some(uri.into());
+        self
+    }
+    /// Replace a usable client-credentials registration, for example so changed
+    /// `RegistrationPolicy` settings take effect; otherwise it is never replaced
+    /// while usable. Once per `prepare`; a failed replacement returns its error,
+    /// keeps the current record and counts toward the registration backoff,
+    /// which a host `prepare` bypasses. PKCE registers per login anyway.
     pub fn force_registration(mut self) -> Self {
         self.force_registration = true;
         self
@@ -562,6 +582,8 @@ pub struct ManagedOAuth {
     store: Arc<dyn CredentialStore>,
     /// Successful host preparations by backend, purpose and destination.
     prepared: Arc<std::sync::Mutex<std::collections::BTreeMap<String, u64>>>,
+    /// Pending logins owned by this provider, by grant key, oldest first.
+    pending: Arc<std::sync::Mutex<std::collections::BTreeMap<String, Vec<SavedLogin>>>>,
 }
 /// Which caller drives acquisition. Only `Prepare` may create a pending login.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -627,6 +649,27 @@ impl TokenHttp {
         budget
             .run(self.network.send(request, EndpointUse::Token, budget))
             .await
+    }
+}
+/// What a refresh presented, for compare-and-delete on a definitive rejection.
+struct Presented {
+    client_id: String,
+    refresh: RefreshToken,
+    generation: String,
+    drop_on_invalid_client: bool,
+}
+/// The caller's login inputs for `prepare`: the login's redirect (PKCE) and
+/// explicit operation requirements.
+#[derive(Clone, Copy, Default)]
+struct Login<'a> {
+    redirect: Option<&'a str>,
+    required: &'a [String],
+    /// `PrepareOptions::force_registration`, consumed by the first registration.
+    force: Option<&'a AtomicBool>,
+}
+impl Login<'_> {
+    fn forcing(&self) -> bool {
+        self.force.is_some_and(|force| force.load(Ordering::SeqCst))
     }
 }
 /// The owned state a detached exchange needs after its response, so it can
@@ -794,12 +837,12 @@ impl ManagedOAuth {
         {
             return Err(fail(AuthErrorCode::UnsupportedBinding));
         }
-        if config.flow == OAuthFlow::AuthorizationCodePkce {
-            let uri = Url::parse(config.redirect_uri.as_deref().ok_or_else(invalid)?)
-                .map_err(|_| invalid())?;
-            if !valid_redirect(&uri) {
-                return Err(invalid());
-            }
+        if config
+            .redirect_uri
+            .as_deref()
+            .is_some_and(|uri| !Url::parse(uri).is_ok_and(|uri| valid_redirect(&uri)))
+        {
+            return Err(invalid());
         }
         Ok(Self {
             config: Arc::new(config),
@@ -807,18 +850,8 @@ impl ManagedOAuth {
             policy,
             store,
             prepared: Arc::default(),
+            pending: Arc::default(),
         })
-    }
-    /// A second handle on the same configuration, network, policy and store,
-    /// for work that outlives the caller.
-    fn handle(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            network: self.network.clone(),
-            policy: self.policy.clone(),
-            store: self.store.clone(),
-            prepared: self.prepared.clone(),
-        }
     }
     fn prepared_key(context: &AuthContext) -> Option<String> {
         let target = context.target().ok()?;
@@ -865,13 +898,14 @@ impl ManagedOAuth {
             purpose: purpose.into(),
         }
     }
-    /// No ceiling, auth method, secret or registration source: changing those
-    /// never orphans a grant. A different `client_id` is a different grant.
+    /// No ceiling, auth method, secret or issued DCR `client_id`: changing those
+    /// never orphans a grant. A different client identity (`preregistered:<id>`,
+    /// `cimd:<url>` or `dcr`) is a different grant.
     fn grant_key(
         &self,
         target: &AuthTarget,
         metadata: &TrustedMetadata,
-        client_id: &str,
+        client_identity: &str,
     ) -> SessionKey {
         let partition = match &self.config.grant_partition {
             Some(partition) => format!("shared:{partition}"),
@@ -884,7 +918,7 @@ impl ManagedOAuth {
                     &self.config.namespace,
                     &metadata.issuer,
                     &metadata.resource,
-                    client_id,
+                    client_identity,
                     self.flow_id(),
                     &partition,
                 ],
@@ -894,6 +928,9 @@ impl ManagedOAuth {
             destination: String::new(),
             purpose: String::new(),
         }
+    }
+    fn binding_grant_key(&self, target: &AuthTarget, binding: &SessionRecord) -> SessionKey {
+        self.grant_key(target, &binding.metadata, &Self::client_identity(binding))
     }
     /// Requirements are judged on effective scopes (granted ∩ current ceiling).
     fn cached(&self, record: &SessionRecord, required: &[String]) -> Option<BearerCredential> {
@@ -1088,7 +1125,8 @@ impl ManagedOAuth {
         let options = PrepareOptions::new().required(required.to_vec());
         self.prepare_with(context, options, budget).await
     }
-    /// `prepare` with explicit options; the only path that registers a PKCE client.
+    /// `prepare` with explicit options; the only path that creates a pending login
+    /// and, with DCR, registers a PKCE client for that login's redirect.
     pub async fn prepare_with(
         &self,
         context: AuthContext,
@@ -1098,16 +1136,21 @@ impl ManagedOAuth {
         if !options.required.iter().all(|scope| valid_scope(scope)) {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
+        let redirect = self.login_redirect(&options)?;
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
         let prepared = budget
             .run(async {
                 let target = context.target()?;
                 self.validate_target(&target)?;
-                self.prepare_registration(&target, options.force_registration, budget)
-                    .await?;
                 let required = &options.required;
+                let force = AtomicBool::new(options.force_registration);
+                let login = Login {
+                    redirect,
+                    required,
+                    force: Some(&force),
+                };
                 let pending = self
-                    .acquire(context.clone(), None, required, None, budget, Mode::Prepare)
+                    .acquire(context.clone(), None, login, None, budget, Mode::Prepare)
                     .await?;
                 pending.ok_or_else(|| fail(AuthErrorCode::ProviderFailed))
             })
@@ -1117,20 +1160,37 @@ impl ManagedOAuth {
         }
         Ok(prepared)
     }
+    /// A PKCE login's redirect, checked before client selection or any request:
+    /// HTTPS, a literal loopback IP (never `localhost`) or a private-use scheme.
+    fn login_redirect<'a>(
+        &'a self,
+        options: &'a PrepareOptions,
+    ) -> Result<Option<&'a str>, HookError> {
+        if self.config.flow != OAuthFlow::AuthorizationCodePkce {
+            return Ok(None);
+        }
+        options
+            .redirect_uri
+            .as_deref()
+            .or(self.config.redirect_uri.as_deref())
+            .filter(|uri| Url::parse(uri).is_ok_and(|uri| valid_redirect(&uri)))
+            .map(Some)
+            .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))
+    }
     /// `challenge` is present only for challenge recovery; its requirements, like
     /// `extra`, apply to this operation only and are never stored.
     async fn acquire(
         &self,
         context: AuthContext,
         challenge: Option<&Challenge>,
-        extra: &[String],
+        login: Login<'_>,
         rejected_attempt: Option<&str>,
         budget: OperationBudget,
         mode: Mode,
     ) -> Result<Option<Preparation>, HookError> {
         let target = context.target()?;
         self.validate_target(&target)?;
-        let mut required = union(target.scopes(), extra);
+        let mut required = union(target.scopes(), login.required);
         if let Some(challenge) = challenge {
             required = union(&required, &challenge.scopes);
         }
@@ -1143,6 +1203,7 @@ impl ManagedOAuth {
                 &target,
                 challenge,
                 &required,
+                login,
                 rejected_attempt,
                 budget,
                 mode,
@@ -1167,7 +1228,8 @@ impl ManagedOAuth {
             result => result,
         };
         // A deleted DCR client-credentials registration: register once more and
-        // re-acquire once; a repeated invalid_client is a failed registration.
+        // re-acquire once; a repeated invalid_client is credential_unavailable
+        // and counts as a failed registration for the backoff.
         let result = match result {
             Err(Renewal::Reregister(_)) => match attempt(false).await {
                 Err(Renewal::Reregister(issuer)) => {
@@ -1213,7 +1275,7 @@ impl ManagedOAuth {
         attempt: &str,
         budget: OperationBudget,
     ) -> Result<(), HookError> {
-        let key = self.grant_key(target, &binding.metadata, &binding.client_id);
+        let key = self.binding_grant_key(target, binding);
         let mut guard = budget.run(self.store.acquire(key, budget)).await?;
         if let Some(mut record) = budget.run(guard.load()).await?
             && let Some(token) = record.token.as_mut()
@@ -1263,22 +1325,16 @@ impl ManagedOAuth {
             Some(current) => {
                 binding.client_source = current.client_source;
                 binding.client_id = current.client_id.clone();
-                binding.registration_key = current.registration_key.clone();
             }
             None => {
                 binding.client_source = self.select_source(target, &binding.metadata)?;
-                match binding.client_source {
+                binding.client_id = match binding.client_source {
                     ClientSource::Preregistered => {
-                        binding.client_id = self.preregistered(target).unwrap_or_default().into()
+                        self.preregistered(target).unwrap_or_default().into()
                     }
-                    ClientSource::Cimd => {
-                        binding.client_id = self.config.cimd.as_ref().unwrap().url.clone()
-                    }
-                    ClientSource::Dcr => {
-                        let key = self.registration_key(&binding.metadata.issuer);
-                        binding.registration_key = Some(key.as_str().into());
-                    }
-                }
+                    ClientSource::Cimd => self.config.cimd.as_ref().unwrap().url.clone(),
+                    ClientSource::Dcr => String::new(),
+                };
             }
         }
         match current {
@@ -1296,11 +1352,13 @@ impl ManagedOAuth {
         target: &AuthTarget,
         challenge: Option<&Challenge>,
         required: &[String],
+        login: Login<'_>,
         rejected_attempt: Option<&str>,
         budget: OperationBudget,
         mode: Mode,
         rediscover: bool,
     ) -> Result<Option<Preparation>, Renewal> {
+        let redirect = login.redirect;
         let target = target.clone();
         let required = required.to_vec();
         let binding_key = self.key(&target);
@@ -1361,12 +1419,14 @@ impl ManagedOAuth {
         if mode == Mode::Prepare
             && let Some((binding, _)) = &usable
         {
-            // The binding records its selected client; a usable token needs no registration.
-            let key = self.grant_key(&target, &binding.metadata, &binding.client_id);
-            if let Some(credential) = self
-                .load(&key, budget)
-                .await?
-                .and_then(|record| self.cached(&record, &required))
+            let key = self.binding_grant_key(&target, binding);
+            // Every host `prepare` deletes the grant key's expired pending logins.
+            self.end_login(&key, None, budget).await?;
+            if !login.forcing()
+                && let Some(credential) = self
+                    .load(&key, budget)
+                    .await?
+                    .and_then(|record| self.cached(&record, &required))
             {
                 return Ok(Some(Preparation::Ready(credential)));
             }
@@ -1405,26 +1465,31 @@ impl ManagedOAuth {
                 }
             }
         };
-        // A still-valid token for the recorded DCR client keeps working even
-        // while its registration is unusable or a failed marker blocks renewal.
-        if binding.client_source == ClientSource::Dcr
-            && rejected_attempt.is_none()
-            && !binding.client_id.is_empty()
+        // The grant is keyed by the configured client source, so a still-valid
+        // token is served before any client-credentials registration.
+        let key = self.binding_grant_key(&target, &binding);
+        if mode == Mode::Prepare {
+            self.end_login(&key, None, budget).await?;
+        }
+        if rejected_attempt.is_none()
+            && !login.forcing()
             && let Some(credential) = self
-                .load(
-                    &self.grant_key(&target, &binding.metadata, &binding.client_id),
-                    budget,
-                )
+                .load(&key, budget)
                 .await?
                 .and_then(|record| self.cached(&record, &required))
         {
             return Ok(Some(Preparation::Ready(credential)));
         }
-        let choice = self.choose(&target, &binding, mode, budget).await?;
-        let binding = self
-            .record_client(&target, binding, &choice, budget)
-            .await?;
-        let key = self.grant_key(&target, &binding.metadata, &choice.id);
+        let cc = self.config.flow == OAuthFlow::ClientCredentials;
+        let mut choice = match binding.client_source {
+            ClientSource::Dcr if cc => {
+                let force = mode == Mode::Prepare
+                    && login.force.is_some_and(|f| f.swap(false, Ordering::SeqCst));
+                self.registered(&binding.metadata, mode, force, budget)
+                    .await?
+            }
+            _ => self.configured_choice(&target, &binding),
+        };
         let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
         let loaded = budget.run(guard.load()).await?;
         let mut record = loaded.unwrap_or_else(|| SessionRecord {
@@ -1449,8 +1514,13 @@ impl ManagedOAuth {
         if let Some(credential) = self.cached(&record, &required) {
             return Ok(Some(Preparation::Ready(credential)));
         }
+        // A PKCE DCR grant refreshes with the client stored alongside its tokens.
+        if !cc && choice.source == ClientSource::Dcr {
+            choice.id = record.client_id.clone();
+        }
         // A refresh cannot broaden a grant, so it only helps when the grant suffices.
-        if self.config.flow == OAuthFlow::AuthorizationCodePkce
+        if !cc
+            && !choice.id.is_empty()
             && let Some(token) = &record.token
             && token.refresh_token.is_some()
             && subset(&required, &self.effective(&token.scopes))
@@ -1470,7 +1540,7 @@ impl ManagedOAuth {
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let scopes = self.request_scopes(&previous, &scopes);
-        if self.config.flow == OAuthFlow::ClientCredentials {
+        if cc {
             let result = self
                 .client_credentials(
                     &mut guard,
@@ -1483,22 +1553,12 @@ impl ManagedOAuth {
                 .await;
             drop(guard);
             if result.is_ok()
-                && choice.renew
-                && let Some(generation) = choice.generation.clone()
+                && let Some(generation) = &choice.generation
             {
-                // The token is committed: renewal never delays or fails this
-                // operation. It runs on its own commit budget, fire-and-forget.
-                let owner = self.handle();
-                let metadata = binding.metadata.clone();
-                let renewal = async move {
-                    let budget = commit_budget(owner.config.commit_timeout);
-                    owner.renew(&metadata, &generation, budget).await;
-                };
-                if tokio::runtime::Handle::try_current().is_ok() {
-                    tokio::spawn(renewal);
-                } else {
-                    renewal.await;
-                }
+                // Best effort: the token is already committed.
+                let _ = self
+                    .registration_worked(&binding.metadata.issuer, generation, budget)
+                    .await;
             }
             return self
                 .client_failure(result, &choice, &binding, budget)
@@ -1508,35 +1568,25 @@ impl ManagedOAuth {
         if mode != Mode::Prepare {
             return Err(fail(AuthErrorCode::InteractionRequired).into());
         }
-        // Only a live login for the same grant key and redirect is reused or merged.
-        let live = record.pending.as_ref().filter(|login| {
-            login.expires_at_ms > now_ms()
-                && !login.in_flight
-                && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
-                && login.registration_generation == choice.generation
-        });
-        if let Some(login) = live
-            && subset(&scopes, &login.scopes)
-        {
-            let pending = PendingLogin::new(key, login)?;
-            self.check_url(&pending.url, EndpointUse::Authorization, budget)
+        drop(guard);
+        let redirect = redirect.ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))?;
+        self.check_login_redirect(binding.client_source, redirect)?;
+        // As in MCP clients, DCR runs inside each login with its exact redirect.
+        if choice.source == ClientSource::Dcr {
+            choice = self
+                .register_login(&record.metadata, redirect, budget)
                 .await?;
-            return Ok(Some(Preparation::InteractionRequired(pending)));
         }
-        // Supersede with growing scope and ceiling unions so alternating callers converge.
-        let ceiling = union(
-            &self.config.allowed_scopes,
-            live.map_or(&[], |l| l.ceiling.as_slice()),
-        );
-        let scopes = union(&scopes, live.map_or(&[], |l| l.scopes.as_slice()));
         let authorization = record
             .metadata
             .authorization_endpoint
             .clone()
             .ok_or_else(|| fail(AuthErrorCode::DiscoveryFailed))?;
-        let client = self.client(&record.metadata, &choice)?.set_auth_uri(
-            AuthUrl::new(authorization).map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?,
-        );
+        let client = self
+            .client(&record.metadata, &choice, Some(redirect))?
+            .set_auth_uri(
+                AuthUrl::new(authorization).map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?,
+            );
         let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
         let mut request = client
             .authorize_url(CsrfToken::new_random)
@@ -1552,60 +1602,121 @@ impl ManagedOAuth {
             id: random_id(),
             metadata: record.metadata.clone(),
             scopes,
-            ceiling,
+            ceiling: self.config.allowed_scopes.clone(),
             state: state.secret().clone(),
             verifier: verifier.secret().clone(),
-            redirect_uri: self
-                .config
-                .redirect_uri
-                .clone()
-                .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))?,
-            url: url.to_string(),
+            redirect_uri: redirect.into(),
             expires_at_ms: now_ms().saturating_add(self.config.login_lifetime.as_millis() as u64),
-            in_flight: false,
-            client_id: choice.id.clone(),
-            registration_generation: choice.generation.clone(),
+            client_id: choice.id,
         };
-        let pending = PendingLogin::new(key, &login)?;
-        // Atomically supersedes any previous pending login; its callback then fails.
-        record.pending = Some(login);
-        self.persist(&mut *guard, &mut record, budget).await?;
+        let pending = PendingLogin {
+            key: Box::new(key.clone()),
+            id: login.id.clone(),
+            url,
+            redirect_uri: login.redirect_uri.clone(),
+            expires_at: UNIX_EPOCH + Duration::from_millis(login.expires_at_ms),
+        };
+        self.add_login(&key, record, login, budget).await?;
         Ok(Some(Preparation::InteractionRequired(pending)))
     }
-    /// Record the chosen client on the binding (write-on-change).
-    async fn record_client(
+    /// Admit a pending login for a grant key, deleting expired ones and
+    /// cancelling the oldest beyond the cap; atomic under the grant lock when
+    /// persisted.
+    async fn add_login(
         &self,
-        target: &AuthTarget,
-        mut binding: SessionRecord,
-        choice: &ClientChoice,
+        key: &SessionKey,
+        template: SessionRecord,
+        login: SavedLogin,
         budget: OperationBudget,
-    ) -> Result<SessionRecord, HookError> {
-        if binding.client_id == choice.id {
-            return Ok(binding);
+    ) -> Result<(), HookError> {
+        let cap = self.config.max_pending_logins;
+        let admit = |logins: &mut Vec<SavedLogin>| {
+            logins.retain(|l| l.expires_at_ms > now_ms());
+            logins.push(login);
+            let excess = logins.len().saturating_sub(cap);
+            logins.drain(..excess);
+        };
+        if !self.config.persist_pending_logins {
+            admit(
+                self.pending
+                    .lock()
+                    .unwrap()
+                    .entry(key.as_str().into())
+                    .or_default(),
+            );
+            return Ok(());
         }
-        let mut guard = budget
-            .run(self.store.acquire(self.key(target), budget))
-            .await?;
-        if let Some(mut current) = budget.run(guard.load()).await?
-            && current.same_binding(&binding)
-        {
-            current.client_id = choice.id.clone();
-            self.persist(&mut *guard, &mut current, budget).await?;
-            binding.version = current.version;
-        }
-        drop(guard);
-        // A replaced DCR client (after invalid_client or expiry): the old client's
-        // binding-scoped grant is unreachable, and served no usable token.
-        let old = std::mem::replace(&mut binding.client_id, choice.id.clone());
-        if choice.source == ClientSource::Dcr {
-            self.clear_grant(target, &binding.metadata, &old, budget)
-                .await?;
-        }
-        Ok(binding)
+        let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
+        let mut record = budget.run(guard.load()).await?.unwrap_or(SessionRecord {
+            version: String::new(),
+            token: None,
+            pending_logins: Vec::new(),
+            ..template
+        });
+        admit(&mut record.pending_logins);
+        self.persist(&mut *guard, &mut record, budget).await
     }
-    /// `invalid_client`: a CIMD client is misconfigured; a DCR registration
-    /// generation is compare-and-deleted, then PKCE needs consent and client
-    /// credentials register once more.
+    /// A live pending login of a grant key by `state`, without ending it.
+    async fn find_login(
+        &self,
+        key: &SessionKey,
+        state: &CsrfToken,
+        budget: OperationBudget,
+    ) -> Result<Option<SavedLogin>, HookError> {
+        let live = |logins: &[SavedLogin]| {
+            logins
+                .iter()
+                .find(|l| l.expires_at_ms > now_ms() && *state == CsrfToken::new(l.state.clone()))
+                .cloned()
+        };
+        if !self.config.persist_pending_logins {
+            let pending = self.pending.lock().unwrap();
+            return Ok(pending.get(key.as_str()).and_then(|logins| live(logins)));
+        }
+        Ok(self
+            .load(key, budget)
+            .await?
+            .and_then(|record| live(&record.pending_logins)))
+    }
+    /// End the pending login `id` (if any) and delete expired ones; returns the
+    /// login if it was still live, so only one callback can claim it.
+    async fn end_login(
+        &self,
+        key: &SessionKey,
+        id: Option<&str>,
+        budget: OperationBudget,
+    ) -> Result<Option<SavedLogin>, HookError> {
+        let end = |logins: &mut Vec<SavedLogin>| {
+            logins.retain(|l| l.expires_at_ms > now_ms());
+            let at = logins.iter().position(|l| Some(l.id.as_str()) == id)?;
+            Some(logins.remove(at))
+        };
+        if !self.config.persist_pending_logins {
+            let mut pending = self.pending.lock().unwrap();
+            let Some(logins) = pending.get_mut(key.as_str()) else {
+                return Ok(None);
+            };
+            let ended = end(logins);
+            if logins.is_empty() {
+                pending.remove(key.as_str());
+            }
+            return Ok(ended);
+        }
+        let mut guard = budget.run(self.store.acquire(key.clone(), budget)).await?;
+        let Some(mut record) = budget.run(guard.load()).await? else {
+            return Ok(None);
+        };
+        let before = record.pending_logins.len();
+        let ended = end(&mut record.pending_logins);
+        if record.pending_logins.len() != before {
+            self.persist(&mut *guard, &mut record, budget).await?;
+        }
+        Ok(ended)
+    }
+    /// `invalid_client`: a CIMD client is misconfigured; a PKCE DCR client needs
+    /// a new login (a refresh already compare-and-deleted its grant); a client-
+    /// credentials registration generation is compare-and-deleted, then
+    /// registered once more.
     async fn client_failure(
         &self,
         result: Result<BearerCredential, Renewal>,
@@ -1619,22 +1730,25 @@ impl ManagedOAuth {
         match choice.source {
             ClientSource::Preregistered => Err(Renewal::Failed(error)),
             ClientSource::Cimd => Err(fail(AuthErrorCode::InvalidConfiguration).into()),
+            ClientSource::Dcr if self.config.flow == OAuthFlow::AuthorizationCodePkce => {
+                Err(fail(AuthErrorCode::InteractionRequired).into())
+            }
             ClientSource::Dcr => {
                 if let Some(generation) = &choice.generation {
                     self.forget(&binding.metadata.issuer, generation, budget)
                         .await?;
                 }
-                if self.config.flow == OAuthFlow::AuthorizationCodePkce {
-                    return Err(fail(AuthErrorCode::InteractionRequired).into());
-                }
                 Err(Renewal::Reregister(binding.metadata.issuer.clone()))
             }
         }
     }
+    /// `redirect` is the login's exact redirect, sent with authorization and code
+    /// exchange requests only.
     fn client(
         &self,
         metadata: &TrustedMetadata,
         choice: &ClientChoice,
+        redirect: Option<&str>,
     ) -> Result<Client, HookError> {
         let method = match choice.method {
             TokenAuthMethod::None => "none",
@@ -1665,9 +1779,9 @@ impl ManagedOAuth {
         if let Some(secret) = &choice.secret {
             client = client.set_client_secret(oauth2::ClientSecret::new(secret.secret().clone()));
         }
-        if let Some(redirect) = &self.config.redirect_uri {
+        if let Some(redirect) = redirect {
             client = client.set_redirect_uri(
-                RedirectUrl::new(redirect.clone())
+                RedirectUrl::new(redirect.into())
                     .map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?,
             );
         }
@@ -1738,10 +1852,11 @@ impl ManagedOAuth {
         {
             return Err(fail(AuthErrorCode::UnsupportedBinding).into());
         }
-        let client = self.client(&record.metadata, choice)?;
+        let client = self.client(&record.metadata, choice, None)?;
         let resource = record.metadata.resource.clone();
         let (scopes, required) = (scopes.to_vec(), required.to_vec());
         let bound = union(previous, &self.config.allowed_scopes);
+        let client_id = choice.id.clone();
         self.detached(
             guard,
             record,
@@ -1763,6 +1878,7 @@ impl ManagedOAuth {
                                 &bound,
                                 None,
                                 &required,
+                                &client_id,
                             )
                             .await
                             .map_err(Renewal::from),
@@ -1795,10 +1911,17 @@ impl ManagedOAuth {
                 .ok_or_else(|| fail(AuthErrorCode::CredentialUnavailable))?,
         );
         token.refresh_in_flight = true;
-        let client = self.client(&record.metadata, choice)?;
+        let client = self.client(&record.metadata, choice, None)?;
         self.persist(&mut **guard, record, budget).await?;
         let resource = record.metadata.resource.clone();
         let required = required.to_vec();
+        let presented = Presented {
+            client_id: choice.id.clone(),
+            refresh,
+            generation,
+            // A PKCE DCR client was registered for one login and is not reissued.
+            drop_on_invalid_client: choice.source == ClientSource::Dcr,
+        };
         self.detached(
             guard,
             record,
@@ -1810,8 +1933,7 @@ impl ManagedOAuth {
                             &mut record,
                             &http,
                             client,
-                            refresh,
-                            generation,
+                            presented,
                             previous,
                             resource,
                             &required,
@@ -1823,9 +1945,10 @@ impl ManagedOAuth {
         )
         .await?
     }
-    /// Complete the stored pending login for this target from any process sharing
-    /// the store. Callback transport/UI remain host-owned. Redirect, state and issuer
-    /// are validated before the login is claimed, so stray callbacks cannot consume it.
+    /// Complete a pending login of this target by its callback's `state`: one this
+    /// `ManagedOAuth` created or, with `persist_pending_logins`, any in the store.
+    /// Callback transport/UI remain host-owned. The login's redirect, state and
+    /// issuer are validated before it is claimed, so stray callbacks cannot consume it.
     pub async fn complete(
         &self,
         context: AuthContext,
@@ -1849,37 +1972,8 @@ impl ManagedOAuth {
         let gone = || fail(AuthErrorCode::InteractionRequired);
         let target = context.target()?;
         self.validate_target(&target)?;
-        let redirect = Url::parse(
-            self.config
-                .redirect_uri
-                .as_deref()
-                .ok_or_else(|| fail(AuthErrorCode::UnsupportedBinding))?,
-        )
-        .map_err(|_| fail(AuthErrorCode::InvalidConfiguration))?;
-        let fixed_query = |url: &Url| {
-            let mut pairs = url
-                .query_pairs()
-                .filter(|(key, _)| {
-                    !matches!(
-                        key.as_ref(),
-                        "state" | "code" | "error" | "iss" | "error_description" | "error_uri"
-                    )
-                })
-                .map(|(k, v)| (k.into_owned(), v.into_owned()))
-                .collect::<Vec<_>>();
-            pairs.sort();
-            pairs
-        };
-        if callback.scheme() != redirect.scheme()
-            || callback.host_str() != redirect.host_str()
-            || callback.port_or_known_default() != redirect.port_or_known_default()
-            || callback.path() != redirect.path()
-            || callback.fragment().is_some()
-            || !callback.username().is_empty()
-            || callback.password().is_some()
-            || fixed_query(&callback) != fixed_query(&redirect)
-        {
-            return Err(denied());
+        if self.config.flow != OAuthFlow::AuthorizationCodePkce {
+            return Err(fail(AuthErrorCode::UnsupportedBinding));
         }
         let (mut state, mut code, mut error, mut issuer) = (None, None, None, None);
         for (key, value) in callback.query_pairs() {
@@ -1894,7 +1988,8 @@ impl ManagedOAuth {
                 return Err(denied());
             }
         }
-        let state = CsrfToken::new(state.ok_or_else(denied)?);
+        // No state, like an unknown one, matches no pending login.
+        let state = CsrfToken::new(state.ok_or_else(gone)?);
         if code.is_some() == error.is_some() {
             return Err(denied());
         }
@@ -1907,23 +2002,39 @@ impl ManagedOAuth {
         }
         self.validate_saved(&target, &binding, target.scopes())?;
         self.approve_metadata(&target, &binding.metadata)?;
-        // Never registers: a missing PKCE registration needs a new `prepare`.
-        let choice = self
-            .choose(&target, &binding, Mode::Deliver, budget)
-            .await?;
-        let key = self.grant_key(&target, &binding.metadata, &choice.id);
-        let record = self.load(&key, budget).await?.ok_or_else(gone)?;
-        // Superseded, expired, claimed or foreign-state callbacks never consume a login.
-        let saved = record
-            .pending
-            .filter(|login| {
-                login.expires_at_ms > now_ms()
-                    && !login.in_flight
-                    && self.config.redirect_uri.as_deref() == Some(login.redirect_uri.as_str())
-                    && (login.client_id.is_empty() || login.client_id == choice.id)
-                    && state == CsrfToken::new(login.state.clone())
-            })
-            .ok_or_else(gone)?;
+        let key = self.binding_grant_key(&target, &binding);
+        // Ended, expired or foreign-state callbacks never consume a login.
+        let Some(saved) = self.find_login(&key, &state, budget).await? else {
+            self.end_login(&key, None, budget).await?;
+            return Err(gone());
+        };
+        let redirect = Url::parse(&saved.redirect_uri).map_err(|_| denied())?;
+        let fixed_query = |url: &Url| {
+            let mut pairs = url
+                .query_pairs()
+                .filter(|(key, _)| {
+                    !matches!(
+                        key.as_ref(),
+                        "state" | "code" | "error" | "iss" | "error_description" | "error_uri"
+                    )
+                })
+                .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                .collect::<Vec<_>>();
+            pairs.sort();
+            pairs
+        };
+        // The login's exact redirect, including its loopback port.
+        if callback.scheme() != redirect.scheme()
+            || callback.host_str() != redirect.host_str()
+            || callback.port_or_known_default() != redirect.port_or_known_default()
+            || callback.path() != redirect.path()
+            || callback.fragment().is_some()
+            || !callback.username().is_empty()
+            || callback.password().is_some()
+            || fixed_query(&callback) != fixed_query(&redirect)
+        {
+            return Err(denied());
+        }
         if (saved
             .metadata
             .authorization_response_iss_parameter_supported
@@ -1933,74 +2044,90 @@ impl ManagedOAuth {
             return Err(denied());
         }
         self.approve_metadata(&target, &saved.metadata)?;
-        let mut guard = budget.run(self.store.acquire(key, budget)).await?;
-        let mut record = budget.run(guard.load()).await?.ok_or_else(gone)?;
-        if !record.pending.as_ref().is_some_and(|login| {
-            login.id == saved.id && !login.in_flight && login.expires_at_ms > now_ms()
-        }) {
-            return Err(gone());
-        }
-        if error.is_some() {
-            record.pending = None;
-            self.persist(&mut *guard, &mut record, budget).await?;
+        // Claim once before the exchange; a valid denial also ends the login.
+        let saved = self
+            .end_login(&key, Some(&saved.id), budget)
+            .await?
+            .ok_or_else(gone)?;
+        if let Some(error) = error {
+            // An authorization-endpoint invalid_client for a CIMD client is a
+            // misconfiguration, never a DCR fallback.
+            if error == "invalid_client" && binding.client_source == ClientSource::Cimd {
+                return Err(fail(AuthErrorCode::InvalidConfiguration));
+            }
             return Err(denied());
         }
         let code = code.filter(|s| !s.is_empty()).ok_or_else(denied)?;
-        // Claim once before the exchange; a cancelled exchange is superseded by `prepare`.
-        record.pending.as_mut().unwrap().in_flight = true;
-        self.persist(&mut *guard, &mut record, budget).await?;
-        let client = self.client(&saved.metadata, &choice)?;
-        let generation = saved.registration_generation.clone();
+        let choice = ClientChoice {
+            id: saved.client_id.clone(),
+            ..self.configured_choice(&target, &binding)
+        };
+        let client = self.client(&saved.metadata, &choice, Some(&saved.redirect_uri))?;
+        let mut guard = budget.run(self.store.acquire(key, budget)).await?;
+        let mut record = budget
+            .run(guard.load())
+            .await?
+            .unwrap_or_else(|| SessionRecord {
+                version: String::new(),
+                ..binding.clone()
+            });
         let previous = record
             .token
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let bound = union(&saved.ceiling, &previous);
         let required = target.scopes().to_vec();
-        let outcome = self.detached(&mut guard, &mut record, move |mut guard, mut record, http, committer| {
-            Box::pin(async move {
-                let response = client
-                    .exchange_code(AuthorizationCode::new(code))
-                    .set_pkce_verifier(PkceCodeVerifier::new(saved.verifier))
-                    .add_extra_param("resource", saved.metadata.resource.clone())
-                    .request_async(&http)
-                    .await;
-                let outcome = match response {
-                    Ok(response) => {
-                        committer
-                            .save_token(&mut *guard, &mut record, response, &saved.scopes, &bound, None, &required)
-                            .await
-                            .map_err(Renewal::from)
-                    }
-                    Err(error) => {
-                        // The claimed login has ended; nothing else is persisted.
-                        record.pending = None;
-                        match committer.persist(&mut *guard, &mut record).await {
-                            Err(failure) => Err(failure.into()),
-                            Ok(()) if matches!(&error, RequestTokenError::ServerResponse(response) if *response.error() == BasicErrorResponseType::InvalidGrant) => {
+        let outcome = self
+            .detached(
+                &mut guard,
+                &mut record,
+                move |mut guard, mut record, http, committer| {
+                    Box::pin(async move {
+                        let response = client
+                            .exchange_code(AuthorizationCode::new(code))
+                            .set_pkce_verifier(PkceCodeVerifier::new(saved.verifier))
+                            .add_extra_param("resource", saved.metadata.resource.clone())
+                            .request_async(&http)
+                            .await;
+                        // Success replaces the grant's client and tokens: the newest
+                        // completed login wins. A failure persists nothing.
+                        let outcome = match response {
+                            Ok(response) => committer
+                                .save_token(
+                                    &mut *guard,
+                                    &mut record,
+                                    response,
+                                    &saved.scopes,
+                                    &bound,
+                                    None,
+                                    &required,
+                                    &saved.client_id,
+                                )
+                                .await
+                                .map_err(Renewal::from),
+                            Err(RequestTokenError::ServerResponse(response))
+                                if *response.error() == BasicErrorResponseType::InvalidGrant =>
+                            {
                                 Err(fail(AuthErrorCode::InteractionRequired).into())
                             }
-                            Ok(()) if invalid_client(&error) => Err(Renewal::InvalidClient(token_error(&error))),
-                            Ok(()) => Err(token_error(&error).into()),
-                        }
-                    }
-                };
-                (outcome, guard, record)
-            })
-        })
-        .await?;
+                            Err(error) if invalid_client(&error) => {
+                                Err(Renewal::InvalidClient(token_error(&error)))
+                            }
+                            Err(error) => Err(token_error(&error).into()),
+                        };
+                        (outcome, guard, record)
+                    })
+                },
+            )
+            .await?;
         drop(guard);
-        // invalid_client deletes only the registration generation this login used.
-        let choice = ClientChoice {
-            generation,
-            ..choice
-        };
+        // invalid_client ends only this login; the stored grant is kept.
         self.client_failure(outcome, &choice, &binding, budget)
             .await
             .map_err(Into::into)
     }
-    /// Cancel only this login generation. A stale cancellation cannot remove a newer
-    /// login, and cancellation never deletes a valid stored grant.
+    /// Cancel only this login. A stale cancellation cannot remove another login,
+    /// and cancellation never deletes a valid stored grant.
     pub async fn cancel_login(
         &self,
         login: PendingLogin,
@@ -2008,13 +2135,7 @@ impl ManagedOAuth {
     ) -> Result<(), HookError> {
         budget
             .run(async {
-                let mut guard = budget.run(self.store.acquire(login.key, budget)).await?;
-                if let Some(mut record) = budget.run(guard.load()).await?
-                    && record.pending.as_ref().is_some_and(|s| s.id == login.id)
-                {
-                    record.pending = None;
-                    self.persist(&mut *guard, &mut record, budget).await?;
-                }
+                self.end_login(&login.key, Some(&login.id), budget).await?;
                 Ok(())
             })
             .await
@@ -2044,12 +2165,17 @@ impl Committer {
         record: &mut SessionRecord,
         http: &TokenHttp,
         client: Client,
-        refresh: RefreshToken,
-        generation: String,
+        presented: Presented,
         previous: Vec<String>,
         resource: String,
         required: &[String],
     ) -> Result<BearerCredential, Renewal> {
+        let Presented {
+            client_id,
+            refresh,
+            generation,
+            drop_on_invalid_client,
+        } = presented;
         // No scope parameter: the refresh keeps the full previous grant even when
         // the current ceiling is narrower (RFC 6749 section 6).
         let request = client
@@ -2061,17 +2187,20 @@ impl Committer {
                 return Ok(self
                     .save_token(
                         guard, record, response, &previous, &previous, presented, required,
+                        &client_id,
                     )
                     .await?);
             }
             Err(error) => error,
         };
-        if let RequestTokenError::ServerResponse(response) = &error
-            && *response.error() == BasicErrorResponseType::InvalidGrant
-            && http.status.load(Ordering::Relaxed) == 400
-        {
+        let rejected = matches!(&error, RequestTokenError::ServerResponse(response)
+            if *response.error() == BasicErrorResponseType::InvalidGrant
+                && http.status.load(Ordering::Relaxed) == 400);
+        let unknown_client = drop_on_invalid_client && invalid_client(&error);
+        if rejected || unknown_client {
             // Definitive: drop both tokens, but only if the store still holds the
-            // presented refresh token (compare-and-delete); a newer record is kept.
+            // presented refresh token (and, for invalid_client, the presented
+            // client): compare-and-delete, so a newer record is kept.
             let budget = commit_budget(self.timeout);
             if let Some(mut current) = budget.run(guard.load()).await?
                 && current
@@ -2079,13 +2208,21 @@ impl Committer {
                     .as_ref()
                     .and_then(|t| t.refresh_token.as_ref())
                     == Some(refresh.secret())
+                && (rejected || current.client_id == client_id)
             {
                 current.token = None;
                 self.persist(guard, &mut current).await?;
                 *record = current;
-                budget.run(guard.on_refresh_rejected(generation)).await?;
+                if rejected {
+                    budget.run(guard.on_refresh_rejected(generation)).await?;
+                }
             }
-            return Err(fail(AuthErrorCode::RefreshRejected).into());
+            return Err(fail(if rejected {
+                AuthErrorCode::RefreshRejected
+            } else {
+                AuthErrorCode::InteractionRequired
+            })
+            .into());
         }
         // An observed failure response clears the marker and keeps a valid rotated
         // refresh token (else the presented one). Without a response the outcome is
@@ -2110,6 +2247,7 @@ impl Committer {
         bound: &[String],
         old_refresh: Option<String>,
         required: &[String],
+        client_id: &str,
     ) -> Result<BearerCredential, HookError> {
         let response_scopes = response_scopes(
             response
@@ -2138,7 +2276,8 @@ impl Committer {
                 .await;
         }
         let refresh_token = rotated.filter(|token| valid_token(token)).or(old_refresh);
-        record.pending = None;
+        // The client is committed with its tokens, replacing any previous pair.
+        record.client_id = client_id.into();
         let token = SavedToken {
             access_token: response.access_token().secret().clone(),
             refresh_token,
@@ -2161,7 +2300,7 @@ impl Committer {
         Ok(credential)
     }
     /// A token response failing basic validity. A failed initial exchange
-    /// persists nothing beyond releasing its login claim.
+    /// persists nothing.
     async fn reject_response(
         &self,
         guard: &mut dyn CredentialGuard,
@@ -2171,8 +2310,6 @@ impl Committer {
     ) -> Result<BearerCredential, HookError> {
         if refreshed {
             keep_refresh(record, rotated);
-            self.persist(guard, record).await?;
-        } else if record.pending.take().is_some() {
             self.persist(guard, record).await?;
         }
         Err(fail(AuthErrorCode::ProviderFailed))
@@ -2287,24 +2424,16 @@ fn valid_https(url: &Url) -> bool {
         && url.password().is_none()
         && url.fragment().is_none()
 }
-/// HTTPS; HTTP only to a literal loopback IP; or an RFC 8252 section 7.1
-/// reverse-domain private-use scheme (one containing a period).
+/// HTTPS; HTTP only to a literal loopback IP (never `localhost`, RFC 8252
+/// section 8.3); or an RFC 8252 section 7.1 reverse-domain private-use scheme
+/// (one containing a period).
 fn valid_redirect(uri: &Url) -> bool {
-    let loopback = || {
-        uri.host_str()
-            .and_then(|host| {
-                host.trim_matches(['[', ']'])
-                    .parse::<std::net::IpAddr>()
-                    .ok()
-            })
-            .is_some_and(|ip| ip.is_loopback())
-    };
     uri.username().is_empty()
         && uri.password().is_none()
         && uri.fragment().is_none()
         && match uri.scheme() {
             "https" => uri.host_str().is_some(),
-            "http" => loopback(),
+            "http" => registration::loopback(uri),
             scheme => scheme.contains('.'),
         }
 }
@@ -2353,7 +2482,7 @@ impl AuthProvider for ManagedOAuth {
                 Mode::Deliver
             };
             match budget
-                .run(self.acquire(context, None, &[], None, budget, mode))
+                .run(self.acquire(context, None, Login::default(), None, budget, mode))
                 .await?
             {
                 Some(Preparation::Ready(credential)) => Ok(Some(credential)),
@@ -2395,7 +2524,14 @@ impl AuthProvider for ManagedOAuth {
                 None
             };
             match budget
-                .run(self.acquire(context, Some(&parsed), &[], rejected, budget, Mode::Deliver))
+                .run(self.acquire(
+                    context,
+                    Some(&parsed),
+                    Login::default(),
+                    rejected,
+                    budget,
+                    Mode::Deliver,
+                ))
                 .await?
             {
                 Some(Preparation::Ready(_)) => Ok(()),

@@ -90,8 +90,8 @@ impl Store {
     fn registration(&self) -> Option<registration::SavedRegistration> {
         self.registration_record().and_then(|r| r.registration)
     }
-    fn marker(&self) -> Option<registration::FailedMarker> {
-        self.registration_record().and_then(|r| r.marker)
+    fn backoff(&self) -> Option<registration::Backoff> {
+        self.registration_record().and_then(|r| r.backoff)
     }
     /// Another process's write, bypassing the lock (and CAS) of this one.
     fn edit_registration(&self, edit: impl FnOnce(&mut SessionRecord)) {
@@ -107,14 +107,6 @@ impl Store {
     /// Every persisted record, serialized as the host would store it.
     fn dump(&self) -> String {
         serde_json::to_string(&*self.records.lock().unwrap()).unwrap()
-    }
-    fn pending(&self) -> Vec<SavedLogin> {
-        self.records
-            .lock()
-            .unwrap()
-            .values()
-            .filter_map(|r| r.pending.clone())
-            .collect()
     }
 }
 impl CredentialStore for Store {
@@ -506,11 +498,14 @@ impl ClientSecretStorage for Secrets {
     }
 }
 
+type Logins = Arc<Mutex<BTreeMap<String, Vec<SavedLogin>>>>;
+/// One host process: its providers share process-owned pending logins.
 struct Host {
     store: Arc<Store>,
     network: Arc<Network>,
     policy: Arc<Policy>,
     secrets: Arc<Secrets>,
+    logins: Logins,
 }
 impl Host {
     fn new() -> Self {
@@ -520,7 +515,38 @@ impl Host {
             store,
             network: Arc::new(Network::default()),
             secrets: Arc::new(Secrets::default()),
+            logins: Logins::default(),
         }
+    }
+    /// Another process sharing this one's store, with its own network client.
+    fn other_process(&self) -> Self {
+        Self {
+            store: self.store.clone(),
+            network: Arc::new(Network::default()),
+            policy: self.policy.clone(),
+            secrets: self.secrets.clone(),
+            logins: Logins::default(),
+        }
+    }
+    /// Pending logins of this process and of the store.
+    fn pending(&self) -> Vec<SavedLogin> {
+        let mut all: Vec<SavedLogin> = self
+            .logins
+            .lock()
+            .unwrap()
+            .values()
+            .flatten()
+            .cloned()
+            .collect();
+        all.extend(
+            self.store
+                .records
+                .lock()
+                .unwrap()
+                .values()
+                .flat_map(|r| r.pending_logins.clone()),
+        );
+        all
     }
     fn pkce(&self, config: impl FnOnce(OAuthClientConfig) -> OAuthClientConfig) -> ManagedOAuth {
         let base = OAuthClientConfig::new("account", "client", OAuthFlow::AuthorizationCodePkce)
@@ -536,13 +562,15 @@ impl Host {
         )
     }
     fn owner(&self, config: OAuthClientConfig) -> ManagedOAuth {
-        ManagedOAuth::new(
+        let mut oauth = ManagedOAuth::new(
             config,
             self.network.clone(),
             self.policy.clone(),
             self.store.clone(),
         )
-        .unwrap()
+        .unwrap();
+        oauth.pending = self.logins.clone();
+        oauth
     }
     /// PKCE login completed with a known-expiry token, then expired.
     async fn seed(&self, oauth: &ManagedOAuth, ctx: AuthContext) -> BearerCredential {
@@ -597,7 +625,8 @@ fn query(url: &Url, key: &str) -> Option<String> {
         .map(|(_, v)| v.into_owned())
 }
 fn callback(login: &PendingLogin) -> Url {
-    let mut url = Url::parse("http://127.0.0.1/callback").unwrap();
+    let mut url = Url::parse(login.redirect_uri()).unwrap();
+    url.set_query(None);
     url.query_pairs_mut()
         .append_pair("state", &query(login.authorization_url(), "state").unwrap())
         .append_pair("code", "fake-code");
@@ -626,13 +655,9 @@ fn canonical_key_vectors() {
         } else {
             OAuthFlow::AuthorizationCodePkce
         };
-        let mut config = OAuthClientConfig::new(
-            v["namespace"].as_str().unwrap(),
-            v["client_id"].as_str().unwrap(),
-            flow,
-        )
-        .scopes(vec![], strings(&v["allowed_scopes"]))
-        .redirect_uri("https://host.example/callback");
+        let mut config = OAuthClientConfig::new(v["namespace"].as_str().unwrap(), "client", flow)
+            .scopes(vec![], strings(&v["allowed_scopes"]))
+            .redirect_uri("https://host.example/callback");
         if let Some(secret) = v["client_secret"].as_str() {
             let method = if v["token_endpoint_auth_method"] == "client_secret_post" {
                 TokenAuthMethod::ClientSecretPost
@@ -667,10 +692,27 @@ fn canonical_key_vectors() {
         }
         let id = &vector["id"];
         assert_eq!(oauth.key(&target).as_str(), vector["binding_key"], "{id}");
+        // The grant key holds the configured client source, never an issued id.
+        let identity = v["client_identity"].as_str().unwrap();
+        let (client_source, client_id) = match identity.split_once(':') {
+            Some(("preregistered", id)) => (ClientSource::Preregistered, id.to_owned()),
+            Some(("cimd", url)) => (ClientSource::Cimd, url.to_owned()),
+            _ => (
+                ClientSource::Dcr,
+                v["issued_client_id"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+            ),
+        };
+        let record = SessionRecord {
+            client_source,
+            client_id,
+            ..SessionRecord::empty(metadata, oauth.flow_id())
+        };
+        assert_eq!(ManagedOAuth::client_identity(&record), identity, "{id}");
         assert_eq!(
-            oauth
-                .grant_key(&target, &metadata, v["client_id"].as_str().unwrap())
-                .as_str(),
+            oauth.binding_grant_key(&target, &record).as_str(),
             vector["grant_key"],
             "{id}"
         );
@@ -752,6 +794,7 @@ async fn canonical_token_vectors() {
                         &bound,
                         refresh.then(|| "old-refresh".into()),
                         &required,
+                        "client",
                     )
                     .await
             }
@@ -868,14 +911,24 @@ fn lifecycle_manifest_maps_to_native_tests() {
         ),
         ("pending-login-fixed-lifetime", pending_login_fixed_lifetime),
         (
-            "pending-login-cross-process-completion",
-            pending_login_cross_process_completion,
+            "pending-login-owned-by-creating-process",
+            pending_login_owned_by_creating_process,
         ),
-        ("pending-login-reuse", pending_login_reuse),
-        ("pending-login-supersede", pending_login_supersede),
         (
-            "pending-login-supersede-scope-union",
-            pending_login_supersede_scope_union,
+            "pending-login-persisted-cross-process-completion",
+            pending_login_persisted_cross_process_completion,
+        ),
+        (
+            "pending-logins-concurrent-per-state",
+            client_registration::pending_logins_concurrent_per_state,
+        ),
+        (
+            "pending-logins-capped-per-grant-key",
+            pending_logins_capped_per_grant_key,
+        ),
+        (
+            "pending-completion-newest-grant-wins",
+            client_registration::pending_completion_newest_grant_wins,
         ),
         ("pending-login-end-states", pending_login_end_states),
         ("metadata-and-secret-rotation", metadata_and_secret_rotation),
@@ -911,6 +964,14 @@ fn lifecycle_manifest_maps_to_native_tests() {
             invalid_callback_does_not_consume,
         ),
         ("loopback-redirect", loopback_redirect),
+        (
+            "loopback-redirect-ephemeral-port-per-login",
+            loopback_redirect_ephemeral_port_per_login,
+        ),
+        (
+            "cimd-portless-loopback-redirect-matches",
+            client_registration::cimd_portless_loopback_redirect_matches,
+        ),
         (
             "narrowed-refresh-scope-inheritance",
             narrowed_refresh_scope_inheritance,
@@ -987,8 +1048,16 @@ fn lifecycle_manifest_maps_to_native_tests() {
             client_registration::dcr_registration_endpoint_destination_policy,
         ),
         (
-            "dcr-pkce-registers-only-in-prepare",
-            client_registration::dcr_pkce_registers_only_in_prepare,
+            "dcr-pkce-registers-per-login",
+            client_registration::dcr_pkce_registers_per_login,
+        ),
+        (
+            "dcr-issued-client-stored-with-grant",
+            client_registration::dcr_issued_client_stored_with_grant,
+        ),
+        (
+            "dcr-pkce-invalid-client-drops-grant",
+            client_registration::dcr_pkce_invalid_client_drops_grant,
         ),
         (
             "dcr-registers-once-across-processes",
@@ -1005,10 +1074,6 @@ fn lifecycle_manifest_maps_to_native_tests() {
         (
             "dcr-invalid-client-reregisters-once",
             client_registration::dcr_invalid_client_reregisters_once,
-        ),
-        (
-            "dcr-new-client-id-new-grant",
-            client_registration::dcr_new_client_id_new_grant,
         ),
         (
             "dcr-secret-not-in-token-record",
@@ -1035,40 +1100,12 @@ fn lifecycle_manifest_maps_to_native_tests() {
             client_registration::lookup_never_registers_pkce,
         ),
         (
-            "dcr-failed-marker-bounds-registration",
-            client_registration::dcr_failed_marker_bounds_registration,
-        ),
-        (
             "dcr-response-validation-invalid-configuration",
             client_registration::dcr_response_validation_invalid_configuration,
         ),
         (
-            "prepare-force-reregistration",
-            client_registration::prepare_force_reregistration,
-        ),
-        (
-            "dcr-policy-change-reregisters",
-            client_registration::dcr_policy_change_reregisters,
-        ),
-        (
             "dcr-replaced-secret-deleted",
             client_registration::dcr_replaced_secret_deleted,
-        ),
-        (
-            "cc-registration-auto-repairs-after-backoff",
-            client_registration::cc_registration_auto_repairs_after_backoff,
-        ),
-        (
-            "cc-proactive-reregistration-before-expiry",
-            client_registration::cc_proactive_reregistration_before_expiry,
-        ),
-        (
-            "marker-blocks-only-registration",
-            client_registration::marker_blocks_only_registration,
-        ),
-        (
-            "stale-callback-does-not-delete-new-registration",
-            client_registration::stale_callback_does_not_delete_new_registration,
         ),
         (
             "registration-transient-failure-backs-off",
@@ -1077,18 +1114,6 @@ fn lifecycle_manifest_maps_to_native_tests() {
         (
             "registration-retry-after-honoured",
             client_registration::registration_retry_after_honoured,
-        ),
-        (
-            "marker-update-atomic-across-processes",
-            client_registration::marker_update_atomic_across_processes,
-        ),
-        (
-            "proactive-reregistration-once-across-processes",
-            client_registration::proactive_reregistration_once_across_processes,
-        ),
-        (
-            "proactive-renewal-failure-keeps-current-registration",
-            client_registration::proactive_renewal_failure_keeps_current_registration,
         ),
         (
             "configuration-401-diagnostic-carries-auth-code",
@@ -1163,7 +1188,7 @@ async fn unbound_lookup_anonymous_fallback() {
     host.policy.deny.store(true, Ordering::SeqCst);
     assert!(oauth.credential(unbound()).await.unwrap().is_none());
     host.policy.deny.store(false, Ordering::SeqCst);
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
     assert_eq!(
         host.network.metadata_requests().len(),
         1,
@@ -1184,7 +1209,7 @@ async fn unbound_lookup_refreshes_expired_token() {
         ),
         AuthErrorCode::InteractionRequired
     );
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
     let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
     host.network.reply(
         200,
@@ -1350,8 +1375,7 @@ async fn token_validation_failure_clears_in_flight() {
         ),
         AuthErrorCode::ProviderFailed
     );
-    let grant = host.store.grant().unwrap();
-    assert!(grant.token.is_none() && grant.pending.is_none());
+    assert!(host.store.grant().is_none() && host.pending().is_empty());
     // Invalid refresh: only the valid rotated refresh token is kept.
     host.seed(&oauth, context()).await;
     host.store.expire();
@@ -1426,7 +1450,7 @@ async fn client_credentials_transient_reissue() {
         assert_eq!(error.auth_code(), Some(expected));
         assert_ne!(error.auth_recovery(), Some(AuthRecovery::Login));
     }
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
     let form = host.network.last_form();
     assert_eq!(form["grant_type"], "client_credentials");
     assert_eq!(form["resource"], "https://api.example/hooks");
@@ -1457,13 +1481,13 @@ async fn delivery_never_creates_pending_login() {
         ),
         AuthErrorCode::InteractionRequired
     );
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
     assert!(host.network.tokens().is_empty());
     assert!(matches!(
         oauth.prepare(context(), budget()).await.unwrap(),
         Preparation::InteractionRequired(_)
     ));
-    assert_eq!(host.store.pending().len(), 1);
+    assert_eq!(host.pending().len(), 1);
 }
 
 #[tokio::test]
@@ -1514,163 +1538,216 @@ async fn pending_login_fixed_lifetime() {
 }
 
 #[tokio::test]
-async fn pending_login_cross_process_completion() {
+async fn pending_login_owned_by_creating_process() {
     let host = Host::new();
-    let pending = login(host.pkce(|c| c).prepare(context(), budget()).await.unwrap());
+    let oauth = host.pkce(|c| c);
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    let verifier = host.pending()[0].verifier.clone();
+    // Nothing about the login reaches the store; it lives in the creating process.
+    assert!(
+        host.store
+            .records
+            .lock()
+            .unwrap()
+            .values()
+            .all(|r| r.pending_logins.is_empty())
+    );
+    assert!(!host.store.dump().contains(&verifier));
+    let other = host.other_process();
+    assert_eq!(
+        code(
+            other
+                .pkce(|c| c)
+                .complete(context(), callback(&pending), budget())
+                .await
+        ),
+        AuthErrorCode::InteractionRequired
+    );
+    assert!(other.network.tokens().is_empty());
+    // The creating process receives the callback and completes it by state.
+    host.network
+        .reply(200, json!({"access_token":"mine","token_type":"Bearer"}));
+    let credential = oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    assert_eq!(credential.token, "mine");
+    assert!(host.pending().is_empty());
+}
+
+#[tokio::test]
+async fn pending_login_persisted_cross_process_completion() {
+    let host = Host::new();
+    let pending = login(
+        host.pkce(|c| c.persist_pending_logins())
+            .prepare(context(), budget())
+            .await
+            .unwrap(),
+    );
+    // The verifier is only in the pending record, never in binding metadata.
+    let stored = host.pending();
+    assert_eq!(stored.len(), 1);
+    assert!(host.logins.lock().unwrap().is_empty());
+    let binding = serde_json::to_string(&host.store.binding().unwrap()).unwrap();
+    assert!(!binding.contains(&stored[0].verifier));
     // A different process: new provider and network client, the same store.
-    let other = Host {
-        store: host.store.clone(),
-        network: Arc::new(Network::default()),
-        policy: host.policy.clone(),
-        secrets: host.secrets.clone(),
-    };
+    let other = host.other_process();
     other.network.reply(
         200,
         json!({"access_token":"elsewhere","token_type":"Bearer"}),
     );
     let credential = other
-        .pkce(|c| c)
+        .pkce(|c| c.persist_pending_logins())
         .complete(context(), callback(&pending), budget())
         .await
         .unwrap();
     assert_eq!(credential.token, "elsewhere");
     assert!(other.network.metadata_requests().is_empty());
-    assert!(other.network.tokens()[0].body.contains("code_verifier="));
+    assert!(
+        other.network.tokens()[0]
+            .body
+            .contains(&format!("code_verifier={}", stored[0].verifier))
+    );
+    assert!(host.pending().is_empty());
+    assert!(!host.store.dump().contains(&stored[0].verifier));
 }
 
+// A persisted grant key's expired pending logins, with their verifiers, are
+// swept by any host `prepare` for it, even one served from the cached token.
 #[tokio::test]
-async fn pending_login_reuse() {
+async fn persisted_expired_logins_swept_on_prepare() {
     let host = Host::new();
-    let oauth = host.pkce(|c| c);
-    let first = login(oauth.prepare(context(), budget()).await.unwrap());
-    let mut short = context();
-    short.deadline = Instant::now() + Duration::from_millis(500);
-    let again = login(oauth.prepare(short, budget()).await.unwrap());
-    assert_eq!(again.id, first.id);
-    assert_eq!(
-        again.expires_at(),
-        first.expires_at(),
-        "reuse never extends"
-    );
-    // A requirement already within the pending scopes reuses too.
-    let mut read = context();
-    read.authentication.as_mut().unwrap()["scopes"] = json!(["read"]);
-    assert_eq!(
-        login(oauth.prepare(read, budget()).await.unwrap()).id,
-        first.id
-    );
-    // A different ceiling reuses too; completion is bounded by the creating ceiling.
-    let narrow = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["read"])));
-    assert_eq!(
-        login(narrow.prepare(context(), budget()).await.unwrap()).id,
-        first.id
-    );
-    host.network.reply(
-        200,
-        json!({"access_token":"t","token_type":"Bearer","scope":"read write admin"}),
-    );
-    narrow
-        .complete(context(), callback(&first), budget())
+    let oauth = host.pkce(|c| {
+        c.persist_pending_logins()
+            .login_lifetime(Duration::from_millis(30))
+    });
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    host.network
+        .reply(200, json!({"access_token":"t","token_type":"Bearer"}));
+    oauth
+        .complete(context(), callback(&pending), budget())
         .await
         .unwrap();
-    assert_eq!(host.store.token().scopes, scopes(&["read", "write"]));
-}
-
-#[tokio::test]
-async fn pending_login_supersede() {
-    let host = Host::new();
-    let oauth = host.pkce(|c| c);
-    let first = login(oauth.prepare(context(), budget()).await.unwrap());
-    let redirected = host.pkce(|c| c.redirect_uri("http://127.0.0.1/other"));
-    let second = login(redirected.prepare(context(), budget()).await.unwrap());
-    assert_ne!(second.id, first.id);
-    // Scopes outside the pending scopes supersede; the old callback then fails.
-    let wide = login(
+    login(
         oauth
             .prepare_with_required(context(), &scopes(&["write"]), budget())
             .await
             .unwrap(),
     );
-    assert_ne!(wide.id, second.id);
-    for old in [&first, &second] {
-        assert_eq!(
-            code(oauth.complete(context(), callback(old), budget()).await),
-            AuthErrorCode::InteractionRequired
-        );
-    }
-    // A different redirect starts from the new caller's scopes and ceiling alone.
-    let narrow = host.pkce(|c| {
-        c.scopes(scopes(&["read"]), scopes(&["read"]))
-            .redirect_uri("http://127.0.0.1/other")
-    });
-    let fresh = login(narrow.prepare(context(), budget()).await.unwrap());
-    assert_ne!(fresh.id, wide.id);
-    assert_eq!(query(fresh.authorization_url(), "scope").unwrap(), "read");
-    assert_eq!(host.store.pending()[0].ceiling, scopes(&["read"]));
-    assert!(host.network.tokens().is_empty());
+    let verifier = host.pending()[0].verifier.clone();
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    assert_eq!(
+        ready(oauth.prepare(context(), budget()).await.unwrap()).token,
+        "t"
+    );
+    assert!(host.pending().is_empty());
+    assert!(!host.store.dump().contains(&verifier));
 }
 
+// A prepare that rebinds through discovery (here: stale persisted metadata)
+// and is served from the cached token still sweeps expired persisted logins.
 #[tokio::test]
-async fn pending_login_supersede_scope_union() {
+async fn persisted_expired_logins_swept_on_rebinding_prepare() {
     let host = Host::new();
-    *host.policy.select.lock().unwrap() = scopes(&["files", "read"]);
-    let files = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["files", "read"])));
-    let writer = host.pkce(|c| c.scopes(scopes(&["read"]), scopes(&["read", "write"])));
-    let first = login(files.prepare(context(), budget()).await.unwrap());
-    assert_eq!(
-        query(first.authorization_url(), "scope").unwrap(),
-        "files read"
-    );
-    // The writer's ceiling excludes `files`; the same grant and redirect still merge.
-    *host.policy.select.lock().unwrap() = scopes(&["read"]);
-    let write = scopes(&["write"]);
-    let union = login(
-        writer
-            .prepare_with_required(context(), &write, budget())
+    let oauth = host.pkce(|c| {
+        c.persist_pending_logins()
+            .login_lifetime(Duration::from_millis(30))
+    });
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    host.network
+        .reply(200, json!({"access_token":"t","token_type":"Bearer"}));
+    oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    login(
+        oauth
+            .prepare_with_required(context(), &scopes(&["write"]), budget())
             .await
             .unwrap(),
     );
-    assert_ne!(union.id, first.id);
-    assert_eq!(
-        query(union.authorization_url(), "scope").unwrap(),
-        "files read write"
-    );
-    assert_eq!(
-        host.store.pending()[0].ceiling,
-        scopes(&["files", "read", "write"])
-    );
-    // Alternating callers with different ceilings converge instead of looping.
-    for _ in 0..2 {
-        *host.policy.select.lock().unwrap() = scopes(&["files", "read"]);
-        assert_eq!(
-            login(files.prepare(context(), budget()).await.unwrap()).id,
-            union.id
-        );
-        *host.policy.select.lock().unwrap() = scopes(&["read"]);
-        let again = writer.prepare_with_required(context(), &write, budget());
-        assert_eq!(login(again.await.unwrap()).id, union.id);
+    let verifier = host.pending()[0].verifier.clone();
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    for (key, record) in host.store.records.lock().unwrap().iter_mut() {
+        if key.starts_with("ahp.oauth.binding:") {
+            record.metadata.token_endpoint.clear();
+        }
     }
-    // Completion is bounded by the stored union ceiling; each caller filters at use.
-    host.network.reply(
-        200,
-        json!({"access_token":"t","token_type":"Bearer","scope":"files read write admin"}),
-    );
-    writer
-        .complete(context(), callback(&union), budget())
-        .await
-        .unwrap();
+    let discovery = host.network.metadata_requests().len();
     assert_eq!(
-        host.store.token().scopes,
-        scopes(&["files", "read", "write"])
+        ready(oauth.prepare(context(), budget()).await.unwrap()).token,
+        "t"
     );
-    assert_eq!(
-        writer.effective(&host.store.token().scopes),
-        scopes(&["read", "write"])
+    assert!(
+        host.network.metadata_requests().len() > discovery,
+        "rebound"
     );
-    assert_eq!(
-        files.effective(&host.store.token().scopes),
-        scopes(&["files", "read"])
-    );
+    assert!(host.pending().is_empty());
+    assert!(!host.store.dump().contains(&verifier));
+}
+
+#[tokio::test]
+async fn pending_logins_capped_per_grant_key() {
+    for persisted in [false, true] {
+        let host = Host::new();
+        let oauth = host.pkce(|c| {
+            let c = c.max_pending_logins(2);
+            if persisted {
+                c.persist_pending_logins()
+            } else {
+                c
+            }
+        });
+        let first = login(oauth.prepare(context(), budget()).await.unwrap());
+        let second = login(oauth.prepare(context(), budget()).await.unwrap());
+        let third = login(oauth.prepare(context(), budget()).await.unwrap());
+        // The oldest is cancelled; the others stay valid.
+        let ids: Vec<String> = host.pending().into_iter().map(|l| l.id).collect();
+        assert_eq!(ids, [second.id.clone(), third.id.clone()], "{persisted}");
+        assert_eq!(
+            code(oauth.complete(context(), callback(&first), budget()).await),
+            AuthErrorCode::InteractionRequired
+        );
+        host.network
+            .reply(200, json!({"access_token":"second","token_type":"Bearer"}));
+        oauth
+            .complete(context(), callback(&second), budget())
+            .await
+            .unwrap();
+        assert_eq!(host.pending().len(), 1, "{persisted}");
+        // The cap is per grant key: another partition has its own logins.
+        let other = host.pkce(|c| {
+            let c = c.max_pending_logins(2).grant_partition("other");
+            if persisted {
+                c.persist_pending_logins()
+            } else {
+                c
+            }
+        });
+        login(other.prepare(context(), budget()).await.unwrap());
+        assert_eq!(host.pending().len(), 2, "{persisted}");
+        // Expired pending logins are deleted.
+        let brief = host.pkce(|c| {
+            let c = c
+                .login_lifetime(Duration::from_millis(20))
+                .grant_partition("brief");
+            if persisted {
+                c.persist_pending_logins()
+            } else {
+                c
+            }
+        });
+        let stale = login(brief.prepare(context(), budget()).await.unwrap());
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        let fresh = login(brief.prepare(context(), budget()).await.unwrap());
+        let ids: Vec<String> = host.pending().into_iter().map(|l| l.id).collect();
+        assert!(
+            !ids.contains(&stale.id) && ids.contains(&fresh.id),
+            "{persisted}"
+        );
+        brief.cancel_login(fresh, budget()).await.unwrap();
+        assert_eq!(host.pending().len(), 2, "{persisted}");
+    }
 }
 
 #[tokio::test]
@@ -1724,7 +1801,7 @@ async fn pending_login_end_states() {
         ),
         AuthErrorCode::InteractionRequired
     );
-    // Cancel, which never deletes a valid grant; a stale cancel cannot end a newer login.
+    // Cancel, which never deletes a valid grant; a stale cancel cannot end another login.
     let pending = login(oauth.prepare(context(), budget()).await.unwrap());
     oauth.cancel_login(pending.clone(), budget()).await.unwrap();
     assert_eq!(
@@ -1737,7 +1814,7 @@ async fn pending_login_end_states() {
     );
     let newer = login(oauth.prepare(context(), budget()).await.unwrap());
     oauth.cancel_login(pending, budget()).await.unwrap();
-    assert_eq!(host.store.pending()[0].id, newer.id);
+    assert_eq!(host.pending()[0].id, newer.id);
     assert!(host.network.tokens().len() == 1);
 }
 
@@ -1895,7 +1972,7 @@ async fn step_up_required_scopes_round_trip() {
     let error = providers.challenge(context(), step_up).await.err().unwrap();
     assert_eq!(error.auth_code(), Some(AuthErrorCode::InteractionRequired));
     assert_eq!(error.required_scopes(), ["write"]);
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
     let pending = login(
         oauth
             .prepare_with_required(context(), error.required_scopes(), budget())
@@ -2017,6 +2094,13 @@ async fn invalid_callback_does_not_consume() {
         .append_pair("tenant", "one");
     let mut duplicate = valid();
     duplicate.query_pairs_mut().append_pair("code", "again");
+    // No state matches no pending login, like an unknown state.
+    let mut stateless = valid();
+    stateless.set_query(Some("tenant=one&code=x&iss=https%3A%2F%2Fissuer.example"));
+    assert_eq!(
+        code(oauth.complete(context(), stateless, budget()).await),
+        AuthErrorCode::InteractionRequired
+    );
     for bad in [
         wrong_state,
         wrong_redirect,
@@ -2091,6 +2175,70 @@ async fn private_use_redirect_completes() {
             .token,
         "app"
     );
+}
+
+#[tokio::test]
+async fn loopback_redirect_ephemeral_port_per_login() {
+    let host = Host::new();
+    // No configured redirect: each login brings its own loopback port.
+    let oauth = host.owner(
+        OAuthClientConfig::new("account", "client", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"])),
+    );
+    assert_eq!(
+        code(oauth.prepare(context(), budget()).await),
+        AuthErrorCode::InvalidConfiguration
+    );
+    // localhost and non-loopback http fail before any request or pending login.
+    for redirect in [
+        "http://localhost:51001/callback",
+        "http://192.168.1.2:51001/callback",
+    ] {
+        let options = PrepareOptions::new().redirect_uri(redirect);
+        assert_eq!(
+            code(oauth.prepare_with(context(), options, budget()).await),
+            AuthErrorCode::InvalidConfiguration
+        );
+    }
+    assert!(host.network.seen.lock().unwrap().is_empty() && host.pending().is_empty());
+    let mut logins = Vec::new();
+    for port in [51001, 51002] {
+        let redirect = format!("http://127.0.0.1:{port}/callback");
+        let options = PrepareOptions::new().redirect_uri(&redirect);
+        let pending = login(
+            oauth
+                .prepare_with(context(), options, budget())
+                .await
+                .unwrap(),
+        );
+        assert_eq!(pending.redirect_uri(), redirect);
+        assert_eq!(
+            query(pending.authorization_url(), "redirect_uri").unwrap(),
+            redirect
+        );
+        logins.push(pending);
+    }
+    // A callback on another port never consumes the login.
+    let mut wrong_port = callback(&logins[0]);
+    wrong_port.set_port(Some(51002)).unwrap();
+    assert_eq!(
+        code(oauth.complete(context(), wrong_port, budget()).await),
+        AuthErrorCode::AccessDenied
+    );
+    for (pending, port) in logins.iter().zip([51001, 51002]) {
+        host.network.reply(
+            200,
+            json!({"access_token":format!("t{port}"),"token_type":"Bearer"}),
+        );
+        oauth
+            .complete(context(), callback(pending), budget())
+            .await
+            .unwrap();
+        assert_eq!(
+            host.network.last_form()["redirect_uri"],
+            format!("http://127.0.0.1:{port}/callback")
+        );
+    }
 }
 
 #[tokio::test]
@@ -2229,7 +2377,7 @@ async fn up_front_refresh_failure_no_anonymous_fallback() {
         host.network.reply(status, body);
         assert_eq!(code(oauth.credential(unbound()).await), expected);
     }
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
 }
 
 #[tokio::test]
@@ -2283,7 +2431,7 @@ async fn prepare_required_outside_ceiling_denied() {
     assert_eq!(error.auth_code(), Some(AuthErrorCode::AccessDenied));
     assert_eq!(error.required_scopes(), ["admin"], "diagnostics only");
     assert!(host.network.seen.lock().unwrap().is_empty());
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
 }
 
 #[tokio::test]
@@ -2336,7 +2484,7 @@ async fn up_front_client_credentials_reacquire() {
         "again"
     );
     assert_eq!(host.network.last_form()["grant_type"], "client_credentials");
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
 }
 
 #[tokio::test]
@@ -2408,7 +2556,7 @@ async fn known_binding_without_token_requires_login() {
         code(oauth.credential(unbound()).await),
         AuthErrorCode::InteractionRequired
     );
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
     let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
     host.network.reply(
         200,

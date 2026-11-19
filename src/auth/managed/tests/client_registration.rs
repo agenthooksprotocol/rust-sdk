@@ -11,6 +11,9 @@ fn policy() -> RegistrationPolicy {
 fn token(name: &str) -> Value {
     json!({"access_token": name, "token_type": "Bearer", "expires_in": 3600})
 }
+fn pkce_token(name: &str) -> Value {
+    json!({"access_token": name, "refresh_token": format!("{name}-refresh"), "token_type": "Bearer", "expires_in": 3600})
+}
 fn invalid_client() -> Value {
     json!({"error": "invalid_client"})
 }
@@ -60,6 +63,17 @@ async fn cc_ready(host: &Host, oauth: &ManagedOAuth, ctx: AuthContext) -> Bearer
 fn unauthorized() -> AuthChallenge {
     challenge(401, "Bearer", None)
 }
+fn at_port(port: u16) -> PrepareOptions {
+    PrepareOptions::new().redirect_uri(format!("http://127.0.0.1:{port}/callback"))
+}
+async fn login_at(oauth: &ManagedOAuth, port: u16) -> PendingLogin {
+    login(
+        oauth
+            .prepare_with(unbound(), at_port(port), budget())
+            .await
+            .unwrap(),
+    )
+}
 /// RFC 6749 section 2.3.1 Basic credentials for URL-safe ids and secrets.
 fn basic(id: &str, secret: &str) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -92,31 +106,13 @@ fn expire_registration(host: &Host) {
         r.registration.as_mut().unwrap().client_secret_expires_at = Some(1);
     });
 }
-fn renewal_due(host: &Host, registered_ago: u64, expires_in: u64) {
-    host.store.edit_registration(|r| {
-        let registration = r.registration.as_mut().unwrap();
-        registration.registered_at = now() - registered_ago;
-        registration.client_secret_expires_at = Some(now() + expires_in);
-    });
-}
-/// Proactive renewal runs in the background: let it start, then wait until it
-/// releases every store lock.
-async fn renewed(host: &Host) {
-    for _ in 0..16 {
-        tokio::task::yield_now().await;
-    }
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    while host.store.held.load(Ordering::SeqCst) != 0 {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "renewal never settled"
-        );
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
-}
-fn elapse_marker(host: &Host) {
+fn elapse_backoff(host: &Host) {
     host.store
-        .edit_registration(|r| r.marker.as_mut().unwrap().next_attempt_at = 0);
+        .edit_registration(|r| r.backoff.as_mut().unwrap().next_attempt_at = 0);
+}
+/// Seconds until the next registration attempt is permitted.
+fn backoff_wait(host: &Host) -> u64 {
+    host.store.backoff().unwrap().next_attempt_at - now()
 }
 
 // ---- Fixture vectors ----
@@ -137,9 +133,6 @@ fn client_selection_vectors() {
             Some(client) => OAuthClientConfig::new("account", client, flow),
             None => OAuthClientConfig::unregistered("account", flow),
         };
-        if let Some(redirect) = v["redirect"].as_str() {
-            config = config.redirect_uri(redirect);
-        }
         if v["cimd"].is_object() {
             config = config.client_id_metadata_document(
                 v["cimd"]["url"].as_str().unwrap(),
@@ -170,7 +163,20 @@ fn client_selection_vectors() {
         }
         let target = unbound().target().unwrap();
         let expect = &vector["expect"];
-        match oauth.select_source(&target, &metadata) {
+        // As in `prepare_with`: the login's redirect is checked before selection,
+        // and a CIMD client's declared redirects when the login is created.
+        let options = match v["redirect"].as_str() {
+            Some(redirect) => PrepareOptions::new().redirect_uri(redirect),
+            None => PrepareOptions::new(),
+        };
+        let selected = oauth.login_redirect(&options).and_then(|redirect| {
+            let source = oauth.select_source(&target, &metadata)?;
+            if let Some(redirect) = redirect {
+                oauth.check_login_redirect(source, redirect)?;
+            }
+            Ok(source)
+        });
+        match selected {
             Ok(source) => {
                 let (name, client, method) = match source {
                     ClientSource::Preregistered => {
@@ -192,6 +198,16 @@ fn client_selection_vectors() {
                 assert_eq!(
                     expect["token_endpoint_auth_method"].as_str(),
                     method,
+                    "{id}"
+                );
+                let binding = SessionRecord {
+                    client_source: source,
+                    client_id: client.unwrap_or_default().into(),
+                    ..SessionRecord::empty(metadata, oauth.flow_id())
+                };
+                assert_eq!(
+                    expect["client_identity"],
+                    ManagedOAuth::client_identity(&binding),
                     "{id}"
                 );
             }
@@ -239,14 +255,6 @@ fn registration_response_vectors() {
                     if known { "known" } else { "none" },
                     "{id}"
                 );
-                let issued = issued.metadata.to_string();
-                for forbidden in [
-                    "not-a-real-secret",
-                    "registration_access_token",
-                    "registration_client_uri",
-                ] {
-                    assert!(!issued.contains(forbidden), "{id}");
-                }
             }
             Err(code) => {
                 assert_eq!(expect["accepted"], false, "{id}");
@@ -257,50 +265,20 @@ fn registration_response_vectors() {
 }
 
 #[test]
-fn registration_key_and_digest_vectors() {
+fn registration_key_vectors() {
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     for vector in fixture["registration_keys"].as_array().unwrap() {
         let v = &vector["input"];
-        let config = if v["flow"] == "client_credentials" {
-            OAuthClientConfig::unregistered(
-                v["namespace"].as_str().unwrap(),
-                OAuthFlow::ClientCredentials,
-            )
-        } else {
-            OAuthClientConfig::unregistered(
-                v["namespace"].as_str().unwrap(),
-                OAuthFlow::AuthorizationCodePkce,
-            )
-            .redirect_uri(v["redirect"].as_str().unwrap())
-        };
+        let config = OAuthClientConfig::unregistered(
+            v["namespace"].as_str().unwrap(),
+            OAuthFlow::ClientCredentials,
+        );
         let oauth = Host::new().owner(config);
         assert_eq!(
             oauth
                 .registration_key(v["issuer"].as_str().unwrap())
                 .as_str(),
             vector["registration_key"],
-            "{}",
-            vector["id"]
-        );
-    }
-    for vector in fixture["registration_request_digests"].as_array().unwrap() {
-        let v = &vector["input"];
-        let mut policy = RegistrationPolicy::new(ISSUER, v["client_name"].as_str().unwrap());
-        if let Some(id) = v["software_id"].as_str() {
-            policy = policy.software_id(id);
-        }
-        if let Some(version) = v["software_version"].as_str() {
-            policy = policy.software_version(version);
-        }
-        if v["registration_scope"].is_array() {
-            policy = policy.scope(strings(&v["registration_scope"]));
-        }
-        if let Some(reference) = v["initial_access_token_ref"].as_str() {
-            policy = policy.initial_access_token(reference, ClientSecret::new("iat".into()));
-        }
-        assert_eq!(
-            policy.request_digest(),
-            vector["request_digest"],
             "{}",
             vector["id"]
         );
@@ -368,10 +346,14 @@ pub(super) async fn dcr_preregistered_wins() {
         AuthErrorCode::InteractionRequired
     );
     let keys = grant_keys(&host);
-    assert_eq!(keys.len(), 2);
-    assert!(keys.iter().any(|k| k.contains("dcr-client-1")));
-    assert!(keys.iter().any(|k| k.contains("6:client23:")));
+    assert_eq!(
+        keys.len(),
+        1,
+        "the new grant has no record until completion"
+    );
+    assert!(keys[0].contains("3:dcr23:"));
     assert_eq!(host.store.binding().unwrap().client_id, "client");
+    assert!(host.store.binding().unwrap().client_source == ClientSource::Preregistered);
 }
 
 #[tokio::test]
@@ -395,6 +377,7 @@ pub(super) async fn cimd_used_when_supported() {
     assert!(host.network.tokens()[0].authorization.is_empty());
     assert!(host.store.registration_record().is_none());
     assert!(host.store.binding().unwrap().client_source == ClientSource::Cimd);
+    assert!(grant_keys(&host)[0].contains(&format!("46:cimd:{CIMD}")));
 }
 
 #[tokio::test]
@@ -423,17 +406,138 @@ pub(super) async fn cimd_redirect_mismatch_invalid_configuration() {
         &host,
         json!({"client_id_metadata_document_supported": true}),
     );
+    let declared = vec![
+        "http://127.0.0.1:9999/other".into(),
+        "https://adapter.example/callback".into(),
+    ];
     let oauth = host.owner(
         pkce_config()
-            .client_id_metadata_document(CIMD, vec!["http://127.0.0.1:9999/callback".into()])
+            .client_id_metadata_document(CIMD, declared)
             .dynamic_registration(policy()),
     );
     assert_eq!(
         code(oauth.prepare(unbound(), budget()).await),
         AuthErrorCode::InvalidConfiguration
     );
-    assert!(host.store.pending().is_empty());
+    // A recorded CIMD selection checks each login's redirect too.
+    let ok = PrepareOptions::new().redirect_uri("https://adapter.example/callback");
+    login(oauth.prepare_with(unbound(), ok, budget()).await.unwrap());
+    let other = PrepareOptions::new().redirect_uri("https://adapter.example/other");
+    assert_eq!(
+        code(oauth.prepare_with(unbound(), other, budget()).await),
+        AuthErrorCode::InvalidConfiguration
+    );
+    assert_eq!(host.pending().len(), 1);
     assert!(host.network.registrations().is_empty());
+}
+
+#[tokio::test]
+pub(super) async fn cimd_portless_loopback_redirect_matches() {
+    let host = Host::new();
+    patch(
+        &host,
+        json!({"client_id_metadata_document_supported": true}),
+    );
+    let oauth = host.owner(pkce_config().client_id_metadata_document(
+        CIMD,
+        vec![
+            "http://127.0.0.1/callback".into(),
+            "http://[::1]:8765/callback".into(),
+            "http://localhost:51004/callback".into(),
+        ],
+    ));
+    // Any port matches a declared loopback redirect; the exact one is used.
+    for redirect in [
+        "http://127.0.0.1:51004/callback",
+        "http://[::1]:51005/callback",
+    ] {
+        let options = PrepareOptions::new().redirect_uri(redirect);
+        let pending = login(
+            oauth
+                .prepare_with(unbound(), options, budget())
+                .await
+                .unwrap(),
+        );
+        assert_eq!(client_id(&pending), CIMD);
+        assert_eq!(
+            query(pending.authorization_url(), "redirect_uri").unwrap(),
+            redirect
+        );
+        host.network.reply(200, token("cimd"));
+        oauth
+            .complete(unbound(), callback(&pending), budget())
+            .await
+            .unwrap();
+        assert_eq!(host.network.last_form()["redirect_uri"], redirect);
+        host.store
+            .records
+            .lock()
+            .unwrap()
+            .values_mut()
+            .for_each(|r| r.token = None);
+    }
+    // The path still has to match, and localhost is never accepted.
+    for redirect in [
+        "http://127.0.0.1:51004/other",
+        "http://localhost:51004/callback",
+        "http://user@127.0.0.1:51004/callback",
+    ] {
+        let options = PrepareOptions::new().redirect_uri(redirect);
+        assert_eq!(
+            code(oauth.prepare_with(unbound(), options, budget()).await),
+            AuthErrorCode::InvalidConfiguration,
+            "{redirect}"
+        );
+    }
+    assert!(host.pending().is_empty());
+}
+
+// With redirects given only per login, the declared-redirect check runs only
+// when a host prepare creates a login: lookups and refreshes keep working.
+#[tokio::test]
+async fn cimd_per_login_redirect_only_lookup_and_refresh_work() {
+    let host = Host::new();
+    patch(
+        &host,
+        json!({"client_id_metadata_document_supported": true}),
+    );
+    let oauth = host.owner(
+        OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .client_id_metadata_document(CIMD, vec!["http://127.0.0.1/callback".into()]),
+    );
+    let pending = login_at(&oauth, 51007).await;
+    host.network.reply(200, pkce_token("cimd"));
+    oauth
+        .complete(unbound(), callback(&pending), budget())
+        .await
+        .unwrap();
+    let recreated = host.owner(
+        OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .client_id_metadata_document(CIMD, vec!["http://127.0.0.1/callback".into()]),
+    );
+    assert_eq!(
+        recreated
+            .credential(unbound())
+            .await
+            .unwrap()
+            .unwrap()
+            .token,
+        "cimd"
+    );
+    host.store.expire();
+    host.network.reply(200, pkce_token("refreshed"));
+    assert_eq!(
+        recreated
+            .credential(unbound())
+            .await
+            .unwrap()
+            .unwrap()
+            .token,
+        "refreshed"
+    );
+    assert_eq!(host.network.last_form()["client_id"], CIMD);
 }
 
 #[tokio::test]
@@ -492,7 +596,30 @@ pub(super) async fn cimd_invalid_client_no_dcr_fallback() {
             .client_id_metadata_document(CIMD, vec![REDIRECT.into()])
             .dynamic_registration(policy()),
     );
-    // At completion.
+    // On the authorization callback; the login is consumed.
+    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    let mut rejected = callback(&pending);
+    rejected.set_query(None);
+    rejected
+        .query_pairs_mut()
+        .append_pair(
+            "state",
+            &query(pending.authorization_url(), "state").unwrap(),
+        )
+        .append_pair("error", "invalid_client");
+    assert_eq!(
+        code(oauth.complete(unbound(), rejected, budget()).await),
+        AuthErrorCode::InvalidConfiguration
+    );
+    assert_eq!(
+        code(
+            oauth
+                .complete(unbound(), callback(&pending), budget())
+                .await
+        ),
+        AuthErrorCode::InteractionRequired
+    );
+    // At code exchange.
     let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
     host.network.reply(401, invalid_client());
     assert_eq!(
@@ -553,14 +680,15 @@ pub(super) async fn dcr_registration_endpoint_destination_policy() {
             AuthErrorCode::UntrustedDestination
         );
         assert_eq!(host.network.registrations().len(), sent);
-        assert!(host.store.registration().is_none());
+        assert!(host.pending().is_empty());
     }
 }
 
 #[tokio::test]
-pub(super) async fn dcr_pkce_registers_only_in_prepare() {
+pub(super) async fn dcr_pkce_registers_per_login() {
     let host = dcr_host();
     let oauth = dcr_pkce(&host);
+    // Delivery paths never register.
     assert_eq!(
         code(oauth.challenge(unbound(), unauthorized()).await),
         AuthErrorCode::InteractionRequired
@@ -570,8 +698,45 @@ pub(super) async fn dcr_pkce_registers_only_in_prepare() {
         AuthErrorCode::InteractionRequired
     );
     assert!(host.network.registrations().is_empty());
-    login(oauth.prepare(unbound(), budget()).await.unwrap());
-    assert_eq!(host.network.registrations().len(), 1);
+    // Each prepare registers anew with its login's exact loopback redirect.
+    let first = login_at(&oauth, 51001).await;
+    let second = login_at(&oauth, 51002).await;
+    let registrations = host.network.registrations();
+    assert_eq!(registrations.len(), 2);
+    for (seen, port) in registrations.iter().zip([51001, 51002]) {
+        let body = sent(seen);
+        assert_eq!(
+            body["redirect_uris"],
+            json!([format!("http://127.0.0.1:{port}/callback")])
+        );
+        assert_eq!(body["application_type"], "native");
+        assert_eq!(body["token_endpoint_auth_method"], "none");
+        assert_eq!(
+            body["grant_types"],
+            json!(["authorization_code", "refresh_token"])
+        );
+    }
+    assert_eq!(client_id(&first), "dcr-client-1");
+    assert_eq!(client_id(&second), "dcr-client-2");
+    // No registration record: each login holds its client.
+    assert!(host.store.registration_record().is_none());
+    assert_eq!(
+        host.pending()
+            .iter()
+            .map(|l| l.client_id.clone())
+            .collect::<Vec<_>>(),
+        ["dcr-client-1", "dcr-client-2"]
+    );
+    // A non-loopback redirect is not a native application.
+    let remote = PrepareOptions::new().redirect_uri("https://app.example/callback");
+    login(
+        oauth
+            .prepare_with(unbound(), remote, budget())
+            .await
+            .unwrap(),
+    );
+    let body = sent(host.network.registrations().last().unwrap());
+    assert!(body.get("application_type").is_none());
     // Client-credentials challenge handling registers without `prepare`.
     let host = dcr_host();
     host.network.reply(200, token("cc"));
@@ -581,6 +746,208 @@ pub(super) async fn dcr_pkce_registers_only_in_prepare() {
         .unwrap();
     assert_eq!(host.network.registrations().len(), 1);
     assert_eq!(host.store.token().access_token, "cc");
+}
+
+#[tokio::test]
+pub(super) async fn dcr_issued_client_stored_with_grant() {
+    let host = dcr_host();
+    let oauth = dcr_pkce(&host);
+    host.seed(&oauth, unbound()).await;
+    // The grant is keyed by the `dcr` identity and holds the issued client.
+    let keys = grant_keys(&host);
+    assert_eq!(keys.len(), 1);
+    assert!(keys[0].contains("3:dcr23:") && !keys[0].contains("dcr-client"));
+    assert_eq!(host.store.grant().unwrap().client_id, "dcr-client-1");
+    assert!(host.store.binding().unwrap().client_id.is_empty());
+    // Refresh uses the stored client.
+    host.store.expire();
+    host.network.reply(200, pkce_token("refreshed"));
+    oauth.credential(unbound()).await.unwrap().unwrap();
+    assert_eq!(host.network.last_form()["client_id"], "dcr-client-1");
+    // A re-registered client replaces it under the same grant key.
+    let pending = login(
+        oauth
+            .prepare_with_required(unbound(), &scopes(&["write"]), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(client_id(&pending), "dcr-client-2");
+    host.network.reply(200, pkce_token("stepped-up"));
+    oauth
+        .complete(unbound(), callback(&pending), budget())
+        .await
+        .unwrap();
+    assert_eq!(grant_keys(&host), keys);
+    let grant = host.store.grant().unwrap();
+    assert_eq!(grant.client_id, "dcr-client-2");
+    assert_eq!(grant.token.unwrap().access_token, "stepped-up");
+    host.store.expire();
+    host.network.reply(200, pkce_token("again"));
+    oauth.credential(unbound()).await.unwrap().unwrap();
+    let form = host.network.last_form();
+    assert_eq!(form["client_id"], "dcr-client-2");
+    assert_eq!(form["refresh_token"], "stepped-up-refresh");
+}
+
+#[tokio::test]
+pub(super) async fn dcr_pkce_invalid_client_drops_grant() {
+    let host = dcr_host();
+    let oauth = dcr_pkce(&host);
+    host.seed(&oauth, unbound()).await;
+    // invalid_client at completion ends only that login; the grant is kept.
+    let write = scopes(&["write"]);
+    let step_up = || oauth.prepare_with_required(unbound(), &write, budget());
+    let other = login(step_up().await.unwrap());
+    let kept = login(step_up().await.unwrap());
+    host.network.reply(401, invalid_client());
+    assert_eq!(
+        code(oauth.complete(unbound(), callback(&other), budget()).await),
+        AuthErrorCode::InteractionRequired
+    );
+    let grant = host.store.grant().unwrap();
+    assert_eq!(grant.client_id, "dcr-client-1");
+    assert_eq!(grant.token.as_ref().unwrap().access_token, "seed");
+    assert_eq!(
+        code(oauth.complete(unbound(), callback(&other), budget()).await),
+        AuthErrorCode::InteractionRequired
+    );
+    assert_eq!(host.pending().len(), 1);
+    assert_eq!(host.pending()[0].id, kept.id);
+    // At refresh, a grant another writer replaced meanwhile is kept.
+    host.store.expire();
+    let records = host.store.records.clone();
+    *host.network.on_token.lock().unwrap() = Some(Box::new(move || {
+        for (key, record) in records.lock().unwrap().iter_mut() {
+            if key.starts_with("ahp.oauth.grant:") {
+                record.token.as_mut().unwrap().refresh_token = Some("newer-refresh".into());
+                record.version = "newer".into();
+            }
+        }
+    }));
+    host.network.reply(401, invalid_client());
+    assert_eq!(
+        code(oauth.credential(unbound()).await),
+        AuthErrorCode::InteractionRequired
+    );
+    let token = host.store.token();
+    assert_eq!(token.refresh_token.as_deref(), Some("newer-refresh"));
+    // So is one whose client another login replaced, even with the same token.
+    let records = host.store.records.clone();
+    *host.network.on_token.lock().unwrap() = Some(Box::new(move || {
+        for (key, record) in records.lock().unwrap().iter_mut() {
+            if key.starts_with("ahp.oauth.grant:") {
+                record.client_id = "dcr-client-9".into();
+                record.version = "replaced".into();
+            }
+        }
+    }));
+    host.network.reply(401, invalid_client());
+    assert_eq!(
+        code(oauth.credential(unbound()).await),
+        AuthErrorCode::InteractionRequired
+    );
+    assert!(host.store.grant().unwrap().token.is_some());
+    host.store
+        .records
+        .lock()
+        .unwrap()
+        .values_mut()
+        .for_each(|r| {
+            if r.client_id == "dcr-client-9" {
+                r.client_id = "dcr-client-1".into();
+            }
+        });
+    // When the record still holds the presented client and refresh token, the
+    // grant is compare-and-deleted.
+    host.network.reply(401, invalid_client());
+    assert_eq!(
+        code(oauth.credential(unbound()).await),
+        AuthErrorCode::InteractionRequired
+    );
+    assert!(host.store.grant().unwrap().token.is_none());
+    assert_eq!(host.network.registrations().len(), 3);
+    // The next prepare registers again.
+    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    assert_eq!(client_id(&pending), "dcr-client-4");
+}
+
+#[tokio::test]
+pub(super) async fn pending_logins_concurrent_per_state() {
+    let host = dcr_host();
+    let oauth = dcr_pkce(&host);
+    let a = login_at(&oauth, 51001).await;
+    let b = login_at(&oauth, 51002).await;
+    assert_ne!(
+        query(a.authorization_url(), "state"),
+        query(b.authorization_url(), "state")
+    );
+    assert_eq!(
+        (client_id(&a), client_id(&b)),
+        ("dcr-client-1".into(), "dcr-client-2".into())
+    );
+    // A callback carrying one login's state on the other's redirect is refused
+    // without consuming either.
+    let mut crossed = callback(&a);
+    crossed.set_port(Some(51002)).unwrap();
+    assert_eq!(
+        code(oauth.complete(unbound(), crossed, budget()).await),
+        AuthErrorCode::AccessDenied
+    );
+    // Each callback completes only its own login, with its own client and redirect.
+    for (pending, client, port) in [(&b, "dcr-client-2", 51002), (&a, "dcr-client-1", 51001)] {
+        host.network.reply(200, pkce_token(client));
+        let credential = oauth
+            .complete(unbound(), callback(pending), budget())
+            .await
+            .unwrap();
+        assert_eq!(credential.token, client);
+        let form = host.network.last_form();
+        assert_eq!(form["client_id"], client);
+        assert_eq!(
+            form["redirect_uri"],
+            format!("http://127.0.0.1:{port}/callback")
+        );
+    }
+    assert!(host.pending().is_empty());
+}
+
+#[tokio::test]
+pub(super) async fn pending_completion_newest_grant_wins() {
+    for persisted in [false, true] {
+        let host = dcr_host();
+        let oauth = host.owner({
+            let c = pkce_config().dynamic_registration(policy());
+            if persisted {
+                c.persist_pending_logins()
+            } else {
+                c
+            }
+        });
+        let older = login_at(&oauth, 51001).await;
+        let newer = login_at(&oauth, 51002).await;
+        host.network.reply(200, pkce_token("newer"));
+        oauth
+            .complete(unbound(), callback(&newer), budget())
+            .await
+            .unwrap();
+        // Completing one leaves the other valid; its completion replaces the grant.
+        assert_eq!(host.pending().len(), 1, "{persisted}");
+        host.network.reply(200, pkce_token("older"));
+        oauth
+            .complete(unbound(), callback(&older), budget())
+            .await
+            .unwrap();
+        let grant = host.store.grant().unwrap();
+        assert_eq!(grant.client_id, "dcr-client-1", "{persisted}");
+        assert_eq!(grant.token.unwrap().access_token, "older", "{persisted}");
+        // The pair is consistent: refresh presents that client's refresh token.
+        host.store.expire();
+        host.network.reply(200, pkce_token("refreshed"));
+        oauth.credential(unbound()).await.unwrap().unwrap();
+        let form = host.network.last_form();
+        assert_eq!(form["client_id"], "dcr-client-1", "{persisted}");
+        assert_eq!(form["refresh_token"], "older-refresh", "{persisted}");
+    }
 }
 
 #[tokio::test]
@@ -613,11 +980,8 @@ pub(super) async fn dcr_registers_once_across_processes() {
         version: "winner".into(),
         registration: Some(registration::SavedRegistration {
             client_id: "winner".into(),
-            client_secret_expires_at: None,
-            registered_at: now(),
-            issued: json!({}),
-            request_digest: policy().request_digest(),
             method: "client_secret_basic".into(),
+            client_secret_expires_at: None,
             generation: "winner-generation".into(),
             secret_ref: Some("winner-ref".into()),
         }),
@@ -664,9 +1028,10 @@ pub(super) async fn dcr_registration_reused_across_grants() {
     cc_ready(&host, &dcr_cc(&host), backend("backend2")).await;
     cc_ready(&host, &shared, backend("backend3")).await;
     assert_eq!(host.network.registrations().len(), 1);
-    let keys = grant_keys(&host);
-    assert_eq!(keys.len(), 3);
-    assert!(keys.iter().all(|k| k.contains("dcr-client-1")));
+    assert_eq!(grant_keys(&host).len(), 3);
+    for seen in host.network.tokens() {
+        assert_eq!(seen.authorization, basic("dcr-client-1", "issued-secret-1"));
+    }
 }
 
 #[tokio::test]
@@ -718,8 +1083,9 @@ pub(super) async fn dcr_invalid_client_reregisters_once() {
         basic("dcr-client-2", "issued-secret-2")
     );
     assert_eq!(host.network.metadata_requests().len(), discovery);
+    assert_eq!(grant_keys(&host).len(), 1);
     // A repeated invalid_client for the replacement: at most one re-registration
-    // per operation, then a failed marker and credential_unavailable.
+    // per operation, then credential_unavailable, counted as a failed registration.
     host.store.expire();
     host.network.reply(401, invalid_client());
     host.network.reply(401, invalid_client());
@@ -729,82 +1095,131 @@ pub(super) async fn dcr_invalid_client_reregisters_once() {
     );
     assert_eq!(host.network.registrations().len(), 3);
     assert_eq!(host.network.tokens().len(), 5);
-    assert_eq!(host.store.marker().unwrap().attempts, 1);
     assert!(host.store.registration().is_none());
-
-    // PKCE: the old client's refresh token is never reused.
-    let host = dcr_host();
-    let oauth = dcr_pkce(&host);
-    host.seed(&oauth, unbound()).await;
-    host.store.expire();
-    host.network.reply(401, invalid_client());
+    let backoff = host.store.backoff().unwrap();
+    assert_eq!(
+        (backoff.attempts, backoff.code.as_str()),
+        (1, "credential_unavailable")
+    );
+    // So the next operation sends no registration request until the backoff passes.
     assert_eq!(
         code(oauth.credential(unbound()).await),
-        AuthErrorCode::InteractionRequired
+        AuthErrorCode::CredentialUnavailable
     );
-    assert!(host.store.registration().is_none());
-    assert_eq!(host.network.registrations().len(), 1);
-    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
-    assert_eq!(client_id(&pending), "dcr-client-2");
+    assert_eq!(host.network.registrations().len(), 3);
+    assert_eq!(host.network.tokens().len(), 5);
 }
 
+// The failure count survives the re-registration after invalid_client, so a
+// server that keeps rejecting fresh clients backs off longer each time; a
+// successful token request with the client resets it.
 #[tokio::test]
-pub(super) async fn dcr_new_client_id_new_grant() {
+async fn cc_failure_count_resets_only_on_token_success() {
     let host = dcr_host();
     let oauth = dcr_cc(&host);
-    cc_ready(&host, &oauth, unbound()).await;
-    host.store.expire();
-    host.network.reply(401, invalid_client());
-    host.network.reply(200, token("new"));
+    for (attempts, wait) in [(1, 60), (2, 120), (3, 240)] {
+        for _ in 0..2 {
+            host.network.reply(401, invalid_client());
+        }
+        assert_eq!(
+            code(oauth.challenge(unbound(), unauthorized()).await),
+            AuthErrorCode::CredentialUnavailable
+        );
+        assert_eq!(host.store.backoff().unwrap().attempts, attempts);
+        assert!(
+            (wait - 1..=wait).contains(&backoff_wait(&host)),
+            "{attempts}"
+        );
+        elapse_backoff(&host);
+    }
+    // The next registration's client works: the count resets.
+    host.network.reply(200, token("works"));
     assert_eq!(
         oauth.credential(unbound()).await.unwrap().unwrap().token,
-        "new"
+        "works"
     );
-    let keys = grant_keys(&host);
-    assert_eq!(keys.len(), 2);
-    assert!(keys.iter().any(|k| k.contains("dcr-client-1")));
-    assert!(keys.iter().any(|k| k.contains("dcr-client-2")));
-    // The old binding-scoped grant is compare-and-cleared, never migrated.
-    let old = |host: &Host| {
-        let records = host.store.records.lock().unwrap();
-        let (_, record) = records
-            .iter()
-            .find(|(k, _)| k.contains("dcr-client-1"))
-            .unwrap();
-        record.token.is_some()
-    };
-    assert!(!old(&host));
-    // A shared grant partition is left alone: other bindings may use it.
-    let host = dcr_host();
-    let shared = host.owner(
-        OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
-            .scopes(scopes(&["read"]), scopes(&["read"]))
-            .grant_partition("shared")
-            .dynamic_registration(policy())
-            .client_secret_storage(host.secrets.clone()),
-    );
-    cc_ready(&host, &shared, unbound()).await;
-    host.store.edit_registration(|r| r.registration = None);
-    host.store.expire();
-    host.network.reply(200, token("replacement"));
-    assert!(shared.credential(unbound()).await.unwrap().is_some());
-    assert_eq!(grant_keys(&host).len(), 2);
-    assert!(old(&host));
+    assert!(host.store.backoff().is_none());
+}
 
-    // PKCE: the replacement client's login is stored under a new grant key.
-    let host = dcr_host();
-    let oauth = dcr_pkce(&host);
-    host.seed(&oauth, unbound()).await;
-    host.store.expire();
-    host.network.reply(401, invalid_client());
+#[test]
+fn registration_response_null_is_not_absent() {
+    let accept = |flow, request: Value, body: Value| {
+        registration::accept_registration(
+            flow,
+            &request,
+            201,
+            &serde_json::to_vec(&body).unwrap(),
+            now(),
+        )
+    };
+    let cc = json!({"grant_types": ["client_credentials"], "token_endpoint_auth_method": "client_secret_basic"});
+    let pkce = json!({"redirect_uris": [REDIRECT], "grant_types": ["authorization_code", "refresh_token"], "token_endpoint_auth_method": "none"});
+    for (flow, request, field) in [
+        (
+            OAuthFlow::ClientCredentials,
+            &cc,
+            "client_secret_expires_at",
+        ),
+        (OAuthFlow::ClientCredentials, &cc, "redirect_uris"),
+        (OAuthFlow::ClientCredentials, &cc, "grant_types"),
+        (
+            OAuthFlow::ClientCredentials,
+            &cc,
+            "token_endpoint_auth_method",
+        ),
+        (OAuthFlow::ClientCredentials, &cc, "client_secret"),
+        (OAuthFlow::ClientCredentials, &cc, "client_id"),
+        (OAuthFlow::AuthorizationCodePkce, &pkce, "redirect_uris"),
+        (OAuthFlow::AuthorizationCodePkce, &pkce, "grant_types"),
+        (
+            OAuthFlow::AuthorizationCodePkce,
+            &pkce,
+            "token_endpoint_auth_method",
+        ),
+    ] {
+        let mut body = json!({"client_id": "c", "client_secret": "s"});
+        body[field] = Value::Null;
+        assert_eq!(
+            accept(flow, request.clone(), body).err(),
+            Some(AuthErrorCode::InvalidConfiguration),
+            "{field}"
+        );
+    }
+    // A public client's secret and its expiry are ignored, null or not.
+    let body = json!({"client_id": "c", "client_secret": null, "client_secret_expires_at": null});
     assert_eq!(
-        code(oauth.credential(unbound()).await),
-        AuthErrorCode::InteractionRequired
+        accept(OAuthFlow::AuthorizationCodePkce, pkce, body)
+            .unwrap()
+            .client_id,
+        "c"
     );
-    login(oauth.prepare(unbound(), budget()).await.unwrap());
-    let records = host.store.records.lock().unwrap();
-    let pending = records.iter().find(|(_, r)| r.pending.is_some()).unwrap();
-    assert!(pending.0.contains("dcr-client-2"));
+}
+
+#[test]
+fn cc_echoed_redirect_uris_any_list() {
+    let request = json!({"grant_types": ["client_credentials"], "token_endpoint_auth_method": "client_secret_basic"});
+    let accept = |redirects: Value| {
+        let body = json!({"client_id": "c", "client_secret": "s", "redirect_uris": redirects});
+        registration::accept_registration(
+            OAuthFlow::ClientCredentials,
+            &request,
+            201,
+            &serde_json::to_vec(&body).unwrap(),
+            now(),
+        )
+        .map(|issued| issued.client_id)
+    };
+    assert_eq!(accept(json!([])).unwrap(), "c");
+    assert_eq!(
+        accept(json!(["https://elsewhere.example/cb"])).unwrap(),
+        "c"
+    );
+    for invalid in [json!("https://elsewhere.example/cb"), json!({}), json!(1)] {
+        assert_eq!(
+            accept(invalid).err(),
+            Some(AuthErrorCode::InvalidConfiguration)
+        );
+    }
 }
 
 // ---- Secrets ----
@@ -826,10 +1241,28 @@ pub(super) async fn dcr_secret_not_in_token_record() {
     for text in [host.store.dump(), format!("{error:?}"), error.to_string()] {
         assert!(!text.contains("issued-secret"));
     }
-    // Pending logins hold no client secret either.
+    // A secret in a PKCE registration response is ignored, never persisted.
     let host = dcr_host();
-    login(dcr_pkce(&host).prepare(unbound(), budget()).await.unwrap());
-    assert!(!host.store.dump().contains("secret\":\""));
+    host.network.register_reply(
+        201,
+        json!({"client_id": "dcr-client", "client_secret": "pkce-secret", "client_secret_expires_at": 0}),
+        None,
+    );
+    let oauth = host.owner(
+        pkce_config()
+            .dynamic_registration(policy())
+            .persist_pending_logins(),
+    );
+    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    host.network.reply(200, token("pkce"));
+    oauth
+        .complete(unbound(), callback(&pending), budget())
+        .await
+        .unwrap();
+    assert!(!host.store.dump().contains("pkce-secret"));
+    assert!(!host.network.last_form().contains_key("client_secret"));
+    assert!(host.network.tokens()[0].authorization.is_empty());
+    assert!(host.secrets.values.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -861,9 +1294,9 @@ pub(super) async fn dcr_metadata_change_keeps_selection() {
     host.seed(&oauth, unbound()).await;
     patch(
         &host,
-        json!({"client_id_metadata_document_supported": true, "registration_endpoint": null}),
+        json!({"client_id_metadata_document_supported": true}),
     );
-    // A step-up needs a new login and rediscovers metadata; the client stays.
+    // A step-up needs a new login and rediscovers metadata; DCR stays selected.
     let discovery = host.network.metadata_requests().len();
     let pending = login(
         oauth
@@ -872,9 +1305,16 @@ pub(super) async fn dcr_metadata_change_keeps_selection() {
             .unwrap(),
     );
     assert!(host.network.metadata_requests().len() > discovery);
-    assert_eq!(client_id(&pending), "dcr-client-1");
-    assert_eq!(host.network.registrations().len(), 1);
+    assert_eq!(client_id(&pending), "dcr-client-2");
     assert!(host.store.binding().unwrap().client_source == ClientSource::Dcr);
+    // A removed registration endpoint does not move the working grant.
+    patch(&host, json!({"registration_endpoint": null}));
+    host.store.expire();
+    host.network.reply(200, pkce_token("refreshed"));
+    assert!(oauth.challenge(unbound(), unauthorized()).await.is_ok());
+    assert_eq!(host.network.last_form()["client_id"], "dcr-client-1");
+    assert!(host.store.binding().unwrap().client_source == ClientSource::Dcr);
+    assert_eq!(host.network.registrations().len(), 2);
 }
 
 #[tokio::test]
@@ -935,14 +1375,13 @@ pub(super) async fn dcr_initial_access_token_scoped() {
     assert!(!host.store.dump().contains("iat-value"));
 }
 
-// ---- Lookup, backoff and repair ----
+// ---- Lookup and backoff ----
 
 #[tokio::test]
 pub(super) async fn lookup_never_registers_pkce() {
     let host = dcr_host();
     let oauth = dcr_pkce(&host);
     login(oauth.prepare(unbound(), budget()).await.unwrap());
-    host.store.edit_registration(|r| r.registration = None);
     assert_eq!(
         code(oauth.credential(unbound()).await),
         AuthErrorCode::InteractionRequired
@@ -960,158 +1399,57 @@ pub(super) async fn lookup_never_registers_pkce() {
         "again"
     );
     assert_eq!(host.network.registrations().len(), 2);
-}
-
-#[tokio::test]
-pub(super) async fn dcr_failed_marker_bounds_registration() {
-    let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    host.network.register_reply(503, json!({}), None);
-    assert_eq!(
-        code(oauth.challenge(unbound(), unauthorized()).await),
-        AuthErrorCode::ProviderFailed
-    );
-    let marker = host.store.marker().unwrap();
-    assert_eq!(marker.attempts, 1);
-    assert_eq!(marker.next_attempt_at - marker.failed_at, 60);
-    // No path but prepare registers during the backoff, in any process.
-    let other = dcr_cc(&host);
-    for result in [
-        oauth.credential(unbound()).await.map(|_| ()),
-        other.credential(unbound()).await.map(|_| ()),
-        other.challenge(unbound(), unauthorized()).await,
-    ] {
-        assert_eq!(code(result), AuthErrorCode::CredentialUnavailable);
-    }
-    assert_eq!(host.network.registrations().len(), 1);
-    elapse_marker(&host);
-    host.network.register_reply(503, json!({}), None);
+    // ... subject to the backoff.
+    host.store.edit_registration(|r| {
+        r.registration = None;
+        r.backoff = Some(registration::Backoff {
+            attempts: 1,
+            next_attempt_at: now() + 60,
+            code: "provider_failed".into(),
+        });
+    });
+    host.store.expire();
     assert_eq!(
         code(oauth.credential(unbound()).await),
         AuthErrorCode::ProviderFailed
     );
-    let marker = host.store.marker().unwrap();
-    assert_eq!(marker.attempts, 2);
-    assert_eq!(marker.next_attempt_at - marker.failed_at, 120);
-    // prepare clears it and registers immediately.
-    cc_ready(&host, &oauth, unbound()).await;
-    assert_eq!(host.network.registrations().len(), 3);
-    assert!(host.store.marker().is_none());
-    // A changed request digest clears an active marker.
-    host.store.edit_registration(|r| {
-        r.registration = None;
-        r.marker = Some(registration::FailedMarker {
-            request_digest: policy().request_digest(),
-            failed_at: now(),
-            attempts: 4,
-            next_attempt_at: now() + 3600,
-            generation: "g".into(),
-        });
-    });
-    host.store.expire();
-    host.network.reply(200, token("renamed"));
-    let renamed = cc_with(&host, RegistrationPolicy::new(ISSUER, "Renamed Adapter"));
-    assert_eq!(
-        renamed.credential(unbound()).await.unwrap().unwrap().token,
-        "renamed"
-    );
-    assert_eq!(host.network.registrations().len(), 4);
-    assert!(host.store.marker().is_none());
+    assert_eq!(host.network.registrations().len(), 2);
 }
 
 #[tokio::test]
 pub(super) async fn dcr_response_validation_invalid_configuration() {
-    for response in [
-        json!({"client_id": "dcr-client", "client_secret": "not-a-real-secret"}),
-        json!({"client_id": "dcr-client", "redirect_uris": ["https://evil.example/cb"]}),
-        json!({"client_id": "dcr-client", "token_endpoint_auth_method": "client_secret_basic"}),
+    for (cc, response) in [
+        (
+            false,
+            json!({"client_id": "dcr-client", "redirect_uris": ["https://evil.example/cb"]}),
+        ),
+        (
+            false,
+            json!({"client_id": "dcr-client", "redirect_uris": ["http://127.0.0.1:9999/callback"]}),
+        ),
+        (
+            false,
+            json!({"client_id": "dcr-client", "token_endpoint_auth_method": "client_secret_basic"}),
+        ),
+        (true, json!({"client_id": "dcr-client"})),
+        (
+            true,
+            json!({"client_id": "dcr-client", "client_secret": "not-a-real-secret", "token_endpoint_auth_method": "none"}),
+        ),
     ] {
         let host = dcr_host();
         host.network.register_reply(201, response, None);
+        let oauth = if cc { dcr_cc(&host) } else { dcr_pkce(&host) };
         assert_eq!(
-            code(dcr_pkce(&host).prepare(unbound(), budget()).await),
+            code(oauth.prepare(unbound(), budget()).await),
             AuthErrorCode::InvalidConfiguration
         );
         assert_eq!(host.network.registrations().len(), 1);
         assert!(host.store.registration().is_none());
-        assert!(host.store.pending().is_empty());
+        assert!(host.pending().is_empty());
         assert!(!host.store.dump().contains("not-a-real-secret"));
+        assert!(host.secrets.values.lock().unwrap().is_empty());
     }
-}
-
-#[tokio::test]
-pub(super) async fn prepare_force_reregistration() {
-    let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    cc_ready(&host, &oauth, unbound()).await;
-    let old = host.store.registration().unwrap();
-    host.store.edit_registration(|r| {
-        r.marker = Some(registration::FailedMarker {
-            request_digest: policy().request_digest(),
-            failed_at: now(),
-            attempts: 1,
-            next_attempt_at: now() + 60,
-            generation: "g".into(),
-        });
-    });
-    host.network.reply(200, token("forced"));
-    let forced = oauth
-        .prepare_with(
-            unbound(),
-            PrepareOptions::new().force_registration(),
-            budget(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(ready(forced).token, "forced");
-    assert_eq!(host.network.registrations().len(), 2);
-    let new = host.store.registration().unwrap();
-    assert_ne!(new.generation, old.generation);
-    assert_eq!(new.client_id, "dcr-client-2");
-    assert!(host.store.marker().is_none());
-    assert_eq!(
-        *host.secrets.deleted.lock().unwrap(),
-        [old.secret_ref.unwrap()]
-    );
-    // An expired pending login alone never re-registers.
-    let host = dcr_host();
-    let oauth = dcr_pkce(&host);
-    login(oauth.prepare(unbound(), budget()).await.unwrap());
-    for record in host.store.records.lock().unwrap().values_mut() {
-        if let Some(pending) = record.pending.as_mut() {
-            pending.expires_at_ms = 0;
-        }
-    }
-    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
-    assert_eq!(client_id(&pending), "dcr-client-1");
-    assert_eq!(host.network.registrations().len(), 1);
-}
-
-#[tokio::test]
-pub(super) async fn dcr_policy_change_reregisters() {
-    let host = dcr_host();
-    cc_ready(&host, &dcr_cc(&host), unbound()).await;
-    let old = host.store.registration().unwrap();
-    let changed = policy()
-        .software_id("example-adapter")
-        .scope(scopes(&["read"]));
-    let digest = changed.request_digest();
-    let oauth = cc_with(&host, changed);
-    host.store.expire();
-    host.network.reply(200, token("changed"));
-    assert!(oauth.credential(unbound()).await.unwrap().is_some());
-    let registrations = host.network.registrations();
-    assert_eq!(registrations.len(), 2);
-    let body = sent(&registrations[1]);
-    assert_eq!(body["software_id"], "example-adapter");
-    assert_eq!(body["scope"], "read");
-    let new = host.store.registration().unwrap();
-    assert_eq!(new.request_digest, digest);
-    assert_ne!(new.request_digest, old.request_digest);
-    assert_eq!(
-        *host.secrets.deleted.lock().unwrap(),
-        [old.secret_ref.unwrap()]
-    );
 }
 
 #[tokio::test]
@@ -1133,158 +1471,65 @@ pub(super) async fn dcr_replaced_secret_deleted() {
     host.network.reply(401, invalid_client());
     host.network.reply(200, token("after"));
     assert!(oauth.credential(unbound()).await.unwrap().is_some());
-    assert_eq!(*host.secrets.deleted.lock().unwrap(), [old, new]);
-}
-
-#[tokio::test]
-pub(super) async fn cc_registration_auto_repairs_after_backoff() {
-    let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    host.network.register_reply(503, json!({}), None);
+    let after = host.store.registration().unwrap().secret_ref.unwrap();
     assert_eq!(
-        code(oauth.challenge(unbound(), unauthorized()).await),
-        AuthErrorCode::ProviderFailed
+        *host.secrets.deleted.lock().unwrap(),
+        [old.clone(), new.clone()]
     );
-    assert_eq!(
-        code(oauth.credential(unbound()).await),
-        AuthErrorCode::CredentialUnavailable
-    );
-    assert_eq!(host.network.registrations().len(), 1);
-    elapse_marker(&host);
-    host.network.reply(200, token("repaired"));
-    assert_eq!(
-        oauth.credential(unbound()).await.unwrap().unwrap().token,
-        "repaired"
-    );
-    assert_eq!(host.network.registrations().len(), 2);
-    assert!(host.store.marker().is_none());
-}
-
-#[tokio::test]
-pub(super) async fn cc_proactive_reregistration_before_expiry() {
-    let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    cc_ready(&host, &oauth, unbound()).await;
-    // 1000 s lifetime: margin min(100 s, 1 hour); outside it nothing happens.
-    renewal_due(&host, 900, 150);
+    // Changed registration settings never replace a usable record by themselves,
+    // not even in a host `prepare`.
+    let changed = cc_with(&host, policy().software_id("example-adapter"));
     host.store.expire();
-    host.network.reply(200, token("outside"));
-    assert!(oauth.credential(unbound()).await.unwrap().is_some());
-    assert_eq!(host.network.registrations().len(), 1);
-    // Inside it the acquisition uses the current client, then re-registers.
-    renewal_due(&host, 950, 50);
+    host.network.reply(200, token("delivered"));
+    assert!(changed.credential(unbound()).await.unwrap().is_some());
     host.store.expire();
-    host.network.reply(200, token("inside"));
-    let credential = oauth.credential(unbound()).await.unwrap().unwrap();
-    assert_eq!(credential.token, "inside");
-    renewed(&host).await;
-    let seen = host.network.seen.lock().unwrap().clone();
-    let n = seen.len();
-    assert_eq!(
-        seen[n - 2].authorization,
-        basic("dcr-client-1", "issued-secret-1")
-    );
-    assert_eq!(seen[n - 1].usage, EndpointUse::Registration);
-    assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-2");
-    // The margin is capped (default 1 hour, host-configurable).
-    renewal_due(&host, 96_000, 4_000);
-    host.store.expire();
-    host.network.reply(200, token("capped"));
-    assert!(oauth.credential(unbound()).await.unwrap().is_some());
-    renewed(&host).await;
-    assert_eq!(host.network.registrations().len(), 2);
-    let wider = host.owner(
-        OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
-            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
-            .dynamic_registration(policy())
-            .client_secret_storage(host.secrets.clone())
-            .registration_renewal_margin(Duration::from_secs(5_000)),
-    );
-    host.store.expire();
-    host.network.reply(200, token("wider"));
-    assert!(wider.credential(unbound()).await.unwrap().is_some());
-    renewed(&host).await;
+    host.network.reply(200, token("prepared"));
+    ready(changed.prepare(unbound(), budget()).await.unwrap());
     assert_eq!(host.network.registrations().len(), 3);
-}
-
-#[tokio::test]
-pub(super) async fn marker_blocks_only_registration() {
-    let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    cc_ready(&host, &oauth, unbound()).await;
-    let tokens = host.network.tokens().len();
-    expire_registration(&host);
-    host.store.edit_registration(|r| {
-        r.marker = Some(registration::FailedMarker {
-            request_digest: policy().request_digest(),
-            failed_at: now(),
-            attempts: 3,
-            next_attempt_at: now() + 600,
-            generation: "g".into(),
-        });
-    });
-    let credential = oauth.credential(unbound()).await.unwrap().unwrap();
-    assert_eq!(credential.token, "cc");
-    assert_eq!(host.network.tokens().len(), tokens);
+    // Only an explicit force replaces it, once, deleting the old secret, even
+    // while a cached token is usable.
+    let force = || PrepareOptions::new().force_registration();
+    ready(
+        changed
+            .prepare_with(unbound(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    let registrations = host.network.registrations();
+    assert_eq!(registrations.len(), 4);
+    assert_eq!(sent(&registrations[3])["software_id"], "example-adapter");
+    assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
+    assert_eq!(*host.secrets.deleted.lock().unwrap(), [old, new, after]);
+    // A failed forced replacement returns its error, keeps the current record
+    // and counts toward the backoff, which a host `prepare` still bypasses.
     host.store.expire();
-    assert_eq!(
-        code(oauth.credential(unbound()).await),
-        AuthErrorCode::CredentialUnavailable
-    );
-    assert_eq!(host.network.registrations().len(), 1);
-    // PKCE recovery stays interaction_required.
-    let host = dcr_host();
-    let oauth = dcr_pkce(&host);
-    login(oauth.prepare(unbound(), budget()).await.unwrap());
-    host.store.edit_registration(|r| {
-        r.registration = None;
-        r.marker = Some(registration::FailedMarker {
-            request_digest: policy().request_digest(),
-            failed_at: now(),
-            attempts: 1,
-            next_attempt_at: now() + 600,
-            generation: "g".into(),
-        });
-    });
-    assert_eq!(
-        code(oauth.credential(unbound()).await),
-        AuthErrorCode::InteractionRequired
-    );
-}
-
-#[tokio::test]
-pub(super) async fn stale_callback_does_not_delete_new_registration() {
-    for reissued in [true, false] {
-        let host = dcr_host();
-        let oauth = dcr_pkce(&host);
-        let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
-        let created = host.store.registration().unwrap().generation;
+    let tokens = host.network.tokens().len();
+    for (attempts, wait) in [(1, 60), (2, 120)] {
+        host.network.register_reply(503, json!({}), None);
         assert_eq!(
-            host.store.pending()[0].registration_generation.as_deref(),
-            Some(created.as_str())
+            code(changed.prepare_with(unbound(), force(), budget()).await),
+            AuthErrorCode::ProviderFailed
         );
-        if reissued {
-            // Another process force-registered and got the same client_id back.
-            host.store.edit_registration(|r| {
-                r.registration.as_mut().unwrap().generation = "newer".into();
-            });
-        }
-        host.network.reply(401, invalid_client());
+        assert_eq!(host.network.registrations().len(), 4 + attempts as usize);
+        let backoff = host.store.backoff().unwrap();
         assert_eq!(
-            code(
-                oauth
-                    .complete(unbound(), callback(&pending), budget())
-                    .await
-            ),
-            AuthErrorCode::InteractionRequired
+            (backoff.attempts, backoff.code.as_str()),
+            (attempts, "provider_failed")
         );
-        let current = host.store.registration();
-        if reissued {
-            assert_eq!(current.unwrap().generation, "newer");
-        } else {
-            assert!(current.is_none());
-        }
+        assert!((wait - 1..=wait).contains(&backoff_wait(&host)));
+        assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
     }
+    assert_eq!(host.network.tokens().len(), tokens);
+    // The next operation still uses the kept record, and its token success
+    // resets the count.
+    host.network.reply(200, token("kept"));
+    assert!(changed.credential(unbound()).await.unwrap().is_some());
+    assert_eq!(host.network.registrations().len(), 6);
+    assert_eq!(
+        host.network.tokens().last().unwrap().authorization,
+        basic("dcr-client-4", "issued-secret-4")
+    );
+    assert!(host.store.backoff().is_none());
 }
 
 #[tokio::test]
@@ -1297,21 +1542,50 @@ pub(super) async fn registration_transient_failure_backs_off() {
         (0, AuthErrorCode::ProviderFailed),
         (401, AuthErrorCode::CredentialUnavailable),
         (403, AuthErrorCode::CredentialUnavailable),
+        (400, AuthErrorCode::InvalidConfiguration),
     ] {
         let host = dcr_host();
         let (a, b) = (dcr_cc(&host), dcr_cc(&host));
         host.network.register_reply(status, json!({}), None);
         assert_eq!(code(a.challenge(unbound(), unauthorized()).await), expected);
+        assert!((59..=60).contains(&backoff_wait(&host)), "{status}");
+        // Meanwhile every path and process returns the last failure's code, with
+        // no registration request.
         for result in [
             a.credential(unbound()).await.map(|_| ()),
             b.credential(unbound()).await.map(|_| ()),
             b.challenge(unbound(), unauthorized()).await,
         ] {
-            assert_eq!(code(result), AuthErrorCode::CredentialUnavailable);
+            assert_eq!(code(result), expected, "{status}");
         }
         assert_eq!(host.network.registrations().len(), 1, "{status}");
-        assert_eq!(host.store.marker().unwrap().attempts, 1);
+        assert_eq!(host.store.backoff().unwrap().attempts, 1);
+        // After it passes, the next failure doubles it.
+        elapse_backoff(&host);
+        host.network.register_reply(status, json!({}), None);
+        assert_eq!(code(b.credential(unbound()).await), expected);
+        assert!((119..=120).contains(&backoff_wait(&host)), "{status}");
+        // An unattended host recovers automatically once the backoff passes.
+        elapse_backoff(&host);
+        host.network.reply(200, token("repaired"));
+        assert_eq!(
+            a.credential(unbound()).await.unwrap().unwrap().token,
+            "repaired"
+        );
+        assert!(host.store.backoff().is_none());
+        assert_eq!(host.network.registrations().len(), 3);
     }
+    // A host `prepare` bypasses the backoff.
+    let host = dcr_host();
+    let oauth = dcr_cc(&host);
+    host.network.register_reply(503, json!({}), None);
+    assert_eq!(
+        code(oauth.challenge(unbound(), unauthorized()).await),
+        AuthErrorCode::ProviderFailed
+    );
+    cc_ready(&host, &oauth, unbound()).await;
+    assert_eq!(host.network.registrations().len(), 2);
+    assert!(host.store.backoff().is_none());
 }
 
 #[tokio::test]
@@ -1342,100 +1616,15 @@ pub(super) async fn registration_retry_after_honoured() {
             code(oauth.challenge(unbound(), unauthorized()).await),
             AuthErrorCode::ProviderFailed
         );
-        let marker = host.store.marker().unwrap();
-        assert_eq!(
-            marker.next_attempt_at - marker.failed_at,
-            wait,
-            "{retry_after}"
+        let waited = backoff_wait(&host);
+        assert!(
+            (wait - 1..=wait).contains(&waited),
+            "{retry_after}: {waited}"
         );
     }
 }
 
-#[tokio::test]
-pub(super) async fn marker_update_atomic_across_processes() {
-    let host = dcr_host();
-    host.policy.shared_lock.store(true, Ordering::SeqCst);
-    host.network.registration_delay.store(50, Ordering::SeqCst);
-    let (a, b) = (dcr_cc(&host), dcr_cc(&host));
-    for attempt in 1..=2 {
-        host.network.register_reply(503, json!({}), None);
-        let (x, y) = tokio::join!(
-            a.challenge(unbound(), unauthorized()),
-            b.challenge(unbound(), unauthorized())
-        );
-        let mut codes = [code(x), code(y)];
-        codes.sort_by_key(|c| c.as_str());
-        assert_eq!(
-            codes,
-            [
-                AuthErrorCode::CredentialUnavailable,
-                AuthErrorCode::ProviderFailed
-            ]
-        );
-        assert_eq!(host.network.registrations().len(), attempt);
-        assert_eq!(host.store.marker().unwrap().attempts, attempt as u32);
-        elapse_marker(&host);
-    }
-}
-
-#[tokio::test]
-pub(super) async fn proactive_reregistration_once_across_processes() {
-    let host = dcr_host();
-    host.policy.shared_lock.store(true, Ordering::SeqCst);
-    let (a, b) = (dcr_cc(&host), dcr_cc(&host));
-    cc_ready(&host, &a, backend("backend")).await;
-    cc_ready(&host, &b, backend("backend2")).await;
-    renewal_due(&host, 950, 50);
-    host.store.expire();
-    host.network.registration_delay.store(50, Ordering::SeqCst);
-    host.network.reply(200, token("a"));
-    host.network.reply(200, token("b"));
-    let (x, y) = tokio::join!(
-        a.credential(backend("backend")),
-        b.credential(backend("backend2"))
-    );
-    assert!(x.unwrap().is_some() && y.unwrap().is_some());
-    renewed(&host).await;
-    assert_eq!(host.network.registrations().len(), 2);
-    assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-2");
-}
-
-#[tokio::test]
-pub(super) async fn proactive_renewal_failure_keeps_current_registration() {
-    let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    cc_ready(&host, &oauth, unbound()).await;
-    renewal_due(&host, 950, 50);
-    let generation = host.store.registration().unwrap().generation;
-    host.store.expire();
-    host.network.register_reply(503, json!({}), None);
-    host.network.reply(200, token("kept"));
-    assert_eq!(
-        oauth.credential(unbound()).await.unwrap().unwrap().token,
-        "kept"
-    );
-    renewed(&host).await;
-    assert_eq!(host.network.registrations().len(), 2);
-    let current = host.store.registration().unwrap();
-    assert_eq!(current.generation, generation);
-    assert_eq!(current.client_id, "dcr-client-1");
-    assert_eq!(host.store.marker().unwrap().attempts, 1);
-    // During the backoff the next acquisition still uses the current client.
-    host.store.expire();
-    host.network.reply(200, token("still"));
-    assert_eq!(
-        oauth.credential(unbound()).await.unwrap().unwrap().token,
-        "still"
-    );
-    renewed(&host).await;
-    assert_eq!(host.network.registrations().len(), 2);
-    assert_eq!(
-        host.network.tokens().last().unwrap().authorization,
-        basic("dcr-client-1", "issued-secret-1")
-    );
-}
-
-// ---- Coordinator review: detached commit, eligibility, prepare, reuse ----
+// ---- Detached commit, eligibility and shared backoff ----
 
 #[tokio::test]
 async fn registration_commits_after_write_even_if_caller_dropped() {
@@ -1504,158 +1693,28 @@ async fn recorded_dcr_selection_rechecks_eligibility_at_registration() {
     assert_eq!(host.network.registrations().len(), 1);
 }
 
+// Concurrent processes sharing the store: one registers and fails, the other
+// waits on the registration-key lock, then sees the shared backoff.
 #[tokio::test]
-async fn prepare_clears_failed_marker_with_usable_registration() {
+async fn backoff_shared_across_concurrent_processes() {
     let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    cc_ready(&host, &oauth, unbound()).await;
-    renewal_due(&host, 950, 50);
-    host.store.expire();
-    host.network.register_reply(503, json!({}), None);
-    host.network.reply(200, token("kept"));
-    oauth.credential(unbound()).await.unwrap();
-    renewed(&host).await;
-    assert!(host.store.marker().is_some());
-    // The cached token is served, and the marker is still cleared.
-    assert_eq!(
-        ready(oauth.prepare(unbound(), budget()).await.unwrap()).token,
-        "kept"
-    );
-    assert!(host.store.marker().is_none());
-    assert_eq!(host.network.registrations().len(), 2);
-}
-
-#[tokio::test]
-async fn forced_reregistration_never_reuses_older_generation_login() {
-    let host = dcr_host();
-    for _ in 0..2 {
-        host.network
-            .register_reply(201, json!({"client_id": "same"}), None);
+    host.policy.shared_lock.store(true, Ordering::SeqCst);
+    host.network.registration_delay.store(50, Ordering::SeqCst);
+    let (a, b) = (dcr_cc(&host), dcr_cc(&host));
+    for attempt in 1..=2 {
+        host.network.register_reply(503, json!({}), None);
+        let (x, y) = tokio::join!(
+            a.challenge(unbound(), unauthorized()),
+            b.challenge(unbound(), unauthorized())
+        );
+        assert_eq!(
+            [code(x), code(y)],
+            [AuthErrorCode::ProviderFailed, AuthErrorCode::ProviderFailed]
+        );
+        assert_eq!(host.network.registrations().len(), attempt);
+        assert_eq!(host.store.backoff().unwrap().attempts, attempt as u32);
+        elapse_backoff(&host);
     }
-    let oauth = dcr_pkce(&host);
-    let first = login(oauth.prepare(unbound(), budget()).await.unwrap());
-    let old = host.store.registration().unwrap().generation;
-    let second = login(
-        oauth
-            .prepare_with(
-                unbound(),
-                PrepareOptions::new().force_registration(),
-                budget(),
-            )
-            .await
-            .unwrap(),
-    );
-    let new = host.store.registration().unwrap().generation;
-    assert_ne!(old, new);
-    assert_eq!(client_id(&second), "same");
-    assert_ne!(first.id, second.id);
-    let pending = host.store.pending();
-    assert_eq!(pending.len(), 1);
-    assert_eq!(
-        pending[0].registration_generation.as_deref(),
-        Some(new.as_str())
-    );
-}
-
-#[tokio::test]
-async fn forced_reregistration_clears_binding_scoped_old_grant() {
-    let host = dcr_host();
-    let oauth = dcr_pkce(&host);
-    host.seed(&oauth, unbound()).await;
-    let pending = login(
-        oauth
-            .prepare_with(
-                unbound(),
-                PrepareOptions::new().force_registration(),
-                budget(),
-            )
-            .await
-            .unwrap(),
-    );
-    assert_eq!(client_id(&pending), "dcr-client-2");
-    let records = host.store.records.lock().unwrap();
-    let (_, old) = records
-        .iter()
-        .find(|(k, _)| k.contains("dcr-client-1"))
-        .unwrap();
-    assert!(old.token.is_none() && old.pending.is_none());
-}
-
-// A shared grant partition is never cleared, so only the registration
-// generation guard stops a login started under the old client being reused.
-#[tokio::test]
-async fn shared_partition_stale_login_not_reused() {
-    let host = dcr_host();
-    for _ in 0..2 {
-        host.network
-            .register_reply(201, json!({"client_id": "same"}), None);
-    }
-    let oauth = host.owner(
-        OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
-            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
-            .redirect_uri(REDIRECT)
-            .grant_partition("shared")
-            .dynamic_registration(RegistrationPolicy::new(
-                "https://issuer.example",
-                "Example Adapter",
-            )),
-    );
-    let first = login(oauth.prepare(unbound(), budget()).await.unwrap());
-    let second = login(
-        oauth
-            .prepare_with(
-                unbound(),
-                PrepareOptions::new().force_registration(),
-                budget(),
-            )
-            .await
-            .unwrap(),
-    );
-    assert_ne!(first.id, second.id, "stale-generation login reused");
-}
-
-// The failed marker is shared per registration key: a prepare for a binding
-// that has not resolved yet still clears it.
-#[tokio::test]
-async fn prepare_for_new_binding_clears_marker() {
-    let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    cc_ready(&host, &oauth, backend("backend")).await;
-    renewal_due(&host, 950, 50);
-    host.store.expire();
-    host.network.register_reply(503, json!({}), None);
-    host.network.reply(200, token("kept"));
-    oauth.credential(backend("backend")).await.unwrap();
-    renewed(&host).await;
-    assert!(host.store.marker().is_some());
-    host.network.reply(200, token("other"));
-    ready(oauth.prepare(backend("backend2"), budget()).await.unwrap());
-    assert!(
-        host.store.marker().is_none(),
-        "prepare left the failed marker"
-    );
-}
-
-// The token is committed before proactive renewal: a renewal slower than the
-// caller's deadline neither fails the operation nor is cut short by it.
-#[tokio::test]
-async fn slow_proactive_renewal_does_not_fail_operation() {
-    let host = dcr_host();
-    let oauth = dcr_cc(&host);
-    cc_ready(&host, &oauth, backend("backend")).await;
-    renewal_due(&host, 950, 50);
-    host.store.expire();
-    host.network.registration_delay.store(800, Ordering::SeqCst);
-    host.network.reply(200, token("kept"));
-    let ctx = AuthContext {
-        deadline: std::time::Instant::now() + Duration::from_millis(300),
-        ..backend("backend")
-    };
-    let credential = oauth.credential(ctx).await.unwrap().unwrap();
-    assert_eq!(credential.token, "kept");
-    renewed(&host).await;
-    assert_eq!(host.network.registrations().len(), 2);
-    assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-2");
 }
 
 // Retry-After as an HTTP-date sets the wait, capped at the maximum backoff; a
@@ -1672,8 +1731,7 @@ async fn retry_after_http_date() {
         let _ = oauth
             .challenge(unbound(), challenge(401, "Bearer", None))
             .await;
-        let m = host.store.marker().unwrap();
-        m.next_attempt_at - m.failed_at
+        backoff_wait(&host)
     }
     let at = |offset: i64| {
         let now = std::time::SystemTime::now();
@@ -1685,9 +1743,9 @@ async fn retry_after_http_date() {
         httpdate::fmt_http_date(when)
     };
     let near = wait(&at(300)).await;
-    assert!((299..=300).contains(&near), "{near}");
-    assert_eq!(wait("Wed, 21 Oct 2099 07:28:00 GMT").await, 3600);
-    assert_eq!(wait(&at(-300)).await, 60);
-    assert_eq!(wait("120").await, 120);
-    assert_eq!(wait("not a date").await, 60);
+    assert!((298..=300).contains(&near), "{near}");
+    assert!((3599..=3600).contains(&wait("Wed, 21 Oct 2099 07:28:00 GMT").await));
+    assert!((59..=60).contains(&wait(&at(-300)).await));
+    assert!((119..=120).contains(&wait("120").await));
+    assert!((59..=60).contains(&wait("not a date").await));
 }

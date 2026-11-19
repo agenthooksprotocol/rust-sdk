@@ -192,7 +192,7 @@ pub(super) async fn unreplayed_challenge_prepares_next_attempt() {
     assert_eq!(seen.len(), 1);
     assert!(!seen[0].0.contains("authorization:"));
     assert!(!host.network.metadata_requests().is_empty());
-    assert!(host.store.pending().is_empty());
+    assert!(host.pending().is_empty());
     let (result, seen) = tokio::join!(
         backend.call(observe(), Duration::from_secs(3)),
         serve(&listener, vec![(202, "")])
@@ -509,10 +509,7 @@ pub(super) async fn configuration_401_diagnostic_carries_auth_code() {
             "authError":"interaction_required","recovery":"login"})
         ]
     );
-    assert!(
-        host.store.pending().is_empty(),
-        "discovery never creates a login"
-    );
+    assert!(host.pending().is_empty(), "discovery never creates a login");
     assert!(!hooks.subscribes(crate::generated::EventType::ToolBefore));
     // Cancellation emits no diagnostic and propagates.
     let host = Host::new();
