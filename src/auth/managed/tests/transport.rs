@@ -156,13 +156,18 @@ pub(super) async fn challenged_replay_once() {
     .unwrap();
     host.network
         .reply(200, json!({"access_token":"third","token_type":"Bearer"}));
+    host.network
+        .reply(200, json!({"access_token":"fourth","token_type":"Bearer"}));
     let (result, seen) = tokio::join!(
         backend.call(intercept(), Duration::from_secs(3)),
         serve(&listener, vec![(401, ""), (401, ""), (401, "")])
     );
     assert!(result.is_err());
-    assert_eq!(seen.len(), 2);
-    assert_eq!(host.network.tokens().len(), 3, "one recovery per operation");
+    assert_eq!(seen.len(), 2, "one replay per operation");
+    assert!(seen[1].0.contains("authorization: bearer third\r\n"));
+    // The token rejected on the replay is retired, never sent again.
+    assert_eq!(host.network.tokens().len(), 4);
+    assert_eq!(host.store.token().access_token, "fourth");
 }
 
 #[tokio::test]
