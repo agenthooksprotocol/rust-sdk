@@ -50,8 +50,10 @@ fn invalid() -> HookError {
     HookError::authentication(AuthErrorCode::InvalidConfiguration)
 }
 
-/// Step 1. S ⊄ C, a present preset `scopes` ≠ S, or an invalid scope token in
-/// S, C, H, E or the preset fail `invalid_configuration`, with no scopes.
+/// Step 1. S ⊄ C or an invalid scope token in S, C, H, E or the preset fail
+/// `invalid_configuration`, with no scopes. A present preset `scopes` ≠ the
+/// target's S is refused when host policy selects S, still before any
+/// authorization-server request (`ManagedOAuth::select`).
 pub(super) fn configuration(
     config: &OAuthClientConfig,
     preset: Option<&[String]>,
@@ -68,7 +70,6 @@ pub(super) fn configuration(
         .iter()
         .all(|set| set.iter().all(|scope| valid_scope(scope)))
         || !subset(&config.requested_scopes, &config.allowed_scopes)
-        || preset.is_some_and(|preset| union(preset, &[]) != union(&config.requested_scopes, &[]))
     {
         return Err(invalid());
     }
@@ -130,13 +131,15 @@ pub(super) fn operation(
     Ok(operation)
 }
 
-/// Steps 5 to 9 against the stored grant's token. `sent` is the generation
-/// whose token the rejected request carried; `can_refresh` whether this
-/// client can refresh. Pure: no I/O.
+/// Steps 5 to 9 against the stored grant's token. `requested` is S for this
+/// target (the policy's selection, else the configured requested scopes);
+/// `sent` is the generation whose token the rejected request carried;
+/// `can_refresh` whether this client can refresh. Pure: no I/O.
 pub(super) fn grant(
     config: &OAuthClientConfig,
     operation: &Operation,
     mode: Mode,
+    requested: &[String],
     token: Option<&SavedToken>,
     sent: Option<&str>,
     can_refresh: bool,
@@ -184,7 +187,7 @@ pub(super) fn grant(
     }
     let previous = token.map_or(&[][..], |token| &token.scopes);
     let requested = |hint: &[String]| {
-        let wanted = [&config.requested_scopes[..], required, hint].concat();
+        let wanted = [requested, required, hint].concat();
         union(previous, &within(ceiling, &wanted))
     };
     match (config.flow, mode) {

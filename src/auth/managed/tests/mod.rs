@@ -202,7 +202,7 @@ impl CredentialGuard for Guard {
     }
 }
 
-/// Selects `read` (configurable) plus requirements. Asserts it is never called under a store guard.
+/// Selects `read` (configurable) as the target's requested scopes. Asserts it is never called under a store guard.
 struct Policy {
     held: Arc<AtomicUsize>,
     deny: AtomicBool,
@@ -214,8 +214,6 @@ struct Policy {
     /// A host refusal returned by `select` / `approve_endpoints`.
     refuse: Mutex<Option<HookError>>,
     refuse_endpoints: Mutex<Option<HookError>>,
-    /// Select without the operation's required scopes.
-    omit_required: AtomicBool,
 }
 impl Policy {
     fn off_lock(&self) {
@@ -234,7 +232,6 @@ impl Policy {
             shared_lock: AtomicBool::new(false),
             refuse: Mutex::new(None),
             refuse_endpoints: Mutex::new(None),
-            omit_required: AtomicBool::new(false),
         })
     }
 }
@@ -266,14 +263,11 @@ impl OAuthPolicy for Policy {
             Some(only) => only,
             None => resource.authorization_servers[0].clone(),
         };
-        let required = if self.omit_required.load(Ordering::SeqCst) {
-            &[]
-        } else {
-            required
-        };
+        // S for the target; the operation's required set is requested anyway.
+        let _ = required;
         Ok(TrustDecision::new(
             issuer,
-            union(&self.select.lock().unwrap(), required),
+            self.select.lock().unwrap().clone(),
         ))
     }
 }
@@ -934,6 +928,7 @@ async fn canonical_token_vectors() {
                         &oauth.config,
                         &operation,
                         Mode::Deliver,
+                        &oauth.config.requested_scopes,
                         record.token.as_ref(),
                         None,
                         false

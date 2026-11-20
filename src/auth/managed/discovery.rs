@@ -268,7 +268,7 @@ fn default_auth_methods() -> Vec<String> {
     vec!["client_secret_basic".to_owned()]
 }
 
-/// Returns trusted metadata and its retrieval provenance.
+/// Returns trusted metadata, its retrieval provenance and the target's S.
 pub(super) async fn discover(
     owner: &ManagedOAuth,
     target: &AuthTarget,
@@ -277,7 +277,7 @@ pub(super) async fn discover(
     cached_issuer: Option<&str>,
     required: &[String],
     budget: OperationBudget,
-) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>), HookError> {
+) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>, Vec<String>), HookError> {
     let resource_url = https(target.destination().as_str(), false)?;
     let (metadata, hint) = match target.binding() {
         AuthBinding::OAuth { resource, .. } => {
@@ -315,7 +315,8 @@ pub(super) async fn discover(
     for issuer in &metadata.authorization_servers {
         https(issuer, true)?;
     }
-    let issuer = owner.select(target, &metadata, required)?.issuer;
+    let decision = owner.select(target, &metadata, required)?;
+    let (issuer, scopes) = (decision.issuer, decision.scopes);
     // Validated metadata naming another issuer is a move, never a transient outage.
     let moved = cached_issuer.is_some_and(|cached| cached != issuer);
     let metadata = issuer_metadata(owner, target, metadata.resource, issuer, budget)
@@ -327,7 +328,7 @@ pub(super) async fn discover(
                 error
             }
         })?;
-    Ok((metadata, hint))
+    Ok((metadata, hint, scopes))
 }
 
 /// Fetch, validate and approve the authorization-server metadata of a trusted issuer.

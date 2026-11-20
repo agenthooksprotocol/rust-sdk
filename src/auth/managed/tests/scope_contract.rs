@@ -40,6 +40,8 @@ fn step_up(scope: &str) -> AuthChallenge {
 #[tokio::test]
 pub(super) async fn rule1_preset_scopes_are_requested_not_required() {
     let host = Host::new();
+    // No policy selection: S is the configured requested scopes.
+    host.policy.select.lock().unwrap().clear();
     let oauth = host.owner(
         OAuthClientConfig::new("account", "client", OAuthFlow::ClientCredentials)
             .scopes(
@@ -77,6 +79,7 @@ pub(super) async fn rule1_preset_scopes_are_requested_not_required() {
 
     // PKCE: consent requests the preset scopes; a grant lacking one completes.
     let host = Host::new();
+    host.policy.select.lock().unwrap().clear();
     let oauth = host.pkce(|c| c.scopes(scopes(&["files", "read"]), Vec::new()));
     let preset = with_preset(context(), &["files", "read"]);
     let pending = login(oauth.prepare(preset.clone(), budget()).await.unwrap());
@@ -525,8 +528,7 @@ pub(super) async fn rule11_host_policy_errors_carry_no_scopes() {
     assert_error(error, AuthErrorCode::AccessDenied, &[]);
     *host.policy.refuse_endpoints.lock().unwrap() = None;
     // A selection without a required scope is not a refusal: acquisitions
-    // request the requested scopes and R whatever the policy selects.
-    host.policy.omit_required.store(true, Ordering::SeqCst);
+    // request the selected scopes and R.
     let pending = login(
         oauth
             .prepare_with_required(context(), &write, budget())
@@ -538,7 +540,6 @@ pub(super) async fn rule11_host_policy_errors_carry_no_scopes() {
         "read write"
     );
     // A selection beyond the ceiling is a configuration error, without scopes.
-    host.policy.omit_required.store(false, Ordering::SeqCst);
     *host.policy.select.lock().unwrap() = scopes(&["read", "admin"]);
     for error in [
         oauth
@@ -866,4 +867,63 @@ async fn uncertain_claim_rereads_store_on_fresh_budget() {
     // The claim did not land before the deadline: the login is still pending.
     assert_eq!(error.login_ended(), Some(false));
     assert_eq!(host.pending().len(), 1);
+}
+
+/// S is the host policy's per-target selection when it makes one: it is what
+/// the authorization URL and the client-credentials request ask for (with R),
+/// must lie within the ceiling, and a present preset `scopes` must equal it.
+#[tokio::test]
+async fn policy_selected_scopes_are_requested() {
+    // PKCE: the policy selects `write` for this target; S = [write].
+    let host = Host::new();
+    *host.policy.select.lock().unwrap() = scopes(&["write"]);
+    let oauth = host.pkce(|c| c.required_scopes(scopes(&["read"])));
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    assert_eq!(
+        query(pending.authorization_url(), "scope").unwrap(),
+        "read write",
+        "S ∪ R, not the configured requested scopes alone"
+    );
+    // Client credentials: the policy's selection is the request.
+    let host = Host::new();
+    *host.policy.select.lock().unwrap() = scopes(&["write"]);
+    let oauth = cc_client(&host, &[]);
+    host.network.reply(
+        200,
+        json!({"access_token":"w","token_type":"Bearer","scope":"write"}),
+    );
+    oauth.credential(cc_context()).await.unwrap().unwrap();
+    assert_eq!(host.network.last_form()["scope"], "write");
+    // No selection: the configured requested scopes.
+    let host = Host::new();
+    host.policy.select.lock().unwrap().clear();
+    let oauth = cc_client(&host, &[]);
+    host.network
+        .reply(200, json!({"access_token":"r","token_type":"Bearer"}));
+    oauth.credential(cc_context()).await.unwrap().unwrap();
+    assert_eq!(host.network.last_form()["scope"], "read");
+    // A present preset `scopes` must equal the selection, before any request.
+    let host = Host::new();
+    *host.policy.select.lock().unwrap() = scopes(&["write"]);
+    let oauth = cc_client(&host, &[]);
+    for (preset, ok) in [(&["read"][..], false), (&["write"][..], true)] {
+        if ok {
+            host.network.reply(
+                200,
+                json!({"access_token":"w","token_type":"Bearer","scope":"write"}),
+            );
+        }
+        let result = oauth.credential(with_preset(cc_context(), preset)).await;
+        match ok {
+            true => assert!(result.is_ok()),
+            false => {
+                assert_error(
+                    result.err().unwrap(),
+                    AuthErrorCode::InvalidConfiguration,
+                    &[],
+                );
+                assert_eq!(requests(&host), 0);
+            }
+        }
+    }
 }

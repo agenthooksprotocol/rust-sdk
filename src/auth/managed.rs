@@ -139,6 +139,8 @@ pub struct TrustedMetadata {
     #[serde(default)]
     pub client_id_metadata_document_supported: bool,
 }
+/// A host policy selection: the trusted issuer and this target's requested
+/// scopes (empty: the configured requested scopes).
 #[non_exhaustive]
 pub struct TrustDecision {
     pub issuer: String,
@@ -197,12 +199,13 @@ pub trait OAuthPolicy: Send + Sync {
     /// Mandatory issuer/client-bound approval of every advertised endpoint.
     /// SSRF checks alone do not authorize disclosing a client secret to a public URL.
     fn approve_endpoints(&self, context: EndpointTrust<'_>) -> Result<(), HookError>;
-    /// Select a trusted issuer for the resource. `required` is the operation's
-    /// required set (host-required, explicit and 403 challenge scopes), for
-    /// information. The decision's scopes must lie within the client's
-    /// ceiling, else the operation fails `invalid_configuration`; acquisitions
-    /// request the client's requested scopes and the required set. An error
-    /// keeps its code and never carries scopes.
+    /// Select a trusted issuer for the resource and, optionally, this target's
+    /// requested scopes (S); empty scopes mean the configured requested scopes.
+    /// `required` is the operation's required set (host-required, explicit and
+    /// 403 challenge scopes), for information: acquisitions request S and the
+    /// required set, within the ceiling. S beyond the ceiling, or a preset's
+    /// `scopes` other than S, fails `invalid_configuration`. An error keeps
+    /// its code and never carries scopes.
     fn select(
         &self,
         target: &AuthTarget,
@@ -1031,19 +1034,26 @@ impl ManagedOAuth {
             })
             .map_err(decide::classify)
     }
-    /// Apply host issuer policy. Its errors keep their code and carry no
-    /// scopes; an untrusted issuer is `access_denied`, and selected scopes
-    /// beyond the ceiling are `invalid_configuration`.
+    /// Apply host issuer policy; returns the decision with S, this target's
+    /// requested scopes: the policy's selection, else the configured requested
+    /// scopes. Its errors keep their code and carry no scopes; an untrusted
+    /// issuer is `access_denied`; S beyond the ceiling, or a present preset
+    /// `scopes` other than S, is `invalid_configuration`.
     pub(super) fn select(
         &self,
         target: &AuthTarget,
         resource: &ResourceMetadata,
         required: &[String],
     ) -> Result<TrustDecision, HookError> {
-        let decision = self
+        let mut decision = self
             .policy
             .select(target, resource, required)
             .map_err(decide::classify)?;
+        decision.scopes = if decision.scopes.is_empty() {
+            self.config.requested_scopes.clone()
+        } else {
+            union(&decision.scopes, &[])
+        };
         if !resource.authorization_servers.contains(&decision.issuer)
             || target
                 .issuer()
@@ -1051,7 +1061,11 @@ impl ManagedOAuth {
         {
             return Err(fail(AuthErrorCode::AccessDenied));
         }
-        if !subset(&decision.scopes, &self.ceiling()) {
+        if !subset(&decision.scopes, &self.ceiling())
+            || target
+                .preset_scopes()
+                .is_some_and(|preset| union(preset, &[]) != decision.scopes)
+        {
             return Err(fail(AuthErrorCode::InvalidConfiguration));
         }
         Ok(decision)
@@ -1062,7 +1076,7 @@ impl ManagedOAuth {
         target: &AuthTarget,
         record: &SessionRecord,
         required: &[String],
-    ) -> Result<(), HookError> {
+    ) -> Result<Vec<String>, HookError> {
         if matches!(target.binding(), AuthBinding::Unbound) && !record.configured_binding {
             discovery::validate_saved_source(
                 target.destination(),
@@ -1080,8 +1094,7 @@ impl ManagedOAuth {
             record.metadata.resource.clone(),
             vec![record.metadata.issuer.clone()],
         );
-        self.select(target, &resource, required)?;
-        Ok(())
+        Ok(self.select(target, &resource, required)?.scopes)
     }
     pub(super) async fn check_url(
         &self,
@@ -1324,8 +1337,8 @@ impl ManagedOAuth {
         required: &[String],
         binding_key: SessionKey,
         budget: OperationBudget,
-    ) -> Result<SessionRecord, HookError> {
-        let (metadata, hint) = discovery::discover(
+    ) -> Result<(SessionRecord, Vec<String>), HookError> {
+        let (metadata, hint, scopes) = discovery::discover(
             self,
             target,
             challenge,
@@ -1370,7 +1383,7 @@ impl ManagedOAuth {
                 self.persist(&mut *guard, &mut binding, budget).await?;
             }
         }
-        Ok(binding)
+        Ok((binding, scopes))
     }
     #[allow(clippy::too_many_arguments)]
     async fn acquire_inner(
@@ -1390,9 +1403,20 @@ impl ManagedOAuth {
         // Only a 401 retires the generation it rejected.
         let rejected = sent.filter(|_| operation.unauthorized);
         let cc = self.config.flow == OAuthFlow::ClientCredentials;
-        let decide = |token: Option<&SavedToken>, can_refresh: bool| {
-            decide::grant(&self.config, operation, mode, token, sent, can_refresh)
+        // Before a selection, S defaults to the configured requested scopes;
+        // only acquisitions and logins (after one) request it.
+        let decide = |requested: &[String], token: Option<&SavedToken>, can_refresh: bool| {
+            decide::grant(
+                &self.config,
+                operation,
+                mode,
+                requested,
+                token,
+                sent,
+                can_refresh,
+            )
         };
+        let configured = &self.config.requested_scopes;
         let binding_key = self.key(&target);
         let saved = self.load(&binding_key, budget).await?;
         // Local authorization of a saved binding needs no network; policy runs off-lock.
@@ -1408,7 +1432,7 @@ impl ManagedOAuth {
         let known = saved.as_ref().filter(|r| self.compatible(&target, r));
         if let Some(binding) = known {
             match self.validate_saved(&target, binding, &required) {
-                Ok(()) => {
+                Ok(scopes) => {
                     let mut binding = binding.clone();
                     // Absent persisted authorization-server metadata: fetch only the
                     // stored issuer's metadata, never protected-resource metadata.
@@ -1431,7 +1455,7 @@ impl ManagedOAuth {
                     if !binding.metadata.token_endpoint.is_empty()
                         && self.approve_metadata(&target, &binding.metadata).is_ok()
                     {
-                        usable = Some(binding);
+                        usable = Some((binding, scopes));
                     }
                 }
                 // A selection beyond the ceiling is a configuration error in every mode.
@@ -1451,7 +1475,11 @@ impl ManagedOAuth {
             let record = self
                 .load(&self.binding_grant_key(&target, binding), budget)
                 .await?;
-            match decide(record.as_ref().and_then(|r| r.token.as_ref()), !cc) {
+            match decide(
+                configured,
+                record.as_ref().and_then(|r| r.token.as_ref()),
+                !cc,
+            ) {
                 decide::Step::Use(credential) => return Ok(Some(Preparation::Ready(credential))),
                 decide::Step::Fail(error) => return Err(error.into()),
                 _ => {}
@@ -1461,28 +1489,31 @@ impl ManagedOAuth {
         // so stale persisted metadata always has a repair path.
         let mut discover_now = force || usable.is_none();
         if mode == Mode::Prepare
-            && let Some(binding) = &usable
+            && let Some((binding, _)) = &usable
         {
             let key = self.binding_grant_key(&target, binding);
             // Every host `prepare` deletes the grant key's expired pending logins.
             self.end_login(&key, None, budget).await?;
             let record = self.load(&key, budget).await?;
             if !login.forcing()
-                && let decide::Step::Use(credential) =
-                    decide(record.as_ref().and_then(|r| r.token.as_ref()), !cc)
+                && let decide::Step::Use(credential) = decide(
+                    configured,
+                    record.as_ref().and_then(|r| r.token.as_ref()),
+                    !cc,
+                )
             {
                 return Ok(Some(Preparation::Ready(credential)));
             }
             discover_now = true;
         }
-        let binding = match usable {
+        let (binding, selected) = match usable {
             Some(found) if !discover_now => found,
             None if mode == Mode::Lookup => return Ok(None),
             cached => {
                 let hint = saved
                     .as_ref()
                     .and_then(|r| r.resource_metadata_hint.as_ref());
-                let cached_issuer = cached.as_ref().map(|b| b.metadata.issuer.as_str());
+                let cached_issuer = cached.as_ref().map(|(b, _)| b.metadata.issuer.as_str());
                 match self
                     .rebind(
                         &target,
@@ -1519,7 +1550,7 @@ impl ManagedOAuth {
             .as_ref()
             .and_then(|r| r.token.as_ref())
             .filter(|token| rejected != Some(token.generation.as_str()));
-        match decide(token, !cc) {
+        match decide(&selected, token, !cc) {
             decide::Step::Fail(error) if operation.step_up => return Err(error.into()),
             decide::Step::Use(credential) if !login.forcing() => {
                 return Ok(Some(Preparation::Ready(credential)));
@@ -1566,7 +1597,11 @@ impl ManagedOAuth {
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let ceiling = self.ceiling();
-        let scopes = match decide(record.token.as_ref(), !cc && !choice.id.is_empty()) {
+        let scopes = match decide(
+            &selected,
+            record.token.as_ref(),
+            !cc && !choice.id.is_empty(),
+        ) {
             decide::Step::Use(credential) => return Ok(Some(Preparation::Ready(credential))),
             decide::Step::Fail(error) => return Err(error.into()),
             decide::Step::Refresh => {
