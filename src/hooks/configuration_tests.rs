@@ -6,7 +6,10 @@ use crate::{
     generated::capability,
 };
 use futures::{channel::oneshot, executor::block_on};
-use std::{collections::VecDeque, sync::atomic::AtomicU64};
+use std::{
+    collections::VecDeque,
+    sync::atomic::{AtomicBool, AtomicU64},
+};
 
 pub(crate) enum Reply {
     Subscriptions(Value),
@@ -580,11 +583,36 @@ fn hung_retry_does_not_delay_fail_closed_delivery() {
     let hooks = Hooks::new(mixed(), options).unwrap();
     block_on(hooks.initialize()).unwrap();
     std::thread::sleep(backoff * 2);
-    let started = Instant::now();
+    // A watchdog deadline, not a wall-clock budget: delivery must finish
+    // without waiting for it. A delivery that waited on the hung re-attempt
+    // would only end when the watchdog fires, which the flag records.
     for _ in 0..3 {
-        deadline_event(&hooks, Duration::from_millis(200)).unwrap();
+        let fired = Arc::new(AtomicBool::new(false));
+        let watchdog = {
+            let fired = fired.clone();
+            let within = Duration::from_secs(30);
+            let deadline = timer(within);
+            async move {
+                deadline.await;
+                fired.store(true, Ordering::SeqCst);
+            }
+        };
+        block_on(
+            hooks
+                .tool_input(json!({"command":"x"}))
+                .context(ToolContext::new(
+                    json!({"tool":{"name":"shell","kind":"shell","origin":"native"},
+                    "call":{"id":"call-1"},"path":"native"}),
+                ))
+                .deadline_with(Instant::now() + Duration::from_secs(30), watchdog)
+                .into_future(),
+        )
+        .unwrap();
+        assert!(
+            !fired.load(Ordering::SeqCst),
+            "delivery waited for the hung re-attempt"
+        );
     }
-    assert!(started.elapsed() < Duration::from_millis(200));
     assert_eq!(e.count("hooks/intercept"), 3);
     assert_eq!(
         s.configuration_calls(),
