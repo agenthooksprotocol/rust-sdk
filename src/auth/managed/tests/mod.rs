@@ -743,6 +743,9 @@ fn canonical_key_vectors() {
 async fn canonical_token_vectors() {
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     for vector in fixture["token_responses"].as_array().unwrap() {
+        if !scope_contract::applies(vector) {
+            continue;
+        }
         let id = &vector["id"];
         let host = Host::new();
         let mut oauth = host.pkce(|c| c);

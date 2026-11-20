@@ -665,16 +665,62 @@ fn authorization_server_requests(host: &Host) -> usize {
         .count()
 }
 
+/// Optional SDK features a vector may `require`, and which of them Rust has.
+const KNOWN_FEATURES: &[&str] = &["token_validation_callback", "complete_handle"];
+/// No host token-validation callback, and `complete()` takes no handle.
+const RUST_FEATURES: &[&str] = &[];
+/// Whether a vector applies to Rust; an unknown required feature fails.
+pub(super) fn applies(vector: &Value) -> bool {
+    let requires = vector["requires"].as_array().map_or(&[][..], |v| &v[..]);
+    requires.iter().all(|feature| {
+        let feature = feature.as_str().unwrap();
+        assert!(
+            KNOWN_FEATURES.contains(&feature),
+            "{}: unknown feature {feature}",
+            vector["id"]
+        );
+        RUST_FEATURES.contains(&feature)
+    })
+}
+fn auth_code(name: &str) -> AuthErrorCode {
+    [
+        AuthErrorCode::InvalidConfiguration,
+        AuthErrorCode::UnsupportedBinding,
+        AuthErrorCode::CredentialUnavailable,
+        AuthErrorCode::InteractionRequired,
+        AuthErrorCode::AccessDenied,
+        AuthErrorCode::RefreshRejected,
+        AuthErrorCode::DiscoveryFailed,
+        AuthErrorCode::UntrustedDestination,
+        AuthErrorCode::ProviderFailed,
+    ]
+    .into_iter()
+    .find(|code| code.as_str() == name)
+    .unwrap_or_else(|| panic!("unknown code {name}"))
+}
+
+#[test]
+fn vector_features_are_known() {
+    let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
+    for section in [
+        "scope_decisions",
+        "completions",
+        "token_responses",
+        "lifecycle",
+    ] {
+        for vector in fixture[section].as_array().unwrap() {
+            applies(vector);
+        }
+    }
+}
+
 #[tokio::test]
 async fn canonical_scope_decision_vectors() {
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
-    let mut not_applicable = Vec::new();
     for vector in fixture["scope_decisions"].as_array().unwrap() {
         let id = vector["id"].as_str().unwrap();
         let (input, expect) = (&vector["input"], &vector["expect"]);
-        // Rust has no host token-validation callback.
-        if input["host_error"]["callback"] == "token_validation" {
-            not_applicable.push(id);
+        if !applies(vector) {
             continue;
         }
         let destination = input["host_error"]["callback"] == "destination";
@@ -737,13 +783,7 @@ async fn canonical_scope_decision_vectors() {
             ctx.authentication = None;
         }
         if let Some(error) = input["host_error"].as_object().filter(|_| !destination) {
-            let code = [
-                AuthErrorCode::AccessDenied,
-                AuthErrorCode::InteractionRequired,
-            ]
-            .into_iter()
-            .find(|code| code.as_str() == error["code"])
-            .unwrap();
+            let code = auth_code(error["code"].as_str().unwrap());
             *host.policy.refuse.lock().unwrap() =
                 Some(fail(code).with_required_scopes(&list(&error["scopes"])));
         }
@@ -852,23 +892,16 @@ async fn canonical_scope_decision_vectors() {
             }
         }
     }
-    assert_eq!(
-        not_applicable,
-        ["host-policy-access-denied-scopes-stripped"]
-    );
 }
 
 #[tokio::test]
 async fn canonical_completion_vectors() {
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
-    let mut not_applicable = Vec::new();
     for vector in fixture["completions"].as_array().unwrap() {
         let id = vector["id"].as_str().unwrap();
         let (input, expect) = (&vector["input"], &vector["expect"]);
-        // Rust's complete() takes no pending-login handle, so a callback
-        // cannot mismatch one; this vector applies only to SDKs that do.
-        if input["callback"] == "state_mismatch" {
-            not_applicable.push(id);
+        // Without `complete_handle`, `handle: matching` means none is passed.
+        if !applies(vector) {
             continue;
         }
         let source = input["client_source"].as_str().unwrap_or("preregistered");
@@ -973,7 +1006,16 @@ async fn canonical_completion_vectors() {
                 .reply(200, json!({"access_token":"done","token_type":"mac"})),
         }
         let completer = host.owner(client(list(&input["ceiling"])));
-        let result = completer.complete(ctx, url, budget()).await;
+        // A host failure before the claim, from client selection.
+        let host_error = input["host_error"].as_object();
+        if let Some(error) = host_error {
+            assert_eq!(error["callback"], "client_selection", "{id}");
+            *host.policy.refuse.lock().unwrap() = Some(
+                fail(auth_code(error["code"].as_str().unwrap()))
+                    .with_required_scopes(&list(&error["scopes"])),
+            );
+        }
+        let result = completer.complete(ctx.clone(), url.clone(), budget()).await;
         let persisted = host.store.grant().and_then(|r| r.token).is_some();
         assert_eq!(persisted, expect["grant_persisted"] == true, "{id}: grant");
         match result {
@@ -994,8 +1036,15 @@ async fn canonical_completion_vectors() {
                     expect["login_ended"] == true,
                     "{id}: ended"
                 );
+                if host_error.is_some() {
+                    // Host failures carry no scopes, whatever the vector lists.
+                    assert!(error.required_scopes().is_empty(), "{id}: scopes");
+                    // The login stayed pending and still completes.
+                    *host.policy.refuse.lock().unwrap() = None;
+                    completer.complete(ctx, url, budget()).await.unwrap();
+                    assert!(host.store.grant().and_then(|r| r.token).is_some(), "{id}");
+                }
             }
         }
     }
-    assert_eq!(not_applicable, ["complete-invalid-callback-state-mismatch"]);
 }

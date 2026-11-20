@@ -1,5 +1,5 @@
 {
-  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's current requested set, always within allowed (requested scopes outside the ceiling are invalid_configuration); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. In scope_decisions, requested is the client's configured scopes; preset_scopes, present only for binding preset, must equal requested or the result is invalid_configuration; ceiling defaults to requested; binding is stored, preset or unbound; required is R = host_required \u222a explicit \u222a validated 403 insufficient_scope scopes; scopes is the error's byte-sorted scope set, present only for access_denied and interaction_required; authorization_server_requests counts metadata, registration, token and authorization requests and network_calls all network requests made after the decision inputs (after the challenged response on the challenge path); an unbound target's single network call is the protected-resource metadata fetch, succeeding at its first location, that host client selection needs; acquisition_scopes is the set the next acquisition or sign-in requests; a retired PKCE token is modelled without a refresh token; host_error is an error raised by the named host callback, with the code this contract defines for it (destination refusal of a registration_endpoint is untrusted_destination; a refused issuer-metadata fetch would be discovery_failed). In completions, pending is the state of the login named by the callback's state (unknown covers an absent state), handle is the pending-login handle the host passes (matching or none), client_source is preregistered, cimd or dcr, callback is valid, denied or the defect that makes it invalid, stored_required is the pending login's R, and login_ended is the flag carried by every complete() error. In token_responses, error_scopes is the scope set carried by access_denied.",
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's current requested set, always within allowed (requested scopes outside the ceiling are invalid_configuration); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. In scope_decisions, requested is the client's configured scopes; preset_scopes, present only for binding preset, must equal requested or the result is invalid_configuration; ceiling defaults to requested; binding is stored, preset or unbound; required is R = host_required \u222a explicit \u222a validated 403 insufficient_scope scopes; scopes is the error's byte-sorted scope set, present only for access_denied and interaction_required; authorization_server_requests counts metadata, registration, token and authorization requests and network_calls all network requests made after the decision inputs (after the challenged response on the challenge path); an unbound target's single network call is the protected-resource metadata fetch, succeeding at its first location, that host client selection needs; acquisition_scopes is the set the next acquisition or sign-in requests; a retired PKCE token is modelled without a refresh token; host_error is an error raised by the named host callback, with the code this contract defines for it (destination refusal of a registration_endpoint is untrusted_destination; a refused issuer-metadata fetch would be discovery_failed). In completions, pending is the state of the login named by the callback's state (unknown covers an absent state), handle is the pending-login handle the host passes (matching or none), client_source is preregistered, cimd or dcr, callback is valid, denied or the defect that makes it invalid, stored_required is the pending login's R, and login_ended is the flag carried by every complete() error. In token_responses, error_scopes is the scope set carried by access_denied. A vector with requires names the optional SDK features it depends on and applies only to SDKs with all of them; an SDK without one skips the vector and never remaps it onto another mechanism; every vector without requires applies to every SDK. Features: token_validation_callback (a host token-validation callback), complete_handle (complete() accepts a pending-login handle; handle matching otherwise means none is passed). In completions, host_error is a host callback or policy failure raised before the claim: it keeps its code, carries no scopes and leaves the login pending.",
   "recovery": [
     {
       "code": "invalid_configuration",
@@ -2118,6 +2118,9 @@
     },
     {
       "id": "host-policy-access-denied-scopes-stripped",
+      "requires": [
+        "token_validation_callback"
+      ],
       "input": {
         "flow": "authorization_code_pkce",
         "path": "credential",
@@ -2339,6 +2342,9 @@
     },
     {
       "id": "complete-invalid-callback-state-mismatch",
+      "requires": [
+        "complete_handle"
+      ],
       "input": {
         "pending": "pending",
         "handle": "matching",
@@ -2506,6 +2512,75 @@
       }
     },
     {
+      "id": "complete-host-client-selection-failure-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "callback": "valid",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ],
+        "host_error": {
+          "callback": "client_selection",
+          "code": "access_denied",
+          "scopes": [
+            "admin"
+          ]
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-host-client-unavailable-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "callback": "valid",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ],
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "credential_unavailable",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
       "id": "complete-consent-denied-login-ended",
       "input": {
         "pending": "pending",
@@ -2591,6 +2666,9 @@
     },
     {
       "id": "complete-unknown-state-with-handle",
+      "requires": [
+        "complete_handle"
+      ],
       "input": {
         "pending": "unknown",
         "handle": "matching",
@@ -3189,7 +3267,7 @@
     },
     {
       "id": "complete-error-login-ended",
-      "expect": "every complete() error carries a login-ended flag: invalid callback access_denied/false; consent denial access_denied/true; absent, unknown, expired or ended state interaction_required/true whatever handle the host passes; invalid_grant interaction_required/true; invalid_client credential_unavailable (pre-registered), invalid_configuration (CIMD) or interaction_required (DCR), each /true with no scopes; other token-endpoint failure or invalid token response provider_failed/true"
+      "expect": "every complete() error carries a login-ended flag: invalid callback access_denied/false; a host callback or policy failure before the claim keeps its code with no scopes/false; consent denial access_denied/true; absent, unknown, expired or ended state interaction_required/true whatever handle the host passes; invalid_grant interaction_required/true; invalid_client credential_unavailable (pre-registered), invalid_configuration (CIMD) or interaction_required (DCR), each /true with no scopes; other token-endpoint failure or invalid token response provider_failed/true"
     }
   ],
   "registration_keys": [
