@@ -399,12 +399,15 @@ mod provider_auth {
         assert_eq!(contexts[0].backend_id, "org.example.auth");
         assert_eq!(contexts[0].destination, endpoint);
         assert_eq!(contexts[0].purpose, AuthPurpose::Event);
-        // One challenge per operation: a replayed rejection fails without another.
+        // One replay per operation: a replayed rejection fails without
+        // another, but still reaches the provider so a 401 retires its token.
         let challenges = provider.challenges.lock().unwrap();
-        assert_eq!(challenges.len(), 1);
-        assert_eq!(challenges[0].attempt_id.as_deref(), Some("generation-7"));
-        assert_eq!(challenges[0].status, 401);
-        assert!(challenges[0].headers["www-authenticate"].contains("invalid_token"));
+        assert_eq!(challenges.len(), expected_calls);
+        for challenge in challenges.iter() {
+            assert_eq!(challenge.attempt_id.as_deref(), Some("generation-7"));
+            assert_eq!(challenge.status, 401);
+            assert!(challenge.headers["www-authenticate"].contains("invalid_token"));
+        }
     }
     #[tokio::test]
     async fn capabilities_retries_once_with_stable_body_and_full_oauth_binding() {
