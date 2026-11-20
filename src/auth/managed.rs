@@ -2190,20 +2190,18 @@ impl ManagedOAuth {
             return Err(denied());
         }
         let redirect = Url::parse(&saved.redirect_uri).map_err(|_| denied())?;
-        let fixed_query = |url: &Url| {
-            let mut pairs = url
-                .query_pairs()
-                .filter(|(key, _)| {
-                    !matches!(
-                        key.as_ref(),
-                        "state" | "code" | "error" | "iss" | "error_description" | "error_uri"
-                    )
-                })
-                .map(|(k, v)| (k.into_owned(), v.into_owned()))
-                .collect::<Vec<_>>();
-            pairs.sort();
-            pairs
-        };
+        // The redirect's own query parameters must be present exactly; ones the
+        // authorization server adds (such as `session_state`) are allowed, but
+        // no parameter may be duplicated.
+        let callback_pairs: Vec<(String, String)> = callback.query_pairs().into_owned().collect();
+        let duplicated_pair = callback_pairs
+            .iter()
+            .enumerate()
+            .any(|(i, (key, _))| callback_pairs[..i].iter().any(|(k, _)| k == key));
+        let own_query = redirect
+            .query_pairs()
+            .into_owned()
+            .all(|pair| callback_pairs.contains(&pair));
         // The login's exact redirect, including its loopback port.
         if callback.scheme() != redirect.scheme()
             || callback.host_str() != redirect.host_str()
@@ -2212,7 +2210,8 @@ impl ManagedOAuth {
             || callback.fragment().is_some()
             || !callback.username().is_empty()
             || callback.password().is_some()
-            || fixed_query(&callback) != fixed_query(&redirect)
+            || duplicated_pair
+            || !own_query
         {
             return Err(denied());
         }

@@ -2162,6 +2162,16 @@ async fn invalid_callback_does_not_consume() {
         .append_pair("tenant", "one");
     let mut duplicate = valid();
     duplicate.query_pairs_mut().append_pair("code", "again");
+    // The redirect's own query must be present; duplicating any parameter fails.
+    let mut missing_query = callback(&pending);
+    missing_query
+        .query_pairs_mut()
+        .append_pair("iss", "https://issuer.example");
+    let mut duplicate_extra = valid();
+    duplicate_extra
+        .query_pairs_mut()
+        .append_pair("session_state", "a")
+        .append_pair("session_state", "b");
     // No state matches no pending login, like an unknown state.
     let mut stateless = valid();
     stateless.set_query(Some("tenant=one&code=x&iss=https%3A%2F%2Fissuer.example"));
@@ -2176,15 +2186,22 @@ async fn invalid_callback_does_not_consume() {
         wrong_issuer,
         missing_issuer,
         duplicate,
+        missing_query,
+        duplicate_extra,
     ] {
         assert!(oauth.complete(context(), bad, budget()).await.is_err());
     }
     assert!(host.network.tokens().is_empty());
     host.network
         .reply(200, json!({"access_token":"once","token_type":"Bearer"}));
+    // Parameters the authorization server adds (Keycloak, Entra) are allowed.
+    let mut with_session = valid();
+    with_session
+        .query_pairs_mut()
+        .append_pair("session_state", "opaque");
     assert_eq!(
         oauth
-            .complete(context(), valid(), budget())
+            .complete(context(), with_session, budget())
             .await
             .unwrap()
             .token,
