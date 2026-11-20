@@ -1,5 +1,5 @@
 {
-  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's current requested set, always within allowed (requested scopes outside the ceiling are invalid_configuration); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. scope_decisions and completions fields, and the optional requires features (token_validation_callback, complete_handle), are defined in spec/draft/sdk-auth-lifecycle.md (Executable coverage); every defined field must be asserted and an unknown field fails the run. In token_responses, error_scopes is the scope set carried by access_denied.",
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's current requested set, always within allowed (requested scopes outside the ceiling are invalid_configuration); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. scope_decisions and completions fields, and the optional requires features (token_validation_callback, complete_handle, legacy_prepare_time_host_required), are defined in spec/draft/sdk-auth-lifecycle.md (Executable coverage); every defined field must be asserted and an unknown field fails the run. In token_responses, error_scopes is the scope set carried by access_denied.",
   "recovery": [
     {
       "code": "invalid_configuration",
@@ -3011,6 +3011,9 @@
     },
     {
       "id": "complete-legacy-record-prepare-time-host-required",
+      "requires": [
+        "legacy_prepare_time_host_required"
+      ],
       "input": {
         "pending": "pending",
         "handle": "matching",
@@ -3076,6 +3079,9 @@
     },
     {
       "id": "complete-legacy-record-empty-prepare-time-host-required",
+      "requires": [
+        "legacy_prepare_time_host_required"
+      ],
       "input": {
         "pending": "pending",
         "handle": "matching",
