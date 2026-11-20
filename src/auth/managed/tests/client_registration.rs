@@ -1635,13 +1635,30 @@ async fn registration_commits_after_write_even_if_caller_dropped() {
             .registration_written_late
             .store(late, Ordering::SeqCst);
         let oauth = dcr_cc(&host);
-        let dropped = tokio::time::timeout(
-            Duration::from_millis(30),
-            oauth.challenge(unbound(), unauthorized()),
-        )
-        .await;
-        assert!(dropped.is_err());
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Handshake: drop the caller once the registration request is in flight.
+        {
+            let challenge = oauth.challenge(unbound(), unauthorized());
+            tokio::pin!(challenge);
+            while host.network.registrations().is_empty() {
+                tokio::select! {
+                    _ = &mut challenge => panic!("completed before the registration request"),
+                    _ = tokio::time::sleep(Duration::from_millis(1)) => {}
+                }
+            }
+        }
+        if late {
+            // Well past the registration delay: an aborted exchange never commits.
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        } else {
+            let committed = async {
+                while host.store.registration().is_none() {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            };
+            tokio::time::timeout(Duration::from_secs(10), committed)
+                .await
+                .expect("the written registration is committed");
+        }
         assert_eq!(host.network.registrations().len(), 1);
         if late {
             // Cancelled before the request was written: nothing is committed.
