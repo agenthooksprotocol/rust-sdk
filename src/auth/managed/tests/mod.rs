@@ -17,6 +17,7 @@ mod client_registration;
 mod scope_contract;
 #[cfg(feature = "reqwest")]
 mod transport;
+mod vectors;
 
 const FIXTURE: &str = include_str!("sdk-auth-lifecycle.json");
 
@@ -46,9 +47,18 @@ struct Store {
     writes: Arc<AtomicUsize>,
     /// Milliseconds each write takes, simulating a slow host store.
     write_delay: Arc<AtomicUsize>,
+    /// A host store failure returned by the next `acquire`.
+    failure: Mutex<Option<HookError>>,
+    /// Fail the next write that removes a pending login (a claim) with this
+    /// error: "gone" after writing, "pending" without, "undetermined" without
+    /// and leaving the store unavailable.
+    claim_fault: Arc<Mutex<Option<(HookError, String)>>>,
+    unavailable: Arc<AtomicBool>,
 }
 struct Guard {
     records: Arc<Mutex<BTreeMap<String, SessionRecord>>>,
+    claim_fault: Arc<Mutex<Option<(HookError, String)>>>,
+    unavailable: Arc<AtomicBool>,
     key: String,
     held: Arc<AtomicUsize>,
     rejected: Arc<AtomicUsize>,
@@ -117,6 +127,12 @@ impl CredentialStore for Store {
         _: OperationBudget,
     ) -> LocalFuture<'_, Result<Box<dyn CredentialGuard>, HookError>> {
         Box::pin(async move {
+            if let Some(error) = self.failure.lock().unwrap().take() {
+                return Err(error);
+            }
+            if self.unavailable.load(Ordering::SeqCst) {
+                return Err(fail(AuthErrorCode::ProviderFailed));
+            }
             let lock = self
                 .locks
                 .lock()
@@ -128,6 +144,8 @@ impl CredentialStore for Store {
             self.held.fetch_add(1, Ordering::SeqCst);
             Ok(Box::new(Guard {
                 records: self.records.clone(),
+                claim_fault: self.claim_fault.clone(),
+                unavailable: self.unavailable.clone(),
                 key: key.as_str().into(),
                 held: self.held.clone(),
                 rejected: self.rejected.clone(),
@@ -140,7 +158,12 @@ impl CredentialStore for Store {
 }
 impl CredentialGuard for Guard {
     fn load(&mut self) -> LocalFuture<'_, Result<Option<SessionRecord>, HookError>> {
-        Box::pin(async { Ok(self.records.lock().unwrap().get(&self.key).cloned()) })
+        Box::pin(async {
+            if self.unavailable.load(Ordering::SeqCst) {
+                return Err(fail(AuthErrorCode::ProviderFailed));
+            }
+            Ok(self.records.lock().unwrap().get(&self.key).cloned())
+        })
     }
     fn compare_and_swap(
         &mut self,
@@ -153,6 +176,20 @@ impl CredentialGuard for Guard {
             let mut records = self.records.lock().unwrap();
             if records.get(&self.key).map(|r| r.version.clone()) != expected {
                 return Ok(false);
+            }
+            let claims = records
+                .get(&self.key)
+                .is_some_and(|r| replacement.pending_logins.len() < r.pending_logins.len());
+            if claims && let Some((error, reread)) = self.claim_fault.lock().unwrap().take() {
+                match reread.as_str() {
+                    "gone" => {
+                        records.insert(self.key.clone(), replacement);
+                    }
+                    "pending" => {}
+                    "undetermined" => self.unavailable.store(true, Ordering::SeqCst),
+                    other => panic!("unknown reread {other}"),
+                }
+                return Err(error);
             }
             self.writes.fetch_add(1, Ordering::SeqCst);
             records.insert(self.key.clone(), replacement);
@@ -276,6 +313,8 @@ struct Network {
     /// Mark the registration request written only after the delay.
     registration_written_late: AtomicBool,
     on_registration: Mutex<Option<Hook>>,
+    /// A host network failure returned for the next token request.
+    token_failure: Mutex<Option<HookError>>,
 }
 impl Network {
     fn reply(&self, status: u16, body: Value) {
@@ -363,6 +402,9 @@ impl OAuthNetwork for Network {
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                     if let Some(hook) = self.on_token.lock().unwrap().take() {
                         hook();
+                    }
+                    if let Some(error) = self.token_failure.lock().unwrap().take() {
+                        return Err(error);
                     }
                     for (failures, unsent) in [
                         (&self.transport_failures, false),
@@ -743,7 +785,7 @@ fn canonical_key_vectors() {
 async fn canonical_token_vectors() {
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     for vector in fixture["token_responses"].as_array().unwrap() {
-        if !scope_contract::applies(vector) {
+        if !vectors::applies(vector) {
             continue;
         }
         let id = &vector["id"];
@@ -793,7 +835,7 @@ async fn canonical_token_vectors() {
             previous.clone()
         } else if vector["wire_request"].is_array() {
             let wanted = union(&strings(&vector["requested"]), &required);
-            let wire = ManagedOAuth::request_scopes(&previous, &wanted, &ceiling);
+            let wire = union(&previous, &within(&ceiling, &wanted));
             assert_eq!(wire, union(&strings(&vector["wire_request"]), &[]), "{id}");
             wire
         } else {
@@ -879,7 +921,26 @@ async fn canonical_token_vectors() {
             );
         }
         assert_eq!(
-            oauth.cached(&record, &required, &ceiling).is_some(),
+            {
+                let operation = decide::Operation {
+                    required: union(&required, &[]),
+                    hint: Vec::new(),
+                    step_up: false,
+                    unauthorized: false,
+                    challenge: None,
+                };
+                matches!(
+                    decide::grant(
+                        &oauth.config,
+                        &operation,
+                        Mode::Deliver,
+                        record.token.as_ref(),
+                        None,
+                        false
+                    ),
+                    decide::Step::Use(_)
+                )
+            },
             vector["usable"] == true,
             "{id}"
         );
@@ -1017,6 +1078,22 @@ fn lifecycle_manifest_maps_to_native_tests() {
         (
             "host-policy-errors-carry-no-scopes",
             scope_contract::rule11_host_policy_errors_carry_no_scopes,
+        ),
+        (
+            "entry-points-route-through-decide",
+            scope_contract::entry_points_route_through_decide,
+        ),
+        (
+            "transport-challenge-routing",
+            transport::transport_challenge_routing,
+        ),
+        (
+            "replay-rejection-retires-token",
+            transport::replay_rejection_retires_token,
+        ),
+        (
+            "complete-token-endpoint-errors-classified",
+            vectors::canonical_completion_vectors,
         ),
         (
             "complete-error-login-ended",

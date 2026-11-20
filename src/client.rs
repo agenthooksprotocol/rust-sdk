@@ -21,11 +21,11 @@ pub struct HookError {
     accepted_settlement: Option<Value>,
     auth_code: Option<crate::auth::AuthErrorCode>,
     required_scopes: Option<Box<[String]>>,
-    /// Raised by a host callback (client selection, endpoint or destination
-    /// policy) or a non-scope refusal: it never carries scopes.
-    unscoped: bool,
+    /// The scopes were attached by the SDK's own scope decision. Managed OAuth
+    /// strips the scopes of every other error (opt-in).
+    scoped: bool,
     /// From `ManagedOAuth::complete`: the callback's pending login no longer exists.
-    login_ended: bool,
+    login_ended: Option<bool>,
     unsent: bool,
     transient: bool,
     /// A well-formed backend JSON-RPC error with code -32601 (method not found).
@@ -40,8 +40,8 @@ impl HookError {
             accepted_settlement: None,
             auth_code: None,
             required_scopes: None,
-            unscoped: false,
-            login_ended: false,
+            scoped: false,
+            login_ended: None,
             unsent: false,
             transient: false,
             method_not_found: false,
@@ -110,42 +110,33 @@ impl HookError {
         .then(|| scopes.into_boxed_slice());
         self
     }
-    /// For an error returned by `ManagedOAuth::complete`: whether the pending
-    /// login named by the callback's `state` no longer exists after the call
-    /// (consumed, expired or unknown). False while it is still pending, for
-    /// example after a stray or invalid callback rejected before the claim.
-    /// Always false for errors from other operations.
-    pub fn login_ended(&self) -> bool {
+    /// Present only on errors returned by `ManagedOAuth::complete`: whether
+    /// the pending login named by the callback's `state` no longer exists after
+    /// the call (consumed, expired or unknown). `Some(false)` while it is still
+    /// pending, for example after an invalid callback or a host policy failure
+    /// before the claim. `None` for errors from every other operation.
+    pub fn login_ended(&self) -> Option<bool> {
         self.login_ended
     }
     #[cfg(feature = "managed-oauth")]
     pub(crate) fn with_login_ended(mut self, ended: bool) -> Self {
-        self.login_ended = ended;
+        self.login_ended = Some(ended);
         self
     }
-    /// Mark an error raised by a host policy callback, or a non-scope refusal:
-    /// its scopes are stripped and the SDK never attaches any.
+    /// An `access_denied` or `interaction_required` outcome of the SDK's own
+    /// scope decision, carrying the operation's required set.
     #[cfg(feature = "managed-oauth")]
-    pub(crate) fn unscoped(self) -> Self {
-        self.unscoped_if(true)
+    pub(crate) fn scoped(code: crate::auth::AuthErrorCode, scopes: &[String]) -> Self {
+        let mut error = Self::authentication(code).with_required_scopes(scopes);
+        error.scoped = true;
+        error
     }
-    pub(crate) fn is_unscoped(&self) -> bool {
-        self.unscoped
+    pub(crate) fn is_scoped(&self) -> bool {
+        self.scoped
     }
-    pub(crate) fn unscoped_if(mut self, unscoped: bool) -> Self {
-        if unscoped {
-            self.unscoped = true;
-            self.required_scopes = None;
-        }
+    pub(crate) fn scoped_if(mut self, scoped: bool) -> Self {
+        self.scoped = scoped;
         self
-    }
-    /// Attach the SDK's own operation scopes, unless the error is unscoped.
-    #[cfg(feature = "managed-oauth")]
-    pub(crate) fn with_operation_scopes(self, scopes: &[String]) -> Self {
-        if self.unscoped {
-            return self;
-        }
-        self.with_required_scopes(scopes)
     }
     /// Raw canonical evidence retained when the consumer cannot decode an accepted settlement.
     /// This is not execution authorization and does not roll back accepted protocol effects.

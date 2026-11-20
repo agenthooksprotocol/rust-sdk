@@ -1,5 +1,5 @@
 {
-  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's current requested set, always within allowed (requested scopes outside the ceiling are invalid_configuration); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. In scope_decisions, requested is the client's configured scopes; preset_scopes, present only for binding preset, must equal requested or the result is invalid_configuration; ceiling defaults to requested; binding is stored, preset or unbound; required is R = host_required \u222a explicit \u222a validated 403 insufficient_scope scopes; scopes is the error's byte-sorted scope set, present only for access_denied and interaction_required; authorization_server_requests counts metadata, registration, token and authorization requests and network_calls all network requests made after the decision inputs (after the challenged response on the challenge path); an unbound target's single network call is the protected-resource metadata fetch, succeeding at its first location, that host client selection needs; acquisition_scopes is the set the next acquisition or sign-in requests; a retired PKCE token is modelled without a refresh token; host_error is an error raised by the named host callback, with the code this contract defines for it (destination refusal of a registration_endpoint is untrusted_destination; a refused issuer-metadata fetch would be discovery_failed). In completions, pending is the state of the login named by the callback's state (unknown covers an absent state), handle is the pending-login handle the host passes (matching or none), client_source is preregistered, cimd or dcr, callback is valid, denied or the defect that makes it invalid, stored_required is the pending login's R, and login_ended is the flag carried by every complete() error. In token_responses, error_scopes is the scope set carried by access_denied. A vector with requires names the optional SDK features it depends on and applies only to SDKs with all of them; an SDK without one skips the vector and never remaps it onto another mechanism; every vector without requires applies to every SDK. Features: token_validation_callback (a host token-validation callback), complete_handle (complete() accepts a pending-login handle; handle matching otherwise means none is passed). In completions, host_error is a host callback or policy failure raised before the claim: it keeps its code, carries no scopes and leaves the login pending.",
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's current requested set, always within allowed (requested scopes outside the ceiling are invalid_configuration); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. scope_decisions and completions fields, and the optional requires features (token_validation_callback, complete_handle), are defined in spec/draft/sdk-auth-lifecycle.md (Executable coverage); every defined field must be asserted and an unknown field fails the run. In token_responses, error_scopes is the scope set carried by access_denied.",
   "recovery": [
     {
       "code": "invalid_configuration",
@@ -1200,9 +1200,14 @@
           "read"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ]
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
       },
       "expect": {
         "code": null,
@@ -1230,7 +1235,7 @@
           "read"
         ],
         "explicit": [],
-        "granted": null
+        "grant": null
       },
       "expect": {
         "code": "interaction_required",
@@ -1239,11 +1244,60 @@
         ],
         "required": [
           "read"
+        ]
+      }
+    },
+    {
+      "id": "preset-scopes-omitted-no-constraint",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "cached",
+        "binding": "preset",
+        "requested": [
+          "read",
+          "write"
         ],
-        "acquisition_scopes": [
-          "files",
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
           "read"
         ]
+      }
+    },
+    {
+      "id": "preset-scopes-differ-from-client-invalid-configuration",
+      "input": {
+        "flow": "client_credentials",
+        "path": "credential",
+        "binding": "preset",
+        "requested": [
+          "read"
+        ],
+        "preset_scopes": [
+          "files"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": null
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -1260,9 +1314,15 @@
           "read"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
@@ -1275,10 +1335,6 @@
           "write"
         ],
         "required": [
-          "read",
-          "write"
-        ],
-        "acquisition_scopes": [
           "read",
           "write"
         ]
@@ -1301,7 +1357,7 @@
         "explicit": [
           "files"
         ],
-        "granted": null
+        "grant": null
       },
       "expect": {
         "code": null,
@@ -1329,9 +1385,15 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
@@ -1350,6 +1412,39 @@
       }
     },
     {
+      "id": "stored-grant-lacking-required-interaction-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "write"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ]
+      }
+    },
+    {
       "id": "ceiling-refusal-fresh",
       "input": {
         "flow": "client_credentials",
@@ -1362,18 +1457,18 @@
           "admin"
         ],
         "explicit": [],
-        "granted": null
+        "grant": null
       },
       "expect": {
         "code": "access_denied",
         "scopes": [
           "admin"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 1,
         "required": [
           "admin"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls_max": 1
       }
     },
     {
@@ -1392,18 +1487,18 @@
           "admin"
         ],
         "explicit": [],
-        "granted": null
+        "grant": null
       },
       "expect": {
         "code": "access_denied",
         "scopes": [
           "admin"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 0,
         "required": [
           "admin"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -1420,9 +1515,14 @@
           "admin"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ]
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
       },
       "expect": {
         "code": "access_denied",
@@ -1430,12 +1530,12 @@
           "admin",
           "read"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 0,
         "required": [
           "admin",
           "read"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -1451,18 +1551,18 @@
         "explicit": [
           "admin"
         ],
-        "granted": null
+        "grant": null
       },
       "expect": {
         "code": "access_denied",
         "scopes": [
           "admin"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 0,
         "required": [
           "admin"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -1478,20 +1578,25 @@
           "admin"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ]
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
       },
       "expect": {
         "code": "access_denied",
         "scopes": [
           "admin"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 0,
         "required": [
           "admin"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -1507,20 +1612,25 @@
           "admin"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ]
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
       },
       "expect": {
         "code": "access_denied",
         "scopes": [
           "admin"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 0,
         "required": [
           "admin"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -1536,9 +1646,15 @@
           "read"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"admin\""
@@ -1550,12 +1666,12 @@
           "admin",
           "read"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 0,
         "required": [
           "admin",
           "read"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -1571,9 +1687,15 @@
           "admin"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 401,
           "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
@@ -1585,11 +1707,11 @@
         "scopes": [
           "admin"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 0,
         "required": [
           "admin"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -1607,7 +1729,7 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": null
+        "grant": null
       },
       "expect": {
         "code": "invalid_configuration",
@@ -1625,16 +1747,16 @@
           "files",
           "read"
         ],
+        "ceiling": [
+          "read"
+        ],
         "preset_scopes": [
           "files",
           "read"
         ],
-        "ceiling": [
-          "read"
-        ],
         "host_required": [],
         "explicit": [],
-        "granted": null
+        "grant": null
       },
       "expect": {
         "code": "invalid_configuration",
@@ -1643,20 +1765,26 @@
       }
     },
     {
-      "id": "preset-scopes-differ-from-client-invalid-configuration",
+      "id": "invalid-host-required-token-invalid-configuration",
       "input": {
-        "flow": "client_credentials",
+        "flow": "authorization_code_pkce",
         "path": "credential",
-        "binding": "preset",
+        "binding": "stored",
         "requested": [
           "read"
         ],
-        "preset_scopes": [
-          "files"
+        "host_required": [
+          "r\u00e9ad"
         ],
-        "host_required": [],
         "explicit": [],
-        "granted": null
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
       },
       "expect": {
         "code": "invalid_configuration",
@@ -1679,18 +1807,24 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 401,
           "www_authenticate": "Bearer scope=\"write admin\""
         }
       },
       "expect": {
+        "retired": true,
         "code": null,
         "action": "acquire",
-        "retired": true,
         "required": [],
         "acquisition_scopes": [
           "read",
@@ -1715,26 +1849,28 @@
           "read"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 401,
           "www_authenticate": "Bearer error=\"invalid_token\", scope=\"write\""
         }
       },
       "expect": {
+        "retired": true,
         "code": "interaction_required",
         "scopes": [
           "read"
         ],
-        "retired": true,
         "required": [
           "read"
-        ],
-        "acquisition_scopes": [
-          "read",
-          "write"
         ]
       }
     },
@@ -1749,20 +1885,134 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 401,
           "www_authenticate": "Bearer scope=admin"
         }
       },
       "expect": {
+        "retired": true,
         "code": "interaction_required",
         "scopes": [],
-        "retired": true,
+        "required": []
+      }
+    },
+    {
+      "id": "challenge-401-hint-not-used-by-later-operation",
+      "input": {
+        "flow": "client_credentials",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "expired",
+          "refresh": false
+        },
+        "prior_401_hint": [
+          "write"
+        ]
+      },
+      "expect": {
+        "code": null,
+        "action": "acquire",
         "required": [],
         "acquisition_scopes": [
+          "read"
+        ]
+      }
+    },
+    {
+      "id": "challenge-401-insufficient-scope-error-is-401",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "interaction_required",
+        "scopes": [
+          "read"
+        ],
+        "required": [
+          "read"
+        ]
+      }
+    },
+    {
+      "id": "challenge-401-older-generation-uses-current",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 2,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        }
+      },
+      "expect": {
+        "retired": false,
+        "code": null,
+        "action": "use",
+        "required": [
           "read"
         ]
       }
@@ -1781,9 +2031,15 @@
           "write"
         ],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\""
@@ -1795,10 +2051,6 @@
           "write"
         ],
         "required": [
-          "write"
-        ],
-        "acquisition_scopes": [
-          "read",
           "write"
         ]
       }
@@ -1814,12 +2066,50 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "challenge-403-other-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"invalid_token\""
         }
       },
       "expect": {
@@ -1841,9 +2131,15 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"\""
@@ -1868,9 +2164,15 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read  write\""
@@ -1895,9 +2197,15 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\" read\""
@@ -1922,9 +2230,15 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read \""
@@ -1949,9 +2263,15 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read\twrite\""
@@ -1976,9 +2296,15 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"r\u00e9ad\""
@@ -2003,12 +2329,84 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-two-bearer-challenges",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read\", Bearer scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-bad-auth-param",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope"
         }
       },
       "expect": {
@@ -2030,9 +2428,15 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 401,
           "www_authenticate": "Bearer scope=\"read  write\""
@@ -2042,6 +2446,42 @@
         "retired": true,
         "code": "access_denied",
         "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "challenge-401-invalid-configuration-retires-first",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "admin"
+        ],
+        "ceiling": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer scope=\"read\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "invalid_configuration",
         "authorization_server_requests": 0,
         "network_calls": 0
       }
@@ -2060,10 +2500,16 @@
           "read"
         ],
         "explicit": [],
-        "granted": [
-          "read",
-          "write"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
@@ -2075,12 +2521,12 @@
           "read",
           "write"
         ],
-        "authorization_server_requests": 0,
-        "network_calls": 0,
         "required": [
           "read",
           "write"
-        ]
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
       }
     },
     {
@@ -2095,10 +2541,16 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read",
-          "write"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
         "challenge": {
           "status": 403,
           "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
@@ -2109,8 +2561,147 @@
         "scopes": [
           "write"
         ],
+        "required": [
+          "write"
+        ],
         "authorization_server_requests": 0,
-        "network_calls": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "insufficient-scope-newer-generation-uses-current",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 2,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "write"
+        ]
+      }
+    },
+    {
+      "id": "insufficient-scope-anonymous-grant-covers-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": null,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "expired-token-refreshes",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "expired",
+          "refresh": true
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "refresh",
+        "required": [
+          "read"
+        ]
+      }
+    },
+    {
+      "id": "expired-token-refresh-cannot-cover-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "write"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "expired",
+          "refresh": true
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
         "required": [
           "write"
         ]
@@ -2130,9 +2721,14 @@
         ],
         "host_required": [],
         "explicit": [],
-        "granted": [
-          "read"
-        ],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
         "host_error": {
           "callback": "token_validation",
           "code": "access_denied",
@@ -2159,7 +2755,7 @@
           "read"
         ],
         "explicit": [],
-        "granted": null,
+        "grant": null,
         "host_error": {
           "callback": "client_selection",
           "code": "interaction_required",
@@ -2186,7 +2782,7 @@
           "read"
         ],
         "explicit": [],
-        "granted": null,
+        "grant": null,
         "host_error": {
           "callback": "destination",
           "target": "registration_endpoint",
@@ -2208,7 +2804,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2234,7 +2832,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read"
@@ -2253,12 +2853,42 @@
       }
     },
     {
+      "id": "complete-with-server-added-params",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid_with_server_params",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": null,
+        "grant_persisted": true
+      }
+    },
+    {
       "id": "complete-narrower-than-stored-required",
       "input": {
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2288,7 +2918,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2313,12 +2945,79 @@
       }
     },
     {
+      "id": "complete-legacy-record-prepare-time-host-required",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": null,
+        "prepare_time_host_required": [
+          "write"
+        ],
+        "current_host_required": [
+          "read"
+        ],
+        "granted": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "write"
+        ],
+        "login_ended": true,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-legacy-record-current-host-required",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": null,
+        "current_host_required": [
+          "write"
+        ],
+        "granted": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "write"
+        ],
+        "login_ended": true,
+        "grant_persisted": true
+      }
+    },
+    {
       "id": "complete-invalid-callback-redirect-mismatch",
       "input": {
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "redirect_mismatch",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2341,15 +3040,44 @@
       }
     },
     {
-      "id": "complete-invalid-callback-state-mismatch",
-      "requires": [
-        "complete_handle"
-      ],
+      "id": "complete-invalid-callback-redirect-query-mismatch",
       "input": {
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
-        "callback": "state_mismatch",
+        "source_permitted": true,
+        "callback": "redirect_query_mismatch",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-state-duplicated",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "state_duplicated",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2377,7 +3105,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "iss_mismatch",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2405,7 +3135,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "fragment",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2433,7 +3165,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "userinfo",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2461,7 +3195,39 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "missing_code",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-code-and-error",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "code_and_error",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2489,7 +3255,72 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "duplicate_param",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-unparseable",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "unparseable",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-handle-names-other-login",
+      "requires": [
+        "complete_handle"
+      ],
+      "input": {
+        "pending": "pending",
+        "handle": "other",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2517,7 +3348,16 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "host_error": {
+          "callback": "client_selection",
+          "code": "access_denied",
+          "scopes": [
+            "admin"
+          ]
+        },
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2530,14 +3370,7 @@
         "ceiling": [
           "read",
           "write"
-        ],
-        "host_error": {
-          "callback": "client_selection",
-          "code": "access_denied",
-          "scopes": [
-            "admin"
-          ]
-        }
+        ]
       },
       "expect": {
         "code": "access_denied",
@@ -2552,7 +3385,16 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": [
+            "read"
+          ]
+        },
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2565,17 +3407,173 @@
         "ceiling": [
           "read",
           "write"
-        ],
-        "host_error": {
-          "callback": "client_selection",
-          "code": "credential_unavailable",
-          "scopes": [
-            "read"
-          ]
-        }
+        ]
       },
       "expect": {
         "code": "credential_unavailable",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-client-source-not-permitted-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "dcr",
+        "source_permitted": false,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-unknown-state-failing-host-callback",
+      "input": {
+        "pending": "unknown",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": []
+        },
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-claim-uncertain-login-gone",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": {
+          "outcome": "uncertain",
+          "error_code": "provider_failed",
+          "reread": "gone"
+        },
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-claim-uncertain-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": {
+          "outcome": "uncertain",
+          "error_code": "provider_failed",
+          "reread": "pending"
+        },
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-claim-uncertain-undetermined",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": {
+          "outcome": "uncertain",
+          "error_code": "provider_failed",
+          "reread": "undetermined"
+        },
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
         "login_ended": false,
         "grant_persisted": false
       }
@@ -2586,7 +3584,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "denied",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2609,12 +3609,73 @@
       }
     },
     {
+      "id": "complete-consent-denied-invalid-client-preregistered",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "denied_invalid_client",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-consent-denied-invalid-client-cimd",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "cimd",
+        "source_permitted": true,
+        "callback": "denied_invalid_client",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
       "id": "complete-expired-login-ended",
       "input": {
         "pending": "expired",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2642,7 +3703,9 @@
         "pending": "ended",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2673,7 +3736,9 @@
         "pending": "unknown",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2701,7 +3766,9 @@
         "pending": "unknown",
         "handle": "none",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2726,10 +3793,12 @@
     {
       "id": "complete-missing-state-login-ended",
       "input": {
-        "pending": "unknown",
+        "pending": "absent",
         "handle": "none",
         "client_source": "preregistered",
-        "callback": "missing_state",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
         "exchange": "ok",
         "stored_required": [
           "read",
@@ -2757,7 +3826,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "invalid_grant",
         "stored_required": [
           "read",
@@ -2785,7 +3856,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "invalid_client",
         "stored_required": [
           "read",
@@ -2812,7 +3885,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "cimd",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "invalid_client",
         "stored_required": [
           "read",
@@ -2839,7 +3914,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "dcr",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "invalid_client",
         "stored_required": [
           "read",
@@ -2862,13 +3939,160 @@
       }
     },
     {
+      "id": "complete-token-error-unauthorized-client-provider-failed",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "unauthorized_client",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-error-access-denied-provider-failed",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "access_denied",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-error-invalid-scope-provider-failed",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "invalid_scope",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
       "id": "complete-token-endpoint-failure-login-ended",
       "input": {
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
-        "exchange": "token_endpoint_failure",
+        "claim": "ok",
+        "exchange": "server_error",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-endpoint-unreachable",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "unreachable",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-endpoint-not-found",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "not_found",
         "stored_required": [
           "read",
           "write"
@@ -2894,7 +4118,9 @@
         "pending": "pending",
         "handle": "matching",
         "client_source": "preregistered",
+        "source_permitted": true,
         "callback": "valid",
+        "claim": "ok",
         "exchange": "invalid_response",
         "stored_required": [
           "read",
@@ -3067,7 +4293,7 @@
     },
     {
       "id": "invalid-callback-does-not-consume",
-      "expect": "an invalid callback (redirect, state or iss mismatch, fragment or userinfo, missing code, duplicated parameter) fails access_denied with login_ended false and does not consume the pending login; a subsequent valid callback can complete once"
+      "expect": "an invalid or unparseable callback (redirect or its own query, state, iss, fragment, userinfo, missing code, both code and error, duplicated parameter) fails access_denied with login_ended false and does not consume the login; authorization-server-added parameters such as session_state are accepted"
     },
     {
       "id": "loopback-redirect",
@@ -3231,11 +4457,11 @@
     },
     {
       "id": "preset-scopes-requested-not-required",
-      "expect": "an explicit OAuth preset's scopes equal the selected client's configured scopes (else invalid_configuration) and are requested, never required: a grant lacking them satisfies an operation whose R is covered, and they never appear in R or any error's scope set unless host-required"
+      "expect": "omitted preset scopes are no constraint; present ones must equal the client's configured scopes (else invalid_configuration); they are requested, never required, and never appear in R or any error's scope set unless host-required"
     },
     {
       "id": "ceiling-refusal-before-network-every-path",
-      "expect": "R outside the ceiling, including a host-required scope, fails access_denied carrying R before any authorization-server request on fresh, cached, prepare, credential/delivery, challenge and preemptive credential paths; with a stored binding or explicit preset there is no network I/O at all, and an unbound target makes only the protected-resource metadata fetch needed for client selection"
+      "expect": "R outside the ceiling, including a host-required scope, fails access_denied carrying R on every entry point; with a stored binding or explicit preset there is no network I/O; an unbound target makes at most one protected-resource metadata fetch and no authorization-server request"
     },
     {
       "id": "requested-outside-ceiling-invalid-configuration",
@@ -3243,19 +4469,19 @@
     },
     {
       "id": "challenge-401-scope-requested-not-required",
-      "expect": "a 401 Bearer scope adds its in-ceiling scopes to the next acquisition or sign-in request; it is never added to R and never yields access_denied"
+      "expect": "a 401 retires the sent generation, if current, before every other decision step and whatever the outcome (including a malformed challenge); its in-ceiling scope hint is used only by a client-credentials acquisition in the same operation, never stored, never added to R and never yields access_denied"
     },
     {
       "id": "malformed-challenge-scope-denied",
-      "expect": "an empty, badly spaced, invalid-character or duplicated challenge scope fails access_denied with no scopes; a 403 whose challenge cannot be parsed is not an auth retry"
+      "expect": "a bad auth-param, two Bearer challenges, a duplicated parameter or a malformed scope (empty, tab, repeated, leading or trailing space, invalid character) fails access_denied with no scopes; a 403 that is not insufficient_scope is access_denied and not an auth retry"
     },
     {
       "id": "insufficient-scope-already-granted-denied",
-      "expect": "403 insufficient_scope for an R the stored grant already records within the ceiling fails access_denied carrying R without replaying the token, returning interaction_required or creating a login"
+      "expect": "403 insufficient_scope when the sent generation (or no token) is current and its grant covers R within the ceiling fails access_denied carrying R without replaying the token or creating a login; a newer current generation that covers R is used instead"
     },
     {
       "id": "complete-enforces-stored-required-set",
-      "expect": "complete() succeeds only when granted \u2229 current ceiling covers the pending login's stored R; otherwise access_denied carrying that R, with the grant and rotated refresh token persisted and the login consumed"
+      "expect": "complete() persists the grant, then fails access_denied carrying the pending login's stored R when granted \u2229 current ceiling does not cover it; a pending record without stored R uses its prepare-time H, else the current H"
     },
     {
       "id": "grant-narrower-than-required-denied",
@@ -3263,11 +4489,27 @@
     },
     {
       "id": "host-policy-errors-carry-no-scopes",
-      "expect": "errors raised by host callbacks (client selection, token validation, destination checks) have any scopes stripped"
+      "expect": "scopes are attached only by decide and complete step 7; errors from host callbacks, stores, the network and the token endpoint carry none, and login_ended appears only on complete() errors"
     },
     {
       "id": "complete-error-login-ended",
-      "expect": "every complete() error carries a login-ended flag: invalid callback access_denied/false; a host callback or policy failure before the claim keeps its code with no scopes/false; consent denial access_denied/true; absent, unknown, expired or ended state interaction_required/true whatever handle the host passes; invalid_grant interaction_required/true; invalid_client credential_unavailable (pre-registered), invalid_configuration (CIMD) or interaction_required (DCR), each /true with no scopes; other token-endpoint failure or invalid token response provider_failed/true"
+      "expect": "every complete() error carries login_ended: state lookup runs before any host callback (absent, unknown, expired or ended state: interaction_required/true); invalid callback, including a handle naming another login than the live state, access_denied/false with both logins pending; login_ended always describes the login named by state; pre-claim host policy keeps its code (client source no longer permitted: invalid_configuration)/false; an uncertain claim re-reads the store (gone: true, otherwise false); after the claim every error is /true"
+    },
+    {
+      "id": "entry-points-route-through-decide",
+      "expect": "every entry point that yields a credential or handles a challenge (credential/delivery, prepare, challenge, preemptive credential paths, legacy provider adapters) produces decide's outcome; the routing test lists them"
+    },
+    {
+      "id": "transport-challenge-routing",
+      "expect": "the transport hands every 401 to the provider, a 403 only when it parses as exactly one Bearer insufficient_scope challenge, and returns any other 403 without a retry"
+    },
+    {
+      "id": "replay-rejection-retires-token",
+      "expect": "a token rejected on the challenged replay is handed to the provider, so a 401 retires it"
+    },
+    {
+      "id": "complete-token-endpoint-errors-classified",
+      "expect": "after the claim invalid_grant is interaction_required; invalid_client is credential_unavailable (pre-registered), invalid_configuration (CIMD) or interaction_required (DCR); every other token-endpoint error, an unreachable or 404 endpoint and an invalid response are provider_failed; none carry scopes"
     }
   ],
   "registration_keys": [

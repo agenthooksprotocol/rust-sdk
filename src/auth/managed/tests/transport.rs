@@ -49,8 +49,19 @@ fn observe() -> Value {
 
 /// Serve `replies` in order; returns each request's (lowercased headers, body).
 async fn serve(listener: &TcpListener, replies: Vec<(u16, &'static str)>) -> Vec<(String, String)> {
+    let replies = replies
+        .into_iter()
+        .map(|(status, body)| (status, r#"Bearer error="invalid_token""#, body))
+        .collect();
+    serve_with(listener, replies).await
+}
+/// `serve` with each reply's `WWW-Authenticate` value.
+async fn serve_with(
+    listener: &TcpListener,
+    replies: Vec<(u16, &'static str, &'static str)>,
+) -> Vec<(String, String)> {
     let mut seen = Vec::new();
-    for (status, body) in replies {
+    for (status, challenge, body) in replies {
         let Ok(Ok((socket, _))) =
             tokio::time::timeout(Duration::from_millis(300), listener.accept()).await
         else {
@@ -74,7 +85,7 @@ async fn serve(listener: &TcpListener, replies: Vec<(u16, &'static str)>) -> Vec
         reader.read_exact(&mut request).await.unwrap();
         seen.push((headers, String::from_utf8(request).unwrap()));
         let response = format!(
-            "HTTP/1.1 {status} X\r\nWWW-Authenticate: Bearer error=\"invalid_token\"\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "HTTP/1.1 {status} X\r\nWWW-Authenticate: {challenge}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         reader
@@ -568,4 +579,104 @@ pub(super) async fn configuration_unavailable_retried_after_prepare() {
     let (_, seen) = tokio::join!(admit(&hooks), serve_rpc(&listener, 1, configuration_reply));
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].1, "hooks/observe");
+}
+
+/// Section 5: a 401 always reaches the provider, including one carrying an
+/// `insufficient_scope` error (a 401, never a step-up); a 403 reaches it when
+/// it is one Bearer `insufficient_scope` challenge, with the provider
+/// validating its `scope`; any other 403 is returned without a retry.
+#[tokio::test]
+pub(super) async fn transport_challenge_routing() {
+    // A 401 with an insufficient_scope error and a scope hint.
+    let host = Host::new();
+    let (_, listener, backend) = learned(&host).await;
+    host.network.reply(
+        200,
+        json!({"access_token":"renewed","token_type":"Bearer","scope":"read write"}),
+    );
+    let (result, seen) = tokio::join!(
+        backend.call(intercept(), Duration::from_secs(3)),
+        serve_with(
+            &listener,
+            vec![
+                (
+                    401,
+                    r#"Bearer error="insufficient_scope", scope="write""#,
+                    ""
+                ),
+                (200, "Bearer", RESPONSE),
+            ]
+        )
+    );
+    assert_eq!(result.unwrap()["id"], "evt_demo");
+    assert_eq!(seen.len(), 2);
+    assert!(seen[1].0.contains("authorization: bearer renewed\r\n"));
+    // The hint is requested by this operation's acquisition, never required.
+    assert_eq!(host.network.last_form()["scope"], "read write");
+    // A malformed-scope 403 reaches the provider, which fails it closed; two
+    // Bearer challenges or another 403 never reach it.
+    for (challenge, routed) in [
+        (
+            r#"Bearer error="insufficient_scope", scope="read  write""#,
+            true,
+        ),
+        (
+            r#"Bearer error="insufficient_scope", Bearer scope="write""#,
+            false,
+        ),
+        (r#"Bearer error="invalid_token""#, false),
+    ] {
+        let host = Host::new();
+        let (_, listener, backend) = learned(&host).await;
+        let tokens = host.network.tokens().len();
+        let (result, seen) = tokio::join!(
+            backend.call(intercept(), Duration::from_secs(3)),
+            serve_with(
+                &listener,
+                vec![(403, challenge, ""), (200, "Bearer", RESPONSE)]
+            )
+        );
+        let error = result.err().unwrap();
+        assert_eq!(seen.len(), 1, "{challenge}: never replayed");
+        assert_eq!(
+            error.auth_code(),
+            routed.then_some(AuthErrorCode::AccessDenied),
+            "{challenge}"
+        );
+        assert!(error.required_scopes().is_empty(), "{challenge}");
+        assert_eq!(host.network.tokens().len(), tokens, "{challenge}");
+    }
+}
+
+/// Section 5: the token rejected on the replay is handed to the provider too,
+/// which retires it; the request is not replayed again.
+#[tokio::test]
+pub(super) async fn replay_rejection_retires_token() {
+    let host = Host::new();
+    let (_, listener, backend) = learned(&host).await;
+    host.network.reply(
+        200,
+        json!({"access_token":"replayed","token_type":"Bearer"}),
+    );
+    host.network
+        .reply(200, json!({"access_token":"next","token_type":"Bearer"}));
+    let (result, seen) = tokio::join!(
+        backend.call(intercept(), Duration::from_secs(3)),
+        serve(&listener, vec![(401, ""), (401, ""), (200, RESPONSE)])
+    );
+    assert!(result.is_err());
+    assert_eq!(seen.len(), 2);
+    assert!(seen[1].0.contains("authorization: bearer replayed\r\n"));
+    assert_eq!(
+        host.store.token().access_token,
+        "next",
+        "the replay's token is retired"
+    );
+    // The next operation sends the renewed token, not the rejected one.
+    let (result, seen) = tokio::join!(
+        backend.call(intercept(), Duration::from_secs(3)),
+        serve(&listener, vec![(200, RESPONSE)])
+    );
+    assert_eq!(result.unwrap()["id"], "evt_demo");
+    assert!(seen[0].0.contains("authorization: bearer next\r\n"));
 }

@@ -107,7 +107,7 @@ pub struct AuthTarget {
     issuer: Option<String>,
     client_id: Option<String>,
     client_secret_ref: Option<String>,
-    scopes: Vec<String>,
+    scopes: Option<Vec<String>>,
 }
 impl AuthTarget {
     pub fn backend_id(&self) -> &str {
@@ -131,9 +131,15 @@ impl AuthTarget {
     pub fn client_secret_ref(&self) -> Option<&str> {
         self.client_secret_ref.as_deref()
     }
-    /// The preset's optional `scopes`: the client's requested scopes, never required.
+    /// The preset's `scopes`, empty when omitted; see `preset_scopes`.
     pub fn scopes(&self) -> &[String] {
-        &self.scopes
+        self.scopes.as_deref().unwrap_or_default()
+    }
+    /// The preset's optional `scopes`: `None` when omitted (no constraint);
+    /// when present they must equal the client's requested scopes. They are
+    /// requested, never required.
+    pub fn preset_scopes(&self) -> Option<&[String]> {
+        self.scopes.as_deref()
     }
 }
 impl AuthContext {
@@ -161,7 +167,7 @@ impl AuthContext {
             issuer: None,
             client_id: None,
             client_secret_ref: None,
-            scopes: Vec::new(),
+            scopes: None,
         };
         if let Some(auth) = &self.authentication {
             let required = |key: &str| {
@@ -216,16 +222,18 @@ impl AuthContext {
                         target.client_secret_ref = Some(required("clientSecretRef")?);
                     }
                     if let Some(scopes) = auth.get("scopes") {
+                        let mut preset = Vec::new();
                         for scope in scopes.as_array().ok_or_else(invalid)? {
                             let scope = scope
                                 .as_str()
                                 .filter(|s| !s.is_empty())
                                 .ok_or_else(invalid)?;
-                            if target.scopes.iter().any(|s| s == scope) {
+                            if preset.iter().any(|s| s == scope) {
                                 return Err(invalid());
                             }
-                            target.scopes.push(scope.to_owned());
+                            preset.push(scope.to_owned());
                         }
+                        target.scopes = Some(preset);
                     }
                     AuthBinding::OAuth {
                         flow,
@@ -415,7 +423,7 @@ pub(crate) fn sanitize_provider_error(error: HookError) -> HookError {
     HookError::authentication(error.auth_code().unwrap_or(AuthErrorCode::ProviderFailed))
         .classified(error.code())
         .with_required_scopes(error.required_scopes())
-        .unscoped_if(error.is_unscoped())
+        .scoped_if(error.is_scoped())
         .request_not_sent_if(error.is_request_not_sent())
 }
 /// RFC 6749 section 3.3 scope-token grammar.

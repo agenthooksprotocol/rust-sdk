@@ -4,6 +4,8 @@
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub(crate) struct Challenge {
+    /// Exactly one Bearer challenge was present.
+    pub(crate) bearer: bool,
     pub(crate) resource_metadata: Option<String>,
     pub(crate) scopes: Vec<String>,
     pub(crate) insufficient_scope: bool,
@@ -43,6 +45,15 @@ fn parts(header: &str) -> Result<Vec<&str>, Malformed> {
     Ok(parts)
 }
 
+/// A non-empty RFC 7235 token68, including trailing `=` padding.
+fn token68(value: &str) -> bool {
+    let body = value.trim_end_matches('=');
+    !body.is_empty()
+        && body
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-._~+/".contains(&b))
+}
+
 fn parameter(value: &str) -> Result<String, Malformed> {
     let value = value.trim();
     if let Some(quoted) = value.strip_prefix('"') {
@@ -72,7 +83,12 @@ fn parameter(value: &str) -> Result<String, Malformed> {
     }
 }
 
+/// Strict: a malformed `scope` value is malformed too.
 pub(crate) fn parse(header: &str) -> Result<Challenge, Malformed> {
+    parse_with(header, true)
+}
+
+fn parse_with(header: &str, strict_scope: bool) -> Result<Challenge, Malformed> {
     let mut result = Challenge::default();
     if header.is_empty() {
         return Ok(result);
@@ -99,6 +115,17 @@ pub(crate) fn parse(header: &str) -> Result<Challenge, Malformed> {
             }
             scheme_seen = true;
             bearer = part[..end].eq_ignore_ascii_case("bearer");
+            if bearer {
+                // Two Bearer challenges are ambiguous.
+                if result.bearer {
+                    return Err(Malformed);
+                }
+                result.bearer = true;
+                // RFC 7235 token68 credentials are not auth-params: skip them.
+                if token68(rest) {
+                    continue;
+                }
+            }
             rest
         };
         if !bearer || param.is_empty() {
@@ -115,7 +142,7 @@ pub(crate) fn parse(header: &str) -> Result<Challenge, Malformed> {
             "resource_metadata" => result.resource_metadata = Some(value),
             "error" => result.insufficient_scope = value == "insufficient_scope",
             // Strict: RFC 6749 scope tokens separated by exactly one space.
-            "scope" => {
+            "scope" if strict_scope => {
                 if !value.split(' ').all(super::valid_scope) {
                     return Err(Malformed);
                 }
@@ -128,11 +155,12 @@ pub(crate) fn parse(header: &str) -> Result<Challenge, Malformed> {
     Ok(result)
 }
 
-/// A Bearer 403 `insufficient_scope` triggers challenge handling; anything
-/// malformed or ambiguous does not.
+/// A 403 goes to the provider when its header is exactly one Bearer challenge
+/// with `error="insufficient_scope"`; the provider validates its `scope`.
 #[cfg(any(feature = "reqwest", test))]
 pub(crate) fn insufficient_scope(header: &str) -> bool {
-    parse(header).is_ok_and(|challenge| challenge.insufficient_scope)
+    parse_with(header, false)
+        .is_ok_and(|challenge| challenge.bearer && challenge.insufficient_scope)
 }
 
 #[cfg(test)]
@@ -194,8 +222,8 @@ mod tests {
     fn malformed_or_ambiguous_bearer_parameters_fail_closed() {
         for header in [
             "Bearer scope=read==",
-            "Bearer scope=",
-            "Bearer scope",
+            r#"Bearer realm="a", Bearer error="insufficient_scope""#,
+            "Bearer, Bearer",
             "Bearer/scope=read",
             "scope=read, Bearer",
             "Bearer error=invalid_token, ERROR=insufficient_scope",
@@ -217,6 +245,21 @@ mod tests {
         ] {
             assert!(parse(header).is_err(), "{header}");
         }
+    }
+
+    #[test]
+    fn bearer_token68_is_skipped() {
+        for header in [
+            "Bearer scope",
+            "Bearer scope=",
+            "Bearer abc==",
+            "Bearer a-b._~+/===",
+        ] {
+            let challenge = parsed(header);
+            assert!(challenge.bearer, "{header}");
+            assert!(challenge.scopes.is_empty() && !challenge.insufficient_scope);
+        }
+        assert!(!parsed("Basic realm=x").bearer);
     }
 
     #[test]

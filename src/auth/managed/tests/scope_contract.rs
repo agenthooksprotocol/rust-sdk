@@ -215,48 +215,47 @@ pub(super) async fn rule3_ceiling_refusal_before_network() {
 /// Rule 4: requested scopes outside the ceiling are a configuration error.
 #[tokio::test]
 pub(super) async fn rule4_requested_outside_ceiling_invalid_configuration() {
+    // Requested scopes outside the ceiling, or an invalid host-required scope
+    // token: every operation fails `invalid_configuration`, before any request.
     let host = Host::new();
-    let config = OAuthClientConfig::new("account", "client", OAuthFlow::ClientCredentials)
-        .scopes(scopes(&["read", "admin"]), scopes(&["read"]))
-        .client_secret(
-            "secret-ref",
-            ClientSecret::new("secret".into()),
-            TokenAuthMethod::ClientSecretBasic,
-        );
-    let error = ManagedOAuth::new(
-        config,
-        host.network.clone(),
-        host.policy.clone(),
-        host.store.clone(),
-    )
-    .err()
-    .unwrap();
-    assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
-    // An invalid host-required scope token is a configuration error too.
-    let config = OAuthClientConfig::new("account", "client", OAuthFlow::AuthorizationCodePkce)
-        .redirect_uri("http://127.0.0.1/callback")
-        .required_scopes(scopes(&["bad\\scope"]));
-    let error = ManagedOAuth::new(
-        config,
-        host.network.clone(),
-        host.policy.clone(),
-        host.store.clone(),
-    )
-    .err()
-    .unwrap();
-    assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
-    // A preset's requested scope outside the ceiling.
+    let outside = host.owner(
+        OAuthClientConfig::new("account", "client", OAuthFlow::ClientCredentials)
+            .scopes(scopes(&["read", "admin"]), scopes(&["read"]))
+            .client_secret(
+                "secret-ref",
+                ClientSecret::new("secret".into()),
+                TokenAuthMethod::ClientSecretBasic,
+            ),
+    );
+    let invalid = host.pkce(|c| c.required_scopes(scopes(&["bad\\scope"])));
+    for error in [
+        outside.credential(cc_context()).await.err().unwrap(),
+        invalid.prepare(context(), budget()).await.err().unwrap(),
+        invalid.credential(context()).await.err().unwrap(),
+    ] {
+        assert_eq!(error.auth_recovery(), Some(AuthRecovery::Configure));
+        assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
+    }
+    // A preset's scopes that differ from the requested ones.
     let oauth = host.pkce(|c| c);
     let preset = with_preset(context(), &["admin"]);
     let error = oauth.prepare(preset.clone(), budget()).await.err().unwrap();
-    assert_eq!(error.auth_recovery(), Some(AuthRecovery::Configure));
     assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
     assert_error(
         oauth.credential(preset).await.err().unwrap(),
         AuthErrorCode::InvalidConfiguration,
         &[],
     );
+    // An empty preset `scopes` is present, so it must equal them too; an
+    // omitted one is no constraint.
+    let empty = with_preset(context(), &[]);
+    assert_error(
+        oauth.prepare(empty, budget()).await.err().unwrap(),
+        AuthErrorCode::InvalidConfiguration,
+        &[],
+    );
     assert_eq!(requests(&host), 0);
+    assert!(oauth.prepare(context(), budget()).await.is_ok());
 }
 
 /// Rule 5: a 401 retires the token; its `scope` (within the ceiling) is
@@ -293,7 +292,8 @@ pub(super) async fn rule5_unauthorized_scope_is_requested_not_required() {
     assert_eq!(host.network.last_form()["scope"], "read");
     assert_eq!(host.network.tokens().len(), 3);
 
-    // PKCE: the next sign-in requests the 401 scope, once.
+    // PKCE: the hint is for this operation's client-credentials acquisition
+    // only; it is never stored, so the next sign-in does not request it.
     let host = Host::new();
     let oauth = host.pkce(|c| c);
     let pending = login(oauth.prepare(context(), budget()).await.unwrap());
@@ -308,12 +308,7 @@ pub(super) async fn rule5_unauthorized_scope_is_requested_not_required() {
     assert_error(error, AuthErrorCode::InteractionRequired, &[]);
     assert!(host.store.token().access_rejected);
     let next = login(oauth.prepare(context(), budget()).await.unwrap());
-    assert_eq!(
-        query(next.authorization_url(), "scope").unwrap(),
-        "read write"
-    );
-    let later = login(oauth.prepare(context(), budget()).await.unwrap());
-    assert_eq!(query(later.authorization_url(), "scope").unwrap(), "read");
+    assert_eq!(query(next.authorization_url(), "scope").unwrap(), "read");
 }
 
 /// Rule 6: a scope-less 403 `insufficient_scope` uses host-required scopes,
@@ -370,9 +365,12 @@ pub(super) async fn rule7_malformed_challenge_scope() {
             .unwrap();
         assert_eq!(error.auth_recovery(), Some(AuthRecovery::None), "{header}");
         assert_error(error, AuthErrorCode::AccessDenied, &[]);
+        // The transport hands a malformed `scope` to the provider (it validates
+        // it); a duplicated parameter is no single Bearer challenge.
         if status == 403 {
-            assert!(
-                !crate::auth::challenge::insufficient_scope(header),
+            assert_eq!(
+                crate::auth::challenge::insufficient_scope(header),
+                !header.contains(", scope=\"read\""),
                 "{header}"
             );
         }
@@ -423,7 +421,7 @@ pub(super) async fn rule9_complete_enforces_login_required_set() {
             .await
             .unwrap(),
     );
-    assert_eq!(host.pending()[0].required, scopes(&["read", "write"]));
+    assert_eq!(host.pending()[0].required, Some(scopes(&["read", "write"])));
     host.network.reply(
         200,
         json!({"access_token":"narrow","refresh_token":"kept","token_type":"Bearer","scope":"read"}),
@@ -433,7 +431,7 @@ pub(super) async fn rule9_complete_enforces_login_required_set() {
         .await
         .err()
         .unwrap();
-    assert!(error.login_ended());
+    assert_eq!(error.login_ended(), Some(true));
     assert_error(error, AuthErrorCode::AccessDenied, &["read", "write"]);
     let token = host.store.token();
     assert_eq!(token.scopes, scopes(&["read"]));
@@ -444,7 +442,7 @@ pub(super) async fn rule9_complete_enforces_login_required_set() {
         .await
         .err()
         .unwrap();
-    assert!(error.login_ended());
+    assert_eq!(error.login_ended(), Some(true));
     assert_error(error, AuthErrorCode::InteractionRequired, &[]);
 }
 
@@ -526,15 +524,32 @@ pub(super) async fn rule11_host_policy_errors_carry_no_scopes() {
         .unwrap();
     assert_error(error, AuthErrorCode::AccessDenied, &[]);
     *host.policy.refuse_endpoints.lock().unwrap() = None;
-    // The policy omits a required scope: the SDK's scope refusal names R.
+    // A selection without a required scope is not a refusal: acquisitions
+    // request the requested scopes and R whatever the policy selects.
     host.policy.omit_required.store(true, Ordering::SeqCst);
-    let error = oauth
-        .prepare_with_required(context(), &write, budget())
-        .await
-        .err()
-        .unwrap();
-    assert_error(error, AuthErrorCode::AccessDenied, &["write"]);
-    assert!(host.pending().is_empty());
+    let pending = login(
+        oauth
+            .prepare_with_required(context(), &write, budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        query(pending.authorization_url(), "scope").unwrap(),
+        "read write"
+    );
+    // A selection beyond the ceiling is a configuration error, without scopes.
+    host.policy.omit_required.store(false, Ordering::SeqCst);
+    *host.policy.select.lock().unwrap() = scopes(&["read", "admin"]);
+    for error in [
+        oauth
+            .prepare_with_required(context(), &write, budget())
+            .await
+            .err()
+            .unwrap(),
+        oauth.credential(unbound()).await.err().unwrap(),
+    ] {
+        assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
+    }
 }
 
 /// Rule 12: every complete() error reports whether its login has ended.
@@ -545,7 +560,7 @@ pub(super) async fn rule12_complete_errors_report_login_ended() {
     let pending = login(oauth.prepare(context(), budget()).await.unwrap());
     let ended = |result: Result<BearerCredential, HookError>| {
         let error = result.err().unwrap();
-        (error.auth_code().unwrap(), error.login_ended())
+        (error.auth_code().unwrap(), error.login_ended().unwrap())
     };
     // Rejected before the claim: still pending.
     let mut wrong_redirect = callback(&pending);
@@ -607,444 +622,248 @@ pub(super) async fn rule12_complete_errors_report_login_ended() {
     assert!(host.network.tokens().is_empty());
 }
 
-// ---- Conformance vectors: `scope_decisions` and `completions` ----
+// ---- Contract v2 section 7 ----
 
-fn list(value: &Value) -> Vec<String> {
-    if value.is_array() {
-        strings(value)
-    } else {
-        Vec::new()
-    }
+fn decisions() -> usize {
+    decide::DECISIONS.with(|count| count.replace(0))
 }
-fn config_for(flow: &str, requested: Vec<String>, ceiling: Vec<String>) -> OAuthClientConfig {
-    if flow == "client_credentials" {
-        OAuthClientConfig::new("account", "client", OAuthFlow::ClientCredentials)
-            .scopes(requested, ceiling)
-            .client_secret(
-                "secret-ref",
-                ClientSecret::new("secret".into()),
-                TokenAuthMethod::ClientSecretBasic,
-            )
-    } else {
-        OAuthClientConfig::new("account", "client", OAuthFlow::AuthorizationCodePkce)
-            .scopes(requested, ceiling)
-            .redirect_uri("http://127.0.0.1/callback")
-    }
-}
-/// Store a grant of exactly `granted` with a permissive client; a PKCE grant
-/// has no refresh token. Returns its attempt id.
-async fn seed_grant(host: &Host, flow: &str, ctx: &AuthContext, granted: &[String]) -> String {
-    let preset = ctx.target().unwrap().scopes().to_vec();
-    let all = union(
-        &union(granted, &host.policy.select.lock().unwrap()),
-        &preset,
-    );
-    let seeder = host.owner(config_for(flow, preset, all));
-    let reply = json!({"access_token":"seeded","token_type":"Bearer","expires_in":3600,"scope":granted.join(" ")});
-    let credential = if flow == "client_credentials" {
-        host.network.reply(200, reply);
-        seeder.credential(ctx.clone()).await.unwrap().unwrap()
-    } else {
-        let pending = login(seeder.prepare(ctx.clone(), budget()).await.unwrap());
-        host.network.reply(200, reply);
-        seeder
-            .complete(ctx.clone(), callback(&pending), budget())
-            .await
+
+/// Every credential and challenge entry point produces `decide`'s outcome,
+/// through exactly one decision; `complete` makes none.
+#[tokio::test]
+pub(super) async fn entry_points_route_through_decide() {
+    let host = Host::new();
+    let seeded = host.seed(&host.pkce(|c| c), context()).await;
+    let oauth = host.pkce(|c| c.required_scopes(scopes(&["admin"])));
+    let pure = |rejection| {
+        decide::operation(&oauth.config, &[], rejection)
+            .err()
             .unwrap()
     };
-    assert_eq!(host.store.token().scopes, union(granted, &[]));
-    credential.attempt_id
-}
-fn authorization_server_requests(host: &Host) -> usize {
+    let header = r#"Bearer error="insufficient_scope", scope="write""#;
+    let expected = pure(None);
+    let expected_step_up = pure(Some(decide::Rejection {
+        status: 403,
+        header,
+    }));
+    assert_error(expected.clone(), AuthErrorCode::AccessDenied, &["admin"]);
+    decisions();
+    let options = || PrepareOptions::new().required(Vec::new());
+    let results: Vec<(&str, HookError)> = vec![
+        (
+            "credential",
+            oauth.credential(context()).await.err().unwrap(),
+        ),
+        (
+            "preemptive",
+            oauth.credential(unbound()).await.err().unwrap(),
+        ),
+        (
+            "prepare",
+            oauth.prepare(context(), budget()).await.err().unwrap(),
+        ),
+        (
+            "prepare_with_required",
+            oauth
+                .prepare_with_required(context(), &[], budget())
+                .await
+                .err()
+                .unwrap(),
+        ),
+        (
+            "prepare_with",
+            oauth
+                .prepare_with(context(), options(), budget())
+                .await
+                .err()
+                .unwrap(),
+        ),
+        (
+            "challenge 401",
+            oauth
+                .challenge(
+                    context(),
+                    challenge(401, "Bearer", Some(&seeded.attempt_id)),
+                )
+                .await
+                .err()
+                .unwrap(),
+        ),
+    ];
+    for (entry, error) in results {
+        assert_eq!(error, expected, "{entry}");
+    }
+    let error = oauth
+        .challenge(context(), challenge(403, header, None))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error, expected_step_up, "challenge 403");
+    assert_eq!(decisions(), 7, "one decision per entry point call");
+    let host = Host::new();
+    let pending = login(host.pkce(|c| c).prepare(context(), budget()).await.unwrap());
+    decisions();
     host.network
-        .seen
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|seen| seen.usage != EndpointUse::ResourceMetadata)
-        .count()
+        .reply(200, json!({"access_token":"done","token_type":"Bearer"}));
+    host.pkce(|c| c)
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    assert_eq!(decisions(), 0, "complete follows its own procedure");
 }
 
-/// Optional SDK features a vector may `require`, and which of them Rust has.
-const KNOWN_FEATURES: &[&str] = &["token_validation_callback", "complete_handle"];
-/// No host token-validation callback, and `complete()` takes no handle.
-const RUST_FEATURES: &[&str] = &[];
-/// Whether a vector applies to Rust; an unknown required feature fails.
-pub(super) fn applies(vector: &Value) -> bool {
-    let requires = vector["requires"].as_array().map_or(&[][..], |v| &v[..]);
-    requires.iter().all(|feature| {
-        let feature = feature.as_str().unwrap();
-        assert!(
-            KNOWN_FEATURES.contains(&feature),
-            "{}: unknown feature {feature}",
-            vector["id"]
-        );
-        RUST_FEATURES.contains(&feature)
-    })
-}
-fn auth_code(name: &str) -> AuthErrorCode {
-    [
-        AuthErrorCode::InvalidConfiguration,
-        AuthErrorCode::UnsupportedBinding,
-        AuthErrorCode::CredentialUnavailable,
-        AuthErrorCode::InteractionRequired,
-        AuthErrorCode::AccessDenied,
-        AuthErrorCode::RefreshRejected,
-        AuthErrorCode::DiscoveryFailed,
-        AuthErrorCode::UntrustedDestination,
-        AuthErrorCode::ProviderFailed,
-    ]
-    .into_iter()
-    .find(|code| code.as_str() == name)
-    .unwrap_or_else(|| panic!("unknown code {name}"))
-}
-
-#[test]
-fn vector_features_are_known() {
-    let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
-    for section in [
-        "scope_decisions",
-        "completions",
-        "token_responses",
-        "lifecycle",
-    ] {
-        for vector in fixture[section].as_array().unwrap() {
-            applies(vector);
-        }
-    }
-}
-
+/// Step 5: a newer stored generation than the one sent is used; the one sent
+/// is refused with R.
 #[tokio::test]
-async fn canonical_scope_decision_vectors() {
-    let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
-    for vector in fixture["scope_decisions"].as_array().unwrap() {
-        let id = vector["id"].as_str().unwrap();
-        let (input, expect) = (&vector["input"], &vector["expect"]);
-        if !applies(vector) {
-            continue;
-        }
-        let destination = input["host_error"]["callback"] == "destination";
-        let flow = input["flow"].as_str().unwrap();
-        let path = input["path"].as_str().unwrap();
-        let requested = list(&input["requested"]);
+async fn race_newer_generation_than_sent() {
+    let host = Host::new();
+    let oauth = cc_client(&host, &[]);
+    host.network.reply(
+        200,
+        json!({"access_token":"first","token_type":"Bearer","scope":"read write","expires_in":3600}),
+    );
+    let first = oauth.credential(cc_context()).await.unwrap().unwrap();
+    // Another writer stores a newer generation.
+    host.store.expire();
+    host.network.reply(
+        200,
+        json!({"access_token":"second","token_type":"Bearer","scope":"read write","expires_in":3600}),
+    );
+    let second = oauth.credential(cc_context()).await.unwrap().unwrap();
+    assert_ne!(first.attempt_id, second.attempt_id);
+    let before = requests(&host);
+    let header = r#"Bearer error="insufficient_scope", scope="write""#;
+    oauth
+        .challenge(
+            cc_context(),
+            challenge(403, header, Some(&first.attempt_id)),
+        )
+        .await
+        .unwrap();
+    assert_eq!(requests(&host), before, "the current token is used as is");
+    let error = oauth
+        .challenge(
+            cc_context(),
+            challenge(403, header, Some(&second.attempt_id)),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::AccessDenied, &["write"]);
+    assert_eq!(requests(&host), before);
+}
+
+/// Completion step 7: a pending login written by an older release has no
+/// stored R; the current host-required scopes apply.
+#[tokio::test]
+async fn upgrade_pending_login_without_required() {
+    for (host_required, expected) in [(&[][..], None), (&["write"][..], Some(&["write"][..]))] {
         let host = Host::new();
-        *host.policy.select.lock().unwrap() = requested.clone();
-        let mut ctx = if flow == "client_credentials" {
-            cc_context()
-        } else {
-            context()
-        };
-        let preset = list(&input["preset_scopes"]);
-        if !preset.is_empty() {
-            ctx.authentication.as_mut().unwrap()["scopes"] = json!(preset);
-        }
-        let mut config = config_for(flow, requested.clone(), list(&input["ceiling"]));
-        if destination {
-            // A dynamically registered client-credentials client whose
-            // registration endpoint host destination policy refuses.
-            assert_eq!(
-                input["host_error"]["target"], "registration_endpoint",
-                "{id}"
-            );
-            host.network.dcr.store(true, Ordering::SeqCst);
-            host.network
-                .refuse_registration
-                .store(true, Ordering::SeqCst);
-            config = OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
-                .scopes(requested.clone(), list(&input["ceiling"]))
-                .dynamic_registration(RegistrationPolicy::new(
-                    "https://issuer.example",
-                    "Example Adapter",
-                ))
-                .client_secret_storage(host.secrets.clone());
-            ctx.authentication = None;
-        }
-        let config = config.required_scopes(list(&input["host_required"]));
-        let oauth = match ManagedOAuth::new(
-            config,
-            host.network.clone(),
-            host.policy.clone(),
-            host.store.clone(),
-        ) {
-            Ok(mut oauth) => {
-                oauth.pending = host.logins.clone();
-                oauth
-            }
-            Err(error) => {
-                assert_eq!(error.auth_code().unwrap().as_str(), expect["code"], "{id}");
-                continue;
-            }
-        };
-        let seeded = match input["granted"].as_array() {
-            Some(_) => Some(seed_grant(&host, flow, &ctx, &list(&input["granted"])).await),
-            None => None,
-        };
-        if input["binding"] == "unbound" {
-            ctx.authentication = None;
-        }
-        if let Some(error) = input["host_error"].as_object().filter(|_| !destination) {
-            let code = auth_code(error["code"].as_str().unwrap());
-            *host.policy.refuse.lock().unwrap() =
-                Some(fail(code).with_required_scopes(&list(&error["scopes"])));
-        }
-        let acquisition = list(&expect["acquisition_scopes"]).join(" ");
-        if expect["code"].is_null() && expect["action"] == "acquire" {
-            host.network.reply(
-                200,
-                json!({"access_token":"next","token_type":"Bearer","scope":acquisition}),
-            );
-        }
-        let (before, before_as) = (requests(&host), authorization_server_requests(&host));
-        let explicit = list(&input["explicit"]);
-        let result: Result<Option<Preparation>, HookError> = match path {
-            "cached" | "credential" | "fresh" => oauth
-                .credential(ctx.clone())
-                .await
-                .map(|c| c.map(Preparation::Ready)),
-            "preemptive" => oauth
-                .credential(unbound())
-                .await
-                .map(|c| c.map(Preparation::Ready)),
-            "prepare" => oauth
-                .prepare_with_required(ctx.clone(), &explicit, budget())
-                .await
-                .map(Some),
-            "challenge" => {
-                let status = input["challenge"]["status"].as_u64().unwrap() as u16;
-                let header = input["challenge"]["www_authenticate"].as_str().unwrap();
-                let attempt = seeded.as_deref().filter(|_| status == 401);
-                oauth
-                    .challenge(ctx.clone(), challenge(status, header, attempt))
-                    .await
-                    .map(|()| None)
-            }
-            other => panic!("{id}: unknown path {other}"),
-        };
-        if let Some(expected) = expect["authorization_server_requests"].as_u64() {
-            let made = (authorization_server_requests(&host) - before_as) as u64;
-            assert_eq!(made, expected, "{id}: authorization-server requests");
-        }
-        if let Some(expected) = expect["network_calls"].as_u64() {
-            let made = (requests(&host) - before) as u64;
-            // An unbound target's allowance is protected-resource discovery;
-            // host-required scopes here are static, so it is decided before.
-            if input["binding"] == "unbound" {
-                assert!(made <= expected, "{id}: network calls {made}");
-            } else {
-                assert_eq!(made, expected, "{id}: network calls");
+        let pending = login(host.pkce(|c| c).prepare(context(), budget()).await.unwrap());
+        for logins in host.logins.lock().unwrap().values_mut() {
+            for login in logins {
+                login.required = None;
+                login.host_required = None;
             }
         }
-        if expect["retired"] == true {
-            let token = host.store.token();
-            assert!(
-                token.access_rejected || Some(&token.generation) != seeded.as_ref(),
-                "{id}: retired"
-            );
-        }
-        match result {
-            Ok(outcome) => {
-                assert!(
-                    expect["code"].is_null(),
-                    "{id}: expected {}",
-                    expect["code"]
-                );
-                match expect["action"].as_str().unwrap() {
-                    "use" => assert!(matches!(outcome, Some(Preparation::Ready(_))), "{id}"),
-                    "acquire" => {
-                        assert_eq!(host.network.last_form()["scope"], acquisition, "{id}")
-                    }
-                    "login" => {
-                        let pending = login(outcome.unwrap());
-                        assert_eq!(
-                            query(pending.authorization_url(), "scope").unwrap(),
-                            acquisition,
-                            "{id}"
-                        );
-                        assert_eq!(
-                            host.pending()[0].required,
-                            list(&expect["required"]),
-                            "{id}"
-                        );
-                    }
-                    other => panic!("{id}: unknown action {other}"),
-                }
-            }
-            Err(error) => {
-                assert_eq!(error.auth_code().unwrap().as_str(), expect["code"], "{id}");
-                assert_eq!(error.required_scopes(), list(&expect["scopes"]), "{id}");
-                // The next sign-in requests the acquisition scopes.
-                if !acquisition.is_empty()
-                    && error.auth_code() == Some(AuthErrorCode::InteractionRequired)
-                {
-                    *host.policy.refuse.lock().unwrap() = None;
-                    let pending = login(
-                        oauth
-                            .prepare_with_required(ctx.clone(), error.required_scopes(), budget())
-                            .await
-                            .unwrap(),
-                    );
-                    assert_eq!(
-                        query(pending.authorization_url(), "scope").unwrap(),
-                        acquisition,
-                        "{id}"
-                    );
-                }
+        // The serialized form of such a record has no `required`.
+        let saved = host.pending()[0].clone();
+        let json = serde_json::to_value(&saved).unwrap();
+        assert!(json.get("required").is_none());
+        let old: SavedLogin = serde_json::from_value(json).unwrap();
+        assert!(old.required.is_none());
+        host.network.reply(
+            200,
+            json!({"access_token":"done","token_type":"Bearer","scope":"read"}),
+        );
+        let completer = host.pkce(|c| c.required_scopes(scopes(host_required)));
+        let result = completer
+            .complete(context(), callback(&pending), budget())
+            .await;
+        match expected {
+            None => assert_eq!(result.unwrap().token, "done"),
+            Some(required) => {
+                let error = result.err().unwrap();
+                assert_eq!(error.login_ended(), Some(true));
+                assert_error(error, AuthErrorCode::AccessDenied, required);
             }
         }
     }
 }
 
+/// Host store, network, callback and client-source failures carry no scopes,
+/// whatever scopes the host attached.
 #[tokio::test]
-async fn canonical_completion_vectors() {
-    let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
-    for vector in fixture["completions"].as_array().unwrap() {
-        let id = vector["id"].as_str().unwrap();
-        let (input, expect) = (&vector["input"], &vector["expect"]);
-        // Without `complete_handle`, `handle: matching` means none is passed.
-        if !applies(vector) {
-            continue;
-        }
-        let source = input["client_source"].as_str().unwrap_or("preregistered");
-        let stored = list(&input["stored_required"]);
-        let granted = list(&input["granted"]);
-        let host = Host::new();
-        host.policy.select.lock().unwrap().clear();
-        *host.network.issuer_patch.lock().unwrap() = json!({
-            "authorization_response_iss_parameter_supported": true,
-            "client_id_metadata_document_supported": source == "cimd",
-        });
-        host.network.dcr.store(source == "dcr", Ordering::SeqCst);
-        const CIMD: &str = "https://adapter.example/oauth/client.json";
-        let client = |ceiling: Vec<String>| {
-            let config = match source {
-                "preregistered" => {
-                    OAuthClientConfig::new("account", "client", OAuthFlow::AuthorizationCodePkce)
-                }
-                "cimd" => {
-                    OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
-                        .client_id_metadata_document(CIMD, vec!["http://127.0.0.1/callback".into()])
-                }
-                "dcr" => {
-                    OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
-                        .dynamic_registration(RegistrationPolicy::new(
-                            "https://issuer.example",
-                            "Example Adapter",
-                        ))
-                }
-                other => panic!("{id}: unknown client source {other}"),
-            };
-            config
-                .scopes(Vec::new(), ceiling)
-                .redirect_uri("http://127.0.0.1/callback")
-        };
-        // A pre-registered client uses its preset; CIMD and DCR learn the binding.
-        let ctx = if source == "preregistered" {
-            context()
-        } else {
-            unbound()
-        };
-        let wide = union(&union(&stored, &granted), &list(&input["ceiling"]));
-        let lifetime = if input["pending"] == "expired" {
-            Duration::from_millis(1)
-        } else {
-            MAX_LOGIN_LIFETIME
-        };
-        let preparer = host.owner(client(wide).login_lifetime(lifetime));
-        let pending = login(
-            preparer
-                .prepare_with_required(ctx.clone(), &stored, budget())
-                .await
-                .unwrap(),
-        );
-        match input["pending"].as_str().unwrap() {
-            "expired" => tokio::time::sleep(Duration::from_millis(10)).await,
-            "ended" => preparer
-                .cancel_login(pending.clone(), budget())
-                .await
-                .unwrap(),
-            _ => {}
-        }
-        let state = query(pending.authorization_url(), "state").unwrap();
-        let state = if input["pending"] == "unknown" {
-            "unknown".to_owned()
-        } else {
-            state
-        };
-        let mut url = Url::parse(pending.redirect_uri()).unwrap();
-        let mut pairs = vec![
-            ("state", state),
-            ("code", "fake-code".into()),
-            ("iss", "https://issuer.example".into()),
-        ];
-        match input["callback"].as_str().unwrap() {
-            "valid" => {}
-            "denied" => pairs[1] = ("error", "access_denied".into()),
-            "redirect_mismatch" => url.set_path("/elsewhere"),
-            "iss_mismatch" => pairs[2].1 = "https://evil.example".into(),
-            "fragment" => url.set_fragment(Some("x")),
-            "userinfo" => url.set_username("user").unwrap(),
-            "missing_code" => {
-                pairs.remove(1);
-            }
-            "duplicate_param" => pairs.push(("code", "again".into())),
-            "missing_state" => {
-                pairs.remove(0);
-            }
-            other => panic!("{id}: unknown callback {other}"),
-        }
-        url.query_pairs_mut().extend_pairs(pairs);
-        match input["exchange"].as_str().unwrap() {
-            "ok" => host.network.reply(
-                200,
-                json!({"access_token":"done","refresh_token":"rotated","token_type":"Bearer","scope":granted.join(" ")}),
-            ),
-            "invalid_grant" => host.network.reply(400, json!({"error":"invalid_grant"})),
-            "invalid_client" => host.network.reply(401, json!({"error":"invalid_client"})),
-            "token_endpoint_failure" => host.network.reply(500, json!({"error":"server_error"})),
-            _ => host
-                .network
-                .reply(200, json!({"access_token":"done","token_type":"mac"})),
-        }
-        let completer = host.owner(client(list(&input["ceiling"])));
-        // A host failure before the claim, from client selection.
-        let host_error = input["host_error"].as_object();
-        if let Some(error) = host_error {
-            assert_eq!(error["callback"], "client_selection", "{id}");
-            *host.policy.refuse.lock().unwrap() = Some(
-                fail(auth_code(error["code"].as_str().unwrap()))
-                    .with_required_scopes(&list(&error["scopes"])),
-            );
-        }
-        let result = completer.complete(ctx.clone(), url.clone(), budget()).await;
-        let persisted = host.store.grant().and_then(|r| r.token).is_some();
-        assert_eq!(persisted, expect["grant_persisted"] == true, "{id}: grant");
-        match result {
-            Ok(_) => assert!(expect["code"].is_null() && expect["failed"] != true, "{id}"),
-            Err(error) => {
-                assert!(
-                    expect["failed"] == true || expect["code"].is_string(),
-                    "{id}"
-                );
-                if let Some(code) = expect["code"].as_str() {
-                    assert_eq!(error.auth_code().unwrap().as_str(), code, "{id}");
-                }
-                if expect["scopes"].is_array() {
-                    assert_eq!(error.required_scopes(), list(&expect["scopes"]), "{id}");
-                }
-                assert_eq!(
-                    error.login_ended(),
-                    expect["login_ended"] == true,
-                    "{id}: ended"
-                );
-                if host_error.is_some() {
-                    // Host failures carry no scopes, whatever the vector lists.
-                    assert!(error.required_scopes().is_empty(), "{id}: scopes");
-                    // The login stayed pending and still completes.
-                    *host.policy.refuse.lock().unwrap() = None;
-                    completer.complete(ctx, url, budget()).await.unwrap();
-                    assert!(host.store.grant().and_then(|r| r.token).is_some(), "{id}");
-                }
-            }
-        }
-    }
+async fn host_failures_carry_no_scopes() {
+    let with_scopes = |code| fail(code).with_required_scopes(&scopes(&["write"]));
+    // Store.
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    *host.store.failure.lock().unwrap() = Some(with_scopes(AuthErrorCode::AccessDenied));
+    let error = oauth.credential(context()).await.err().unwrap();
+    assert_error(error.clone(), AuthErrorCode::AccessDenied, &[]);
+    assert_eq!(error.login_ended(), None);
+    // Network, on a token request.
+    let host = Host::new();
+    let oauth = cc_client(&host, &[]);
+    *host.network.token_failure.lock().unwrap() =
+        Some(with_scopes(AuthErrorCode::InteractionRequired));
+    let error = oauth.credential(cc_context()).await.err().unwrap();
+    assert_error(error, AuthErrorCode::InteractionRequired, &[]);
+    // Callback policy (client selection) and a client source no longer
+    // permitted, before the claim: the login stays pending.
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    *host.policy.refuse.lock().unwrap() = Some(with_scopes(AuthErrorCode::InteractionRequired));
+    let error = oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.login_ended(), Some(false));
+    assert_error(error, AuthErrorCode::InteractionRequired, &[]);
+    *host.policy.refuse.lock().unwrap() = None;
+    let other_client = host.owner(
+        OAuthClientConfig::new("account", "other", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .redirect_uri("http://127.0.0.1/callback"),
+    );
+    let mut other = context();
+    other.authentication.as_mut().unwrap()["clientId"] = "other".into();
+    let error = other_client
+        .complete(other, callback(&pending), budget())
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.login_ended(), Some(false));
+    assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
+    assert_eq!(host.pending().len(), 1);
+    // The login still completes once policy allows it.
+    host.network
+        .reply(200, json!({"access_token":"done","token_type":"Bearer"}));
+    oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+}
+
+/// A claim whose outcome is uncertain is re-read on a fresh budget.
+#[tokio::test]
+async fn uncertain_claim_rereads_store_on_fresh_budget() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c.persist_pending_logins());
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    // The claim's write outlives the caller's deadline.
+    host.store.write_delay.store(300, Ordering::SeqCst);
+    let short = OperationBudget::until(Instant::now() + Duration::from_millis(100));
+    let error = oauth
+        .complete(context(), callback(&pending), short)
+        .await
+        .err()
+        .unwrap();
+    host.store.write_delay.store(0, Ordering::SeqCst);
+    // The claim did not land before the deadline: the login is still pending.
+    assert_eq!(error.login_ended(), Some(false));
+    assert_eq!(host.pending().len(), 1);
 }
