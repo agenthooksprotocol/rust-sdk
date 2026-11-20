@@ -114,15 +114,12 @@ pub(crate) fn parse(header: &str) -> Result<Challenge, Malformed> {
             "resource_metadata" if value.is_empty() => return Err(Malformed),
             "resource_metadata" => result.resource_metadata = Some(value),
             "error" => result.insufficient_scope = value == "insufficient_scope",
+            // Strict: RFC 6749 scope tokens separated by exactly one space.
             "scope" => {
-                if value.is_empty()
-                    || !value
-                        .split(' ')
-                        .all(|s| s.is_empty() || super::valid_scope(s))
-                {
+                if !value.split(' ').all(super::valid_scope) {
                     return Err(Malformed);
                 }
-                result.scopes = value.split_whitespace().map(str::to_owned).collect();
+                result.scopes = value.split(' ').map(str::to_owned).collect();
             }
             _ => {}
         }
@@ -211,6 +208,12 @@ mod tests {
             r#"Bearer resource_metadata="""#,
             r#"Bearer scope="bad\\scope""#,
             "Bearer scope=read\n",
+            r#"Bearer scope="""#,
+            r#"Bearer scope=" ""#,
+            r#"Bearer scope="read  write""#,
+            r#"Bearer scope=" read""#,
+            r#"Bearer scope="read ""#,
+            "Bearer scope=\"read\twrite\"",
         ] {
             assert!(parse(header).is_err(), "{header}");
         }

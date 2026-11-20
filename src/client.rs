@@ -21,6 +21,11 @@ pub struct HookError {
     accepted_settlement: Option<Value>,
     auth_code: Option<crate::auth::AuthErrorCode>,
     required_scopes: Option<Box<[String]>>,
+    /// Raised by a host callback (client selection, endpoint or destination
+    /// policy) or a non-scope refusal: it never carries scopes.
+    unscoped: bool,
+    /// From `ManagedOAuth::complete`: the callback's pending login no longer exists.
+    login_ended: bool,
     unsent: bool,
     transient: bool,
     /// A well-formed backend JSON-RPC error with code -32601 (method not found).
@@ -35,6 +40,8 @@ impl HookError {
             accepted_settlement: None,
             auth_code: None,
             required_scopes: None,
+            unscoped: false,
+            login_ended: false,
             unsent: false,
             transient: false,
             method_not_found: false,
@@ -79,24 +86,66 @@ impl HookError {
         self.unsent = unsent;
         self
     }
-    /// Validated scopes an operation required, carried only by `interaction_required`
-    /// and `access_denied`. Pass them back to an explicit host `prepare` for step-up.
+    /// The operation's full required scope set (host-required, explicit and
+    /// challenged), carried only by `interaction_required` and `access_denied`
+    /// from the SDK's own scope checks, deduplicated and sorted in ascending byte
+    /// order. Pass them back to an explicit host `prepare` for step-up.
     pub fn required_scopes(&self) -> &[String] {
         self.required_scopes.as_deref().unwrap_or(&[])
     }
     /// Attach required scopes to `interaction_required`/`access_denied`; other codes
-    /// and anything other than RFC 6749 scope tokens are dropped.
+    /// and anything other than RFC 6749 scope tokens are dropped. The set is
+    /// deduplicated and sorted in ascending byte order.
     pub fn with_required_scopes(mut self, scopes: &[String]) -> Self {
         use crate::auth::AuthErrorCode::{AccessDenied, InteractionRequired};
-        let scopes: Vec<_> = scopes
+        let mut scopes: Vec<_> = scopes
             .iter()
             .filter(|scope| crate::auth::valid_scope(scope))
             .cloned()
             .collect();
+        scopes.sort();
+        scopes.dedup();
         self.required_scopes = (matches!(self.auth_code, Some(AccessDenied | InteractionRequired))
             && !scopes.is_empty())
         .then(|| scopes.into_boxed_slice());
         self
+    }
+    /// For an error returned by `ManagedOAuth::complete`: whether the pending
+    /// login named by the callback's `state` no longer exists after the call
+    /// (consumed, expired or unknown). False while it is still pending, for
+    /// example after a stray or invalid callback rejected before the claim.
+    /// Always false for errors from other operations.
+    pub fn login_ended(&self) -> bool {
+        self.login_ended
+    }
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn with_login_ended(mut self, ended: bool) -> Self {
+        self.login_ended = ended;
+        self
+    }
+    /// Mark an error raised by a host policy callback, or a non-scope refusal:
+    /// its scopes are stripped and the SDK never attaches any.
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn unscoped(self) -> Self {
+        self.unscoped_if(true)
+    }
+    pub(crate) fn is_unscoped(&self) -> bool {
+        self.unscoped
+    }
+    pub(crate) fn unscoped_if(mut self, unscoped: bool) -> Self {
+        if unscoped {
+            self.unscoped = true;
+            self.required_scopes = None;
+        }
+        self
+    }
+    /// Attach the SDK's own operation scopes, unless the error is unscoped.
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn with_operation_scopes(self, scopes: &[String]) -> Self {
+        if self.unscoped {
+            return self;
+        }
+        self.with_required_scopes(scopes)
     }
     /// Raw canonical evidence retained when the consumer cannot decode an accepted settlement.
     /// This is not execution authorization and does not roll back accepted protocol effects.

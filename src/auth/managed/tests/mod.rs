@@ -14,6 +14,7 @@ use std::{
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 mod client_registration;
+mod scope_contract;
 #[cfg(feature = "reqwest")]
 mod transport;
 
@@ -173,6 +174,11 @@ struct Policy {
     only: Mutex<Option<String>>,
     /// Another holder (a detached exchange) may legitimately own a guard.
     shared_lock: AtomicBool,
+    /// A host refusal returned by `select` / `approve_endpoints`.
+    refuse: Mutex<Option<HookError>>,
+    refuse_endpoints: Mutex<Option<HookError>>,
+    /// Select without the operation's required scopes.
+    omit_required: AtomicBool,
 }
 impl Policy {
     fn off_lock(&self) {
@@ -189,13 +195,19 @@ impl Policy {
             select: Mutex::new(scopes(&["read"])),
             only: Mutex::new(None),
             shared_lock: AtomicBool::new(false),
+            refuse: Mutex::new(None),
+            refuse_endpoints: Mutex::new(None),
+            omit_required: AtomicBool::new(false),
         })
     }
 }
 impl OAuthPolicy for Policy {
     fn approve_endpoints(&self, _: EndpointTrust<'_>) -> Result<(), HookError> {
         self.off_lock();
-        Ok(())
+        match self.refuse_endpoints.lock().unwrap().clone() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
     fn select(
         &self,
@@ -207,12 +219,20 @@ impl OAuthPolicy for Policy {
         if self.deny.load(Ordering::SeqCst) {
             return Err(fail(AuthErrorCode::UntrustedDestination));
         }
+        if let Some(error) = self.refuse.lock().unwrap().clone() {
+            return Err(error);
+        }
         let issuer = match self.only.lock().unwrap().clone() {
             Some(only) if !resource.authorization_servers.contains(&only) => {
                 return Err(fail(AuthErrorCode::UntrustedDestination));
             }
             Some(only) => only,
             None => resource.authorization_servers[0].clone(),
+        };
+        let required = if self.omit_required.load(Ordering::SeqCst) {
+            &[]
+        } else {
+            required
         };
         Ok(TrustDecision::new(
             issuer,
@@ -754,6 +774,7 @@ async fn canonical_token_vectors() {
         } else {
             union(&previous, &oauth.config.allowed_scopes)
         };
+        let ceiling = oauth.config.allowed_scopes.clone();
         if !previous.is_empty() {
             record.token = Some(SavedToken {
                 access_token: "old".into(),
@@ -769,7 +790,7 @@ async fn canonical_token_vectors() {
             previous.clone()
         } else if vector["wire_request"].is_array() {
             let wanted = union(&strings(&vector["requested"]), &required);
-            let wire = oauth.request_scopes(&previous, &wanted);
+            let wire = ManagedOAuth::request_scopes(&previous, &wanted, &ceiling);
             assert_eq!(wire, union(&strings(&vector["wire_request"]), &[]), "{id}");
             wire
         } else {
@@ -785,7 +806,7 @@ async fn canonical_token_vectors() {
         let result = match serde_json::from_slice::<BasicTokenResponse>(&body) {
             Ok(response) => {
                 oauth
-                    .committer()
+                    .committer(&ceiling)
                     .save_token(
                         &mut *guard,
                         &mut record,
@@ -809,11 +830,15 @@ async fn canonical_token_vectors() {
         };
         assert_eq!(result.is_ok(), vector["usable"] == true, "{id}");
         if let Some(error) = vector["error"].as_str() {
-            assert_eq!(
-                result.err().unwrap().auth_code().unwrap().as_str(),
-                error,
-                "{id}"
-            );
+            let result = result.err().unwrap();
+            assert_eq!(result.auth_code().unwrap().as_str(), error, "{id}");
+            if vector["error_scopes"].is_array() {
+                assert_eq!(
+                    result.required_scopes(),
+                    strings(&vector["error_scopes"]),
+                    "{id}"
+                );
+            }
         }
         let token = record.token.as_ref();
         let accepted = vector["accepted"] == true;
@@ -831,7 +856,7 @@ async fn canonical_token_vectors() {
             );
             if vector["effective"].is_array() {
                 assert_eq!(
-                    oauth.effective(&token.scopes),
+                    within(&ceiling, &token.scopes),
                     strings(&vector["effective"]),
                     "{id}"
                 );
@@ -851,7 +876,7 @@ async fn canonical_token_vectors() {
             );
         }
         assert_eq!(
-            oauth.cached(&record, &required).is_some(),
+            oauth.cached(&record, &required, &ceiling).is_some(),
             vector["usable"] == true,
             "{id}"
         );
@@ -954,6 +979,46 @@ fn lifecycle_manifest_maps_to_native_tests() {
             prepare_required_outside_ceiling_denied,
         ),
         ("challenged-replay-once", transport::challenged_replay_once),
+        (
+            "preset-scopes-requested-not-required",
+            scope_contract::rule1_preset_scopes_are_requested_not_required,
+        ),
+        (
+            "ceiling-refusal-before-network-every-path",
+            scope_contract::rule3_ceiling_refusal_before_network,
+        ),
+        (
+            "requested-outside-ceiling-invalid-configuration",
+            scope_contract::rule4_requested_outside_ceiling_invalid_configuration,
+        ),
+        (
+            "challenge-401-scope-requested-not-required",
+            scope_contract::rule5_unauthorized_scope_is_requested_not_required,
+        ),
+        (
+            "malformed-challenge-scope-denied",
+            scope_contract::rule7_malformed_challenge_scope,
+        ),
+        (
+            "insufficient-scope-already-granted-denied",
+            scope_contract::rule8_insufficient_scope_for_granted_scopes,
+        ),
+        (
+            "complete-enforces-stored-required-set",
+            scope_contract::rule9_complete_enforces_login_required_set,
+        ),
+        (
+            "grant-narrower-than-required-denied",
+            scope_contract::rule10_narrower_grants,
+        ),
+        (
+            "host-policy-errors-carry-no-scopes",
+            scope_contract::rule11_host_policy_errors_carry_no_scopes,
+        ),
+        (
+            "complete-error-login-ended",
+            scope_contract::rule12_complete_errors_report_login_ended,
+        ),
         (
             "configured-preset-no-protected-resource-metadata",
             configured_preset_no_protected_resource_metadata,
@@ -2277,13 +2342,29 @@ async fn scope_challenge_without_required_scope() {
         AuthErrorCode::AccessDenied
     );
     assert!(host.network.seen.lock().unwrap().is_empty());
-    let mut required = cc_context();
-    required.authentication.as_mut().unwrap()["scopes"] = json!(["write"]);
+    // Preset scopes are requested, never required: still denied, no scopes.
+    let mut preset = cc_context();
+    preset.authentication.as_mut().unwrap()["scopes"] = json!(["read"]);
+    let error = oauth.challenge(preset, bare()).await.err().unwrap();
+    assert_eq!(error.auth_code(), Some(AuthErrorCode::AccessDenied));
+    assert!(error.required_scopes().is_empty());
+    assert!(host.network.seen.lock().unwrap().is_empty());
+    // Host-required scopes are the requirement.
+    let required = host.owner(
+        OAuthClientConfig::new("account", "client", OAuthFlow::ClientCredentials)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .required_scopes(scopes(&["write"]))
+            .client_secret(
+                "secret-ref",
+                ClientSecret::new("secret".into()),
+                TokenAuthMethod::ClientSecretBasic,
+            ),
+    );
     host.network.reply(
         200,
         json!({"access_token":"w","token_type":"Bearer","scope":"read write"}),
     );
-    oauth.challenge(required, bare()).await.unwrap();
+    required.challenge(cc_context(), bare()).await.unwrap();
     assert_eq!(host.network.last_form()["scope"], "read write");
 }
 
@@ -2308,9 +2389,11 @@ async fn refresh_broadening_scope_ignored() {
     let token = host.store.token();
     assert_eq!(token.scopes, scopes(&["read"]));
     assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
-    let mut write = context();
-    write.authentication.as_mut().unwrap()["scopes"] = json!(["write"]);
-    let error = recreated.credential(write).await.err().unwrap();
+    let write = host.pkce(|c| {
+        c.scopes(scopes(&["read", "write"]), scopes(&["read", "write"]))
+            .required_scopes(scopes(&["write"]))
+    });
+    let error = write.credential(context()).await.err().unwrap();
     assert_eq!(error.auth_code(), Some(AuthErrorCode::InteractionRequired));
     assert_eq!(error.required_scopes(), ["write"]);
 }
@@ -2613,7 +2696,7 @@ async fn step_up_keeps_previous_grant() {
         scopes(&["files", "read", "write"])
     );
     assert_eq!(
-        writer.effective(&host.store.token().scopes),
+        within(&writer.config.allowed_scopes, &host.store.token().scopes),
         scopes(&["read", "write"])
     );
     let ready_files = files.credential(context()).await.unwrap().unwrap();

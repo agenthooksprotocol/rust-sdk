@@ -668,6 +668,7 @@ impl ManagedOAuth {
         self.detached(
             &mut guard,
             &mut record,
+            &[],
             move |mut guard, mut record, http, _| {
                 Box::pin(async move {
                     let outcome = registrar

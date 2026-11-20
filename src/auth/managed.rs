@@ -221,6 +221,7 @@ pub struct OAuthClientConfig {
     pub(super) flow: OAuthFlow,
     pub(super) requested_scopes: Vec<String>,
     pub(super) allowed_scopes: Vec<String>,
+    pub(super) required_scopes: Vec<String>,
     redirect_uri: Option<String>,
     grant_partition: Option<String>,
     secret: Option<(String, ClientSecret)>,
@@ -255,6 +256,7 @@ impl OAuthClientConfig {
             flow,
             requested_scopes: Vec::new(),
             allowed_scopes: Vec::new(),
+            required_scopes: Vec::new(),
             redirect_uri: None,
             grant_partition: None,
             secret: None,
@@ -330,9 +332,20 @@ impl OAuthClientConfig {
         self.login_lifetime = lifetime.min(MAX_LOGIN_LIFETIME);
         self
     }
+    /// `requested` scopes are asked for in every acquisition but are never
+    /// mandatory; a binding preset's `scopes`, when present, must equal them.
+    /// `allowed` is the local ceiling, defaulting to `requested`; a requested
+    /// scope outside it fails `invalid_configuration`.
     pub fn scopes(mut self, requested: Vec<String>, allowed: Vec<String>) -> Self {
         self.requested_scopes = requested;
         self.allowed_scopes = allowed;
+        self
+    }
+    /// Host-required scopes: mandatory for every operation of this client, with
+    /// explicit `prepare` and challenge requirements. One outside the ceiling
+    /// fails each operation `access_denied`, before any network request.
+    pub fn required_scopes(mut self, required: Vec<String>) -> Self {
+        self.required_scopes = required;
         self
     }
     /// Explicit opt-in to grant sharing, never destination authorization.
@@ -438,6 +451,10 @@ struct SavedLogin {
     scopes: Vec<String>,
     /// The creating caller's ceiling; it bounds what completion records.
     ceiling: Vec<String>,
+    /// The operation's required set at creation (host-required ∪ explicit);
+    /// completion fails `access_denied` unless the grant covers it.
+    #[serde(default)]
+    required: Vec<String>,
     state: String,
     verifier: String,
     redirect_uri: String,
@@ -584,6 +601,9 @@ pub struct ManagedOAuth {
     prepared: Arc<std::sync::Mutex<std::collections::BTreeMap<String, u64>>>,
     /// Pending logins owned by this provider, by grant key, oldest first.
     pending: Arc<std::sync::Mutex<std::collections::BTreeMap<String, Vec<SavedLogin>>>>,
+    /// Scopes a 401 challenge named (within the ceiling), by binding key: added
+    /// to the next acquisition's or sign-in's requested scopes, never required.
+    hinted: Arc<std::sync::Mutex<std::collections::BTreeMap<String, Vec<String>>>>,
 }
 /// Which caller drives acquisition. Only `Prepare` may create a pending login.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -643,7 +663,8 @@ impl TokenHttp {
         let budget = self.budget;
         budget
             .run(self.network.check(url, EndpointUse::Token, budget))
-            .await?;
+            .await
+            .map_err(HookError::unscoped)?;
         let mut request = request;
         request.extensions_mut().insert(self.written.clone());
         budget
@@ -751,7 +772,10 @@ async fn checked_network_send(
     if !valid_https(&url) {
         return Err(fail(AuthErrorCode::UntrustedDestination));
     }
-    budget.run(network.check(url, usage, budget)).await?;
+    budget
+        .run(network.check(url, usage, budget))
+        .await
+        .map_err(HookError::unscoped)?;
     let response = budget
         .run(network.send(request, usage, budget))
         .await
@@ -787,6 +811,14 @@ fn union(a: &[String], b: &[String]) -> Vec<String> {
     all.dedup();
     all
 }
+/// `scopes` ∩ `ceiling`, in `scopes` order.
+fn within(ceiling: &[String], scopes: &[String]) -> Vec<String> {
+    scopes
+        .iter()
+        .filter(|scope| ceiling.contains(scope))
+        .cloned()
+        .collect()
+}
 fn subset(scopes: &[String], of: &[String]) -> bool {
     scopes.iter().all(|scope| of.contains(scope))
 }
@@ -802,9 +834,11 @@ impl ManagedOAuth {
             config.allowed_scopes = config.requested_scopes.clone();
         }
         config.allowed_scopes = union(&config.allowed_scopes, &[]);
+        config.required_scopes = union(&config.required_scopes, &[]);
         if config
             .allowed_scopes
             .iter()
+            .chain(&config.required_scopes)
             .any(|scope| !valid_scope(scope))
             || config
                 .grant_partition
@@ -812,6 +846,10 @@ impl ManagedOAuth {
                 .is_some_and(|p| p.is_empty())
             || config.namespace.is_empty()
             || config.client_id.as_ref().is_some_and(|id| id.is_empty())
+            || !config
+                .requested_scopes
+                .iter()
+                .all(|scope| valid_scope(scope))
             || !subset(&config.requested_scopes, &config.allowed_scopes)
             || config.client_id.is_none() && config.secret.is_some()
             || !config.registrations.iter().all(RegistrationPolicy::valid)
@@ -851,6 +889,7 @@ impl ManagedOAuth {
             store,
             prepared: Arc::default(),
             pending: Arc::default(),
+            hinted: Arc::default(),
         })
     }
     fn prepared_key(context: &AuthContext) -> Option<String> {
@@ -933,7 +972,12 @@ impl ManagedOAuth {
         self.grant_key(target, &binding.metadata, &Self::client_identity(binding))
     }
     /// Requirements are judged on effective scopes (granted ∩ current ceiling).
-    fn cached(&self, record: &SessionRecord, required: &[String]) -> Option<BearerCredential> {
+    fn cached(
+        &self,
+        record: &SessionRecord,
+        required: &[String],
+        ceiling: &[String],
+    ) -> Option<BearerCredential> {
         record
             .token
             .as_ref()
@@ -942,23 +986,27 @@ impl ManagedOAuth {
                     && token
                         .expires_at
                         .is_none_or(|expiry| expiry > now().saturating_add(30))
-                    && subset(required, &self.effective(&token.scopes))
+                    && subset(required, &within(ceiling, &token.scopes))
             })
             .map(|token| BearerCredential {
                 token: token.access_token.clone(),
                 attempt_id: token.generation.clone(),
             })
     }
-    /// An acquisition requests previously granted ∪ (wanted ∩ ceiling).
-    fn request_scopes(&self, previous: &[String], wanted: &[String]) -> Vec<String> {
-        union(previous, &self.effective(wanted))
+    /// The grant records `required` as granted within the current ceiling.
+    fn grant_covers(record: &SessionRecord, required: &[String], ceiling: &[String]) -> bool {
+        record
+            .token
+            .as_ref()
+            .is_some_and(|token| subset(required, &within(ceiling, &token.scopes)))
     }
-    fn effective(&self, scopes: &[String]) -> Vec<String> {
-        scopes
-            .iter()
-            .filter(|scope| self.config.allowed_scopes.contains(scope))
-            .cloned()
-            .collect()
+    /// An acquisition requests previously granted ∪ (wanted ∩ ceiling).
+    fn request_scopes(previous: &[String], wanted: &[String], ceiling: &[String]) -> Vec<String> {
+        union(previous, &within(ceiling, wanted))
+    }
+    /// The caller's ceiling.
+    fn ceiling(&self) -> Vec<String> {
+        self.config.allowed_scopes.clone()
     }
     fn validate_target(&self, target: &AuthTarget) -> Result<(), HookError> {
         match target.binding() {
@@ -979,6 +1027,13 @@ impl ManagedOAuth {
                 // A preset client-credentials client needs the host's secret.
                 if *flow == OAuthFlow::ClientCredentials && self.config.client_id.is_none() {
                     return Err(fail(AuthErrorCode::UnsupportedBinding));
+                }
+                // A preset's `scopes` are the client's requested scopes:
+                // requested, never required, and a mismatch is a configuration error.
+                if !target.scopes().is_empty()
+                    && union(target.scopes(), &[]) != union(&self.config.requested_scopes, &[])
+                {
+                    return Err(fail(AuthErrorCode::InvalidConfiguration));
                 }
                 Ok(())
             }
@@ -1011,10 +1066,11 @@ impl ManagedOAuth {
                     .map(|(reference, _)| reference.as_str()),
                 metadata,
             })
-            .map_err(sanitize_provider_error)
+            .map_err(|error| sanitize_provider_error(error).unscoped())
     }
-    /// Apply local policy; returns the scopes to request. Configured requested
-    /// and operation-required scopes must be selected, all within the ceiling.
+    /// Apply local policy; returns the scopes to request. The operation's
+    /// required set must be selected, within the ceiling. A host refusal and an
+    /// untrusted issuer carry no scopes; a scope refusal carries the required set.
     pub(super) fn select(
         &self,
         target: &AuthTarget,
@@ -1024,19 +1080,17 @@ impl ManagedOAuth {
         let mut decision = self
             .policy
             .select(target, resource, required)
-            .map_err(sanitize_provider_error)?;
+            .map_err(|error| sanitize_provider_error(error).unscoped())?;
         decision.scopes = union(&decision.scopes, &[]);
         if !resource.authorization_servers.contains(&decision.issuer)
             || target
                 .issuer()
                 .is_some_and(|issuer| issuer != decision.issuer)
-            || !subset(&decision.scopes, &self.config.allowed_scopes)
-            || !subset(
-                &union(&self.config.requested_scopes, required),
-                &decision.scopes,
-            )
         {
-            return Err(fail(AuthErrorCode::AccessDenied));
+            return Err(fail(AuthErrorCode::AccessDenied).unscoped());
+        }
+        if !subset(&decision.scopes, &self.ceiling()) || !subset(required, &decision.scopes) {
+            return Err(fail(AuthErrorCode::AccessDenied).with_required_scopes(required));
         }
         Ok(decision)
     }
@@ -1078,6 +1132,7 @@ impl ManagedOAuth {
         budget
             .run(self.network.check(url.clone(), usage, budget))
             .await
+            .map_err(HookError::unscoped)
     }
     pub(super) async fn checked_send(
         &self,
@@ -1105,8 +1160,8 @@ impl ManagedOAuth {
     }
     /// Host-initiated preparation; bounded by both the supplied budget and context.
     /// The only operation that creates a pending login. To request step-up consent
-    /// after `interaction_required`, include the broader scopes in host policy or
-    /// the target's configured requirements; challenge requirements are not stored.
+    /// after `interaction_required`, pass its `HookError::required_scopes` to
+    /// `prepare_with_required`; challenge requirements are not stored.
     pub async fn prepare(
         &self,
         context: AuthContext,
@@ -1177,8 +1232,11 @@ impl ManagedOAuth {
             .map(Some)
             .ok_or_else(|| fail(AuthErrorCode::InvalidConfiguration))
     }
-    /// `challenge` is present only for challenge recovery; its requirements, like
-    /// `extra`, apply to this operation only and are never stored.
+    /// `challenge` is present only for challenge recovery; the scopes of a 403
+    /// `insufficient_scope` challenge, like explicit `login.required`, apply to
+    /// this operation only and are never stored. The required set is
+    /// host-required ∪ explicit ∪ challenged; preset and configured requested
+    /// scopes are requested, never required.
     async fn acquire(
         &self,
         context: AuthContext,
@@ -1190,12 +1248,14 @@ impl ManagedOAuth {
     ) -> Result<Option<Preparation>, HookError> {
         let target = context.target()?;
         self.validate_target(&target)?;
-        let mut required = union(target.scopes(), login.required);
+        let mut required = union(&self.config.required_scopes, login.required);
         if let Some(challenge) = challenge {
             required = union(&required, &challenge.scopes);
         }
-        let attach = |error: HookError| error.with_required_scopes(&required);
-        if !subset(&required, &self.config.allowed_scopes) {
+        // Host-policy and non-scope refusals are unscoped and carry nothing.
+        let attach = |error: HookError| error.with_operation_scopes(&required);
+        // Decided locally, before any network request.
+        if !subset(&required, &self.ceiling()) {
             return Err(attach(fail(AuthErrorCode::AccessDenied)));
         }
         let attempt = |rediscover| {
@@ -1266,6 +1326,25 @@ impl ManagedOAuth {
         }
         current.metadata = metadata;
         self.persist(&mut *guard, &mut current, budget).await
+    }
+    /// A 401 retires the rejected generation before any other decision, so
+    /// neither a refusal nor a failed discovery or renewal leaves it servable.
+    async fn retire_rejected(
+        &self,
+        context: &AuthContext,
+        attempt: &str,
+        budget: OperationBudget,
+    ) -> Result<(), HookError> {
+        let Ok(target) = context.target() else {
+            return Ok(());
+        };
+        let Some(binding) = self.load(&self.key(&target), budget).await? else {
+            return Ok(());
+        };
+        if self.compatible(&target, &binding) {
+            self.retire(&target, &binding, attempt, budget).await?;
+        }
+        Ok(())
     }
     /// Mark this exact token generation as rejected in the store.
     async fn retire(
@@ -1361,7 +1440,11 @@ impl ManagedOAuth {
         let redirect = login.redirect;
         let target = target.clone();
         let required = required.to_vec();
+        let ceiling = self.ceiling();
+        // A 403 `insufficient_scope` step-up (a 401 never is one).
+        let step_up = challenge.is_some_and(|c| c.insufficient_scope);
         let binding_key = self.key(&target);
+        let hint_key = binding_key.as_str().to_owned();
         let saved = self.load(&binding_key, budget).await?;
         // Local authorization of a saved binding needs no network; policy runs off-lock.
         let mut usable = None;
@@ -1408,10 +1491,16 @@ impl ManagedOAuth {
                 Err(error) => return Err(error.into()),
             }
         }
-        // Retire a rejected generation before any network, so a failed discovery
-        // or renewal never leaves the revoked token servable.
-        if let (Some(attempt), Some(binding)) = (rejected_attempt, known) {
-            self.retire(&target, binding, attempt, budget).await?;
+        // The server says insufficient, but the grant records the required set
+        // as granted: decided before any network request.
+        if step_up
+            && let Some(binding) = known
+            && self
+                .load(&self.binding_grant_key(&target, binding), budget)
+                .await?
+                .is_some_and(|record| Self::grant_covers(&record, &required, &ceiling))
+        {
+            return Err(fail(AuthErrorCode::AccessDenied).into());
         }
         // `prepare` serves a usable cached token, otherwise rebuilds binding metadata
         // so stale persisted metadata always has a repair path.
@@ -1426,7 +1515,7 @@ impl ManagedOAuth {
                 && let Some(credential) = self
                     .load(&key, budget)
                     .await?
-                    .and_then(|record| self.cached(&record, &required))
+                    .and_then(|record| self.cached(&record, &required, &ceiling))
             {
                 return Ok(Some(Preparation::Ready(credential)));
             }
@@ -1471,12 +1560,20 @@ impl ManagedOAuth {
         if mode == Mode::Prepare {
             self.end_login(&key, None, budget).await?;
         }
+        let stored = self.load(&key, budget).await?;
+        // The server says insufficient, but the grant records the required set
+        // as granted: never replay that token, loop or create a login.
+        if step_up
+            && stored
+                .as_ref()
+                .is_some_and(|r| Self::grant_covers(r, &required, &ceiling))
+        {
+            return Err(fail(AuthErrorCode::AccessDenied).into());
+        }
         if rejected_attempt.is_none()
             && !login.forcing()
-            && let Some(credential) = self
-                .load(&key, budget)
-                .await?
-                .and_then(|record| self.cached(&record, &required))
+            && let Some(credential) =
+                stored.and_then(|record| self.cached(&record, &required, &ceiling))
         {
             return Ok(Some(Preparation::Ready(credential)));
         }
@@ -1511,7 +1608,10 @@ impl ManagedOAuth {
         if dirty {
             self.persist(&mut *guard, &mut record, budget).await?;
         }
-        if let Some(credential) = self.cached(&record, &required) {
+        if step_up && Self::grant_covers(&record, &required, &ceiling) {
+            return Err(fail(AuthErrorCode::AccessDenied).into());
+        }
+        if let Some(credential) = self.cached(&record, &required, &ceiling) {
             return Ok(Some(Preparation::Ready(credential)));
         }
         // A PKCE DCR grant refreshes with the client stored alongside its tokens.
@@ -1523,10 +1623,17 @@ impl ManagedOAuth {
             && !choice.id.is_empty()
             && let Some(token) = &record.token
             && token.refresh_token.is_some()
-            && subset(&required, &self.effective(&token.scopes))
+            && subset(&required, &within(&ceiling, &token.scopes))
         {
             let result = self
-                .refresh(&mut guard, &mut record, &choice, &required, budget)
+                .refresh(
+                    &mut guard,
+                    &mut record,
+                    &choice,
+                    &required,
+                    &ceiling,
+                    budget,
+                )
                 .await;
             drop(guard);
             return self
@@ -1539,8 +1646,19 @@ impl ManagedOAuth {
             .token
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
-        let scopes = self.request_scopes(&previous, &scopes);
+        // Requested: the policy's selection, the configured requested scopes
+        // (a preset's equal them), the required set and any 401 challenge scopes.
+        let hinted = self.hinted.lock().unwrap().get(&hint_key).cloned();
+        let wanted = [
+            &scopes[..],
+            &self.config.requested_scopes,
+            &required,
+            hinted.as_deref().unwrap_or_default(),
+        ]
+        .concat();
+        let scopes = Self::request_scopes(&previous, &wanted, &ceiling);
         if cc {
+            self.hinted.lock().unwrap().remove(&hint_key);
             let result = self
                 .client_credentials(
                     &mut guard,
@@ -1549,6 +1667,7 @@ impl ManagedOAuth {
                     &scopes,
                     &previous,
                     &required,
+                    &ceiling,
                 )
                 .await;
             drop(guard);
@@ -1602,7 +1721,8 @@ impl ManagedOAuth {
             id: random_id(),
             metadata: record.metadata.clone(),
             scopes,
-            ceiling: self.config.allowed_scopes.clone(),
+            ceiling: ceiling.clone(),
+            required,
             state: state.secret().clone(),
             verifier: verifier.secret().clone(),
             redirect_uri: redirect.into(),
@@ -1617,6 +1737,7 @@ impl ManagedOAuth {
             expires_at: UNIX_EPOCH + Duration::from_millis(login.expires_at_ms),
         };
         self.add_login(&key, record, login, budget).await?;
+        self.hinted.lock().unwrap().remove(&hint_key);
         Ok(Some(Preparation::InteractionRequired(pending)))
     }
     /// Admit a pending login for a grant key, deleting expired ones and
@@ -1787,9 +1908,9 @@ impl ManagedOAuth {
         }
         Ok(client)
     }
-    fn committer(&self) -> Committer {
+    fn committer(&self, ceiling: &[String]) -> Committer {
         Committer {
-            allowed: self.config.allowed_scopes.clone(),
+            allowed: ceiling.to_vec(),
             timeout: self.config.commit_timeout,
         }
     }
@@ -1801,6 +1922,7 @@ impl ManagedOAuth {
         &self,
         guard: &mut Box<dyn CredentialGuard>,
         record: &mut SessionRecord,
+        ceiling: &[String],
         exchange: impl FnOnce(
             Box<dyn CredentialGuard>,
             SessionRecord,
@@ -1808,7 +1930,7 @@ impl ManagedOAuth {
             Committer,
         ) -> Exchange<T>,
     ) -> Result<T, HookError> {
-        let committer = self.committer();
+        let committer = self.committer(ceiling);
         let http = TokenHttp {
             network: self.network.clone(),
             budget: commit_budget(committer.timeout),
@@ -1843,6 +1965,7 @@ impl ManagedOAuth {
         scopes: &[String],
         previous: &[String],
         required: &[String],
+        ceiling: &[String],
     ) -> Result<BearerCredential, Renewal> {
         if !record
             .metadata
@@ -1855,11 +1978,12 @@ impl ManagedOAuth {
         let client = self.client(&record.metadata, choice, None)?;
         let resource = record.metadata.resource.clone();
         let (scopes, required) = (scopes.to_vec(), required.to_vec());
-        let bound = union(previous, &self.config.allowed_scopes);
+        let bound = union(previous, ceiling);
         let client_id = choice.id.clone();
         self.detached(
             guard,
             record,
+            ceiling,
             move |mut guard, mut record, http, committer| {
                 Box::pin(async move {
                     let mut request = client
@@ -1896,6 +2020,7 @@ impl ManagedOAuth {
         record: &mut SessionRecord,
         choice: &ClientChoice,
         required: &[String],
+        ceiling: &[String],
         budget: OperationBudget,
     ) -> Result<BearerCredential, Renewal> {
         let token = record
@@ -1925,6 +2050,7 @@ impl ManagedOAuth {
         self.detached(
             guard,
             record,
+            ceiling,
             move |mut guard, mut record, http, committer| {
                 Box::pin(async move {
                     let outcome = committer
@@ -1949,23 +2075,92 @@ impl ManagedOAuth {
     /// `ManagedOAuth` created or, with `persist_pending_logins`, any in the store.
     /// Callback transport/UI remain host-owned. The login's redirect, state and
     /// issuer are validated before it is claimed, so stray callbacks cannot consume it.
+    ///
+    /// Succeeds only if the grant (within the current ceiling) covers the
+    /// required set the login was prepared with; otherwise it fails
+    /// `access_denied` carrying that set, with the grant still persisted and
+    /// the login consumed. Every error reports `HookError::login_ended`.
     pub async fn complete(
         &self,
         context: AuthContext,
         callback: Url,
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
+        self.complete_with(context, None, callback, budget).await
+    }
+    /// `complete` for the host's handle of the login it expects: a callback
+    /// whose `state` names another pending login fails `access_denied` and
+    /// consumes neither.
+    pub async fn complete_login(
+        &self,
+        context: AuthContext,
+        login: &PendingLogin,
+        callback: Url,
+        budget: OperationBudget,
+    ) -> Result<BearerCredential, HookError> {
+        self.complete_with(context, Some(&login.id), callback, budget)
+            .await
+    }
+    async fn complete_with(
+        &self,
+        context: AuthContext,
+        handle: Option<&str>,
+        callback: Url,
+        budget: OperationBudget,
+    ) -> Result<BearerCredential, HookError> {
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
-        let credential = budget
-            .run(self.complete_inner(context.clone(), callback, budget))
-            .await?;
-        self.mark_prepared(&context);
-        Ok(credential)
+        let claimed = AtomicBool::new(false);
+        let result = budget
+            .run(self.complete_inner(context.clone(), handle, callback.clone(), &claimed, budget))
+            .await;
+        match result {
+            Ok(credential) => {
+                self.mark_prepared(&context);
+                Ok(credential)
+            }
+            Err(error) => {
+                let ended = claimed.load(Ordering::SeqCst)
+                    || !self.login_pending(&context, &callback, budget).await;
+                Err(error.with_login_ended(ended))
+            }
+        }
+    }
+    /// Whether the pending login named by the callback's (first) `state` is
+    /// still live; true when that cannot be determined.
+    async fn login_pending(
+        &self,
+        context: &AuthContext,
+        callback: &Url,
+        budget: OperationBudget,
+    ) -> bool {
+        let Some(state) = callback
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .map(|(_, value)| CsrfToken::new(value.into_owned()))
+        else {
+            return false;
+        };
+        let Ok(target) = context.target() else {
+            return false;
+        };
+        let lookup = async {
+            let Some(binding) = self.load(&self.key(&target), budget).await? else {
+                return Ok(false);
+            };
+            if !self.compatible(&target, &binding) {
+                return Ok(false);
+            }
+            let key = self.binding_grant_key(&target, &binding);
+            Ok::<_, HookError>(self.find_login(&key, &state, budget).await?.is_some())
+        };
+        budget.run(lookup).await.unwrap_or(true)
     }
     async fn complete_inner(
         &self,
         context: AuthContext,
+        handle: Option<&str>,
         callback: Url,
+        claimed: &AtomicBool,
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
         let denied = || fail(AuthErrorCode::AccessDenied);
@@ -1976,6 +2171,7 @@ impl ManagedOAuth {
             return Err(fail(AuthErrorCode::UnsupportedBinding));
         }
         let (mut state, mut code, mut error, mut issuer) = (None, None, None, None);
+        let mut duplicated = false;
         for (key, value) in callback.query_pairs() {
             let field = match key.as_ref() {
                 "state" => &mut state,
@@ -1984,15 +2180,15 @@ impl ManagedOAuth {
                 "iss" => &mut issuer,
                 _ => continue,
             };
-            if field.replace(value.into_owned()).is_some() {
-                return Err(denied());
+            if field.is_some() {
+                duplicated = true;
+            } else {
+                *field = Some(value.into_owned());
             }
         }
-        // No state, like an unknown one, matches no pending login.
+        // First find the login the `state` names: no state, like an unknown,
+        // expired or ended one, matches none, whatever else the callback holds.
         let state = CsrfToken::new(state.ok_or_else(gone)?);
-        if code.is_some() == error.is_some() {
-            return Err(denied());
-        }
         let binding = self
             .load(&self.key(&target), budget)
             .await?
@@ -2000,7 +2196,8 @@ impl ManagedOAuth {
         if !self.compatible(&target, &binding) {
             return Err(gone());
         }
-        self.validate_saved(&target, &binding, target.scopes())?;
+        // The login's required set is enforced on its grant, after the exchange.
+        self.validate_saved(&target, &binding, &[])?;
         self.approve_metadata(&target, &binding.metadata)?;
         let key = self.binding_grant_key(&target, &binding);
         // Ended, expired or foreign-state callbacks never consume a login.
@@ -2008,6 +2205,14 @@ impl ManagedOAuth {
             self.end_login(&key, None, budget).await?;
             return Err(gone());
         };
+        // Then validate the callback; an invalid one never consumes the login.
+        if duplicated
+            || handle.is_some_and(|id| id != saved.id)
+            || code.is_some() == error.is_some()
+            || code.as_ref().is_some_and(|code| code.is_empty())
+        {
+            return Err(denied());
+        }
         let redirect = Url::parse(&saved.redirect_uri).map_err(|_| denied())?;
         let fixed_query = |url: &Url| {
             let mut pairs = url
@@ -2049,6 +2254,7 @@ impl ManagedOAuth {
             .end_login(&key, Some(&saved.id), budget)
             .await?
             .ok_or_else(gone)?;
+        claimed.store(true, Ordering::SeqCst);
         if let Some(error) = error {
             // An authorization-endpoint invalid_client for a CIMD client is a
             // misconfiguration, never a DCR fallback.
@@ -2057,7 +2263,7 @@ impl ManagedOAuth {
             }
             return Err(denied());
         }
-        let code = code.filter(|s| !s.is_empty()).ok_or_else(denied)?;
+        let code = code.ok_or_else(denied)?;
         let choice = ClientChoice {
             id: saved.client_id.clone(),
             ..self.configured_choice(&target, &binding)
@@ -2076,11 +2282,14 @@ impl ManagedOAuth {
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let bound = union(&saved.ceiling, &previous);
-        let required = target.scopes().to_vec();
+        let required = saved.required.clone();
+        // Enforced on the grant within the current ceiling.
+        let ceiling = self.ceiling();
         let outcome = self
             .detached(
                 &mut guard,
                 &mut record,
+                &ceiling,
                 move |mut guard, mut record, http, committer| {
                     Box::pin(async move {
                         let response = client
@@ -2113,7 +2322,10 @@ impl ManagedOAuth {
                             Err(error) if invalid_client(&error) => {
                                 Err(Renewal::InvalidClient(token_error(&error)))
                             }
-                            Err(error) => Err(token_error(&error).into()),
+                            Err(RequestTokenError::Request(error)) => {
+                                Err(sanitize_provider_error(error).into())
+                            }
+                            Err(_) => Err(fail(AuthErrorCode::ProviderFailed).into()),
                         };
                         (outcome, guard, record)
                     })
@@ -2295,7 +2507,7 @@ impl Committer {
         record.token = Some(token);
         self.persist(guard, record).await?;
         if !sufficient {
-            return Err(fail(AuthErrorCode::AccessDenied));
+            return Err(fail(AuthErrorCode::AccessDenied).with_required_scopes(required));
         }
         Ok(credential)
     }
@@ -2493,8 +2705,11 @@ impl AuthProvider for ManagedOAuth {
             }
         })
     }
-    /// A 401 retires the rejected generation. A Bearer 403 `insufficient_scope`
-    /// requirement applies to this operation's acquisition only.
+    /// A 401 retires the rejected generation first; its `scope` is only requested
+    /// by the next acquisition or sign-in. A Bearer 403 `insufficient_scope`
+    /// requirement applies to this operation's acquisition only; one the stored
+    /// grant already covers fails `access_denied`. Malformed challenges fail
+    /// `access_denied` with no scopes.
     fn challenge(
         &self,
         context: AuthContext,
@@ -2505,6 +2720,15 @@ impl AuthProvider for ManagedOAuth {
                 return Err(fail(AuthErrorCode::AccessDenied));
             }
             let budget = OperationBudget::until(context.deadline);
+            let rejected = challenge
+                .attempt_id
+                .as_deref()
+                .filter(|_| challenge.status == 401);
+            if let Some(attempt) = rejected {
+                budget
+                    .run(self.retire_rejected(&context, attempt, budget))
+                    .await?;
+            }
             let headers = challenge
                 .headers
                 .iter()
@@ -2512,17 +2736,28 @@ impl AuthProvider for ManagedOAuth {
                 .map(|(_, value)| value.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            let parsed = crate::auth::challenge::parse(&headers)
-                .map_err(|_| fail(AuthErrorCode::DiscoveryFailed))?;
-            let rejected = if challenge.status == 401 {
-                challenge.attempt_id.as_deref()
+            // A malformed challenge fails closed, with no scopes.
+            let mut parsed = crate::auth::challenge::parse(&headers)
+                .map_err(|_| fail(AuthErrorCode::AccessDenied))?;
+            if challenge.status == 401 {
+                // As in MCP clients: requested by the next acquisition or
+                // sign-in (within the ceiling), never a requirement.
+                if let Ok(target) = context.target()
+                    && let hinted = within(&self.ceiling(), &parsed.scopes)
+                    && !hinted.is_empty()
+                {
+                    let mut all = self.hinted.lock().unwrap();
+                    let entry = all.entry(self.key(&target).as_str().into()).or_default();
+                    *entry = union(entry, &hinted);
+                }
+                parsed.scopes.clear();
+                parsed.insufficient_scope = false;
             } else if !parsed.insufficient_scope
-                || (parsed.scopes.is_empty() && context.target()?.scopes().is_empty())
+                || (parsed.scopes.is_empty() && self.config.required_scopes.is_empty())
             {
+                // Without challenge scopes, a step-up needs host-required ones.
                 return Err(fail(AuthErrorCode::AccessDenied));
-            } else {
-                None
-            };
+            }
             match budget
                 .run(self.acquire(
                     context,

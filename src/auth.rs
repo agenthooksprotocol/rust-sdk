@@ -131,6 +131,7 @@ impl AuthTarget {
     pub fn client_secret_ref(&self) -> Option<&str> {
         self.client_secret_ref.as_deref()
     }
+    /// The preset's optional `scopes`: the client's requested scopes, never required.
     pub fn scopes(&self) -> &[String] {
         &self.scopes
     }
@@ -414,6 +415,7 @@ pub(crate) fn sanitize_provider_error(error: HookError) -> HookError {
     HookError::authentication(error.auth_code().unwrap_or(AuthErrorCode::ProviderFailed))
         .classified(error.code())
         .with_required_scopes(error.required_scopes())
+        .unscoped_if(error.is_unscoped())
         .request_not_sent_if(error.is_request_not_sent())
 }
 /// RFC 6749 section 3.3 scope-token grammar.
