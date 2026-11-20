@@ -927,3 +927,56 @@ async fn policy_selected_scopes_are_requested() {
         }
     }
 }
+
+/// Step 1 precedes step 4: a preset `scopes` other than the policy-selected S
+/// is invalid_configuration even when R is also outside the ceiling, with no
+/// scopes and no authorization-server request.
+#[tokio::test]
+async fn preset_mismatch_precedes_ceiling_refusal() {
+    let host = Host::new();
+    *host.policy.select.lock().unwrap() = scopes(&["write"]);
+    let pkce = host.pkce(|c| c.required_scopes(scopes(&["admin"])));
+    let cc = host.owner(
+        OAuthClientConfig::new("account", "client", OAuthFlow::ClientCredentials)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .required_scopes(scopes(&["admin"]))
+            .client_secret(
+                "secret-ref",
+                ClientSecret::new("secret".into()),
+                TokenAuthMethod::ClientSecretBasic,
+            ),
+    );
+    let pkce_preset = with_preset(context(), &["read"]);
+    let cc_preset = with_preset(cc_context(), &["read"]);
+    let step_up = || step_up("write");
+    for error in [
+        pkce.credential(pkce_preset.clone()).await.err().unwrap(),
+        pkce.prepare(pkce_preset.clone(), budget())
+            .await
+            .err()
+            .unwrap(),
+        pkce.challenge(pkce_preset, step_up()).await.err().unwrap(),
+        cc.credential(cc_preset.clone()).await.err().unwrap(),
+        cc.challenge(cc_preset, step_up()).await.err().unwrap(),
+    ] {
+        assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
+    }
+    assert_eq!(
+        requests(&host),
+        0,
+        "no authorization-server or other request"
+    );
+    // A policy-selected S beyond the ceiling is step 1 too, for a preset.
+    *host.policy.select.lock().unwrap() = scopes(&["read", "admin"]);
+    let error = pkce.credential(context()).await.err().unwrap();
+    assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
+    assert_eq!(requests(&host), 0);
+    *host.policy.select.lock().unwrap() = scopes(&["write"]);
+    // With the preset matching S, the ceiling refusal applies.
+    let error = pkce
+        .credential(with_preset(context(), &["write"]))
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::AccessDenied, &["admin"]);
+}

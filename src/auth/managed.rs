@@ -1070,6 +1070,27 @@ impl ManagedOAuth {
         }
         Ok(decision)
     }
+    /// The rest of step 1 for an explicit preset, before the ceiling: the
+    /// target's S, which host policy selects for the preset's own issuer
+    /// without any network request, must lie within the ceiling, and a
+    /// present preset `scopes` must equal it. Only those configuration errors
+    /// are decided here; other selection outcomes surface where the binding
+    /// is selected.
+    fn preset_selection(&self, target: &AuthTarget, explicit: &[String]) -> Result<(), HookError> {
+        let (AuthBinding::OAuth { resource, .. }, Some(issuer)) =
+            (target.binding(), target.issuer())
+        else {
+            return Ok(());
+        };
+        let metadata = ResourceMetadata::new(resource.clone(), vec![issuer.to_owned()]);
+        let required = union(&self.config.required_scopes, explicit);
+        match self.select(target, &metadata, &required) {
+            Err(error) if error.auth_code() == Some(AuthErrorCode::InvalidConfiguration) => {
+                Err(error)
+            }
+            _ => Ok(()),
+        }
+    }
     /// Revalidate a saved binding against current local policy, without network.
     fn validate_saved(
         &self,
@@ -1223,6 +1244,7 @@ impl ManagedOAuth {
         let target = context.target()?;
         self.validate_target(&target)?;
         decide::configuration(&self.config, target.preset_scopes(), login.required)?;
+        self.preset_selection(&target, login.required)?;
         // A lookup's store miss is anonymous delivery, before any scope decision.
         if mode == Mode::Lookup && self.load(&self.key(&target), budget).await?.is_none() {
             return Ok(None);
