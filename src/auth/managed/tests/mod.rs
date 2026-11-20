@@ -213,6 +213,8 @@ struct Policy {
     shared_lock: AtomicBool,
     /// A host refusal returned by `select` / `approve_endpoints`.
     refuse: Mutex<Option<HookError>>,
+    /// `select` calls.
+    selects: AtomicUsize,
     refuse_endpoints: Mutex<Option<HookError>>,
 }
 impl Policy {
@@ -231,6 +233,7 @@ impl Policy {
             only: Mutex::new(None),
             shared_lock: AtomicBool::new(false),
             refuse: Mutex::new(None),
+            selects: AtomicUsize::new(0),
             refuse_endpoints: Mutex::new(None),
         })
     }
@@ -250,6 +253,7 @@ impl OAuthPolicy for Policy {
         required: &[String],
     ) -> Result<TrustDecision, HookError> {
         self.off_lock();
+        self.selects.fetch_add(1, Ordering::SeqCst);
         if self.deny.load(Ordering::SeqCst) {
             return Err(fail(AuthErrorCode::UntrustedDestination));
         }
@@ -1577,7 +1581,7 @@ async fn client_credentials_transient_reissue() {
         (
             400,
             json!({"error":"invalid_grant"}),
-            AuthErrorCode::ProviderFailed,
+            AuthErrorCode::CredentialUnavailable,
         ),
         (
             401,

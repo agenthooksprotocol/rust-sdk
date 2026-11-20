@@ -804,13 +804,14 @@ async fn host_failures_carry_no_scopes() {
     let error = oauth.credential(context()).await.err().unwrap();
     assert_error(error.clone(), AuthErrorCode::AccessDenied, &[]);
     assert_eq!(error.login_ended(), None);
-    // Network, on a token request.
+    // Network, on a token request: an unreachable token endpoint is
+    // provider_failed, whatever the host network reported.
     let host = Host::new();
     let oauth = cc_client(&host, &[]);
     *host.network.token_failure.lock().unwrap() =
         Some(with_scopes(AuthErrorCode::InteractionRequired));
     let error = oauth.credential(cc_context()).await.err().unwrap();
-    assert_error(error, AuthErrorCode::InteractionRequired, &[]);
+    assert_error(error, AuthErrorCode::ProviderFailed, &[]);
     // Callback policy (client selection) and a client source no longer
     // permitted, before the claim: the login stays pending.
     let host = Host::new();
@@ -979,4 +980,227 @@ async fn preset_mismatch_precedes_ceiling_refusal() {
         .err()
         .unwrap();
     assert_error(error, AuthErrorCode::AccessDenied, &["admin"]);
+}
+
+fn selects(host: &Host) -> usize {
+    host.policy.selects.swap(0, Ordering::SeqCst)
+}
+
+/// Host policy selects once per operation, before the decision, on every
+/// path: a stored or preset binding, challenge rediscovery and a refusal.
+#[tokio::test]
+async fn policy_selects_once_per_operation() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    // A preset without a stored binding: prepare creates a login.
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    assert_eq!(selects(&host), 1, "prepare");
+    host.network.reply(
+        200,
+        json!({"access_token":"t","refresh_token":"r","token_type":"Bearer","expires_in":3600}),
+    );
+    let token = oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    assert_eq!(selects(&host), 1, "complete");
+    // A stored binding: lookup and delivery.
+    oauth.credential(context()).await.unwrap().unwrap();
+    assert_eq!(selects(&host), 1, "credential");
+    oauth.credential(unbound()).await.unwrap().unwrap();
+    assert_eq!(selects(&host), 1, "preemptive");
+    // Challenges rediscover through the same selection.
+    let header = r#"Bearer error="insufficient_scope", scope="write""#;
+    let _ = oauth
+        .challenge(context(), challenge(403, header, Some(&token.attempt_id)))
+        .await;
+    assert_eq!(selects(&host), 1, "403");
+    host.network.reply(
+        200,
+        json!({"access_token":"t2","refresh_token":"r2","token_type":"Bearer","expires_in":3600}),
+    );
+    oauth
+        .challenge(context(), challenge(401, "Bearer", Some(&token.attempt_id)))
+        .await
+        .unwrap();
+    assert_eq!(selects(&host), 1, "401");
+    // A refusing policy is asked once, and its error is the outcome.
+    *host.policy.refuse.lock().unwrap() = Some(fail(AuthErrorCode::CredentialUnavailable));
+    let error = oauth.prepare(context(), budget()).await.err().unwrap();
+    assert_error(error, AuthErrorCode::CredentialUnavailable, &[]);
+    assert_eq!(selects(&host), 1, "refused prepare");
+    let error = oauth
+        .challenge(context(), challenge(401, "Bearer", None))
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::CredentialUnavailable, &[]);
+    assert_eq!(selects(&host), 1, "refused challenge");
+    *host.policy.refuse.lock().unwrap() = None;
+    // An unbound, learned client-credentials binding rediscovered on a 401.
+    let host = Host::new();
+    let oauth = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    host.network
+        .reply(200, json!({"access_token":"first","token_type":"Bearer"}));
+    oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .unwrap();
+    assert_eq!(selects(&host), 1, "first discovery");
+    host.network
+        .reply(200, json!({"access_token":"second","token_type":"Bearer"}));
+    oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .unwrap();
+    assert_eq!(selects(&host), 1, "rediscovery");
+}
+
+/// A learned binding's policy-selected S beyond the ceiling is step 1, before
+/// a host-required scope outside the ceiling: invalid_configuration.
+#[tokio::test]
+async fn learned_binding_selection_beyond_ceiling_is_configuration() {
+    let host = Host::new();
+    let learner = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    host.network
+        .reply(200, json!({"access_token":"first","token_type":"Bearer"}));
+    learner
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .unwrap();
+    let before = requests(&host);
+    *host.policy.select.lock().unwrap() = scopes(&["read", "admin"]);
+    let oauth = cc_client(&host, &["admin"]);
+    for error in [
+        oauth.credential(unbound()).await.err().unwrap(),
+        oauth
+            .challenge(unbound(), challenge(401, "Bearer", None))
+            .await
+            .err()
+            .unwrap(),
+    ] {
+        assert_error(error, AuthErrorCode::InvalidConfiguration, &[]);
+    }
+    assert_eq!(requests(&host), before);
+}
+
+/// Renewal errors outside `complete`: refresh and client-credentials grants.
+#[tokio::test]
+async fn renewal_errors_are_classified() {
+    let cases: &[(&str, u16, Value, AuthErrorCode)] = &[
+        (
+            "refresh",
+            400,
+            json!({"error":"invalid_grant"}),
+            AuthErrorCode::RefreshRejected,
+        ),
+        (
+            "refresh",
+            400,
+            json!({"error":"unauthorized_client"}),
+            AuthErrorCode::CredentialUnavailable,
+        ),
+        (
+            "refresh",
+            401,
+            json!({"error":"invalid_client"}),
+            AuthErrorCode::CredentialUnavailable,
+        ),
+        (
+            "refresh",
+            400,
+            json!({"error":"access_denied"}),
+            AuthErrorCode::ProviderFailed,
+        ),
+        (
+            "refresh",
+            400,
+            json!({"error":"invalid_scope"}),
+            AuthErrorCode::ProviderFailed,
+        ),
+        (
+            "refresh",
+            500,
+            json!({"error":"server_error"}),
+            AuthErrorCode::ProviderFailed,
+        ),
+        (
+            "refresh",
+            200,
+            json!({"access_token":"x","token_type":"mac"}),
+            AuthErrorCode::ProviderFailed,
+        ),
+        (
+            "cc",
+            400,
+            json!({"error":"invalid_grant"}),
+            AuthErrorCode::CredentialUnavailable,
+        ),
+        (
+            "cc",
+            400,
+            json!({"error":"unauthorized_client"}),
+            AuthErrorCode::CredentialUnavailable,
+        ),
+        (
+            "cc",
+            401,
+            json!({"error":"invalid_client"}),
+            AuthErrorCode::CredentialUnavailable,
+        ),
+        (
+            "cc",
+            400,
+            json!({"error":"access_denied"}),
+            AuthErrorCode::ProviderFailed,
+        ),
+        (
+            "cc",
+            400,
+            json!({"error":"invalid_scope"}),
+            AuthErrorCode::ProviderFailed,
+        ),
+        (
+            "cc",
+            500,
+            json!({"error":"server_error"}),
+            AuthErrorCode::ProviderFailed,
+        ),
+        (
+            "cc",
+            200,
+            json!({"access_token":"x","token_type":"mac"}),
+            AuthErrorCode::ProviderFailed,
+        ),
+    ];
+    for (grant, status, body, expected) in cases {
+        let host = Host::new();
+        let (oauth, ctx) = if *grant == "refresh" {
+            let oauth = host.pkce(|c| c);
+            host.seed(&oauth, context()).await;
+            (oauth, context())
+        } else {
+            (cc_client(&host, &[]), cc_context())
+        };
+        host.store.expire();
+        host.network.reply(*status, body.clone());
+        let error = oauth.credential(ctx).await.err().unwrap();
+        assert_error(error, *expected, &[]);
+    }
+    // An unreachable token endpoint.
+    for grant in ["refresh", "cc"] {
+        let host = Host::new();
+        let (oauth, ctx) = if grant == "refresh" {
+            let oauth = host.pkce(|c| c);
+            host.seed(&oauth, context()).await;
+            (oauth, context())
+        } else {
+            (cc_client(&host, &[]), cc_context())
+        };
+        host.store.expire();
+        *host.network.token_failure.lock().unwrap() =
+            Some(fail(AuthErrorCode::UntrustedDestination));
+        let error = oauth.credential(ctx).await.err().unwrap();
+        assert_error(error, AuthErrorCode::ProviderFailed, &[]);
+    }
 }

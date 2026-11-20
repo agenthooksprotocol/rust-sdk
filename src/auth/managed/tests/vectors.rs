@@ -362,12 +362,18 @@ async fn canonical_scope_decision_vectors() {
         );
         let result: Result<Option<Preparation>, HookError> = match path {
             "cached" | "credential" | "fresh" => match oauth.credential(ctx.clone()).await {
-                // An unknown unbound endpoint is first called anonymously;
-                // its 401 then goes to challenge handling.
-                Ok(None) if binding == "unbound" => oauth
-                    .challenge(ctx.clone(), challenge(401, "Bearer", None))
-                    .await
-                    .map(|()| None),
+                // An unbound target: an anonymous request (no token sent)
+                // receives the vector's 401, handled by challenge.
+                Ok(None) if binding == "unbound" => {
+                    let (status, header) =
+                        rejection.map_or((401, "Bearer"), |r| (r.status, r.header));
+                    assert_eq!(status, 401, "{id}");
+                    assert!(sent.is_none(), "{id}: no token was sent");
+                    oauth
+                        .challenge(ctx.clone(), challenge(status, header, None))
+                        .await
+                        .map(|()| None)
+                }
                 result => result.map(|c| c.map(Preparation::Ready)),
             },
             "preemptive" => oauth

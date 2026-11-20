@@ -141,6 +141,7 @@ pub struct TrustedMetadata {
 }
 /// A host policy selection: the trusted issuer and this target's requested
 /// scopes (empty: the configured requested scopes).
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct TrustDecision {
     pub issuer: String,
@@ -621,6 +622,23 @@ pub struct ManagedOAuth {
     /// Pending logins owned by this provider, by grant key, oldest first.
     pending: Arc<std::sync::Mutex<std::collections::BTreeMap<String, Vec<SavedLogin>>>>,
 }
+/// An operation's host policy selection and the authorization servers it was
+/// made for. It is reused for the rest of the operation, and made again only
+/// when discovery finds other authorization servers.
+#[derive(Clone)]
+pub(super) struct Selection {
+    servers: Vec<String>,
+    result: Result<TrustDecision, HookError>,
+}
+impl Selection {
+    pub(super) fn reuse(&self, servers: &[String]) -> Option<Result<TrustDecision, HookError>> {
+        match &self.result {
+            Ok(decision) if servers.contains(&decision.issuer) => Some(Ok(decision.clone())),
+            Err(error) if self.servers == servers => Some(Err(error.clone())),
+            _ => None,
+        }
+    }
+}
 /// Which caller drives acquisition. Only `Prepare` may create a pending login.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -1070,26 +1088,36 @@ impl ManagedOAuth {
         }
         Ok(decision)
     }
-    /// The rest of step 1 for an explicit preset, before the ceiling: the
-    /// target's S, which host policy selects for the preset's own issuer
-    /// without any network request, must lie within the ceiling, and a
-    /// present preset `scopes` must equal it. Only those configuration errors
-    /// are decided here; other selection outcomes surface where the binding
-    /// is selected.
-    fn preset_selection(&self, target: &AuthTarget, explicit: &[String]) -> Result<(), HookError> {
-        let (AuthBinding::OAuth { resource, .. }, Some(issuer)) =
-            (target.binding(), target.issuer())
-        else {
-            return Ok(());
+    /// The operation's single host policy selection, before the scope
+    /// decision, for a known binding (a compatible stored one, else an
+    /// explicit preset) without any network request. `None` for an unbound
+    /// target without a stored binding: discovery selects once it knows the
+    /// authorization servers.
+    fn preselect(
+        &self,
+        target: &AuthTarget,
+        saved: Option<&SessionRecord>,
+        required: &[String],
+    ) -> Option<Selection> {
+        let (resource, issuer) = match saved.filter(|r| self.compatible(target, r)) {
+            Some(binding) => (
+                binding.metadata.resource.clone(),
+                binding.metadata.issuer.clone(),
+            ),
+            None => match (target.binding(), target.issuer()) {
+                (AuthBinding::OAuth { resource, .. }, Some(issuer)) => {
+                    (resource.clone(), issuer.to_owned())
+                }
+                _ => return None,
+            },
         };
-        let metadata = ResourceMetadata::new(resource.clone(), vec![issuer.to_owned()]);
-        let required = union(&self.config.required_scopes, explicit);
-        match self.select(target, &metadata, &required) {
-            Err(error) if error.auth_code() == Some(AuthErrorCode::InvalidConfiguration) => {
-                Err(error)
-            }
-            _ => Ok(()),
-        }
+        let servers = vec![issuer];
+        let result = self.select(
+            target,
+            &ResourceMetadata::new(resource, servers.clone()),
+            required,
+        );
+        Some(Selection { servers, result })
     }
     /// Revalidate a saved binding against current local policy, without network.
     fn validate_saved(
@@ -1098,6 +1126,15 @@ impl ManagedOAuth {
         record: &SessionRecord,
         required: &[String],
     ) -> Result<Vec<String>, HookError> {
+        self.check_saved(target, record)?;
+        let resource = ResourceMetadata::new(
+            record.metadata.resource.clone(),
+            vec![record.metadata.issuer.clone()],
+        );
+        Ok(self.select(target, &resource, required)?.scopes)
+    }
+    /// The local (non-policy) checks of a saved binding's provenance.
+    fn check_saved(&self, target: &AuthTarget, record: &SessionRecord) -> Result<(), HookError> {
         if matches!(target.binding(), AuthBinding::Unbound) && !record.configured_binding {
             discovery::validate_saved_source(
                 target.destination(),
@@ -1111,11 +1148,7 @@ impl ManagedOAuth {
                 Some(&record.metadata.resource),
             )?;
         }
-        let resource = ResourceMetadata::new(
-            record.metadata.resource.clone(),
-            vec![record.metadata.issuer.clone()],
-        );
-        Ok(self.select(target, &resource, required)?.scopes)
+        Ok(())
     }
     pub(super) async fn check_url(
         &self,
@@ -1244,15 +1277,34 @@ impl ManagedOAuth {
         let target = context.target()?;
         self.validate_target(&target)?;
         decide::configuration(&self.config, target.preset_scopes(), login.required)?;
-        self.preset_selection(&target, login.required)?;
+        let saved = self.load(&self.key(&target), budget).await?;
         // A lookup's store miss is anonymous delivery, before any scope decision.
-        if mode == Mode::Lookup && self.load(&self.key(&target), budget).await?.is_none() {
+        if mode == Mode::Lookup && saved.is_none() {
             return Ok(None);
         }
-        let operation = decide::operation(&self.config, login.required, rejection)?;
+        // Select once, before the decision, so step 1 (S within the ceiling,
+        // a preset equal to S) precedes the rest; the selection is told R.
+        let operation = decide::operation(&self.config, login.required, rejection);
+        let required = match &operation {
+            Ok(operation) => operation.required.clone(),
+            Err(error) if !error.required_scopes().is_empty() => error.required_scopes().to_vec(),
+            Err(_) => union(&self.config.required_scopes, login.required),
+        };
+        let selection = self.preselect(&target, saved.as_ref(), &required);
+        if let Some(Selection {
+            result: Err(error), ..
+        }) = &selection
+            && error.auth_code() == Some(AuthErrorCode::InvalidConfiguration)
+        {
+            return Err(error.clone());
+        }
+        let operation = operation?;
         let challenged = operation.challenge.is_some();
+        let selection = selection.as_ref();
         let attempt = |rediscover| {
-            self.acquire_inner(&target, &operation, login, sent, budget, mode, rediscover)
+            self.acquire_inner(
+                &target, &operation, selection, login, sent, budget, mode, rediscover,
+            )
         };
         let result = match attempt(false).await {
             // The token endpoint provably did not process the renewal: refetch the
@@ -1357,6 +1409,7 @@ impl ManagedOAuth {
         hint: Option<&discovery::ResourceMetadataHint>,
         cached_issuer: Option<&str>,
         required: &[String],
+        selection: Option<&Selection>,
         binding_key: SessionKey,
         budget: OperationBudget,
     ) -> Result<(SessionRecord, Vec<String>), HookError> {
@@ -1367,6 +1420,7 @@ impl ManagedOAuth {
             hint,
             cached_issuer,
             required,
+            selection,
             budget,
         )
         .await?;
@@ -1412,6 +1466,7 @@ impl ManagedOAuth {
         &self,
         target: &AuthTarget,
         operation: &decide::Operation,
+        selection: Option<&Selection>,
         login: Login<'_>,
         sent: Option<&str>,
         budget: OperationBudget,
@@ -1453,7 +1508,21 @@ impl ManagedOAuth {
         let force = rediscover || challenge.is_some();
         let known = saved.as_ref().filter(|r| self.compatible(&target, r));
         if let Some(binding) = known {
-            match self.validate_saved(&target, binding, &required) {
+            // The operation's selection, again only for another issuer.
+            let selected = self.check_saved(&target, binding).and_then(|()| {
+                let servers = [binding.metadata.issuer.clone()];
+                selection
+                    .and_then(|selection| selection.reuse(&servers))
+                    .unwrap_or_else(|| {
+                        let resource = ResourceMetadata::new(
+                            binding.metadata.resource.clone(),
+                            servers.to_vec(),
+                        );
+                        self.select(&target, &resource, &required)
+                    })
+                    .map(|decision| decision.scopes)
+            });
+            match selected {
                 Ok(scopes) => {
                     let mut binding = binding.clone();
                     // Absent persisted authorization-server metadata: fetch only the
@@ -1543,6 +1612,7 @@ impl ManagedOAuth {
                         hint,
                         cached_issuer,
                         &required,
+                        selection,
                         binding_key,
                         budget,
                     )
@@ -1990,7 +2060,7 @@ impl ManagedOAuth {
                             )
                             .await
                             .map_err(Renewal::from),
-                        Err(error) => Err(http.failure(&error, token_error(&error))),
+                        Err(error) => Err(http.failure(&error, renewal_error(&error, false))),
                     };
                     (outcome, guard, record)
                 })
@@ -2288,7 +2358,7 @@ impl ManagedOAuth {
                                 Err(fail(AuthErrorCode::InteractionRequired).into())
                             }
                             Err(error) if invalid_client(&error) => {
-                                Err(Renewal::InvalidClient(token_error(&error)))
+                                Err(Renewal::InvalidClient(renewal_error(&error, false)))
                             }
                             // Every other token-endpoint failure, including
                             // unauthorized_client, an unreachable endpoint and
@@ -2405,7 +2475,7 @@ impl Committer {
             keep_refresh(record, rotated_refresh(&body));
             self.persist(guard, record).await?;
         }
-        Err(http.failure(&error, token_error(&error)))
+        Err(http.failure(&error, renewal_error(&error, true)))
     }
     /// `requested` is the response scope set when `scope` is omitted: the
     /// requested set initially, the previous grant on refresh. `bound` is the
@@ -2651,17 +2721,26 @@ fn normalize_token_body(body: &[u8]) -> Option<Vec<u8>> {
     value["expires_in"] = digits.parse::<u64>().ok()?.into();
     serde_json::to_vec(&value).ok()
 }
-fn token_error(error: &TokenError) -> HookError {
+/// Renewal errors: a token-endpoint error from a refresh (`refresh`) or a
+/// client-credentials grant, outside `complete`. `invalid_grant` is
+/// `refresh_rejected` for a refresh and `credential_unavailable` for client
+/// credentials; `unauthorized_client` and `invalid_client` are
+/// `credential_unavailable` (`client_failure` then applies the client source);
+/// every other error, an unreachable endpoint and an invalid response are
+/// `provider_failed`. None carries scopes.
+fn renewal_error(error: &TokenError, refresh: bool) -> HookError {
     match error {
-        RequestTokenError::Request(error) => decide::classify(error.clone()),
-        RequestTokenError::ServerResponse(response)
-            if matches!(
-                response.error(),
-                BasicErrorResponseType::InvalidClient | BasicErrorResponseType::UnauthorizedClient
-            ) =>
-        {
-            fail(AuthErrorCode::CredentialUnavailable)
-        }
+        // The diagnostic (such as a deadline) and the not-sent mark are kept.
+        RequestTokenError::Request(error) => fail(AuthErrorCode::ProviderFailed)
+            .classified(error.code())
+            .request_not_sent_if(error.is_request_not_sent()),
+        RequestTokenError::ServerResponse(response) => fail(match response.error() {
+            BasicErrorResponseType::InvalidGrant if refresh => AuthErrorCode::RefreshRejected,
+            BasicErrorResponseType::InvalidGrant
+            | BasicErrorResponseType::InvalidClient
+            | BasicErrorResponseType::UnauthorizedClient => AuthErrorCode::CredentialUnavailable,
+            _ => AuthErrorCode::ProviderFailed,
+        }),
         _ => fail(AuthErrorCode::ProviderFailed),
     }
 }
