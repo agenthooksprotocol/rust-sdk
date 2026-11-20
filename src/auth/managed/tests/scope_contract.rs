@@ -764,7 +764,6 @@ async fn upgrade_pending_login_without_required() {
         for logins in host.logins.lock().unwrap().values_mut() {
             for login in logins {
                 login.required = None;
-                login.host_required = None;
             }
         }
         // The serialized form of such a record has no `required`.

@@ -471,10 +471,6 @@ struct SavedLogin {
     /// a record written by an older release: the current host-required set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     required: Option<Vec<String>>,
-    /// The host-required scopes at creation; completion falls back to them
-    /// for a record without `required`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    host_required: Option<Vec<String>>,
     state: String,
     verifier: String,
     redirect_uri: String,
@@ -1777,7 +1773,6 @@ impl ManagedOAuth {
             scopes,
             ceiling,
             required: Some(required),
-            host_required: Some(self.config.required_scopes.clone()),
             state: state.secret().clone(),
             verifier: verifier.secret().clone(),
             redirect_uri: redirect.into(),
@@ -2313,12 +2308,11 @@ impl ManagedOAuth {
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let bound = union(&saved.ceiling, &previous);
-        // 7. A login written by an older release stored no required set: its
-        // prepare-time host-required scopes when held, else the current ones.
+        // 7. A login written by an older release stored no required set (nor
+        // a prepare-time host-required set): the current host-required scopes.
         let required = saved
             .required
             .clone()
-            .or_else(|| saved.host_required.clone())
             .unwrap_or_else(|| self.config.required_scopes.clone());
         // Enforced on the grant within the current ceiling.
         let ceiling = self.ceiling();

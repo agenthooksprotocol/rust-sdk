@@ -52,8 +52,13 @@ fn config_for(flow: &str, requested: Vec<String>, ceiling: Vec<String>) -> OAuth
     }
 }
 /// Optional SDK features a vector may `require`, and which of them Rust has.
-const KNOWN_FEATURES: &[&str] = &["token_validation_callback", "complete_handle"];
-/// No host token-validation callback, and `complete()` takes no handle.
+const KNOWN_FEATURES: &[&str] = &[
+    "token_validation_callback",
+    "complete_handle",
+    "legacy_prepare_time_host_required",
+];
+/// No host token-validation callback, `complete()` takes no handle, and no
+/// release's pending record held a prepare-time host-required set.
 const RUST_FEATURES: &[&str] = &[];
 /// Whether a vector applies to Rust; an unknown required feature fails.
 pub(super) fn applies(vector: &Value) -> bool {
@@ -522,9 +527,9 @@ pub(super) async fn canonical_completion_vectors() {
             .map(|_| list(&input["stored_required"]));
         let granted = list(&input["granted"]);
         let current_host = list(&input["current_host_required"]);
-        let prepare_time = input["prepare_time_host_required"]
-            .as_array()
-            .map(|_| list(&input["prepare_time_host_required"]));
+        // Only `legacy_prepare_time_host_required` vectors hold one.
+        assert!(input["prepare_time_host_required"].is_null(), "{id}");
+        let prepare_time: Option<Vec<String>> = None;
         let host = Host::new();
         host.policy.select.lock().unwrap().clear();
         *host.network.issuer_patch.lock().unwrap() = json!({
@@ -603,7 +608,6 @@ pub(super) async fn canonical_completion_vectors() {
                 for record in records.values_mut() {
                     for login in &mut record.pending_logins {
                         login.required = None;
-                        login.host_required = prepare_time.clone();
                     }
                 }
             }
