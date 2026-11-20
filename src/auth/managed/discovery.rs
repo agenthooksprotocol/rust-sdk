@@ -269,6 +269,7 @@ fn default_auth_methods() -> Vec<String> {
 }
 
 /// Returns trusted metadata, its retrieval provenance and the target's S.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn discover(
     owner: &ManagedOAuth,
     target: &AuthTarget,

@@ -738,15 +738,137 @@ pub(super) async fn canonical_completion_vectors() {
                     "{id}: ended"
                 );
                 if host_error.is_some() && input["pending"] == "pending" {
-                    // The login stayed pending and still completes.
+                    // The login stayed pending: the same callback now reaches
+                    // the claim (a valid code completes; a denial ends it).
                     *host.policy.refuse.lock().unwrap() = None;
-                    completer
-                        .complete(ctx(permitted), url, budget())
-                        .await
-                        .unwrap();
-                    assert!(host.store.grant().and_then(|r| r.token).is_some(), "{id}");
+                    let again = completer.complete(ctx(permitted), url, budget()).await;
+                    match input["callback"].as_str().unwrap() {
+                        "valid" => {
+                            again.unwrap();
+                            assert!(host.store.grant().and_then(|r| r.token).is_some(), "{id}");
+                        }
+                        _ => {
+                            let error = again.err().unwrap();
+                            assert_eq!(error.login_ended(), Some(true), "{id}: claimed");
+                        }
+                    }
                 }
             }
+        }
+    }
+    assert!(ran > 0);
+}
+
+/// `token_errors`: token-endpoint errors from a refresh or a
+/// client-credentials grant, outside `complete`.
+#[tokio::test]
+pub(super) async fn canonical_token_error_vectors() {
+    const CIMD: &str = "https://adapter.example/oauth/client.json";
+    const REDIRECT: &str = "http://127.0.0.1/callback";
+    let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
+    let mut ran = 0;
+    for vector in fixture["token_errors"].as_array().unwrap() {
+        let id = vector["id"].as_str().unwrap();
+        only(id, vector, &["id", "input", "expect", "requires"]);
+        if !applies(vector) {
+            continue;
+        }
+        ran += 1;
+        let (input, expect) = (&vector["input"], &vector["expect"]);
+        only(id, input, &["grant_type", "client_source", "error"]);
+        only(id, expect, &["code", "reregistrations"]);
+        let grant = input["grant_type"].as_str().unwrap();
+        let source = input["client_source"].as_str().unwrap();
+        let host = Host::new();
+        host.network.dcr.store(source == "dcr", Ordering::SeqCst);
+        *host.network.issuer_patch.lock().unwrap() =
+            json!({"client_id_metadata_document_supported": source == "cimd"});
+        let (oauth, ctx) = match (grant, source) {
+            ("refresh", "preregistered") => (host.pkce(|c| c), context()),
+            ("refresh", "cimd") => (
+                host.owner(
+                    OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
+                        .scopes(scopes(&["read"]), Vec::new())
+                        .redirect_uri(REDIRECT)
+                        .client_id_metadata_document(CIMD, vec![REDIRECT.into()]),
+                ),
+                unbound(),
+            ),
+            ("refresh", "dcr") => (
+                host.owner(
+                    OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
+                        .scopes(scopes(&["read"]), Vec::new())
+                        .redirect_uri(REDIRECT)
+                        .dynamic_registration(RegistrationPolicy::new(
+                            "https://issuer.example",
+                            "Example Adapter",
+                        )),
+                ),
+                unbound(),
+            ),
+            ("client_credentials", "preregistered") => (
+                host.cc(TokenAuthMethod::ClientSecretBasic, "secret"),
+                cc_context(),
+            ),
+            ("client_credentials", "dcr") => (
+                host.owner(
+                    OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
+                        .scopes(scopes(&["read"]), Vec::new())
+                        .dynamic_registration(RegistrationPolicy::new(
+                            "https://issuer.example",
+                            "Example Adapter",
+                        ))
+                        .client_secret_storage(host.secrets.clone()),
+                ),
+                unbound(),
+            ),
+            other => panic!("{id}: unknown grant {other:?}"),
+        };
+        if grant == "refresh" {
+            // A PKCE grant with a refresh token, then expired.
+            host.seed(&oauth, ctx.clone()).await;
+            host.store.expire();
+        }
+        // A failure that refetches the issuer's metadata is answered twice.
+        let reply = |host: &Host| match input["error"].as_str().unwrap() {
+            error @ ("invalid_grant"
+            | "unauthorized_client"
+            | "access_denied"
+            | "invalid_scope") => host.network.reply(400, json!({ "error": error })),
+            "invalid_client" => host.network.reply(401, json!({"error":"invalid_client"})),
+            "server_error" => host.network.reply(500, json!({"error":"server_error"})),
+            "not_found" => host.network.reply(404, json!({})),
+            "unreachable" => {
+                host.network.unsent_failures.fetch_add(1, Ordering::SeqCst);
+            }
+            "invalid_response" => host
+                .network
+                .reply(200, json!({"access_token":"x","token_type":"mac"})),
+            other => panic!("{id}: unknown error {other}"),
+        };
+        reply(&host);
+        reply(&host);
+        let registered = host.network.registrations().len();
+        let error = if ctx.authentication.is_none() && grant == "client_credentials" {
+            // An unbound client-credentials endpoint acquires on its 401.
+            oauth
+                .challenge(ctx, challenge(401, "Bearer", None))
+                .await
+                .err()
+                .unwrap()
+        } else {
+            oauth.credential(ctx).await.err().unwrap()
+        };
+        assert_eq!(error.auth_code().unwrap().as_str(), expect["code"], "{id}");
+        assert!(error.required_scopes().is_empty(), "{id}: no scopes");
+        assert_eq!(error.login_ended(), None, "{id}");
+        let registrations = host.network.registrations().len() - registered;
+        match expect["reregistrations"].as_u64() {
+            // Registrations after the first, before the repeated invalid_client.
+            Some(expected) => {
+                assert_eq!(registrations.saturating_sub(1) as u64, expected, "{id}")
+            }
+            None => assert!(registrations <= 1, "{id}: no re-registration"),
         }
     }
     assert!(ran > 0);

@@ -45,15 +45,6 @@ fn parts(header: &str) -> Result<Vec<&str>, Malformed> {
     Ok(parts)
 }
 
-/// A non-empty RFC 7235 token68, including trailing `=` padding.
-fn token68(value: &str) -> bool {
-    let body = value.trim_end_matches('=');
-    !body.is_empty()
-        && body
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"-._~+/".contains(&b))
-}
-
 fn parameter(value: &str) -> Result<String, Malformed> {
     let value = value.trim();
     if let Some(quoted) = value.strip_prefix('"') {
@@ -115,16 +106,13 @@ fn parse_with(header: &str, strict_scope: bool) -> Result<Challenge, Malformed> 
             }
             scheme_seen = true;
             bearer = part[..end].eq_ignore_ascii_case("bearer");
+            // Two Bearer challenges are ambiguous. Bearer takes auth-params
+            // only (RFC 6750), so a token68 after it is a bad auth-param.
             if bearer {
-                // Two Bearer challenges are ambiguous.
                 if result.bearer {
                     return Err(Malformed);
                 }
                 result.bearer = true;
-                // RFC 7235 token68 credentials are not auth-params: skip them.
-                if token68(rest) {
-                    continue;
-                }
             }
             rest
         };
@@ -248,18 +236,17 @@ mod tests {
     }
 
     #[test]
-    fn bearer_token68_is_skipped() {
+    fn bearer_token68_is_a_bad_auth_param() {
         for header in [
             "Bearer scope",
             "Bearer scope=",
             "Bearer abc==",
             "Bearer a-b._~+/===",
         ] {
-            let challenge = parsed(header);
-            assert!(challenge.bearer, "{header}");
-            assert!(challenge.scopes.is_empty() && !challenge.insufficient_scope);
+            assert!(parse(header).is_err(), "{header}");
         }
         assert!(!parsed("Basic realm=x").bearer);
+        assert!(parsed("Bearer").bearer);
     }
 
     #[test]

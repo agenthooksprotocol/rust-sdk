@@ -1091,6 +1091,10 @@ fn lifecycle_manifest_maps_to_native_tests() {
             transport::replay_rejection_retires_token,
         ),
         (
+            "renewal-token-errors-classified",
+            vectors::canonical_token_error_vectors,
+        ),
+        (
             "complete-token-endpoint-errors-classified",
             vectors::canonical_completion_vectors,
         ),
@@ -2608,7 +2612,11 @@ async fn prepare_required_outside_ceiling_denied() {
         .err()
         .unwrap();
     assert_eq!(error.auth_code(), Some(AuthErrorCode::AccessDenied));
-    assert_eq!(error.required_scopes(), ["admin"], "diagnostics only");
+    assert_eq!(
+        error.required_scopes(),
+        ["admin"],
+        "R on the ceiling refusal"
+    );
     assert!(host.network.seen.lock().unwrap().is_empty());
     assert!(host.pending().is_empty());
 }

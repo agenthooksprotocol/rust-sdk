@@ -2763,8 +2763,9 @@ impl AuthProvider for ManagedOAuth {
                 .await?
             {
                 Some(Preparation::Ready(credential)) => Ok(Some(credential)),
+                // `decide` creates a login only for `prepare`.
                 Some(Preparation::InteractionRequired(_)) => {
-                    Err(fail(AuthErrorCode::InteractionRequired))
+                    unreachable!("delivery never creates a login")
                 }
                 None => Ok(None),
             }
@@ -2784,8 +2785,8 @@ impl AuthProvider for ManagedOAuth {
         Box::pin(async move {
             let budget = OperationBudget::until(context.deadline);
             let sent = challenge.attempt_id.as_deref();
-            // Step 3 runs first: a 401 retires the generation it rejected, so no
-            // later refusal leaves that token servable.
+            // Step 0: a 401 retires the generation it rejected before every
+            // other step, so no later refusal leaves that token servable.
             if challenge.status == 401
                 && let Some(attempt) = sent
             {
@@ -2816,7 +2817,8 @@ impl AuthProvider for ManagedOAuth {
                 .await?
             {
                 Some(Preparation::Ready(_)) => Ok(()),
-                _ => Err(fail(AuthErrorCode::InteractionRequired)),
+                // Only `prepare` creates a login, and only a lookup has no outcome.
+                _ => unreachable!("challenge handling ends in a credential or an error"),
             }
         })
     }

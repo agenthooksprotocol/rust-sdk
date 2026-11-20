@@ -1457,18 +1457,50 @@
           "admin"
         ],
         "explicit": [],
-        "grant": null
+        "grant": null,
+        "sent": null,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        }
       },
       "expect": {
+        "retired": false,
         "code": "access_denied",
+        "authorization_server_requests": 0,
+        "network_calls_max": 1,
         "scopes": [
           "admin"
         ],
         "required": [
           "admin"
+        ]
+      }
+    },
+    {
+      "id": "unbound-unparseable-challenge-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "fresh",
+        "binding": "unbound",
+        "requested": [
+          "read"
         ],
+        "host_required": [],
+        "explicit": [],
+        "grant": null,
+        "sent": null,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer scope"
+        }
+      },
+      "expect": {
+        "retired": false,
+        "code": "access_denied",
         "authorization_server_requests": 0,
-        "network_calls_max": 1
+        "network_calls_max": 2,
+        "scopes": []
       }
     },
     {
@@ -2708,6 +2740,39 @@
       }
     },
     {
+      "id": "client-credentials-with-refresh-token-reissues",
+      "input": {
+        "flow": "client_credentials",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "expired",
+          "refresh": true
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "acquire",
+        "required": [
+          "read"
+        ],
+        "acquisition_scopes": [
+          "read"
+        ]
+      }
+    },
+    {
       "id": "host-policy-access-denied-scopes-stripped",
       "requires": [
         "token_validation_callback"
@@ -3006,6 +3071,34 @@
           "write"
         ],
         "login_ended": true,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-legacy-record-empty-prepare-time-host-required",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": null,
+        "prepare_time_host_required": [],
+        "current_host_required": [
+          "write"
+        ],
+        "granted": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": null,
         "grant_persisted": true
       }
     },
@@ -3579,6 +3672,71 @@
       }
     },
     {
+      "id": "complete-consent-denied-source-not-permitted-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "dcr",
+        "source_permitted": false,
+        "callback": "denied",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-consent-denied-client-selection-failure-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "denied",
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": [
+            "read"
+          ]
+        },
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "credential_unavailable",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
       "id": "complete-consent-denied-login-ended",
       "input": {
         "pending": "pending",
@@ -4142,6 +4300,240 @@
       }
     }
   ],
+  "token_errors": [
+    {
+      "id": "refresh-preregistered-invalid-grant",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "invalid_grant"
+      },
+      "expect": {
+        "code": "refresh_rejected"
+      }
+    },
+    {
+      "id": "refresh-preregistered-unauthorized-client",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "unauthorized_client"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "refresh-preregistered-invalid-client",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "refresh-cimd-invalid-client",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "cimd",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "invalid_configuration"
+      }
+    },
+    {
+      "id": "refresh-dcr-invalid-client",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "dcr",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "interaction_required"
+      }
+    },
+    {
+      "id": "refresh-preregistered-access-denied",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "access_denied"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-invalid-scope",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "invalid_scope"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-server-error",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "server_error"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-unreachable",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "unreachable"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-not-found",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "not_found"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-invalid-response",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "invalid_response"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-invalid-grant",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "invalid_grant"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-unauthorized-client",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "unauthorized_client"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-invalid-client",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "client-credentials-dcr-invalid-client",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "dcr",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "credential_unavailable",
+        "reregistrations": 1
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-access-denied",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "access_denied"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-invalid-scope",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "invalid_scope"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-server-error",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "server_error"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-unreachable",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "unreachable"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-not-found",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "not_found"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-invalid-response",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "invalid_response"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    }
+  ],
   "lifecycle": [
     {
       "id": "cached-token-metadata-outage",
@@ -4461,7 +4853,7 @@
     },
     {
       "id": "ceiling-refusal-before-network-every-path",
-      "expect": "R outside the ceiling, including a host-required scope, fails access_denied carrying R on every entry point; with a stored binding or explicit preset there is no network I/O; an unbound target makes at most one protected-resource metadata fetch and no authorization-server request"
+      "expect": "R outside the ceiling, including a host-required scope, fails access_denied carrying R on every entry point; with a stored binding or explicit preset there is no network I/O; an unbound target (an anonymous request answered by 401) runs at most one protected-resource discovery (one request to a usable resource_metadata, else at most the path-specific and origin-root well-known locations) and no authorization-server request"
     },
     {
       "id": "requested-outside-ceiling-invalid-configuration",
@@ -4510,6 +4902,10 @@
     {
       "id": "complete-token-endpoint-errors-classified",
       "expect": "after the claim invalid_grant is interaction_required; invalid_client is credential_unavailable (pre-registered), invalid_configuration (CIMD) or interaction_required (DCR); every other token-endpoint error, an unreachable or 404 endpoint and an invalid response are provider_failed; none carry scopes"
+    },
+    {
+      "id": "renewal-token-errors-classified",
+      "expect": "refresh and client-credentials token-endpoint errors: PKCE refresh invalid_grant is refresh_rejected, client-credentials invalid_grant and unauthorized_client are credential_unavailable, invalid_client maps by client source (a client-credentials DCR client re-registers once), every other error is provider_failed; none carry scopes"
     }
   ],
   "registration_keys": [

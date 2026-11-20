@@ -26,7 +26,7 @@ pub(super) struct Operation {
     pub(super) hint: Vec<String>,
     /// A 403 `insufficient_scope` (step 5 applies).
     pub(super) step_up: bool,
-    /// A 401: the rejected generation is retired (step 3).
+    /// A 401: the rejected generation was retired first (step 0).
     pub(super) unauthorized: bool,
     /// The parsed challenge, for discovery (`resource_metadata`).
     pub(super) challenge: Option<Challenge>,
