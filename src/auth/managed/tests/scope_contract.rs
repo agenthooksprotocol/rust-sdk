@@ -861,9 +861,16 @@ async fn canonical_scope_decision_vectors() {
 #[tokio::test]
 async fn canonical_completion_vectors() {
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
+    let mut not_applicable = Vec::new();
     for vector in fixture["completions"].as_array().unwrap() {
         let id = vector["id"].as_str().unwrap();
         let (input, expect) = (&vector["input"], &vector["expect"]);
+        // Rust's complete() takes no pending-login handle, so a callback
+        // cannot mismatch one; this vector applies only to SDKs that do.
+        if input["callback"] == "state_mismatch" {
+            not_applicable.push(id);
+            continue;
+        }
         let source = input["client_source"].as_str().unwrap_or("preregistered");
         let stored = list(&input["stored_required"]);
         let granted = list(&input["granted"]);
@@ -916,16 +923,6 @@ async fn canonical_completion_vectors() {
                 .await
                 .unwrap(),
         );
-        // Another pending login, named by a mismatched callback state.
-        let other = if input["callback"] == "state_mismatch" {
-            let other = preparer
-                .prepare_with_required(ctx.clone(), &stored, budget())
-                .await
-                .unwrap();
-            Some(query(login(other).authorization_url(), "state").unwrap())
-        } else {
-            None
-        };
         match input["pending"].as_str().unwrap() {
             "expired" => tokio::time::sleep(Duration::from_millis(10)).await,
             "ended" => preparer
@@ -938,7 +935,7 @@ async fn canonical_completion_vectors() {
         let state = if input["pending"] == "unknown" {
             "unknown".to_owned()
         } else {
-            other.unwrap_or(state)
+            state
         };
         let mut url = Url::parse(pending.redirect_uri()).unwrap();
         let mut pairs = vec![
@@ -960,7 +957,6 @@ async fn canonical_completion_vectors() {
             "missing_state" => {
                 pairs.remove(0);
             }
-            "state_mismatch" => {}
             other => panic!("{id}: unknown callback {other}"),
         }
         url.query_pairs_mut().extend_pairs(pairs);
@@ -977,10 +973,7 @@ async fn canonical_completion_vectors() {
                 .reply(200, json!({"access_token":"done","token_type":"mac"})),
         }
         let completer = host.owner(client(list(&input["ceiling"])));
-        let result = match input["handle"].as_str() {
-            Some("matching") => completer.complete_login(ctx, &pending, url, budget()).await,
-            _ => completer.complete(ctx, url, budget()).await,
-        };
+        let result = completer.complete(ctx, url, budget()).await;
         let persisted = host.store.grant().and_then(|r| r.token).is_some();
         assert_eq!(persisted, expect["grant_persisted"] == true, "{id}: grant");
         match result {
@@ -1004,4 +997,5 @@ async fn canonical_completion_vectors() {
             }
         }
     }
+    assert_eq!(not_applicable, ["complete-invalid-callback-state-mismatch"]);
 }

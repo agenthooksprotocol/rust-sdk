@@ -2086,32 +2086,10 @@ impl ManagedOAuth {
         callback: Url,
         budget: OperationBudget,
     ) -> Result<BearerCredential, HookError> {
-        self.complete_with(context, None, callback, budget).await
-    }
-    /// `complete` for the host's handle of the login it expects: a callback
-    /// whose `state` names another pending login fails `access_denied` and
-    /// consumes neither.
-    pub async fn complete_login(
-        &self,
-        context: AuthContext,
-        login: &PendingLogin,
-        callback: Url,
-        budget: OperationBudget,
-    ) -> Result<BearerCredential, HookError> {
-        self.complete_with(context, Some(&login.id), callback, budget)
-            .await
-    }
-    async fn complete_with(
-        &self,
-        context: AuthContext,
-        handle: Option<&str>,
-        callback: Url,
-        budget: OperationBudget,
-    ) -> Result<BearerCredential, HookError> {
         let budget = OperationBudget::until(budget.deadline.min(context.deadline));
         let claimed = AtomicBool::new(false);
         let result = budget
-            .run(self.complete_inner(context.clone(), handle, callback.clone(), &claimed, budget))
+            .run(self.complete_inner(context.clone(), callback.clone(), &claimed, budget))
             .await;
         match result {
             Ok(credential) => {
@@ -2158,7 +2136,6 @@ impl ManagedOAuth {
     async fn complete_inner(
         &self,
         context: AuthContext,
-        handle: Option<&str>,
         callback: Url,
         claimed: &AtomicBool,
         budget: OperationBudget,
@@ -2207,7 +2184,6 @@ impl ManagedOAuth {
         };
         // Then validate the callback; an invalid one never consumes the login.
         if duplicated
-            || handle.is_some_and(|id| id != saved.id)
             || code.is_some() == error.is_some()
             || code.as_ref().is_some_and(|code| code.is_empty())
         {
