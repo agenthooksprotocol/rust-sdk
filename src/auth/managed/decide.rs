@@ -193,12 +193,11 @@ pub(super) fn grant(
     }
 }
 
-/// Step 5 alone, against a known grant before any network request: a 403
-/// `insufficient_scope` naming scopes the grant already records within the
-/// ceiling is refused with R when that grant's token was sent (or none was),
-/// and answered with a newer usable token otherwise. `None`: steps 6 to 9
-/// decide, after the binding is settled.
-pub(super) fn disagreement(
+/// Step 5: a 403 `insufficient_scope` naming scopes the grant already records
+/// within the ceiling is refused with R when that grant's token was sent (or
+/// none was), and answered with a newer usable token otherwise. `None`: steps
+/// 6 to 9 decide.
+fn disagreement(
     config: &OAuthClientConfig,
     operation: &Operation,
     token: Option<&SavedToken>,

@@ -1607,23 +1607,23 @@ impl ManagedOAuth {
                 Err(error) => return Err(error.into()),
             }
         }
-        // Step 5 against the known grant, before any network request.
+        // A 403 step-up against the known grant, before any network request:
+        // step 5, or (PKCE delivery) step 9's interaction_required.
         if operation.step_up
             && let Some(binding) = known
         {
             let record = self
                 .load(&self.binding_grant_key(&target, binding), budget)
                 .await?;
-            match decide::disagreement(
-                &self.config,
-                operation,
+            // The full decision, so a PKCE step-up needing consent is decided
+            // here too, without any authorization-server request.
+            match decide(
+                configured,
                 record.as_ref().and_then(|r| r.token.as_ref()),
-                sent,
+                !cc,
             ) {
-                Some(decide::Step::Use(credential)) => {
-                    return Ok(Some(Preparation::Ready(credential)));
-                }
-                Some(decide::Step::Fail(error)) => return Err(error.into()),
+                decide::Step::Use(credential) => return Ok(Some(Preparation::Ready(credential))),
+                decide::Step::Fail(error) => return Err(error.into()),
                 _ => {}
             }
         }

@@ -1284,3 +1284,31 @@ async fn unauthorized_retires_before_target_checks() {
     assert_eq!(error.auth_code(), Some(AuthErrorCode::UnsupportedBinding));
     assert!(host.store.token().access_rejected, "invalid target");
 }
+
+/// A PKCE step-up needing consent on a known binding is decided without any
+/// authorization-server request, even when metadata would be refused.
+#[tokio::test]
+async fn step_up_needing_consent_makes_no_request() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let seeded = host.seed(&oauth, context()).await;
+    host.network.refusals.lock().unwrap().push((
+        EndpointUse::IssuerMetadata,
+        fail(AuthErrorCode::UntrustedDestination),
+    ));
+    let before = requests(&host);
+    let error = oauth
+        .challenge(
+            context(),
+            challenge(
+                403,
+                r#"Bearer error="insufficient_scope", scope="write""#,
+                Some(&seeded.attempt_id),
+            ),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::InteractionRequired, &["write"]);
+    assert_eq!(requests(&host), before);
+}
