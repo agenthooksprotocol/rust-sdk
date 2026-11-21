@@ -220,9 +220,16 @@ async fn canonical_scope_decision_vectors() {
         let path = input["path"].as_str().unwrap();
         let binding = input["binding"].as_str().unwrap();
         assert!(
-            matches!(binding, "stored" | "preset" | "unbound"),
+            matches!(
+                binding,
+                "stored" | "stored_without_metadata" | "preset" | "unbound"
+            ),
             "{id}: unknown binding {binding}"
         );
+        // A stored binding whose record lacks the authorization-server
+        // metadata, so a token request fetches the issuer's first.
+        let without_metadata = binding == "stored_without_metadata";
+        let binding = if without_metadata { "stored" } else { binding };
         let requested = list(&input["requested"]);
         let explicit = list(&input["explicit"]);
         let ceiling = list(&input["ceiling"]);
@@ -356,6 +363,16 @@ async fn canonical_scope_decision_vectors() {
         if seeded {
             assert_ne!(binding, "unbound", "{id}");
             store_grant(&host, flow, &ctx, &all, grant).await;
+            if without_metadata {
+                let mut records = host.store.records.lock().unwrap();
+                let (_, record) = records
+                    .iter_mut()
+                    .find(|(key, _)| key.starts_with("ahp.oauth.binding:"))
+                    .unwrap();
+                record.metadata.token_endpoint.clear();
+                record.metadata.authorization_endpoint = None;
+                record.version = random_id();
+            }
         } else {
             assert!(grant.is_null(), "{id}");
         }

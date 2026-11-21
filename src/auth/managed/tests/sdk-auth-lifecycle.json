@@ -1244,7 +1244,8 @@
         ],
         "required": [
           "read"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -1337,7 +1338,8 @@
         "required": [
           "read",
           "write"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -1441,7 +1443,8 @@
         ],
         "required": [
           "write"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -1903,7 +1906,8 @@
         ],
         "required": [
           "read"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -1935,7 +1939,8 @@
         "retired": true,
         "code": "interaction_required",
         "scopes": [],
-        "required": []
+        "required": [],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -2010,7 +2015,8 @@
         ],
         "required": [
           "read"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -2084,7 +2090,8 @@
         ],
         "required": [
           "write"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -2485,7 +2492,8 @@
         ],
         "required": [
           "write"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -2556,7 +2564,8 @@
         ],
         "required": [
           "write"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -2918,7 +2927,8 @@
         ],
         "required": [
           "write"
-        ]
+        ],
+        "authorization_server_requests": 0
       }
     },
     {
@@ -3073,9 +3083,9 @@
     {
       "id": "host-policy-issuer-metadata-destination-refused-challenge",
       "input": {
-        "flow": "authorization_code_pkce",
+        "flow": "client_credentials",
         "path": "challenge",
-        "binding": "stored",
+        "binding": "stored_without_metadata",
         "requested": [
           "read",
           "write"

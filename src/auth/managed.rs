@@ -1014,6 +1014,18 @@ impl ManagedOAuth {
             purpose: String::new(),
         }
     }
+    /// A pre-registered preset's grant key, known without any stored binding.
+    fn preset_grant_key(&self, target: &AuthTarget) -> Option<SessionKey> {
+        let (AuthBinding::OAuth { resource, .. }, Some(issuer), Some(client_id)) = (
+            target.binding(),
+            target.issuer(),
+            self.preregistered(target),
+        ) else {
+            return None;
+        };
+        let metadata = TrustedMetadata::new(resource.clone(), issuer.to_owned(), String::new());
+        Some(self.grant_key(target, &metadata, &format!("preregistered:{client_id}")))
+    }
     fn binding_grant_key(&self, target: &AuthTarget, binding: &SessionRecord) -> SessionKey {
         self.grant_key(target, &binding.metadata, &Self::client_identity(binding))
     }
@@ -1607,21 +1619,35 @@ impl ManagedOAuth {
                 Err(error) => return Err(error.into()),
             }
         }
-        // A 403 step-up against the known grant, before any network request:
-        // step 5, or (PKCE delivery) step 9's interaction_required.
-        if operation.step_up
-            && let Some(binding) = known
-        {
-            let record = self
-                .load(&self.binding_grant_key(&target, binding), budget)
-                .await?;
-            // The full decision, so a PKCE step-up needing consent is decided
-            // here too, without any authorization-server request.
-            match decide(
-                configured,
-                record.as_ref().and_then(|r| r.token.as_ref()),
-                !cc,
-            ) {
+        // Outcomes that need no authorization-server request are returned
+        // before any discovery: against the known grant (a validated stored
+        // binding's, or a pre-registered preset's when none is stored), a 403
+        // step-up's step 5 and, for PKCE delivery, a usable token or step 9's
+        // interaction_required. A refresh or acquisition continues below.
+        let pkce_delivery = !cc && mode != Mode::Prepare;
+        let early = match known {
+            Some(binding) if usable.is_some() || operation.step_up => {
+                Some(self.binding_grant_key(&target, binding))
+            }
+            None if pkce_delivery
+                && selection
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .is_some_and(|s| s.result.is_ok()) =>
+            {
+                self.preset_grant_key(&target)
+            }
+            _ => None,
+        };
+        if let Some(key) = early.filter(|_| operation.step_up || pkce_delivery) {
+            let record = self.load(&key, budget).await?;
+            // The rejected generation is never usable, but its refresh token is.
+            let token = record.and_then(|r| r.token).map(|mut token| {
+                token.access_rejected |= rejected == Some(token.generation.as_str());
+                token
+            });
+            match decide(configured, token.as_ref(), !cc) {
                 decide::Step::Use(credential) => return Ok(Some(Preparation::Ready(credential))),
                 decide::Step::Fail(error) => return Err(error.into()),
                 _ => {}
