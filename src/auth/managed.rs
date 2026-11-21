@@ -621,6 +621,8 @@ pub struct ManagedOAuth {
 /// An operation's host policy selection and the authorization servers it was
 /// made for. It is reused for the rest of the operation, and made again only
 /// when discovery finds other authorization servers.
+/// The operation's selection, shared by its re-attempts.
+pub(super) type Selections = std::sync::Mutex<Option<Selection>>;
 #[derive(Clone)]
 pub(super) struct Selection {
     servers: Vec<String>,
@@ -934,7 +936,10 @@ impl ManagedOAuth {
         }
     }
     fn key(&self, target: &AuthTarget) -> SessionKey {
-        let purpose = match target.purpose() {
+        self.binding_key(target.backend_id(), target.purpose(), target.destination())
+    }
+    fn binding_key(&self, backend_id: &str, purpose: AuthPurpose, destination: &Url) -> SessionKey {
+        let purpose = match purpose {
             AuthPurpose::Event => "event",
             AuthPurpose::Upload => "upload",
         };
@@ -943,14 +948,14 @@ impl ManagedOAuth {
                 "ahp.oauth.binding:",
                 &[
                     &self.config.namespace,
-                    target.backend_id(),
+                    backend_id,
                     purpose,
-                    target.destination().as_str(),
+                    destination.as_str(),
                 ],
             ),
             namespace: self.config.namespace.clone(),
-            backend_id: target.backend_id().into(),
-            destination: target.destination().as_str().into(),
+            backend_id: backend_id.into(),
+            destination: destination.as_str().into(),
             purpose: purpose.into(),
         }
     }
@@ -963,9 +968,17 @@ impl ManagedOAuth {
         metadata: &TrustedMetadata,
         client_identity: &str,
     ) -> SessionKey {
+        self.grant_key_for(&self.key(target), metadata, client_identity)
+    }
+    fn grant_key_for(
+        &self,
+        binding_key: &SessionKey,
+        metadata: &TrustedMetadata,
+        client_identity: &str,
+    ) -> SessionKey {
         let partition = match &self.config.grant_partition {
             Some(partition) => format!("shared:{partition}"),
-            None => format!("binding:{}", self.key(target).as_str()),
+            None => format!("binding:{}", binding_key.as_str()),
         };
         SessionKey {
             storage_key: frame(
@@ -1086,15 +1099,16 @@ impl ManagedOAuth {
     }
     /// The operation's single host policy selection, before the scope
     /// decision, for a known binding (a compatible stored one, else an
-    /// explicit preset) without any network request. `None` for an unbound
+    /// explicit preset) without any network request. Nothing for an unbound
     /// target without a stored binding: discovery selects once it knows the
     /// authorization servers.
     fn preselect(
         &self,
+        selections: &Selections,
         target: &AuthTarget,
         saved: Option<&SessionRecord>,
         required: &[String],
-    ) -> Option<Selection> {
+    ) {
         let (resource, issuer) = match saved.filter(|r| self.compatible(target, r)) {
             Some(binding) => (
                 binding.metadata.resource.clone(),
@@ -1104,16 +1118,35 @@ impl ManagedOAuth {
                 (AuthBinding::OAuth { resource, .. }, Some(issuer)) => {
                     (resource.clone(), issuer.to_owned())
                 }
-                _ => return None,
+                _ => return,
             },
         };
-        let servers = vec![issuer];
-        let result = self.select(
-            target,
-            &ResourceMetadata::new(resource, servers.clone()),
-            required,
-        );
-        Some(Selection { servers, result })
+        let resource = ResourceMetadata::new(resource, vec![issuer]);
+        let _ = self.selected(selections, target, &resource, required);
+    }
+    /// The operation's selection for these authorization servers: the one it
+    /// already made (or its refusal) when it covers them, else a new one, kept
+    /// for the rest of the operation, including every re-attempt.
+    pub(super) fn selected(
+        &self,
+        selections: &Selections,
+        target: &AuthTarget,
+        resource: &ResourceMetadata,
+        required: &[String],
+    ) -> Result<TrustDecision, HookError> {
+        let mut held = selections.lock().unwrap();
+        if let Some(reused) = held
+            .as_ref()
+            .and_then(|selection| selection.reuse(&resource.authorization_servers))
+        {
+            return reused;
+        }
+        let result = self.select(target, resource, required);
+        *held = Some(Selection {
+            servers: resource.authorization_servers.clone(),
+            result: result.clone(),
+        });
+        result
     }
     /// Revalidate a saved binding against current local policy, without network.
     fn validate_saved(
@@ -1286,17 +1319,19 @@ impl ManagedOAuth {
             Err(error) if !error.required_scopes().is_empty() => error.required_scopes().to_vec(),
             Err(_) => union(&self.config.required_scopes, login.required),
         };
-        let selection = self.preselect(&target, saved.as_ref(), &required);
+        let selections = Selections::default();
+        self.preselect(&selections, &target, saved.as_ref(), &required);
         if let Some(Selection {
             result: Err(error), ..
-        }) = &selection
+        }) = &*selections.lock().unwrap()
             && error.auth_code() == Some(AuthErrorCode::InvalidConfiguration)
         {
             return Err(error.clone());
         }
         let operation = operation?;
         let challenged = operation.challenge.is_some();
-        let selection = selection.as_ref();
+        // Every re-attempt of this operation shares its selection.
+        let selection = &selections;
         let attempt = |rediscover| {
             self.acquire_inner(
                 &target, &operation, selection, login, sent, budget, mode, rediscover,
@@ -1357,34 +1392,38 @@ impl ManagedOAuth {
         current.metadata = metadata;
         self.persist(&mut *guard, &mut current, budget).await
     }
-    /// A 401 retires the rejected generation before any other decision, so
-    /// neither a refusal nor a failed discovery or renewal leaves it servable.
+    /// Step 0: a 401 retires the rejected generation before every decision
+    /// step and every target or configuration check, whenever the stored
+    /// binding identifies its grant, so neither a refusal nor a failed
+    /// discovery or renewal leaves it servable. Only an unparseable target
+    /// (no binding key) or an exhausted budget stops it.
     async fn retire_rejected(
         &self,
         context: &AuthContext,
         attempt: &str,
         budget: OperationBudget,
     ) -> Result<(), HookError> {
-        let Ok(target) = context.target() else {
+        // The binding key needs only the backend, purpose and destination, so
+        // a target that fails validation still identifies it.
+        let Ok(destination) = Url::parse(&context.destination) else {
             return Ok(());
         };
-        let Some(binding) = self.load(&self.key(&target), budget).await? else {
+        let key = self.binding_key(&context.backend_id, context.purpose, &destination);
+        // The stored binding names the rejected grant, even when it is no
+        // longer compatible with this target or configuration.
+        let Some(binding) = self.load(&key, budget).await? else {
             return Ok(());
         };
-        if self.compatible(&target, &binding) {
-            self.retire(&target, &binding, attempt, budget).await?;
-        }
-        Ok(())
+        let grant = self.grant_key_for(&key, &binding.metadata, &Self::client_identity(&binding));
+        self.retire_generation(grant, attempt, budget).await
     }
     /// Mark this exact token generation as rejected in the store.
-    async fn retire(
+    async fn retire_generation(
         &self,
-        target: &AuthTarget,
-        binding: &SessionRecord,
+        key: SessionKey,
         attempt: &str,
         budget: OperationBudget,
     ) -> Result<(), HookError> {
-        let key = self.binding_grant_key(target, binding);
         let mut guard = budget.run(self.store.acquire(key, budget)).await?;
         if let Some(mut record) = budget.run(guard.load()).await?
             && let Some(token) = record.token.as_mut()
@@ -1405,7 +1444,7 @@ impl ManagedOAuth {
         hint: Option<&discovery::ResourceMetadataHint>,
         cached_issuer: Option<&str>,
         required: &[String],
-        selection: Option<&Selection>,
+        selection: &Selections,
         binding_key: SessionKey,
         budget: OperationBudget,
     ) -> Result<(SessionRecord, Vec<String>), HookError> {
@@ -1462,7 +1501,7 @@ impl ManagedOAuth {
         &self,
         target: &AuthTarget,
         operation: &decide::Operation,
-        selection: Option<&Selection>,
+        selection: &Selections,
         login: Login<'_>,
         sent: Option<&str>,
         budget: OperationBudget,
@@ -1506,16 +1545,11 @@ impl ManagedOAuth {
         if let Some(binding) = known {
             // The operation's selection, again only for another issuer.
             let selected = self.check_saved(&target, binding).and_then(|()| {
-                let servers = [binding.metadata.issuer.clone()];
-                selection
-                    .and_then(|selection| selection.reuse(&servers))
-                    .unwrap_or_else(|| {
-                        let resource = ResourceMetadata::new(
-                            binding.metadata.resource.clone(),
-                            servers.to_vec(),
-                        );
-                        self.select(&target, &resource, &required)
-                    })
+                let resource = ResourceMetadata::new(
+                    binding.metadata.resource.clone(),
+                    vec![binding.metadata.issuer.clone()],
+                );
+                self.selected(selection, &target, &resource, &required)
                     .map(|decision| decision.scopes)
             });
             match selected {

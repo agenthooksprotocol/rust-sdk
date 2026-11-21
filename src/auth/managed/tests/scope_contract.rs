@@ -1203,3 +1203,83 @@ async fn renewal_errors_are_classified() {
         assert_error(error, AuthErrorCode::ProviderFailed, &[]);
     }
 }
+
+/// Re-attempts of an operation share its selection: a stale renewal that
+/// refetches metadata, a client-credentials DCR re-registration, and a
+/// first-use unbound target's discovery each select once.
+#[tokio::test]
+async fn policy_selects_once_across_reattempts() {
+    // Stale: the refresh is provably unsent, the issuer metadata is
+    // refetched and the refresh retried.
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    host.seed(&oauth, context()).await;
+    host.store.expire();
+    selects(&host);
+    host.network.unsent_failures.store(1, Ordering::SeqCst);
+    host.network
+        .reply(200, json!({"access_token":"renewed","token_type":"Bearer"}));
+    assert_eq!(
+        oauth.credential(context()).await.unwrap().unwrap().token,
+        "renewed"
+    );
+    assert_eq!(selects(&host), 1, "stale renewal");
+    // A client-credentials DCR client, first use of an unbound target: the
+    // token endpoint's invalid_client re-registers once and re-acquires.
+    let host = Host::new();
+    host.network.dcr.store(true, Ordering::SeqCst);
+    let oauth = host.owner(
+        OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
+            .scopes(scopes(&["read"]), Vec::new())
+            .dynamic_registration(RegistrationPolicy::new(
+                "https://issuer.example",
+                "Example Adapter",
+            ))
+            .client_secret_storage(host.secrets.clone()),
+    );
+    host.network.reply(401, json!({"error":"invalid_client"}));
+    host.network.reply(
+        200,
+        json!({"access_token":"reissued","token_type":"Bearer"}),
+    );
+    oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .unwrap();
+    assert_eq!(host.network.registrations().len(), 2);
+    assert_eq!(selects(&host), 1, "first use and re-registration");
+}
+
+/// Step 0 precedes every target and configuration check: a 401 retires the
+/// generation it rejected even when the target no longer validates or the
+/// stored binding no longer matches this configuration.
+#[tokio::test]
+async fn unauthorized_retires_before_target_checks() {
+    // A binding stored for another client.
+    let host = Host::new();
+    let seeded = host.seed(&host.pkce(|c| c), context()).await;
+    let other = host.owner(
+        OAuthClientConfig::new("account", "other", OAuthFlow::AuthorizationCodePkce)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .redirect_uri("http://127.0.0.1/callback"),
+    );
+    let mut ctx = context();
+    ctx.authentication.as_mut().unwrap()["clientId"] = "other".into();
+    let _ = other
+        .challenge(ctx, challenge(401, "Bearer", Some(&seeded.attempt_id)))
+        .await;
+    assert!(host.store.token().access_rejected, "incompatible binding");
+    // A target that fails validation.
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let seeded = host.seed(&oauth, context()).await;
+    let mut ctx = context();
+    ctx.authentication.as_mut().unwrap()["flow"] = "bogus".into();
+    let error = oauth
+        .challenge(ctx, challenge(401, "Bearer", Some(&seeded.attempt_id)))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.auth_code(), Some(AuthErrorCode::UnsupportedBinding));
+    assert!(host.store.token().access_rejected, "invalid target");
+}

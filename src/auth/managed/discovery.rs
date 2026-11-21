@@ -277,7 +277,7 @@ pub(super) async fn discover(
     saved_hint: Option<&ResourceMetadataHint>,
     cached_issuer: Option<&str>,
     required: &[String],
-    selection: Option<&super::Selection>,
+    selection: &super::Selections,
     budget: OperationBudget,
 ) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>, Vec<String>), HookError> {
     let resource_url = https(target.destination().as_str(), false)?;
@@ -318,9 +318,7 @@ pub(super) async fn discover(
         https(issuer, true)?;
     }
     // The operation's selection, made again only for other servers.
-    let decision = selection
-        .and_then(|selection| selection.reuse(&metadata.authorization_servers))
-        .unwrap_or_else(|| owner.select(target, &metadata, required))?;
+    let decision = owner.selected(selection, target, &metadata, required)?;
     let (issuer, scopes) = (decision.issuer, decision.scopes);
     // Validated metadata naming another issuer is a move, never a transient outage.
     let moved = cached_issuer.is_some_and(|cached| cached != issuer);

@@ -283,17 +283,16 @@ async fn canonical_scope_decision_vectors() {
         }
         let mut config = config_for(flow, requested.clone(), ceiling.clone());
         if destination {
-            // A dynamically registered client-credentials client whose
-            // registration endpoint host destination policy refuses.
+            // A dynamically registered client-credentials client, learned for
+            // an unbound endpoint (its stored binding), whose registration
+            // endpoint host destination policy refuses.
             assert_eq!(
                 input["host_error"]["target"], "registration_endpoint",
                 "{id}"
             );
+            assert_eq!(binding, "stored", "{id}");
             assert!(grant.is_null(), "{id}");
             host.network.dcr.store(true, Ordering::SeqCst);
-            host.network
-                .refuse_registration
-                .store(true, Ordering::SeqCst);
             config = OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
                 .scopes(requested.clone(), ceiling.clone())
                 .dynamic_registration(RegistrationPolicy::new(
@@ -320,6 +319,27 @@ async fn canonical_scope_decision_vectors() {
         ]
         .concat();
         let all = union(&all, &[]);
+        if destination {
+            // Store the binding (and a registration) through a first
+            // operation, then drop the grant and registration, so this
+            // operation registers against the refused endpoint.
+            host.network
+                .reply(200, json!({"access_token":"seeded","token_type":"Bearer"}));
+            oauth
+                .challenge(ctx.clone(), challenge(401, "Bearer", None))
+                .await
+                .unwrap();
+            assert!(host.store.binding().is_some(), "{id}: stored binding");
+            set_grant(&host, grant);
+            host.store
+                .records
+                .lock()
+                .unwrap()
+                .retain(|key, _| !key.starts_with("ahp.oauth.registration:"));
+            host.network
+                .refuse_registration
+                .store(true, Ordering::SeqCst);
+        }
         let seeded = !destination && (binding == "stored" || grant.is_object());
         if seeded {
             assert_ne!(binding, "unbound", "{id}");
