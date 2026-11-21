@@ -24,6 +24,8 @@ pub struct HookError {
     /// The scopes were attached by the SDK's own scope decision. Managed OAuth
     /// strips the scopes of every other error (opt-in).
     scoped: bool,
+    /// A host destination policy (`OAuthNetwork::check`) refused the request.
+    refused_destination: bool,
     /// From `ManagedOAuth::complete`: the callback's pending login no longer exists.
     login_ended: Option<bool>,
     unsent: bool,
@@ -41,6 +43,7 @@ impl HookError {
             auth_code: None,
             required_scopes: None,
             scoped: false,
+            refused_destination: false,
             login_ended: None,
             unsent: false,
             transient: false,
@@ -130,6 +133,15 @@ impl HookError {
         let mut error = Self::authentication(code).with_required_scopes(scopes);
         error.scoped = true;
         error
+    }
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn refused_destination(mut self) -> Self {
+        self.refused_destination = true;
+        self
+    }
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn is_refused_destination(&self) -> bool {
+        self.refused_destination
     }
     pub(crate) fn is_scoped(&self) -> bool {
         self.scoped

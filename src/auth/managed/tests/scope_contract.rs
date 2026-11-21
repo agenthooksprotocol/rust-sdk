@@ -1312,3 +1312,146 @@ async fn step_up_needing_consent_makes_no_request() {
     assert_error(error, AuthErrorCode::InteractionRequired, &["write"]);
     assert_eq!(requests(&host), before);
 }
+
+fn authorization_server_requests(host: &Host) -> usize {
+    host.network
+        .seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|seen| seen.usage != EndpointUse::ResourceMetadata)
+        .count()
+}
+
+/// A client-credentials 401 whose current generation already covers R
+/// (another request re-acquired meanwhile) is answered with that token,
+/// without rediscovery or any request.
+#[tokio::test]
+async fn client_credentials_401_with_newer_generation_uses_it() {
+    let host = Host::new();
+    let oauth = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    host.network.reply(
+        200,
+        json!({"access_token":"first","token_type":"Bearer","expires_in":3600}),
+    );
+    let first = oauth.credential(cc_context()).await.unwrap().unwrap();
+    host.store.expire();
+    host.network.reply(
+        200,
+        json!({"access_token":"second","token_type":"Bearer","expires_in":3600}),
+    );
+    let second = oauth.credential(cc_context()).await.unwrap().unwrap();
+    let before = requests(&host);
+    oauth
+        .challenge(
+            cc_context(),
+            challenge(401, "Bearer", Some(&first.attempt_id)),
+        )
+        .await
+        .unwrap();
+    assert_eq!(requests(&host), before, "no rediscovery or token request");
+    let token = host.store.token();
+    assert_eq!(token.generation, second.attempt_id);
+    assert!(!token.access_rejected);
+}
+
+/// An unbound pre-registered PKCE target's first anonymous 401 ending at step
+/// 9: protected-resource discovery only, then interaction_required, with a
+/// binding stored without authorization-server metadata.
+#[tokio::test]
+async fn unbound_preregistered_pkce_401_needs_no_authorization_server() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let error = oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::InteractionRequired, &[]);
+    assert_eq!(authorization_server_requests(&host), 0);
+    assert!(requests(&host) >= 1, "protected-resource metadata");
+    let binding = host.store.binding().unwrap();
+    assert!(binding.metadata.token_endpoint.is_empty());
+    assert!(binding.client_source == ClientSource::Preregistered);
+    // The host's prepare fetches the issuer's metadata for the login.
+    login(oauth.prepare(unbound(), budget()).await.unwrap());
+    assert!(
+        !host
+            .store
+            .binding()
+            .unwrap()
+            .metadata
+            .token_endpoint
+            .is_empty()
+    );
+}
+
+/// A stale renewal's issuer-metadata refetch keeps a host destination
+/// refusal's code, without scopes; other failures are discovery_failed.
+#[tokio::test]
+async fn stale_refetch_keeps_destination_refusal_code() {
+    for (refusal, expected) in [
+        (
+            Some(fail(AuthErrorCode::CredentialUnavailable)),
+            AuthErrorCode::CredentialUnavailable,
+        ),
+        (
+            Some(HookError::new("refused")),
+            AuthErrorCode::UntrustedDestination,
+        ),
+        (None, AuthErrorCode::DiscoveryFailed),
+    ] {
+        let host = Host::new();
+        let oauth = host.pkce(|c| c);
+        host.seed(&oauth, context()).await;
+        host.store.expire();
+        host.network.unsent_failures.store(1, Ordering::SeqCst);
+        match refusal {
+            Some(error) => host.network.refusals.lock().unwrap().push((
+                EndpointUse::IssuerMetadata,
+                error.with_required_scopes(&scopes(&["read"])),
+            )),
+            None => *host.network.issuer_outage.lock().unwrap() = Some("issuer.example".into()),
+        }
+        let error = oauth.credential(context()).await.err().unwrap();
+        assert_error(error, expected, &[]);
+    }
+}
+
+/// A stored binding without persisted authorization-server metadata decides
+/// use and step 9's interaction_required without fetching it.
+#[tokio::test]
+async fn stored_binding_without_metadata_decides_without_fetch() {
+    let clear = |host: &Host| {
+        for (key, record) in host.store.records.lock().unwrap().iter_mut() {
+            if key.starts_with("ahp.oauth.binding:") {
+                record.metadata.token_endpoint.clear();
+                record.metadata.authorization_endpoint = None;
+            }
+        }
+    };
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let seeded = host.seed(&oauth, context()).await;
+    clear(&host);
+    let before = requests(&host);
+    // Use: the stored token is valid.
+    assert_eq!(
+        oauth
+            .credential(unbound())
+            .await
+            .unwrap()
+            .unwrap()
+            .attempt_id,
+        seeded.attempt_id
+    );
+    // interaction_required: the grant lacks a host-required scope.
+    let needs_write = host.pkce(|c| c.required_scopes(scopes(&["write"])));
+    for error in [
+        needs_write.credential(context()).await.err().unwrap(),
+        needs_write.credential(unbound()).await.err().unwrap(),
+    ] {
+        assert_error(error, AuthErrorCode::InteractionRequired, &["write"]);
+    }
+    assert_eq!(requests(&host), before, "no issuer-metadata fetch");
+}

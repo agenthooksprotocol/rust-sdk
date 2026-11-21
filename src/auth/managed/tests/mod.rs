@@ -3119,7 +3119,10 @@ async fn challenge_with_empty_metadata_rediscovers_moved_issuer() {
     host.network
         .reply(200, json!({"access_token":"moved","token_type":"Bearer"}));
     oauth
-        .challenge(unbound(), challenge(401, "Bearer", None))
+        .challenge(
+            unbound(),
+            challenge(401, "Bearer", Some(&host.store.token().generation)),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -3130,7 +3133,9 @@ async fn challenge_with_empty_metadata_rediscovers_moved_issuer() {
         oauth.credential(unbound()).await.unwrap().unwrap().token,
         "moved"
     );
-    // PKCE: the binding is repaired and consent is requested from the new issuer.
+    // PKCE: interaction_required needs no authorization-server request, so
+    // the challenges decide it at once; the host's prepare repairs the binding
+    // and requests consent from the new issuer.
     let host = Host::new();
     let oauth = host.pkce(|c| c);
     assert_eq!(
@@ -3149,6 +3154,13 @@ async fn challenge_with_empty_metadata_rediscovers_moved_issuer() {
                 .await
         ),
         AuthErrorCode::InteractionRequired
+    );
+    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    assert!(
+        pending
+            .authorization_url()
+            .as_str()
+            .starts_with("https://issuer2.example/")
     );
     assert_eq!(
         host.store.binding().unwrap().metadata.issuer,
@@ -3174,7 +3186,10 @@ async fn challenge_rebinds_when_old_issuer_still_answers() {
     host.network
         .reply(200, json!({"access_token":"rebound","token_type":"Bearer"}));
     oauth
-        .challenge(unbound(), challenge(401, "Bearer", None))
+        .challenge(
+            unbound(),
+            challenge(401, "Bearer", Some(&host.store.token().generation)),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -3328,7 +3343,10 @@ async fn definitive_discovery_failure_never_falls_back_to_cached_binding() {
     let header = r#"Bearer resource_metadata="https://api.example/missing""#;
     assert!(
         oauth
-            .challenge(unbound(), challenge(401, header, None))
+            .challenge(
+                unbound(),
+                challenge(401, header, Some(&host.store.token().generation))
+            )
             .await
             .is_err()
     );
@@ -3337,7 +3355,10 @@ async fn definitive_discovery_failure_never_falls_back_to_cached_binding() {
     *host.network.issuer_outage.lock().unwrap() = Some("issuer2.example".into());
     assert!(
         oauth
-            .challenge(unbound(), challenge(401, "Bearer", None))
+            .challenge(
+                unbound(),
+                challenge(401, "Bearer", Some(&host.store.token().generation))
+            )
             .await
             .is_err()
     );

@@ -6,7 +6,7 @@ use crate::{
     adapters::registered::{
         AuthChallenge, AuthContext, AuthProvider, AuthPurpose, BearerCredential,
     },
-    auth::{AuthBinding, AuthErrorCode, AuthTarget, OAuthFlow, challenge::Challenge},
+    auth::{AuthBinding, AuthErrorCode, AuthTarget, OAuthFlow},
     client::{HookError, LocalFuture},
 };
 use oauth2::{
@@ -828,6 +828,7 @@ pub(super) fn destination_refused(error: HookError) -> HookError {
             .unwrap_or(AuthErrorCode::UntrustedDestination),
     )
     .classified(error.code())
+    .refused_destination()
 }
 type Client =
     BasicClient<EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
@@ -1012,6 +1013,27 @@ impl ManagedOAuth {
             backend_id: String::new(),
             destination: String::new(),
             purpose: String::new(),
+        }
+    }
+    /// The decision against a grant record before any authorization-server
+    /// request: its outcome when that is use or a refusal (including step 9's
+    /// interaction_required), `None` when a refresh, acquisition or login is
+    /// needed. A token rejected by this 401 is unusable; its refresh token is.
+    fn early(
+        &self,
+        record: Option<SessionRecord>,
+        rejected: Option<&str>,
+        decide: &dyn Fn(&[String], Option<&SavedToken>, bool) -> decide::Step,
+        cc: bool,
+    ) -> Option<Result<Option<Preparation>, Renewal>> {
+        let token = record.and_then(|r| r.token).map(|mut token| {
+            token.access_rejected |= rejected == Some(token.generation.as_str());
+            token
+        });
+        match decide(&self.config.requested_scopes, token.as_ref(), !cc) {
+            decide::Step::Use(credential) => Some(Ok(Some(Preparation::Ready(credential)))),
+            decide::Step::Fail(error) => Some(Err(error.into())),
+            _ => None,
         }
     }
     /// A pre-registered preset's grant key, known without any stored binding.
@@ -1413,7 +1435,15 @@ impl ManagedOAuth {
             budget,
         )
         .await
-        .map_err(|_| discovery())?;
+        // A host destination refusal keeps its code; any other failure to
+        // fetch or validate the metadata is discovery_failed.
+        .map_err(|error| {
+            if error.is_refused_destination() {
+                error
+            } else {
+                discovery()
+            }
+        })?;
         let mut guard = budget.run(self.store.acquire(key, budget)).await?;
         let mut current = budget.run(guard.load()).await?.ok_or_else(discovery)?;
         if current.metadata.issuer != metadata.issuer {
@@ -1470,25 +1500,27 @@ impl ManagedOAuth {
     async fn rebind(
         &self,
         target: &AuthTarget,
-        challenge: Option<&Challenge>,
-        hint: Option<&discovery::ResourceMetadataHint>,
+        resource: discovery::Resource,
         cached_issuer: Option<&str>,
-        required: &[String],
-        selection: &Selections,
         binding_key: SessionKey,
         budget: OperationBudget,
     ) -> Result<(SessionRecord, Vec<String>), HookError> {
-        let (metadata, hint, scopes) = discovery::discover(
-            self,
-            target,
-            challenge,
-            hint,
-            cached_issuer,
-            required,
-            selection,
-            budget,
-        )
-        .await?;
+        let (metadata, hint, scopes) =
+            discovery::discover(self, target, resource, cached_issuer, budget).await?;
+        self.store_binding(target, metadata, hint, binding_key, budget)
+            .await
+            .map(|binding| (binding, scopes))
+    }
+    /// A write-on-change binding update; a recorded client selection survives
+    /// metadata changes until host policy changes it.
+    async fn store_binding(
+        &self,
+        target: &AuthTarget,
+        metadata: TrustedMetadata,
+        hint: Option<discovery::ResourceMetadataHint>,
+        binding_key: SessionKey,
+        budget: OperationBudget,
+    ) -> Result<SessionRecord, HookError> {
         let mut binding = SessionRecord {
             configured_binding: !matches!(target.binding(), AuthBinding::Unbound),
             resource_metadata_hint: hint,
@@ -1524,7 +1556,7 @@ impl ManagedOAuth {
                 self.persist(&mut *guard, &mut binding, budget).await?;
             }
         }
-        Ok((binding, scopes))
+        Ok(binding)
     }
     #[allow(clippy::too_many_arguments)]
     async fn acquire_inner(
@@ -1563,6 +1595,8 @@ impl ManagedOAuth {
         let saved = self.load(&binding_key, budget).await?;
         // Local authorization of a saved binding needs no network; policy runs off-lock.
         let mut usable = None;
+        // The known binding passed validation and selection, with this S.
+        let mut validated = None;
         // A known binding for another client or flow needs `prepare`, not anonymity.
         if mode == Mode::Lookup && saved.as_ref().is_some_and(|r| !self.compatible(&target, r)) {
             return Err(fail(AuthErrorCode::DiscoveryFailed).into());
@@ -1583,32 +1617,7 @@ impl ManagedOAuth {
                     .map(|decision| decision.scopes)
             });
             match selected {
-                Ok(scopes) => {
-                    let mut binding = binding.clone();
-                    // Absent persisted authorization-server metadata: fetch only the
-                    // stored issuer's metadata, never protected-resource metadata.
-                    if binding.metadata.token_endpoint.is_empty() && mode != Mode::Prepare && !force
-                    {
-                        binding.metadata = discovery::issuer_metadata(
-                            self,
-                            &target,
-                            binding.metadata.resource.clone(),
-                            binding.metadata.issuer.clone(),
-                            budget,
-                        )
-                        .await
-                        .map_err(Renewal::Stale)?;
-                        let mut guard = budget
-                            .run(self.store.acquire(binding_key.clone(), budget))
-                            .await?;
-                        self.persist(&mut *guard, &mut binding, budget).await?;
-                    }
-                    if !binding.metadata.token_endpoint.is_empty()
-                        && self.approve_metadata(&target, &binding.metadata).is_ok()
-                    {
-                        usable = Some((binding, scopes));
-                    }
-                }
+                Ok(scopes) => validated = Some(scopes),
                 // A selection beyond the ceiling is a configuration error in every mode.
                 Err(error) if error.auth_code() == Some(AuthErrorCode::InvalidConfiguration) => {
                     return Err(error.into());
@@ -1619,38 +1628,58 @@ impl ManagedOAuth {
                 Err(error) => return Err(error.into()),
             }
         }
-        // Outcomes that need no authorization-server request are returned
-        // before any discovery: against the known grant (a validated stored
-        // binding's, or a pre-registered preset's when none is stored), a 403
-        // step-up's step 5 and, for PKCE delivery, a usable token or step 9's
-        // interaction_required. A refresh or acquisition continues below.
-        let pkce_delivery = !cc && mode != Mode::Prepare;
-        let early = match known {
-            Some(binding) if usable.is_some() || operation.step_up => {
-                Some(self.binding_grant_key(&target, binding))
-            }
-            None if pkce_delivery
-                && selection
+        // Outcomes that need no authorization-server request (use, a step 1
+        // to 5 refusal, step 9's interaction_required) are returned before
+        // any discovery or metadata fetch, for any challenge or delivery
+        // against the known grant: a validated stored binding's (even without
+        // persisted metadata), or a pre-registered preset's when none is
+        // stored. A refresh, an acquisition or a login continues below.
+        if mode != Mode::Prepare {
+            let early = match known {
+                Some(binding) if validated.is_some() || operation.step_up => {
+                    Some(self.binding_grant_key(&target, binding))
+                }
+                None if selection
                     .lock()
                     .unwrap()
                     .as_ref()
                     .is_some_and(|s| s.result.is_ok()) =>
-            {
-                self.preset_grant_key(&target)
+                {
+                    self.preset_grant_key(&target)
+                }
+                _ => None,
+            };
+            if let Some(key) = early {
+                let record = self.load(&key, budget).await?;
+                if let Some(step) = self.early(record, rejected, &decide, cc) {
+                    return step;
+                }
             }
-            _ => None,
-        };
-        if let Some(key) = early.filter(|_| operation.step_up || pkce_delivery) {
-            let record = self.load(&key, budget).await?;
-            // The rejected generation is never usable, but its refresh token is.
-            let token = record.and_then(|r| r.token).map(|mut token| {
-                token.access_rejected |= rejected == Some(token.generation.as_str());
-                token
-            });
-            match decide(configured, token.as_ref(), !cc) {
-                decide::Step::Use(credential) => return Ok(Some(Preparation::Ready(credential))),
-                decide::Step::Fail(error) => return Err(error.into()),
-                _ => {}
+        }
+        // A validated known binding is usable once it has authorization-server
+        // metadata: absent, fetch only the stored issuer's (never
+        // protected-resource metadata), now that a request is needed.
+        if let (Some(binding), Some(scopes)) = (known, validated) {
+            let mut binding = binding.clone();
+            if binding.metadata.token_endpoint.is_empty() && mode != Mode::Prepare && !force {
+                binding.metadata = discovery::issuer_metadata(
+                    self,
+                    &target,
+                    binding.metadata.resource.clone(),
+                    binding.metadata.issuer.clone(),
+                    budget,
+                )
+                .await
+                .map_err(Renewal::Stale)?;
+                let mut guard = budget
+                    .run(self.store.acquire(binding_key.clone(), budget))
+                    .await?;
+                self.persist(&mut *guard, &mut binding, budget).await?;
+            }
+            if !binding.metadata.token_endpoint.is_empty()
+                && self.approve_metadata(&target, &binding.metadata).is_ok()
+            {
+                usable = Some((binding, scopes));
             }
         }
         // `prepare` serves a usable cached token, otherwise rebuilds binding metadata
@@ -1682,20 +1711,48 @@ impl ManagedOAuth {
                     .as_ref()
                     .and_then(|r| r.resource_metadata_hint.as_ref());
                 let cached_issuer = cached.as_ref().map(|(b, _)| b.metadata.issuer.as_str());
-                match self
-                    .rebind(
-                        &target,
-                        challenge,
-                        hint,
-                        cached_issuer,
-                        &required,
-                        selection,
-                        binding_key,
-                        budget,
+                let rebound = async {
+                    let resource = discovery::discover_resource(
+                        self, &target, challenge, hint, &required, selection, budget,
                     )
-                    .await
-                {
-                    Ok(found) => found,
+                    .await?;
+                    // A pre-registered client's grant is known once the issuer
+                    // is: decide before any authorization-server request, and
+                    // store a binding without authorization-server metadata.
+                    if mode != Mode::Prepare
+                        && saved.is_none()
+                        && let Some(client_id) = self.preregistered(&target)
+                    {
+                        let metadata = TrustedMetadata::new(
+                            resource.resource.clone(),
+                            resource.decision.issuer.clone(),
+                            String::new(),
+                        );
+                        let key = self.grant_key(
+                            &target,
+                            &metadata,
+                            &format!("preregistered:{client_id}"),
+                        );
+                        let record = self.load(&key, budget).await?;
+                        if let Some(step) = self.early(record, rejected, &decide, cc) {
+                            self.store_binding(
+                                &target,
+                                metadata,
+                                resource.hint.clone(),
+                                binding_key.clone(),
+                                budget,
+                            )
+                            .await?;
+                            return Ok(Err(step));
+                        }
+                    }
+                    self.rebind(&target, resource, cached_issuer, binding_key, budget)
+                        .await
+                        .map(Ok)
+                };
+                match rebound.await {
+                    Ok(Err(step)) => return step,
+                    Ok(Ok(found)) => found,
                     // A transient discovery outage (transport failure or 5xx) during
                     // challenge handling renews through the still-valid cached binding.
                     // Definitive failures, or metadata naming another issuer, never do.

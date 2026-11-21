@@ -254,5 +254,8 @@ pub(crate) fn classify(error: HookError) -> HookError {
     classified = classified
         .classified(error.code())
         .request_not_sent_if(error.is_request_not_sent());
+    if error.is_refused_destination() {
+        classified = classified.refused_destination();
+    }
     classified
 }
