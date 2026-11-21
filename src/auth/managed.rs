@@ -694,7 +694,10 @@ impl TokenHttp {
         }
         let budget = self.budget;
         budget
-            .run(self.network.check(url, EndpointUse::Token, budget))
+            .run(async {
+                (self.network.check(url, EndpointUse::Token, budget).await)
+                    .map_err(destination_refused)
+            })
             .await?;
         let mut request = request;
         request.extensions_mut().insert(self.written.clone());
@@ -803,7 +806,9 @@ async fn checked_network_send(
     if !valid_https(&url) {
         return Err(fail(AuthErrorCode::UntrustedDestination));
     }
-    budget.run(network.check(url, usage, budget)).await?;
+    budget
+        .run(async { (network.check(url, usage, budget).await).map_err(destination_refused) })
+        .await?;
     let response = budget
         .run(network.send(request, usage, budget))
         .await
@@ -812,6 +817,17 @@ async fn checked_network_send(
         return Err(fail(AuthErrorCode::UntrustedDestination));
     }
     Ok(response)
+}
+/// A host destination refusal (`OAuthNetwork::check`), for any URL: it keeps
+/// the host's code, `untrusted_destination` when it has none, and never
+/// carries scopes.
+pub(super) fn destination_refused(error: HookError) -> HookError {
+    HookError::authentication(
+        error
+            .auth_code()
+            .unwrap_or(AuthErrorCode::UntrustedDestination),
+    )
+    .classified(error.code())
 }
 type Client =
     BasicClient<EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
@@ -1189,7 +1205,9 @@ impl ManagedOAuth {
             return Err(fail(AuthErrorCode::UntrustedDestination));
         }
         budget
-            .run(self.network.check(url.clone(), usage, budget))
+            .run(async {
+                (self.network.check(url.clone(), usage, budget).await).map_err(destination_refused)
+            })
             .await
     }
     pub(super) async fn checked_send(
@@ -1596,13 +1614,16 @@ impl ManagedOAuth {
             let record = self
                 .load(&self.binding_grant_key(&target, binding), budget)
                 .await?;
-            match decide(
-                configured,
+            match decide::disagreement(
+                &self.config,
+                operation,
                 record.as_ref().and_then(|r| r.token.as_ref()),
-                !cc,
+                sent,
             ) {
-                decide::Step::Use(credential) => return Ok(Some(Preparation::Ready(credential))),
-                decide::Step::Fail(error) => return Err(error.into()),
+                Some(decide::Step::Use(credential)) => {
+                    return Ok(Some(Preparation::Ready(credential)));
+                }
+                Some(decide::Step::Fail(error)) => return Err(error.into()),
                 _ => {}
             }
         }

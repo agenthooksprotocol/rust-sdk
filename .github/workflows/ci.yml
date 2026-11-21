@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: agenthooksprotocol/agent-hooks-protocol
-          ref: f00332ded6bdaba20d0adcc878e7caa5d326d58b
+          ref: 14d9eed604a0056038ad945d456dda1859abf9be
           path: shared-spec
       - run: mv shared-spec ../agent-hooks-protocol
       - uses: dtolnay/rust-toolchain@1.88.0

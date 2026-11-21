@@ -160,17 +160,8 @@ pub(super) fn grant(
             attempt_id: token.generation.clone(),
         })
     };
-    // Step 5: the server disagrees with our record.
-    if operation.step_up
-        && let Some(token) = token
-        && covers(token)
-    {
-        if sent.is_none_or(|sent| sent == token.generation) {
-            return Step::Fail(HookError::scoped(AuthErrorCode::AccessDenied, required));
-        }
-        if usable(token) {
-            return credential(token);
-        }
+    if let Some(step) = disagreement(config, operation, token, sent) {
+        return step;
     }
     // Step 6.
     if let Some(token) = token.filter(|token| usable(token)) {
@@ -200,6 +191,40 @@ pub(super) fn grant(
             required,
         )),
     }
+}
+
+/// Step 5 alone, against a known grant before any network request: a 403
+/// `insufficient_scope` naming scopes the grant already records within the
+/// ceiling is refused with R when that grant's token was sent (or none was),
+/// and answered with a newer usable token otherwise. `None`: steps 6 to 9
+/// decide, after the binding is settled.
+pub(super) fn disagreement(
+    config: &OAuthClientConfig,
+    operation: &Operation,
+    token: Option<&SavedToken>,
+    sent: Option<&str>,
+) -> Option<Step> {
+    let token = token.filter(|_| operation.step_up)?;
+    let required = &operation.required;
+    if !subset(required, &within(&config.allowed_scopes, &token.scopes)) {
+        return None;
+    }
+    if sent.is_none_or(|sent| sent == token.generation) {
+        return Some(Step::Fail(HookError::scoped(
+            AuthErrorCode::AccessDenied,
+            required,
+        )));
+    }
+    let usable = !token.access_rejected
+        && token
+            .expires_at
+            .is_none_or(|expiry| expiry > now().saturating_add(30));
+    usable.then(|| {
+        Step::Use(BearerCredential {
+            token: token.access_token.clone(),
+            attempt_id: token.generation.clone(),
+        })
+    })
 }
 
 /// Steps 7 and 8 (and completion step 7): a recorded grant that does not

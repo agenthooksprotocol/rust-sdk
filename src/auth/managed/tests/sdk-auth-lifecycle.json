@@ -3042,6 +3042,71 @@
       "expect": {
         "code": "untrusted_destination"
       }
+    },
+    {
+      "id": "host-policy-issuer-metadata-destination-refused",
+      "input": {
+        "flow": "client_credentials",
+        "path": "prepare",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": null,
+        "host_error": {
+          "callback": "destination",
+          "target": "issuer_metadata",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "untrusted_destination"
+      }
+    },
+    {
+      "id": "host-policy-issuer-metadata-destination-refused-challenge",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        },
+        "host_error": {
+          "callback": "destination",
+          "target": "issuer_metadata",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "untrusted_destination"
+      }
     }
   ],
   "completions": [

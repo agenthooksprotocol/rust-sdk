@@ -234,7 +234,24 @@ async fn canonical_scope_decision_vectors() {
         let current = grant.as_object().map(|_| generation(&grant["generation"]));
         let sent = input["sent"].as_u64().map(|n| format!("gen-{n}"));
         let host_error = input["host_error"].as_object();
-        let destination = host_error.is_some_and(|e| e["callback"] == "destination");
+        // A destination refusal: of a client-credentials DCR registration, or
+        // of a metadata request.
+        let refused = host_error
+            .filter(|e| e["callback"] == "destination")
+            .map(|e| {
+                let usage = match e["target"].as_str().unwrap() {
+                    "registration_endpoint" => EndpointUse::Registration,
+                    "issuer_metadata" => EndpointUse::IssuerMetadata,
+                    "protected_resource_metadata" => EndpointUse::ResourceMetadata,
+                    other => panic!("{id}: unknown destination {other}"),
+                };
+                let error = fail(auth_code(e["code"].as_str().unwrap()))
+                    .with_required_scopes(&list(&e["scopes"]));
+                (usage, error)
+            });
+        let destination = refused
+            .as_ref()
+            .is_some_and(|(usage, _)| *usage == EndpointUse::Registration);
         let rejection = input["challenge"].as_object().map(|c| decide::Rejection {
             status: c["status"].as_u64().unwrap() as u16,
             header: c["www_authenticate"].as_str().unwrap(),
@@ -288,10 +305,6 @@ async fn canonical_scope_decision_vectors() {
             // A dynamically registered client-credentials client, learned for
             // an unbound endpoint (its stored binding), whose registration
             // endpoint host destination policy refuses.
-            assert_eq!(
-                input["host_error"]["target"], "registration_endpoint",
-                "{id}"
-            );
             assert_eq!(binding, "stored", "{id}");
             assert!(grant.is_null(), "{id}");
             host.network.dcr.store(true, Ordering::SeqCst);
@@ -338,9 +351,6 @@ async fn canonical_scope_decision_vectors() {
                 .lock()
                 .unwrap()
                 .retain(|key, _| !key.starts_with("ahp.oauth.registration:"));
-            host.network
-                .refuse_registration
-                .store(true, Ordering::SeqCst);
         }
         let seeded = !destination && (binding == "stored" || grant.is_object());
         if seeded {
@@ -372,7 +382,11 @@ async fn canonical_scope_decision_vectors() {
             };
             ctx.authentication.as_mut().unwrap()["flow"] = other.into();
         }
-        if let Some(error) = host_error.filter(|_| !destination) {
+        // The host's refusal, with the scopes it carries, which are stripped.
+        if let Some(refusal) = refused.clone() {
+            host.network.refusals.lock().unwrap().push(refusal);
+        }
+        if let Some(error) = host_error.filter(|e| e["callback"] != "destination") {
             assert_eq!(error["callback"], "client_selection", "{id}");
             *host.policy.refuse.lock().unwrap() = Some(
                 fail(auth_code(error["code"].as_str().unwrap()))
@@ -746,7 +760,11 @@ pub(super) async fn canonical_completion_vectors() {
             }
             Some(error) if error["callback"] == "destination" => {
                 assert_eq!(error["target"], "token_endpoint", "{id}");
-                *host.network.refuse_token.lock().unwrap() = on.then(|| host_failure(error));
+                let mut refusals = host.network.refusals.lock().unwrap();
+                refusals.clear();
+                if on {
+                    refusals.push((EndpointUse::Token, host_failure(error)));
+                }
             }
             Some(error) => panic!("{id}: unknown host error {error:?}"),
             None => {}
