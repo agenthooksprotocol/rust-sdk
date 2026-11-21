@@ -75,6 +75,7 @@ fn parameter(value: &str) -> Result<String, Malformed> {
 }
 
 /// Strict: a malformed `scope` value is malformed too.
+#[cfg(any(feature = "managed-oauth", test))]
 pub(crate) fn parse(header: &str) -> Result<Challenge, Malformed> {
     parse_with(header, true)
 }

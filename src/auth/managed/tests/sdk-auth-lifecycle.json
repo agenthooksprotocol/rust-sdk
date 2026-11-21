@@ -2489,6 +2489,77 @@
       }
     },
     {
+      "id": "malformed-challenge-bearer-token68",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer abc=="
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "access_denied",
+        "authorization_server_requests": 0,
+        "network_calls": 0,
+        "scopes": []
+      }
+    },
+    {
+      "id": "challenge-non-bearer-token68-skipped",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Basic YWxhZGRpbjpvcGVuc2VzYW1l, Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ]
+      }
+    },
+    {
       "id": "malformed-challenge-scope-401",
       "input": {
         "flow": "client_credentials",

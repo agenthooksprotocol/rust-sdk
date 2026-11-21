@@ -262,7 +262,8 @@ pub(super) async fn rule4_requested_outside_ceiling_invalid_configuration() {
 }
 
 /// Rule 5: a 401 retires the token; its `scope` (within the ceiling) is
-/// requested by the next acquisition or sign-in, never required.
+/// requested only by the same operation's client-credentials acquisition,
+/// never stored for a later acquisition or sign-in, and never required.
 #[tokio::test]
 pub(super) async fn rule5_unauthorized_scope_is_requested_not_required() {
     let host = Host::new();
