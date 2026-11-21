@@ -202,7 +202,7 @@ async fn canonical_scope_decision_vectors() {
         let forced = input["force_registration"] == true;
         let dcr = match input["client_source"].as_str() {
             Some("preregistered") => {
-                assert_eq!(input["binding"], "unbound", "{id}");
+                assert!(input["binding"] == "unbound" || forced, "{id}");
                 false
             }
             Some("dcr") => {
@@ -335,13 +335,20 @@ async fn canonical_scope_decision_vectors() {
             assert_eq!(binding, "stored", "{id}");
             assert!(grant.is_null() || dcr, "{id}");
             host.network.dcr.store(true, Ordering::SeqCst);
-            config = OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
-                .scopes(requested.clone(), ceiling.clone())
-                .dynamic_registration(RegistrationPolicy::new(
-                    "https://issuer.example",
-                    "Example Adapter",
-                ))
-                .client_secret_storage(host.secrets.clone());
+            let policy = RegistrationPolicy::new("https://issuer.example", "Example Adapter");
+            config = match flow {
+                "client_credentials" => {
+                    OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
+                        .scopes(requested.clone(), ceiling.clone())
+                        .dynamic_registration(policy)
+                        .client_secret_storage(host.secrets.clone())
+                }
+                // A PKCE DCR client registers per login.
+                _ => OAuthClientConfig::unregistered("account", OAuthFlow::AuthorizationCodePkce)
+                    .scopes(requested.clone(), ceiling.clone())
+                    .redirect_uri("http://127.0.0.1/callback")
+                    .dynamic_registration(policy),
+            };
             ctx.authentication = None;
         }
         let mut oauth = ManagedOAuth::new(
@@ -367,10 +374,18 @@ async fn canonical_scope_decision_vectors() {
             // also drop the registration, so this operation registers again.
             host.network
                 .reply(200, json!({"access_token":"seeded","token_type":"Bearer"}));
-            oauth
-                .challenge(ctx.clone(), challenge(401, "Bearer", None))
-                .await
-                .unwrap();
+            if flow == "client_credentials" {
+                oauth
+                    .challenge(ctx.clone(), challenge(401, "Bearer", None))
+                    .await
+                    .unwrap();
+            } else {
+                let pending = login(oauth.prepare(ctx.clone(), budget()).await.unwrap());
+                oauth
+                    .complete(ctx.clone(), callback(&pending), budget())
+                    .await
+                    .unwrap();
+            }
             assert!(host.store.binding().is_some(), "{id}: stored binding");
             set_grant(&host, grant);
             if destination {
