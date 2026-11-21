@@ -193,13 +193,25 @@ async fn canonical_scope_decision_vectors() {
                 "host_error",
                 "target_error",
                 "client_source",
+                "force_registration",
             ],
         );
-        // An unbound target's client, as host client selection yields it.
-        if let Some(source) = input["client_source"].as_str() {
-            assert_eq!(input["binding"], "unbound", "{id}");
-            assert_eq!(source, "preregistered", "{id}: client source");
-        }
+        // The client host client selection yields: for an unbound target,
+        // pre-registered; with a forced re-registration, a client-credentials
+        // DCR client (learned for an unbound endpoint, its stored binding).
+        let forced = input["force_registration"] == true;
+        let dcr = match input["client_source"].as_str() {
+            Some("preregistered") => {
+                assert_eq!(input["binding"], "unbound", "{id}");
+                false
+            }
+            Some("dcr") => {
+                assert!(forced, "{id}");
+                true
+            }
+            None => false,
+            Some(other) => panic!("{id}: unsupported client source {other}"),
+        };
         only(id, &input["target_error"], &["check", "code"]);
         only(
             id,
@@ -212,6 +224,7 @@ async fn canonical_scope_decision_vectors() {
                 "acquisition_scopes",
                 "retired",
                 "authorization_server_requests",
+                "authorization_server_requests_min",
                 "network_calls",
                 "network_calls_max",
             ],
@@ -314,12 +327,13 @@ async fn canonical_scope_decision_vectors() {
             ctx.authentication.as_mut().unwrap()["scopes"] = json!(preset);
         }
         let mut config = config_for(flow, requested.clone(), ceiling.clone());
-        if destination {
+        if destination || dcr {
             // A dynamically registered client-credentials client, learned for
             // an unbound endpoint (its stored binding), whose registration
-            // endpoint host destination policy refuses.
+            // endpoint host destination policy refuses, or that is forced to
+            // re-register.
             assert_eq!(binding, "stored", "{id}");
-            assert!(grant.is_null(), "{id}");
+            assert!(grant.is_null() || dcr, "{id}");
             host.network.dcr.store(true, Ordering::SeqCst);
             config = OAuthClientConfig::unregistered("account", OAuthFlow::ClientCredentials)
                 .scopes(requested.clone(), ceiling.clone())
@@ -347,10 +361,10 @@ async fn canonical_scope_decision_vectors() {
         ]
         .concat();
         let all = union(&all, &[]);
-        if destination {
+        if destination || dcr {
             // Store the binding (and a registration) through a first
-            // operation, then drop the grant and registration, so this
-            // operation registers against the refused endpoint.
+            // operation and set the vector's grant. For a refused destination,
+            // also drop the registration, so this operation registers again.
             host.network
                 .reply(200, json!({"access_token":"seeded","token_type":"Bearer"}));
             oauth
@@ -359,15 +373,20 @@ async fn canonical_scope_decision_vectors() {
                 .unwrap();
             assert!(host.store.binding().is_some(), "{id}: stored binding");
             set_grant(&host, grant);
-            host.store
-                .records
-                .lock()
-                .unwrap()
-                .retain(|key, _| !key.starts_with("ahp.oauth.registration:"));
+            if destination {
+                host.store
+                    .records
+                    .lock()
+                    .unwrap()
+                    .retain(|key, _| !key.starts_with("ahp.oauth.registration:"));
+            }
         }
-        let seeded = !destination && (binding == "stored" || grant.is_object());
+        // An unbound target's grant is learned through its binding.
+        if binding == "unbound" {
+            ctx.authentication = None;
+        }
+        let seeded = !destination && !dcr && (binding == "stored" || grant.is_object());
         if seeded {
-            assert_ne!(binding, "unbound", "{id}");
             store_grant(&host, flow, &ctx, &all, grant).await;
             if without_metadata {
                 let mut records = host.store.records.lock().unwrap();
@@ -380,7 +399,7 @@ async fn canonical_scope_decision_vectors() {
                 record.version = random_id();
             }
         } else {
-            assert!(grant.is_null(), "{id}");
+            assert!(grant.is_null() || dcr, "{id}");
         }
         if let Some(hint) = input["prior_401_hint"].as_array() {
             // An earlier operation's 401 named these scopes.
@@ -455,10 +474,16 @@ async fn canonical_scope_decision_vectors() {
                 .credential(unbound())
                 .await
                 .map(|c| c.map(Preparation::Ready)),
-            "prepare" => oauth
-                .prepare_with_required(ctx.clone(), &explicit, budget())
-                .await
-                .map(Some),
+            "prepare" => {
+                let mut options = PrepareOptions::new().required(explicit.clone());
+                if forced {
+                    options = options.force_registration();
+                }
+                oauth
+                    .prepare_with(ctx.clone(), options, budget())
+                    .await
+                    .map(Some)
+            }
             "challenge" => {
                 let rejection = rejection.unwrap();
                 oauth
@@ -471,6 +496,13 @@ async fn canonical_scope_decision_vectors() {
             }
             other => panic!("{id}: unknown path {other}"),
         };
+        if let Some(min) = expect["authorization_server_requests_min"].as_u64() {
+            let made = (authorization_server_requests(&host) - before_as) as u64;
+            assert!(
+                made >= min,
+                "{id}: authorization-server requests {made} < {min}"
+            );
+        }
         if let Some(expected) = expect["authorization_server_requests"].as_u64() {
             let made = (authorization_server_requests(&host) - before_as) as u64;
             assert_eq!(made, expected, "{id}: authorization-server requests");
