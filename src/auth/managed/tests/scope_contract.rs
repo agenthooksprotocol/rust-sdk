@@ -1503,3 +1503,63 @@ async fn unbound_usable_grant_is_used_without_request() {
     );
     assert_eq!(requests(&host), before);
 }
+
+/// A host prepare on an unbound target whose grant is usable but whose
+/// binding is not stored: protected-resource discovery only, then use, with
+/// a binding stored without authorization-server metadata.
+#[tokio::test]
+async fn unbound_prepare_with_usable_grant_needs_no_authorization_server() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let seeded = host.seed(&oauth, unbound()).await;
+    host.store
+        .records
+        .lock()
+        .unwrap()
+        .retain(|key, _| !key.starts_with("ahp.oauth.binding:"));
+    let before = authorization_server_requests(&host);
+    let served = ready(oauth.prepare(unbound(), budget()).await.unwrap());
+    assert_eq!(served.attempt_id, seeded.attempt_id);
+    assert_eq!(authorization_server_requests(&host), before);
+    assert!(
+        host.store
+            .binding()
+            .unwrap()
+            .metadata
+            .token_endpoint
+            .is_empty()
+    );
+}
+
+/// A 403 step-up on a stored binding host policy now refuses is not decided
+/// on that binding: the host's refusal surfaces, never step 5 or a token.
+#[tokio::test]
+async fn step_up_on_refused_binding_surfaces_the_refusal() {
+    let host = Host::new();
+    *host.policy.select.lock().unwrap() = scopes(&["read", "write"]);
+    let oauth = host.pkce(|c| c.scopes(scopes(&["read", "write"]), Vec::new()));
+    let pending = login(oauth.prepare(context(), budget()).await.unwrap());
+    host.network.reply(
+        200,
+        json!({"access_token":"wide","token_type":"Bearer","scope":"read write","expires_in":3600}),
+    );
+    let token = oauth
+        .complete(context(), callback(&pending), budget())
+        .await
+        .unwrap();
+    *host.policy.refuse.lock().unwrap() = Some(fail(AuthErrorCode::CredentialUnavailable));
+    let error = oauth
+        .challenge(context(), step_up_with("write", &token.attempt_id))
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::CredentialUnavailable, &[]);
+}
+
+fn step_up_with(scope: &str, sent: &str) -> AuthChallenge {
+    challenge(
+        403,
+        &format!(r#"Bearer error="insufficient_scope", scope="{scope}""#),
+        Some(sent),
+    )
+}

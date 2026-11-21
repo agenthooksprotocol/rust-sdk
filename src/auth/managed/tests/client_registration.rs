@@ -1775,3 +1775,79 @@ async fn retry_after_http_date() {
     assert!((119..=120).contains(&wait("120").await));
     assert!((59..=60).contains(&wait("not a date").await));
 }
+
+/// A forced re-registration stays forced through the operation's
+/// re-attempts: a stale renewal's retry and an invalid_client re-registration
+/// never serve the old token; a repeated invalid_client is
+/// credential_unavailable.
+#[tokio::test]
+async fn forced_reregistration_holds_across_reattempts() {
+    let force = || PrepareOptions::new().force_registration();
+    // Stale: the token request after the forced registration is provably
+    // unsent; the issuer's metadata is refetched and the request retried.
+    let host = dcr_host();
+    let oauth = dcr_cc(&host);
+    let old = cc_ready(&host, &oauth, unbound()).await;
+    host.network.unsent_failures.store(1, Ordering::SeqCst);
+    host.network.reply(200, token("forced"));
+    let forced = ready(
+        oauth
+            .prepare_with(unbound(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(forced.token, "forced");
+    assert_ne!(forced.attempt_id, old.attempt_id);
+    assert_eq!(host.network.registrations().len(), 2);
+    // invalid_client after the forced registration: registered once more and
+    // acquired with that client, never the old token.
+    let host = dcr_host();
+    let oauth = dcr_cc(&host);
+    cc_ready(&host, &oauth, unbound()).await;
+    host.network.reply(401, invalid_client());
+    host.network.reply(200, token("reissued"));
+    let reissued = ready(
+        oauth
+            .prepare_with(unbound(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(reissued.token, "reissued");
+    assert_eq!(host.network.registrations().len(), 3);
+    // A repeated invalid_client is credential_unavailable.
+    host.network.reply(401, invalid_client());
+    host.network.reply(401, invalid_client());
+    assert_eq!(
+        code(oauth.prepare_with(unbound(), force(), budget()).await),
+        AuthErrorCode::CredentialUnavailable
+    );
+    assert_eq!(host.network.registrations().len(), 5);
+}
+
+/// Forcing re-registration applies only to a client-credentials DCR client:
+/// a PKCE or pre-registered client's usable token is served.
+#[tokio::test]
+async fn force_registration_keeps_other_clients_tokens() {
+    let force = || PrepareOptions::new().force_registration();
+    let host = Host::new();
+    let pkce = host.pkce(|c| c);
+    let seeded = host.seed(&pkce, context()).await;
+    let tokens = host.network.tokens().len();
+    let served = ready(
+        pkce.prepare_with(context(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(served.attempt_id, seeded.attempt_id);
+    let cc = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    host.network.reply(200, token("machine"));
+    let first = cc.credential(cc_context()).await.unwrap().unwrap();
+    let served = ready(
+        cc.prepare_with(cc_context(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(served.attempt_id, first.attempt_id);
+    assert_eq!(host.network.tokens().len(), tokens + 1);
+    assert!(host.network.registrations().is_empty());
+}

@@ -723,6 +723,10 @@ struct Login<'a> {
     required: &'a [String],
     /// `PrepareOptions::force_registration`, consumed by the first registration.
     force: Option<&'a AtomicBool>,
+    /// Set once per operation: a client-credentials prepare forcing
+    /// re-registration, so a DCR client's existing token is not usable in
+    /// any of its attempts, whatever the consumed `force` flag says.
+    forced: bool,
 }
 impl Login<'_> {
     fn forcing(&self) -> bool {
@@ -1315,6 +1319,7 @@ impl ManagedOAuth {
                     redirect,
                     required,
                     force: Some(&force),
+                    forced: false,
                 };
                 let pending = self
                     .acquire(context.clone(), None, login, None, budget, Mode::Prepare)
@@ -1386,6 +1391,12 @@ impl ManagedOAuth {
         let challenged = operation.challenge.is_some();
         // Every re-attempt of this operation shares its selection.
         let selection = &selections;
+        let login = Login {
+            forced: mode == Mode::Prepare
+                && self.config.flow == OAuthFlow::ClientCredentials
+                && login.forcing(),
+            ..login
+        };
         let attempt = |rediscover| {
             self.acquire_inner(
                 &target, &operation, selection, login, sent, budget, mode, rediscover,
@@ -1636,11 +1647,14 @@ impl ManagedOAuth {
         // against the known grant: a validated stored binding's (even without
         // persisted metadata), or a pre-registered preset's when none is
         // stored. A refresh, an acquisition or a login continues below.
-        // A forced re-registration's prepare never serves the existing token.
-        let forced = mode == Mode::Prepare && login.forcing();
-        if !forced {
+        // A forced re-registration of a client-credentials DCR client never
+        // serves its existing token, in any attempt of the operation.
+        let forced = |source: ClientSource| login.forced && source == ClientSource::Dcr;
+        if !known.is_some_and(|binding| forced(binding.client_source)) {
+            // A stored binding host policy refuses is never decided on: its
+            // refusal surfaces (after rediscovery for a challenge).
             let early = match known {
-                Some(binding) if validated.is_some() || operation.step_up => {
+                Some(binding) if validated.is_some() => {
                     Some(self.binding_grant_key(&target, binding))
                 }
                 None if selection
@@ -1700,7 +1714,7 @@ impl ManagedOAuth {
             // Every host `prepare` deletes the grant key's expired pending logins.
             self.end_login(&key, None, budget).await?;
             let record = self.load(&key, budget).await?;
-            if !login.forcing()
+            if !forced(binding.client_source)
                 && let decide::Step::Use(credential) = decide(
                     configured,
                     record.as_ref().and_then(|r| r.token.as_ref()),
@@ -1727,8 +1741,7 @@ impl ManagedOAuth {
                     // A pre-registered client's grant is known once the issuer
                     // is: decide before any authorization-server request, and
                     // store a binding without authorization-server metadata.
-                    if mode != Mode::Prepare
-                        && saved.is_none()
+                    if saved.is_none()
                         && let Some(client_id) = self.preregistered(&target)
                     {
                         let metadata = TrustedMetadata::new(
@@ -1741,6 +1754,11 @@ impl ManagedOAuth {
                             &metadata,
                             &format!("preregistered:{client_id}"),
                         );
+                        // Every host `prepare` deletes the grant key's expired
+                        // pending logins.
+                        if mode == Mode::Prepare {
+                            self.end_login(&key, None, budget).await?;
+                        }
                         let record = self.load(&key, budget).await?;
                         if let Some(step) = self.early(record, rejected, &decide, cc) {
                             self.store_binding(
@@ -1786,7 +1804,7 @@ impl ManagedOAuth {
             .filter(|token| rejected != Some(token.generation.as_str()));
         match decide(&selected, token, !cc) {
             decide::Step::Fail(error) if operation.step_up => return Err(error.into()),
-            decide::Step::Use(credential) if !login.forcing() => {
+            decide::Step::Use(credential) if !forced(binding.client_source) => {
                 return Ok(Some(Preparation::Ready(credential)));
             }
             _ => {}
@@ -1831,11 +1849,10 @@ impl ManagedOAuth {
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let ceiling = self.ceiling();
-        // After a forced re-registration (or a forced PKCE prepare) the
-        // existing token is not usable: acquire with the new client, or
-        // create a login.
+        // After a client-credentials DCR client's forced re-registration the
+        // existing token is not usable: acquire with the new client.
         let token = record.token.clone().map(|mut token| {
-            if forced {
+            if forced(binding.client_source) {
                 token.access_rejected = true;
                 token.refresh_token = None;
             }
