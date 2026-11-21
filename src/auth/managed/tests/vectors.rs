@@ -192,8 +192,14 @@ async fn canonical_scope_decision_vectors() {
                 "prior_401_hint",
                 "host_error",
                 "target_error",
+                "client_source",
             ],
         );
+        // An unbound target's client, as host client selection yields it.
+        if let Some(source) = input["client_source"].as_str() {
+            assert_eq!(input["binding"], "unbound", "{id}");
+            assert_eq!(source, "preregistered", "{id}: client source");
+        }
         only(id, &input["target_error"], &["check", "code"]);
         only(
             id,
@@ -861,7 +867,11 @@ pub(super) async fn canonical_token_error_vectors() {
         }
         ran += 1;
         let (input, expect) = (&vector["input"], &vector["expect"]);
-        only(id, input, &["grant_type", "client_source", "error"]);
+        only(
+            id,
+            input,
+            &["grant_type", "client_source", "error", "refetch"],
+        );
         only(id, expect, &["code", "reregistrations"]);
         let grant = input["grant_type"].as_str().unwrap();
         let source = input["client_source"].as_str().unwrap();
@@ -934,6 +944,25 @@ pub(super) async fn canonical_token_error_vectors() {
         };
         reply(&host);
         reply(&host);
+        // The stale-metadata refetch of the stored issuer's metadata fails, or
+        // host destination policy refuses it (with scopes, stripped).
+        match &input["refetch"] {
+            Value::Null => {}
+            Value::String(failed) if failed == "failed" => {
+                *host.network.issuer_outage.lock().unwrap() = Some("issuer.example".into());
+            }
+            refused @ Value::Object(_) => {
+                only(id, refused, &["callback", "target", "code", "scopes"]);
+                assert_eq!(refused["callback"], "destination", "{id}");
+                assert_eq!(refused["target"], "issuer_metadata", "{id}");
+                host.network.refusals.lock().unwrap().push((
+                    EndpointUse::IssuerMetadata,
+                    fail(auth_code(refused["code"].as_str().unwrap()))
+                        .with_required_scopes(&list(&refused["scopes"])),
+                ));
+            }
+            other => panic!("{id}: unknown refetch {other}"),
+        }
         let registered = host.network.registrations().len();
         let error = if ctx.authentication.is_none() && grant == "client_credentials" {
             // An unbound client-credentials endpoint acquires on its 401.

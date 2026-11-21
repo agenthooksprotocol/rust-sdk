@@ -621,6 +621,8 @@ pub struct ManagedOAuth {
 /// An operation's host policy selection and the authorization servers it was
 /// made for. It is reused for the rest of the operation, and made again only
 /// when discovery finds other authorization servers.
+/// `decide::grant` for one operation: (S, the grant's token, can refresh).
+type GrantDecision<'a> = dyn Fn(&[String], Option<&SavedToken>, bool) -> decide::Step + 'a;
 /// The operation's selection, shared by its re-attempts.
 pub(super) type Selections = std::sync::Mutex<Option<Selection>>;
 #[derive(Clone)]
@@ -1023,7 +1025,7 @@ impl ManagedOAuth {
         &self,
         record: Option<SessionRecord>,
         rejected: Option<&str>,
-        decide: &dyn Fn(&[String], Option<&SavedToken>, bool) -> decide::Step,
+        decide: &GrantDecision<'_>,
         cc: bool,
     ) -> Option<Result<Option<Preparation>, Renewal>> {
         let token = record.and_then(|r| r.token).map(|mut token| {
