@@ -1804,8 +1804,8 @@ async fn persisted_expired_logins_swept_on_prepare() {
     assert!(!host.store.dump().contains(&verifier));
 }
 
-// A prepare that rebinds through discovery (here: stale persisted metadata)
-// and is served from the cached token still sweeps expired persisted logins.
+// A prepare on a binding without persisted metadata, served from the cached
+// token with no request at all, still sweeps expired persisted logins.
 #[tokio::test]
 async fn persisted_expired_logins_swept_on_rebinding_prepare() {
     let host = Host::new();
@@ -1838,9 +1838,10 @@ async fn persisted_expired_logins_swept_on_rebinding_prepare() {
         ready(oauth.prepare(context(), budget()).await.unwrap()).token,
         "t"
     );
-    assert!(
-        host.network.metadata_requests().len() > discovery,
-        "rebound"
+    assert_eq!(
+        host.network.metadata_requests().len(),
+        discovery,
+        "served without a request"
     );
     assert!(host.pending().is_empty());
     assert!(!host.store.dump().contains(&verifier));

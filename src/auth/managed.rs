@@ -1636,7 +1636,9 @@ impl ManagedOAuth {
         // against the known grant: a validated stored binding's (even without
         // persisted metadata), or a pre-registered preset's when none is
         // stored. A refresh, an acquisition or a login continues below.
-        if mode != Mode::Prepare {
+        // A forced re-registration's prepare never serves the existing token.
+        let forced = mode == Mode::Prepare && login.forcing();
+        if !forced {
             let early = match known {
                 Some(binding) if validated.is_some() || operation.step_up => {
                     Some(self.binding_grant_key(&target, binding))
@@ -1652,6 +1654,10 @@ impl ManagedOAuth {
                 _ => None,
             };
             if let Some(key) = early {
+                // Every host `prepare` deletes the grant key's expired pending logins.
+                if mode == Mode::Prepare {
+                    self.end_login(&key, None, budget).await?;
+                }
                 let record = self.load(&key, budget).await?;
                 if let Some(step) = self.early(record, rejected, &decide, cc) {
                     return step;
@@ -1825,11 +1831,17 @@ impl ManagedOAuth {
             .as_ref()
             .map_or(Vec::new(), |t| t.scopes.clone());
         let ceiling = self.ceiling();
-        let scopes = match decide(
-            &selected,
-            record.token.as_ref(),
-            !cc && !choice.id.is_empty(),
-        ) {
+        // After a forced re-registration (or a forced PKCE prepare) the
+        // existing token is not usable: acquire with the new client, or
+        // create a login.
+        let token = record.token.clone().map(|mut token| {
+            if forced {
+                token.access_rejected = true;
+                token.refresh_token = None;
+            }
+            token
+        });
+        let scopes = match decide(&selected, token.as_ref(), !cc && !choice.id.is_empty()) {
             decide::Step::Use(credential) => return Ok(Some(Preparation::Ready(credential))),
             decide::Step::Fail(error) => return Err(error.into()),
             decide::Step::Refresh => {

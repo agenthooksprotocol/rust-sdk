@@ -1455,3 +1455,51 @@ async fn stored_binding_without_metadata_decides_without_fetch() {
     }
     assert_eq!(requests(&host), before, "no issuer-metadata fetch");
 }
+
+/// A host `prepare` on a stored binding without persisted metadata serves a
+/// usable cached token with no network request at all.
+#[tokio::test]
+async fn prepare_serves_cached_token_without_metadata_or_request() {
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    let seeded = host.seed(&oauth, context()).await;
+    for (key, record) in host.store.records.lock().unwrap().iter_mut() {
+        if key.starts_with("ahp.oauth.binding:") {
+            record.metadata.token_endpoint.clear();
+            record.metadata.authorization_endpoint = None;
+        }
+    }
+    let before = requests(&host);
+    for ctx in [context(), unbound()] {
+        assert_eq!(
+            ready(oauth.prepare(ctx, budget()).await.unwrap()).attempt_id,
+            seeded.attempt_id
+        );
+    }
+    assert_eq!(requests(&host), before);
+    // A prepare that must create a login still proceeds.
+    let needs_write = host.pkce(|c| c.required_scopes(scopes(&["write"])));
+    login(needs_write.prepare(context(), budget()).await.unwrap());
+}
+
+/// An unbound target with a stored binding and a usable grant is served with
+/// no authorization-server request.
+#[tokio::test]
+async fn unbound_usable_grant_is_used_without_request() {
+    let host = Host::new();
+    let oauth = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    host.network.reply(
+        200,
+        json!({"access_token":"stored","token_type":"Bearer","expires_in":3600}),
+    );
+    oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .unwrap();
+    let before = requests(&host);
+    assert_eq!(
+        oauth.credential(unbound()).await.unwrap().unwrap().token,
+        "stored"
+    );
+    assert_eq!(requests(&host), before);
+}
