@@ -2307,6 +2307,12 @@ impl ManagedOAuth {
         self.validate_saved(&target, &binding, &[])?;
         self.approve_metadata(&target, &binding.metadata)?;
         self.approve_metadata(&target, &saved.metadata)?;
+        // The token endpoint's destination check, before the claim; the
+        // exchange checks it again at connection time.
+        let token_endpoint = Url::parse(&saved.metadata.token_endpoint)
+            .map_err(|_| fail(AuthErrorCode::UntrustedDestination))?;
+        self.check_url(&token_endpoint, EndpointUse::Token, budget)
+            .await?;
         // 4. Claim once before the exchange; a valid denial also ends the login.
         phase.store(CLAIMING, Ordering::SeqCst);
         let saved = self

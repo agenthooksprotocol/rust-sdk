@@ -191,8 +191,10 @@ async fn canonical_scope_decision_vectors() {
                 "challenge",
                 "prior_401_hint",
                 "host_error",
+                "target_error",
             ],
         );
+        only(id, &input["target_error"], &["check", "code"]);
         only(
             id,
             expect,
@@ -358,6 +360,17 @@ async fn canonical_scope_decision_vectors() {
         }
         if binding == "unbound" {
             ctx.authentication = None;
+        }
+        if let Some(target_error) = input["target_error"].as_object() {
+            // A target check failing before any decide step: a binding whose
+            // flow this client does not support.
+            assert_eq!(target_error["check"], "unsupported_binding", "{id}");
+            assert_eq!(target_error["code"], expect["code"], "{id}");
+            let other = match flow {
+                "client_credentials" => "authorization_code_pkce",
+                _ => "client_credentials",
+            };
+            ctx.authentication.as_mut().unwrap()["flow"] = other.into();
         }
         if let Some(error) = host_error.filter(|_| !destination) {
             assert_eq!(error["callback"], "client_selection", "{id}");
@@ -534,7 +547,11 @@ pub(super) async fn canonical_completion_vectors() {
             expect,
             &["code", "scopes", "login_ended", "grant_persisted"],
         );
-        only(id, &input["host_error"], &["callback", "code", "scopes"]);
+        only(
+            id,
+            &input["host_error"],
+            &["callback", "target", "code", "scopes"],
+        );
         only(id, &input["claim"], &["outcome", "error_code", "reread"]);
         assert!(
             matches!(input["handle"].as_str(), Some("matching" | "none")),
@@ -718,13 +735,23 @@ pub(super) async fn canonical_completion_vectors() {
             client(list(&input["ceiling"]), permitted).required_scopes(current_host.clone()),
         );
         let host_error = input["host_error"].as_object();
-        if let Some(error) = host_error {
-            assert_eq!(error["callback"], "client_selection", "{id}");
-            *host.policy.refuse.lock().unwrap() = Some(
-                fail(auth_code(error["code"].as_str().unwrap()))
-                    .with_required_scopes(&list(&error["scopes"])),
-            );
-        }
+        let host_failure = |error: &serde_json::Map<String, Value>| {
+            fail(auth_code(error["code"].as_str().unwrap()))
+                .with_required_scopes(&list(&error["scopes"]))
+        };
+        let refuse = |on: bool| match host_error {
+            Some(error) if error["callback"] == "client_selection" => {
+                assert!(error.get("target").is_none(), "{id}");
+                *host.policy.refuse.lock().unwrap() = on.then(|| host_failure(error));
+            }
+            Some(error) if error["callback"] == "destination" => {
+                assert_eq!(error["target"], "token_endpoint", "{id}");
+                *host.network.refuse_token.lock().unwrap() = on.then(|| host_failure(error));
+            }
+            Some(error) => panic!("{id}: unknown host error {error:?}"),
+            None => {}
+        };
+        refuse(true);
         let result = completer
             .complete(ctx(permitted), url.clone(), budget())
             .await;
@@ -764,7 +791,7 @@ pub(super) async fn canonical_completion_vectors() {
                 if host_error.is_some() && input["pending"] == "pending" {
                     // The login stayed pending: the same callback now reaches
                     // the claim (a valid code completes; a denial ends it).
-                    *host.policy.refuse.lock().unwrap() = None;
+                    refuse(false);
                     let again = completer.complete(ctx(permitted), url, budget()).await;
                     match input["callback"].as_str().unwrap() {
                         "valid" => {

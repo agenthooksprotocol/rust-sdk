@@ -308,6 +308,8 @@ struct Network {
     registered: AtomicUsize,
     registration_delay: AtomicUsize,
     refuse_registration: AtomicBool,
+    /// A host destination refusal of the token endpoint.
+    refuse_token: Mutex<Option<HookError>>,
     /// Mark the registration request written only after the delay.
     registration_written_late: AtomicBool,
     on_registration: Mutex<Option<Hook>>,
@@ -366,9 +368,15 @@ impl OAuthNetwork for Network {
     ) -> LocalFuture<'_, Result<(), HookError>> {
         let refused =
             usage == EndpointUse::Registration && self.refuse_registration.load(Ordering::SeqCst);
+        let token_refusal = (usage == EndpointUse::Token)
+            .then(|| self.refuse_token.lock().unwrap().clone())
+            .flatten();
         Box::pin(async move {
             if refused {
                 return Err(fail(AuthErrorCode::UntrustedDestination));
+            }
+            if let Some(error) = token_refusal {
+                return Err(error);
             }
             Ok(())
         })
