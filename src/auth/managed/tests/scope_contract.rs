@@ -1563,3 +1563,92 @@ fn step_up_with(scope: &str, sent: &str) -> AuthChallenge {
         Some(sent),
     )
 }
+
+/// Host policy runs after step 0 and before step 1: on a stored binding (a
+/// preset's or a learned one) that client selection now refuses, the host's
+/// code is the outcome, without scopes, instead of an out-of-ceiling,
+/// malformed-challenge, scopeless step-up or configuration refusal.
+#[tokio::test]
+async fn host_refusal_precedes_local_refusals() {
+    for learned in [false, true] {
+        let ctx = || if learned { unbound() } else { context() };
+        let host = Host::new();
+        let oauth = host.pkce(|c| c);
+        host.seed(&oauth, ctx()).await;
+        let seeded = authorization_server_requests(&host);
+        *host.policy.refuse.lock().unwrap() = Some(
+            fail(AuthErrorCode::CredentialUnavailable).with_required_scopes(&scopes(&["read"])),
+        );
+        let misconfigured = host.pkce(|c| c.scopes(scopes(&["read", "admin"]), scopes(&["read"])));
+        for (oauth, rejection) in [
+            (&oauth, step_up("admin")),
+            (
+                &oauth,
+                challenge(
+                    403,
+                    r#"Bearer error="insufficient_scope", scope="read  write""#,
+                    None,
+                ),
+            ),
+            (
+                &oauth,
+                challenge(403, r#"Bearer error="insufficient_scope""#, None),
+            ),
+            (&misconfigured, step_up("read")),
+        ] {
+            let error = oauth.challenge(ctx(), rejection).await.err().unwrap();
+            assert_error(error, AuthErrorCode::CredentialUnavailable, &[]);
+        }
+        if learned {
+            // An unbound lookup refused by host policy is anonymous delivery.
+            assert!(misconfigured.credential(ctx()).await.unwrap().is_none());
+        } else {
+            let error = misconfigured.credential(ctx()).await.err().unwrap();
+            assert_error(error, AuthErrorCode::CredentialUnavailable, &[]);
+        }
+        assert_eq!(
+            authorization_server_requests(&host),
+            seeded,
+            "no authorization-server request"
+        );
+    }
+    // A non-refused known binding still refuses out-of-ceiling locally, with
+    // no request.
+    let host = Host::new();
+    let oauth = host.pkce(|c| c);
+    host.seed(&oauth, context()).await;
+    let before = requests(&host);
+    let error = oauth
+        .challenge(context(), step_up("admin"))
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::AccessDenied, &["admin"]);
+    assert_eq!(requests(&host), before);
+}
+
+/// An unbound target without a stored binding runs protected-resource
+/// discovery and selection first: a refusing host's code is the outcome,
+/// with no authorization-server request, even with R outside the ceiling.
+#[tokio::test]
+async fn unbound_host_refusal_precedes_ceiling_refusal() {
+    let host = Host::new();
+    let oauth = cc_client(&host, &["admin"]);
+    *host.policy.refuse.lock().unwrap() = Some(fail(AuthErrorCode::UntrustedDestination));
+    let error = oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::UntrustedDestination, &[]);
+    assert_eq!(authorization_server_requests(&host), 0);
+    // Accepted by host policy, the ceiling refusal applies.
+    *host.policy.refuse.lock().unwrap() = None;
+    let error = oauth
+        .challenge(unbound(), challenge(401, "Bearer", None))
+        .await
+        .err()
+        .unwrap();
+    assert_error(error, AuthErrorCode::AccessDenied, &["admin"]);
+    assert_eq!(authorization_server_requests(&host), 0);
+}

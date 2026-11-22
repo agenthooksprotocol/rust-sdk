@@ -623,8 +623,33 @@ pub struct ManagedOAuth {
 /// when discovery finds other authorization servers.
 /// `decide::grant` for one operation: (S, the grant's token, can refresh).
 type GrantDecision<'a> = dyn Fn(&[String], Option<&SavedToken>, bool) -> decide::Step + 'a;
-/// The operation's selection, shared by its re-attempts.
-pub(super) type Selections = std::sync::Mutex<Option<Selection>>;
+/// The operation's selection, shared by its re-attempts, and an unbound
+/// target's protected-resource discovery made before the decision.
+#[derive(Default)]
+pub(super) struct Selections {
+    selection: std::sync::Mutex<Option<Selection>>,
+    discovered: std::sync::Mutex<Option<discovery::Resource>>,
+    /// A stored binding host policy refused was replaced by that discovery.
+    rediscovered: AtomicBool,
+}
+impl Selections {
+    /// The operation's host policy refusal, if its selection refused.
+    fn refusal(&self) -> Option<HookError> {
+        match &*self.selection.lock().unwrap() {
+            Some(Selection {
+                result: Err(error), ..
+            }) => Some(error.clone()),
+            _ => None,
+        }
+    }
+    fn selected(&self) -> bool {
+        self.selection
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|s| s.result.is_ok())
+    }
+}
 #[derive(Clone)]
 pub(super) struct Selection {
     servers: Vec<String>,
@@ -1190,7 +1215,7 @@ impl ManagedOAuth {
         resource: &ResourceMetadata,
         required: &[String],
     ) -> Result<TrustDecision, HookError> {
-        let mut held = selections.lock().unwrap();
+        let mut held = selections.selection.lock().unwrap();
         if let Some(reused) = held
             .as_ref()
             .and_then(|selection| selection.reuse(&resource.authorization_servers))
@@ -1364,29 +1389,74 @@ impl ManagedOAuth {
     ) -> Result<Option<Preparation>, HookError> {
         let target = context.target()?;
         self.validate_target(&target)?;
-        decide::configuration(&self.config, target.preset_scopes(), login.required)?;
         let saved = self.load(&self.key(&target), budget).await?;
         // A lookup's store miss is anonymous delivery, before any scope decision.
         if mode == Mode::Lookup && saved.is_none() {
             return Ok(None);
         }
-        // Select once, before the decision, so step 1 (S within the ceiling,
-        // a preset equal to S) precedes the rest; the selection is told R.
+        // The decision's local steps, computed but not yet returned: host
+        // policy runs first (after step 0), so a refusal ends the operation
+        // with the host's code before any step 1, 2 or 4 outcome.
+        let configuration =
+            decide::configuration(&self.config, target.preset_scopes(), login.required);
         let operation = decide::operation(&self.config, login.required, rejection);
         let required = match &operation {
             Ok(operation) => operation.required.clone(),
             Err(error) if !error.required_scopes().is_empty() => error.required_scopes().to_vec(),
             Err(_) => union(&self.config.required_scopes, login.required),
         };
+        // Select once: for a known binding (a compatible stored one, else a
+        // preset) without any request; for an unbound target without one,
+        // after protected-resource discovery, as the other SDKs do.
         let selections = Selections::default();
         self.preselect(&selections, &target, saved.as_ref(), &required);
-        if let Some(Selection {
-            result: Err(error), ..
-        }) = &*selections.lock().unwrap()
-            && error.auth_code() == Some(AuthErrorCode::InvalidConfiguration)
-        {
-            return Err(error.clone());
+        let known = saved.as_ref().is_some_and(|r| self.compatible(&target, r));
+        // A stored binding host policy refuses may be repaired by rediscovery
+        // in a prepare or challenge handling (the resource may have moved).
+        let unbound = matches!(target.binding(), AuthBinding::Unbound);
+        let repair = known
+            && unbound
+            && (mode == Mode::Prepare || rejection.is_some())
+            && selections.refusal().is_some_and(|refusal| {
+                // A configuration error is not repaired by rediscovery.
+                refusal.auth_code() != Some(AuthErrorCode::InvalidConfiguration)
+            });
+        if (!known || repair) && mode != Mode::Lookup && unbound {
+            // A challenge that does not parse has no usable hint.
+            let parsed = rejection.and_then(|r| crate::auth::challenge::parse(r.header).ok());
+            let hint = saved
+                .as_ref()
+                .and_then(|r| r.resource_metadata_hint.as_ref());
+            let resource = discovery::discover_resource(
+                self,
+                &target,
+                parsed.as_ref(),
+                hint,
+                &required,
+                &selections,
+                budget,
+            )
+            .await;
+            match resource {
+                Ok(resource) => {
+                    *selections.discovered.lock().unwrap() = Some(resource);
+                    selections.rediscovered.store(repair, Ordering::SeqCst);
+                }
+                // A refusal is the operation's; discovery's own failure too.
+                Err(error) if selections.refusal().is_none() => return Err(error),
+                Err(_) => {}
+            }
         }
+        if let Some(refusal) = selections.refusal() {
+            // A lookup refused by host policy is anonymous delivery.
+            if mode == Mode::Lookup
+                && refusal.auth_code() != Some(AuthErrorCode::InvalidConfiguration)
+            {
+                return Ok(None);
+            }
+            return Err(refusal);
+        }
+        configuration?;
         let operation = operation?;
         let challenged = operation.challenge.is_some();
         // Every re-attempt of this operation shares its selection.
@@ -1618,7 +1688,11 @@ impl ManagedOAuth {
         // that moved to another authorization server is found even if the old one
         // still answers. The stored issuer's metadata is not refetched first.
         let force = rediscover || challenge.is_some();
-        let known = saved.as_ref().filter(|r| self.compatible(&target, r));
+        // A refused stored binding replaced by rediscovery is not known.
+        let known = saved
+            .as_ref()
+            .filter(|r| self.compatible(&target, r))
+            .filter(|_| !selection.rediscovered.load(Ordering::SeqCst));
         if let Some(binding) = known {
             // The operation's selection, again only for another issuer.
             let selected = self.check_saved(&target, binding).and_then(|()| {
@@ -1657,14 +1731,7 @@ impl ManagedOAuth {
                 Some(binding) if validated.is_some() => {
                     Some(self.binding_grant_key(&target, binding))
                 }
-                None if selection
-                    .lock()
-                    .unwrap()
-                    .as_ref()
-                    .is_some_and(|s| s.result.is_ok()) =>
-                {
-                    self.preset_grant_key(&target)
-                }
+                None if selection.selected() => self.preset_grant_key(&target),
                 _ => None,
             };
             if let Some(key) = early {
@@ -1734,10 +1801,17 @@ impl ManagedOAuth {
                     .and_then(|r| r.resource_metadata_hint.as_ref());
                 let cached_issuer = cached.as_ref().map(|(b, _)| b.metadata.issuer.as_str());
                 let rebound = async {
-                    let resource = discovery::discover_resource(
-                        self, &target, challenge, hint, &required, selection, budget,
-                    )
-                    .await?;
+                    // An unbound target's discovery made before the decision.
+                    let discovered = selection.discovered.lock().unwrap().take();
+                    let resource = match discovered {
+                        Some(resource) => resource,
+                        None => {
+                            discovery::discover_resource(
+                                self, &target, challenge, hint, &required, selection, budget,
+                            )
+                            .await?
+                        }
+                    };
                     // A pre-registered client's grant is known once the issuer
                     // is: decide before any authorization-server request, and
                     // store a binding without authorization-server metadata.
