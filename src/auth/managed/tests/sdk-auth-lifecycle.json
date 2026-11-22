@@ -1,5 +1,5 @@
 {
-  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's requested set (within allowed for acquisitions; the original request for refreshes); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time.",
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's current requested set, always within allowed (requested scopes outside the ceiling are invalid_configuration); a response scope that is absent, null or blank inherits like an omitted one; wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. keys use client_identity (preregistered:id, cimd:url or dcr), never an issued client_id; registration_keys are client-credentials only; client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. scope_decisions and completions fields, and the optional requires features (token_validation_callback, complete_handle, legacy_prepare_time_host_required), are defined in spec/draft/sdk-auth-lifecycle.md (Executable coverage); every defined field must be asserted and an unknown field fails the run. In token_responses, error_scopes is the scope set carried by access_denied.",
   "recovery": [
     {
       "code": "invalid_configuration",
@@ -385,7 +385,10 @@
         "read"
       ],
       "error": "access_denied",
-      "refresh_preserved": true
+      "refresh_preserved": true,
+      "error_scopes": [
+        "write"
+      ]
     },
     {
       "id": "unallowed-added-scope-ignored",
@@ -608,8 +611,7 @@
       "id": "refresh-narrow-ceiling-keeps-grant",
       "exchange": "refresh",
       "requested": [
-        "read",
-        "write"
+        "read"
       ],
       "previous_granted": [
         "read",
@@ -1076,6 +1078,4203 @@
       "usable": false,
       "error": "provider_failed",
       "refresh_preserved": true
+    },
+    {
+      "id": "preset-scope-not-granted-usable",
+      "requested": [
+        "files",
+        "read"
+      ],
+      "allowed": [
+        "files",
+        "read"
+      ],
+      "required": [
+        "read"
+      ],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-narrower-than-required",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read",
+        "write"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [
+        "read",
+        "write"
+      ],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": "read"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": false,
+      "granted": [
+        "read"
+      ],
+      "error": "access_denied",
+      "error_scopes": [
+        "read",
+        "write"
+      ],
+      "refresh_preserved": true
+    },
+    {
+      "id": "client-credentials-narrower-than-required",
+      "requested": [
+        "files",
+        "read",
+        "write"
+      ],
+      "allowed": [
+        "files",
+        "read",
+        "write"
+      ],
+      "required": [
+        "write",
+        "read"
+      ],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "expires_in": 3600,
+        "scope": "files read"
+      },
+      "accepted": true,
+      "expiry": "known",
+      "usable": false,
+      "granted": [
+        "files",
+        "read"
+      ],
+      "error": "access_denied",
+      "error_scopes": [
+        "read",
+        "write"
+      ],
+      "refresh_preserved": false
+    }
+  ],
+  "scope_decisions": [
+    {
+      "id": "preset-scopes-requested-not-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "cached",
+        "binding": "preset",
+        "requested": [
+          "files",
+          "read"
+        ],
+        "preset_scopes": [
+          "files",
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "preset-scopes-not-in-error-set",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "preset",
+        "requested": [
+          "files",
+          "read"
+        ],
+        "preset_scopes": [
+          "files",
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": null
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "read"
+        ],
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "preset-scopes-omitted-no-constraint",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "cached",
+        "binding": "preset",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "preset-scopes-differ-from-client-invalid-configuration",
+      "input": {
+        "flow": "client_credentials",
+        "path": "credential",
+        "binding": "preset",
+        "requested": [
+          "read"
+        ],
+        "preset_scopes": [
+          "files"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": null
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "step-up-carries-full-required-set",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "read",
+          "write"
+        ],
+        "required": [
+          "read",
+          "write"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "prepare-explicit-and-host-required-union",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "prepare",
+        "binding": "stored",
+        "requested": [
+          "files",
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [
+          "files"
+        ],
+        "grant": null
+      },
+      "expect": {
+        "code": null,
+        "action": "login",
+        "required": [
+          "files",
+          "read"
+        ],
+        "acquisition_scopes": [
+          "files",
+          "read",
+          "write"
+        ]
+      }
+    },
+    {
+      "id": "client-credentials-step-up-acquires",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "acquire",
+        "required": [
+          "write"
+        ],
+        "acquisition_scopes": [
+          "read",
+          "write"
+        ]
+      }
+    },
+    {
+      "id": "stored-grant-lacking-required-interaction-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "write"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "ceiling-refusal-fresh",
+      "input": {
+        "flow": "client_credentials",
+        "path": "fresh",
+        "binding": "unbound",
+        "client_source": "preregistered",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "admin"
+        ],
+        "explicit": [],
+        "grant": null,
+        "sent": null,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        }
+      },
+      "expect": {
+        "retired": false,
+        "code": "access_denied",
+        "authorization_server_requests": 0,
+        "network_calls_max": 1,
+        "scopes": [
+          "admin"
+        ],
+        "required": [
+          "admin"
+        ]
+      }
+    },
+    {
+      "id": "unbound-unparseable-challenge-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "fresh",
+        "binding": "unbound",
+        "client_source": "preregistered",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": null,
+        "sent": null,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer scope"
+        }
+      },
+      "expect": {
+        "retired": false,
+        "code": "access_denied",
+        "authorization_server_requests": 0,
+        "network_calls_max": 2,
+        "scopes": []
+      }
+    },
+    {
+      "id": "unbound-preregistered-pkce-interaction-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "fresh",
+        "binding": "unbound",
+        "client_source": "preregistered",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": null,
+        "sent": null,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        }
+      },
+      "expect": {
+        "retired": false,
+        "code": "interaction_required",
+        "scopes": [
+          "read"
+        ],
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls_max": 1
+      }
+    },
+    {
+      "id": "unbound-usable-grant-uses",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "fresh",
+        "binding": "unbound",
+        "client_source": "preregistered",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": null,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        }
+      },
+      "expect": {
+        "retired": false,
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls_max": 1
+      }
+    },
+    {
+      "id": "prepare-unbound-usable-grant-uses",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "prepare",
+        "binding": "unbound",
+        "client_source": "preregistered",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls_max": 2
+      }
+    },
+    {
+      "id": "ceiling-refusal-fresh-preset",
+      "input": {
+        "flow": "client_credentials",
+        "path": "fresh",
+        "binding": "preset",
+        "requested": [
+          "read"
+        ],
+        "preset_scopes": [
+          "read"
+        ],
+        "host_required": [
+          "admin"
+        ],
+        "explicit": [],
+        "grant": null
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "admin"
+        ],
+        "required": [
+          "admin"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "ceiling-refusal-cached",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "cached",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read",
+          "admin"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "admin",
+          "read"
+        ],
+        "required": [
+          "admin",
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "ceiling-refusal-prepare",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "prepare",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [
+          "admin"
+        ],
+        "grant": null
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "admin"
+        ],
+        "required": [
+          "admin"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "ceiling-refusal-credential",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "admin"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "admin"
+        ],
+        "required": [
+          "admin"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "ceiling-refusal-preemptive",
+      "input": {
+        "flow": "client_credentials",
+        "path": "preemptive",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "admin"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "admin"
+        ],
+        "required": [
+          "admin"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "ceiling-refusal-challenge",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"admin\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "admin",
+          "read"
+        ],
+        "required": [
+          "admin",
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "ceiling-refusal-401-retires-first",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "admin"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "access_denied",
+        "scopes": [
+          "admin"
+        ],
+        "required": [
+          "admin"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "requested-outside-ceiling-invalid-configuration",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "prepare",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "admin"
+        ],
+        "ceiling": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": null
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "preset-outside-ceiling-invalid-configuration",
+      "input": {
+        "flow": "client_credentials",
+        "path": "credential",
+        "binding": "preset",
+        "requested": [
+          "files",
+          "read"
+        ],
+        "ceiling": [
+          "read"
+        ],
+        "preset_scopes": [
+          "files",
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": null
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "invalid-host-required-token-invalid-configuration",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "r\u00e9ad"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "challenge-401-scope-added-to-request",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer scope=\"write admin\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": null,
+        "action": "acquire",
+        "required": [],
+        "acquisition_scopes": [
+          "read",
+          "write"
+        ]
+      }
+    },
+    {
+      "id": "challenge-401-scope-not-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer error=\"invalid_token\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "interaction_required",
+        "scopes": [
+          "read"
+        ],
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "challenge-401-scope-outside-ceiling-not-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer scope=admin"
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "interaction_required",
+        "scopes": [],
+        "required": [],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "challenge-401-hint-not-used-by-later-operation",
+      "input": {
+        "flow": "client_credentials",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "expired",
+          "refresh": false
+        },
+        "prior_401_hint": [
+          "write"
+        ]
+      },
+      "expect": {
+        "code": null,
+        "action": "acquire",
+        "required": [],
+        "acquisition_scopes": [
+          "read"
+        ]
+      }
+    },
+    {
+      "id": "challenge-401-insufficient-scope-error-is-401",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "interaction_required",
+        "scopes": [
+          "read"
+        ],
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "challenge-401-older-generation-uses-current",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 2,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        }
+      },
+      "expect": {
+        "retired": false,
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "insufficient-scope-without-scope-uses-host-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "write"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\""
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "insufficient-scope-without-scope-or-requirement-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "challenge-403-other-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"invalid_token\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-empty",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-repeated-space",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read  write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-leading-space",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\" read\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-trailing-space",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read \""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-tab-separator",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read\twrite\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-invalid-character",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"r\u00e9ad\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-duplicated-parameter",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-two-bearer-challenges",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read\", Bearer scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-bad-auth-param",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"read"
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "authorization_server_requests": 0,
+        "network_calls": 0,
+        "scopes": []
+      }
+    },
+    {
+      "id": "challenge-bare-name-after-comma-is-new-scheme",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "write"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope"
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-bearer-token68",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer abc=="
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "access_denied",
+        "authorization_server_requests": 0,
+        "network_calls": 0,
+        "scopes": []
+      }
+    },
+    {
+      "id": "challenge-non-bearer-token68-skipped",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Basic YWxhZGRpbjpvcGVuc2VzYW1l, Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "malformed-challenge-scope-401",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer scope=\"read  write\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "access_denied",
+        "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "challenge-401-invalid-configuration-retires-first",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "admin"
+        ],
+        "ceiling": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer scope=\"read\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "invalid_configuration",
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "challenge-401-unsupported-binding-retires-first",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        },
+        "target_error": {
+          "check": "unsupported_binding",
+          "code": "unsupported_binding"
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "unsupported_binding"
+      }
+    },
+    {
+      "id": "challenge-401-host-callback-failure-retires-first",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer resource_metadata=\"https://api.example/.well-known/oauth-protected-resource\""
+        },
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "insufficient-scope-already-granted-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "read",
+          "write"
+        ],
+        "required": [
+          "read",
+          "write"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "insufficient-scope-already-granted-client-credentials",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "insufficient-scope-newer-generation-uses-current",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 2,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "insufficient-scope-anonymous-grant-covers-denied",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": null,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "expired-token-refreshes",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "expired",
+          "refresh": true
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "refresh",
+        "required": [
+          "read"
+        ]
+      }
+    },
+    {
+      "id": "expired-token-refresh-cannot-cover-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "write"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "expired",
+          "refresh": true
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "stored-without-metadata-use",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored_without_metadata",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "stored-without-metadata-interaction-required",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored_without_metadata",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [
+          "write"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "expired",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [
+          "write"
+        ],
+        "required": [
+          "write"
+        ],
+        "authorization_server_requests": 0
+      }
+    },
+    {
+      "id": "prepare-stored-without-metadata-serves-cached-token",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "prepare",
+        "binding": "stored_without_metadata",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "prepare-forced-reregistration-acquires",
+      "input": {
+        "flow": "client_credentials",
+        "path": "prepare",
+        "binding": "stored",
+        "client_source": "dcr",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "force_registration": true
+      },
+      "expect": {
+        "code": null,
+        "action": "acquire",
+        "required": [
+          "read"
+        ],
+        "acquisition_scopes": [
+          "read"
+        ],
+        "authorization_server_requests_min": 1
+      }
+    },
+    {
+      "id": "prepare-forced-registration-pkce-keeps-usable-token",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "prepare",
+        "binding": "stored",
+        "client_source": "dcr",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "force_registration": true
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "prepare-forced-registration-preregistered-keeps-usable-token",
+      "input": {
+        "flow": "client_credentials",
+        "path": "prepare",
+        "binding": "stored",
+        "client_source": "preregistered",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "force_registration": true
+      },
+      "expect": {
+        "code": null,
+        "action": "use",
+        "required": [
+          "read"
+        ],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "client-credentials-with-refresh-token-reissues",
+      "input": {
+        "flow": "client_credentials",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "expired",
+          "refresh": true
+        }
+      },
+      "expect": {
+        "code": null,
+        "action": "acquire",
+        "required": [
+          "read"
+        ],
+        "acquisition_scopes": [
+          "read"
+        ]
+      }
+    },
+    {
+      "id": "host-policy-access-denied-scopes-stripped",
+      "requires": [
+        "token_validation_callback"
+      ],
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "credential",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "host_error": {
+          "callback": "token_validation",
+          "code": "access_denied",
+          "scopes": [
+            "admin"
+          ]
+        }
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": []
+      }
+    },
+    {
+      "id": "host-policy-interaction-required-scopes-stripped",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "prepare",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": null,
+        "host_error": {
+          "callback": "client_selection",
+          "code": "interaction_required",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": []
+      }
+    },
+    {
+      "id": "host-policy-registration-destination-scopes-stripped",
+      "input": {
+        "flow": "client_credentials",
+        "path": "prepare",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": null,
+        "host_error": {
+          "callback": "destination",
+          "target": "registration_endpoint",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "untrusted_destination"
+      }
+    },
+    {
+      "id": "host-policy-issuer-metadata-destination-refused",
+      "input": {
+        "flow": "client_credentials",
+        "path": "prepare",
+        "binding": "stored",
+        "requested": [
+          "read"
+        ],
+        "host_required": [
+          "read"
+        ],
+        "explicit": [],
+        "grant": null,
+        "host_error": {
+          "callback": "destination",
+          "target": "issuer_metadata",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "untrusted_destination"
+      }
+    },
+    {
+      "id": "host-policy-issuer-metadata-destination-refused-challenge",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored_without_metadata",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        },
+        "host_error": {
+          "callback": "destination",
+          "target": "issuer_metadata",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "untrusted_destination"
+      }
+    },
+    {
+      "id": "host-policy-client-selection-refuses-challenged-target",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "write"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read",
+            "write"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 403,
+          "www_authenticate": "Bearer error=\"insufficient_scope\", scope=\"write\""
+        },
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": [
+            "write"
+          ]
+        }
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    }
+  ],
+  "completions": [
+    {
+      "id": "complete-covers-stored-required",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": null,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-requested-scope-not-required",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read"
+        ],
+        "granted": [
+          "read"
+        ],
+        "ceiling": [
+          "files",
+          "read"
+        ]
+      },
+      "expect": {
+        "code": null,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-with-server-added-params",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid_with_server_params",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": null,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-narrower-than-stored-required",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "read",
+          "write"
+        ],
+        "login_ended": true,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-current-ceiling-hides-stored-required",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "read",
+          "write"
+        ],
+        "login_ended": true,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-legacy-record-prepare-time-host-required",
+      "requires": [
+        "legacy_prepare_time_host_required"
+      ],
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": null,
+        "prepare_time_host_required": [
+          "write"
+        ],
+        "current_host_required": [
+          "read"
+        ],
+        "granted": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "write"
+        ],
+        "login_ended": true,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-legacy-record-current-host-required",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": null,
+        "current_host_required": [
+          "write"
+        ],
+        "granted": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [
+          "write"
+        ],
+        "login_ended": true,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-legacy-record-empty-prepare-time-host-required",
+      "requires": [
+        "legacy_prepare_time_host_required"
+      ],
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": null,
+        "prepare_time_host_required": [],
+        "current_host_required": [
+          "write"
+        ],
+        "granted": [
+          "read"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": null,
+        "grant_persisted": true
+      }
+    },
+    {
+      "id": "complete-invalid-callback-redirect-mismatch",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "redirect_mismatch",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-redirect-query-mismatch",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "redirect_query_mismatch",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-state-duplicated",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "state_duplicated",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-iss-mismatch",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "iss_mismatch",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-fragment",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "fragment",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-userinfo",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "userinfo",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-missing-code",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "missing_code",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-code-and-error",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "code_and_error",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-duplicate-param",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "duplicate_param",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-callback-unparseable",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "unparseable",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-handle-names-other-login",
+      "requires": [
+        "complete_handle"
+      ],
+      "input": {
+        "pending": "pending",
+        "handle": "other",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-host-client-selection-failure-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "host_error": {
+          "callback": "client_selection",
+          "code": "access_denied",
+          "scopes": [
+            "admin"
+          ]
+        },
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-host-client-unavailable-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": [
+            "read"
+          ]
+        },
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "credential_unavailable",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-client-source-not-permitted-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "dcr",
+        "source_permitted": false,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-unknown-state-failing-host-callback",
+      "input": {
+        "pending": "unknown",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": []
+        },
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-claim-uncertain-login-gone",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": {
+          "outcome": "uncertain",
+          "error_code": "provider_failed",
+          "reread": "gone"
+        },
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-claim-uncertain-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": {
+          "outcome": "uncertain",
+          "error_code": "provider_failed",
+          "reread": "pending"
+        },
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-claim-uncertain-undetermined",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": {
+          "outcome": "uncertain",
+          "error_code": "provider_failed",
+          "reread": "undetermined"
+        },
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-consent-denied-source-not-permitted-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "dcr",
+        "source_permitted": false,
+        "callback": "denied",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-consent-denied-client-selection-failure-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "denied",
+        "host_error": {
+          "callback": "client_selection",
+          "code": "credential_unavailable",
+          "scopes": [
+            "read"
+          ]
+        },
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "credential_unavailable",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-endpoint-destination-refused-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "host_error": {
+          "callback": "destination",
+          "target": "token_endpoint",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        },
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "untrusted_destination",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-consent-denied-destination-refused-login-pending",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "denied",
+        "host_error": {
+          "callback": "destination",
+          "target": "token_endpoint",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        },
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "untrusted_destination",
+        "login_ended": false,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-consent-denied-login-ended",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "denied",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-consent-denied-invalid-client-preregistered",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "denied_invalid_client",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "access_denied",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-consent-denied-invalid-client-cimd",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "cimd",
+        "source_permitted": true,
+        "callback": "denied_invalid_client",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-expired-login-ended",
+      "input": {
+        "pending": "expired",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-ended-login-callback",
+      "input": {
+        "pending": "ended",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-unknown-state-with-handle",
+      "requires": [
+        "complete_handle"
+      ],
+      "input": {
+        "pending": "unknown",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-unknown-state-without-handle",
+      "input": {
+        "pending": "unknown",
+        "handle": "none",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-missing-state-login-ended",
+      "input": {
+        "pending": "absent",
+        "handle": "none",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "ok",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-grant-login-ended",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "invalid_grant",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-client-preregistered",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "invalid_client",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "credential_unavailable",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-client-cimd",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "cimd",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "invalid_client",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "invalid_configuration",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-client-dcr",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "dcr",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "invalid_client",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "interaction_required",
+        "scopes": [],
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-error-unauthorized-client-provider-failed",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "unauthorized_client",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-error-access-denied-provider-failed",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "access_denied",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-error-invalid-scope-provider-failed",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "invalid_scope",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-endpoint-failure-login-ended",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "server_error",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-endpoint-unreachable",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "unreachable",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-token-endpoint-not-found",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "not_found",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    },
+    {
+      "id": "complete-invalid-token-response-login-ended",
+      "input": {
+        "pending": "pending",
+        "handle": "matching",
+        "client_source": "preregistered",
+        "source_permitted": true,
+        "callback": "valid",
+        "claim": "ok",
+        "exchange": "invalid_response",
+        "stored_required": [
+          "read",
+          "write"
+        ],
+        "granted": [
+          "read",
+          "write"
+        ],
+        "ceiling": [
+          "read",
+          "write"
+        ]
+      },
+      "expect": {
+        "code": "provider_failed",
+        "login_ended": true,
+        "grant_persisted": false
+      }
+    }
+  ],
+  "token_errors": [
+    {
+      "id": "refresh-preregistered-invalid-grant",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "invalid_grant"
+      },
+      "expect": {
+        "code": "refresh_rejected"
+      }
+    },
+    {
+      "id": "refresh-preregistered-unauthorized-client",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "unauthorized_client"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "refresh-preregistered-invalid-client",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "refresh-cimd-invalid-client",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "cimd",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "invalid_configuration"
+      }
+    },
+    {
+      "id": "refresh-dcr-invalid-client",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "dcr",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "interaction_required"
+      }
+    },
+    {
+      "id": "refresh-preregistered-access-denied",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "access_denied"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-invalid-scope",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "invalid_scope"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-server-error",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "server_error"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-unreachable",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "unreachable"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-unreachable-refetch-destination-refused",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "unreachable",
+        "refetch": {
+          "callback": "destination",
+          "target": "issuer_metadata",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "untrusted_destination"
+      }
+    },
+    {
+      "id": "refresh-not-found-refetch-failed",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "not_found",
+        "refetch": "failed"
+      },
+      "expect": {
+        "code": "discovery_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-not-found",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "not_found"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "refresh-preregistered-invalid-response",
+      "input": {
+        "grant_type": "refresh",
+        "client_source": "preregistered",
+        "error": "invalid_response"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-invalid-grant",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "invalid_grant"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-unauthorized-client",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "unauthorized_client"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-invalid-client",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "credential_unavailable"
+      }
+    },
+    {
+      "id": "client-credentials-dcr-invalid-client",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "dcr",
+        "error": "invalid_client"
+      },
+      "expect": {
+        "code": "credential_unavailable",
+        "reregistrations": 1
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-access-denied",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "access_denied"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-invalid-scope",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "invalid_scope"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-server-error",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "server_error"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-unreachable",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "unreachable"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-unreachable-refetch-destination-refused",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "unreachable",
+        "refetch": {
+          "callback": "destination",
+          "target": "issuer_metadata",
+          "code": "untrusted_destination",
+          "scopes": [
+            "read"
+          ]
+        }
+      },
+      "expect": {
+        "code": "untrusted_destination"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-not-found",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "not_found"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
+    },
+    {
+      "id": "client-credentials-preregistered-invalid-response",
+      "input": {
+        "grant_type": "client_credentials",
+        "client_source": "preregistered",
+        "error": "invalid_response"
+      },
+      "expect": {
+        "code": "provider_failed"
+      }
     }
   ],
   "lifecycle": [
@@ -1093,7 +5292,7 @@
     },
     {
       "id": "challenge-renews-rejected-unexpired-token",
-      "expect": "401 for a stored token with unknown or future expiry marks it stale and renews it, so the next operation does not resend the rejected token"
+      "expect": "401 for a stored token with unknown or future expiry retires it before any other decision and renews it, so the next operation does not resend the rejected token"
     },
     {
       "id": "unbound-lookup-anonymous-fallback",
@@ -1197,7 +5396,7 @@
     },
     {
       "id": "insufficient-scope-step-up",
-      "expect": "only Bearer 403 insufficient_scope triggers allowed-scope step-up for the challenged operation"
+      "expect": "only a Bearer 403 insufficient_scope creates a step-up requirement (Ch) for the challenged operation; a 401 or any other 403 never does"
     },
     {
       "id": "step-up-requirement-operation-scoped",
@@ -1209,11 +5408,11 @@
     },
     {
       "id": "step-up-required-scopes-round-trip",
-      "expect": "interaction_required carries the validated required scopes; host passes them to prepare as explicit required scopes and consent includes them; access_denied reports them for diagnostics only"
+      "expect": "interaction_required carries the full required set R = H \u222a E \u222a Ch, deduplicated and byte-sorted; the host passes it to prepare as explicit required scopes and consent includes them; every scoped access_denied also carries R"
     },
     {
       "id": "prepare-required-outside-ceiling-denied",
-      "expect": "prepare with explicit required scopes outside the caller's ceiling fails access_denied"
+      "expect": "prepare with explicit required scopes outside the caller's ceiling fails access_denied carrying R before any network I/O"
     },
     {
       "id": "challenged-replay-once",
@@ -1229,7 +5428,7 @@
     },
     {
       "id": "invalid-callback-does-not-consume",
-      "expect": "invalid state/redirect does not consume pending handle; subsequent valid callback can complete once"
+      "expect": "an invalid or unparseable callback (redirect or its own query, state, iss, fragment, userinfo, missing code, both code and error, duplicated parameter) fails access_denied with login_ended false and does not consume the login; authorization-server-added parameters such as session_state are accepted"
     },
     {
       "id": "loopback-redirect",
@@ -1249,7 +5448,7 @@
     },
     {
       "id": "scope-challenge-without-required-scope",
-      "expect": "insufficient_scope without scope cannot invent permissions; require explicit host requirement or deny"
+      "expect": "insufficient_scope without scope uses H \u222a E when non-empty, otherwise fails access_denied with no scopes; it never invents permissions"
     },
     {
       "id": "refresh-broadening-scope-ignored",
@@ -1390,6 +5589,66 @@
     {
       "id": "configuration-retry-atomic-routes",
       "expect": "a retry runs inside the single shared admission: concurrent callers observe old or complete new routes, never partial; events admitted before the retry succeeded are not replayed"
+    },
+    {
+      "id": "preset-scopes-requested-not-required",
+      "expect": "omitted preset scopes are no constraint; present ones must equal the client's configured scopes (else invalid_configuration); they are requested, never required, and never appear in R or any error's scope set unless host-required"
+    },
+    {
+      "id": "ceiling-refusal-before-network-every-path",
+      "expect": "R outside the ceiling, including a host-required scope, fails access_denied carrying R on every entry point; with a stored binding or explicit preset there is no network I/O; an unbound target (an anonymous request answered by 401) runs at most one protected-resource discovery (one request to a usable resource_metadata, else at most the path-specific and origin-root well-known locations) and no authorization-server request"
+    },
+    {
+      "id": "requested-outside-ceiling-invalid-configuration",
+      "expect": "configured requested scopes (and so a preset's scopes) outside the ceiling fail invalid_configuration as an SDK auth error, never a native exception, provider_failed or a silent drop"
+    },
+    {
+      "id": "challenge-401-scope-requested-not-required",
+      "expect": "a 401 retires the sent generation, if current, before every other decision step and whatever the outcome (including a malformed challenge); its in-ceiling scope hint is used only by a client-credentials acquisition in the same operation, never stored, never added to R and never yields access_denied"
+    },
+    {
+      "id": "malformed-challenge-scope-denied",
+      "expect": "a bad auth-param, two Bearer challenges, a duplicated parameter or a malformed scope (empty, tab, repeated, leading or trailing space, invalid character) fails access_denied with no scopes; a 403 that is not insufficient_scope is access_denied and not an auth retry"
+    },
+    {
+      "id": "insufficient-scope-already-granted-denied",
+      "expect": "403 insufficient_scope when the sent generation (or no token) is current and its grant covers R within the ceiling fails access_denied carrying R without replaying the token or creating a login; a newer current generation that covers R is used instead"
+    },
+    {
+      "id": "complete-enforces-stored-required-set",
+      "expect": "complete() persists the grant, then fails access_denied carrying the pending login's stored R when granted \u2229 current ceiling does not cover it; a pending record without stored R uses its prepare-time H, else the current H"
+    },
+    {
+      "id": "grant-narrower-than-required-denied",
+      "expect": "a refresh or client-credentials grant narrower than R fails access_denied carrying R with the grant persisted"
+    },
+    {
+      "id": "host-policy-errors-carry-no-scopes",
+      "expect": "scopes are attached only by decide and complete step 7; errors from host callbacks, stores, the network and the token endpoint carry none, and login_ended appears only on complete() errors"
+    },
+    {
+      "id": "complete-error-login-ended",
+      "expect": "every complete() error carries login_ended: state lookup runs before any host callback (absent, unknown, expired or ended state: interaction_required/true); invalid callback, including a handle naming another login than the live state, access_denied/false with both logins pending; login_ended always describes the login named by state; pre-claim host policy keeps its code (client source no longer permitted: invalid_configuration)/false; an uncertain claim re-reads the store (gone: true, otherwise false); after the claim every error is /true"
+    },
+    {
+      "id": "entry-points-route-through-decide",
+      "expect": "every entry point that yields a credential or handles a challenge (credential/delivery, prepare, challenge, preemptive credential paths, legacy provider adapters) produces decide's outcome; the routing test lists them"
+    },
+    {
+      "id": "transport-challenge-routing",
+      "expect": "the transport hands every 401 to the provider, a 403 only when it parses as exactly one Bearer insufficient_scope challenge, and returns any other 403 without a retry"
+    },
+    {
+      "id": "replay-rejection-retires-token",
+      "expect": "a token rejected on the challenged replay is handed to the provider, so a 401 retires it"
+    },
+    {
+      "id": "complete-token-endpoint-errors-classified",
+      "expect": "after the claim invalid_grant is interaction_required; invalid_client is credential_unavailable (pre-registered), invalid_configuration (CIMD) or interaction_required (DCR); every other token-endpoint error, an unreachable or 404 endpoint and an invalid response are provider_failed; none carry scopes"
+    },
+    {
+      "id": "renewal-token-errors-classified",
+      "expect": "refresh and client-credentials token-endpoint errors: PKCE refresh invalid_grant is refresh_rejected, client-credentials invalid_grant and unauthorized_client are credential_unavailable, invalid_client maps by client source (a client-credentials DCR client re-registers once), every other error is provider_failed; none carry scopes"
     }
   ],
   "registration_keys": [

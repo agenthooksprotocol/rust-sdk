@@ -475,7 +475,8 @@ async fn intercept_challenged_replay_is_once_with_same_body() {
         let (result, (first, second)) = tokio::join!(backend.call(request, TIMEOUT), async {
             (respond(&listener, 401).await, respond(&listener, 401).await)
         });
-        // A second rejection is an operational failure.
+        // A second rejection is an operational failure, still handed to the
+        // provider so a 401 retires the replay's token.
         assert!(result.is_err());
         assert!(!first.0.contains("authorization:"));
         assert!(second.0.contains("authorization:"));
@@ -484,7 +485,7 @@ async fn intercept_challenged_replay_is_once_with_same_body() {
     .await
     .unwrap();
     assert_eq!(provider.contexts.lock().unwrap().len(), 2);
-    assert_eq!(provider.challenges.lock().unwrap().len(), 1);
+    assert_eq!(provider.challenges.lock().unwrap().len(), 2);
     assert!(
         tokio::time::timeout(Duration::from_millis(50), listener.accept())
             .await

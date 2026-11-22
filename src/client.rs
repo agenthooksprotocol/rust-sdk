@@ -21,6 +21,13 @@ pub struct HookError {
     accepted_settlement: Option<Value>,
     auth_code: Option<crate::auth::AuthErrorCode>,
     required_scopes: Option<Box<[String]>>,
+    /// The scopes were attached by the SDK's own scope decision. Managed OAuth
+    /// strips the scopes of every other error (opt-in).
+    scoped: bool,
+    /// A host destination policy (`OAuthNetwork::check`) refused the request.
+    refused_destination: bool,
+    /// From `ManagedOAuth::complete`: the callback's pending login no longer exists.
+    login_ended: Option<bool>,
     unsent: bool,
     transient: bool,
     /// A well-formed backend JSON-RPC error with code -32601 (method not found).
@@ -35,6 +42,9 @@ impl HookError {
             accepted_settlement: None,
             auth_code: None,
             required_scopes: None,
+            scoped: false,
+            refused_destination: false,
+            login_ended: None,
             unsent: false,
             transient: false,
             method_not_found: false,
@@ -79,23 +89,65 @@ impl HookError {
         self.unsent = unsent;
         self
     }
-    /// Validated scopes an operation required, carried only by `interaction_required`
-    /// and `access_denied`. Pass them back to an explicit host `prepare` for step-up.
+    /// The operation's full required scope set (host-required, explicit and
+    /// challenged), carried only by `interaction_required` and `access_denied`
+    /// from the SDK's own scope checks, deduplicated and sorted in ascending byte
+    /// order. Pass them back to an explicit host `prepare` for step-up.
     pub fn required_scopes(&self) -> &[String] {
         self.required_scopes.as_deref().unwrap_or(&[])
     }
     /// Attach required scopes to `interaction_required`/`access_denied`; other codes
-    /// and anything other than RFC 6749 scope tokens are dropped.
+    /// and anything other than RFC 6749 scope tokens are dropped. The set is
+    /// deduplicated and sorted in ascending byte order.
     pub fn with_required_scopes(mut self, scopes: &[String]) -> Self {
         use crate::auth::AuthErrorCode::{AccessDenied, InteractionRequired};
-        let scopes: Vec<_> = scopes
+        let mut scopes: Vec<_> = scopes
             .iter()
             .filter(|scope| crate::auth::valid_scope(scope))
             .cloned()
             .collect();
+        scopes.sort();
+        scopes.dedup();
         self.required_scopes = (matches!(self.auth_code, Some(AccessDenied | InteractionRequired))
             && !scopes.is_empty())
         .then(|| scopes.into_boxed_slice());
+        self
+    }
+    /// Present only on errors returned by `ManagedOAuth::complete`: whether
+    /// the pending login named by the callback's `state` no longer exists after
+    /// the call (consumed, expired or unknown). `Some(false)` while it is still
+    /// pending, for example after an invalid callback or a host policy failure
+    /// before the claim. `None` for errors from every other operation.
+    pub fn login_ended(&self) -> Option<bool> {
+        self.login_ended
+    }
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn with_login_ended(mut self, ended: bool) -> Self {
+        self.login_ended = Some(ended);
+        self
+    }
+    /// An `access_denied` or `interaction_required` outcome of the SDK's own
+    /// scope decision, carrying the operation's required set.
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn scoped(code: crate::auth::AuthErrorCode, scopes: &[String]) -> Self {
+        let mut error = Self::authentication(code).with_required_scopes(scopes);
+        error.scoped = true;
+        error
+    }
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn refused_destination(mut self) -> Self {
+        self.refused_destination = true;
+        self
+    }
+    #[cfg(feature = "managed-oauth")]
+    pub(crate) fn is_refused_destination(&self) -> bool {
+        self.refused_destination
+    }
+    pub(crate) fn is_scoped(&self) -> bool {
+        self.scoped
+    }
+    pub(crate) fn scoped_if(mut self, scoped: bool) -> Self {
+        self.scoped = scoped;
         self
     }
     /// Raw canonical evidence retained when the consumer cannot decode an accepted settlement.

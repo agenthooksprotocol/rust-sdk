@@ -550,12 +550,14 @@ impl ManagedOAuth {
             .filter(valid_https)
             .ok_or_else(untrusted)?;
         budget
-            .run(
-                self.network
-                    .check(url.clone(), EndpointUse::Registration, budget),
-            )
-            .await
-            .map_err(|_| untrusted())?;
+            .run(async {
+                (self
+                    .network
+                    .check(url.clone(), EndpointUse::Registration, budget)
+                    .await)
+                    .map_err(super::destination_refused)
+            })
+            .await?;
         let mut body = match redirect {
             Some(redirect) => {
                 let mut body = json!({
@@ -668,6 +670,7 @@ impl ManagedOAuth {
         self.detached(
             &mut guard,
             &mut record,
+            &[],
             move |mut guard, mut record, http, _| {
                 Box::pin(async move {
                     let outcome = registrar

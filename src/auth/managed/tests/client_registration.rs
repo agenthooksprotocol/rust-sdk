@@ -1487,18 +1487,27 @@ pub(super) async fn dcr_replaced_secret_deleted() {
     ready(changed.prepare(unbound(), budget()).await.unwrap());
     assert_eq!(host.network.registrations().len(), 3);
     // Only an explicit force replaces it, once, deleting the old secret, even
-    // while a cached token is usable.
+    // while a cached token is usable; that token is not served: a new one is
+    // acquired with the new client.
     let force = || PrepareOptions::new().force_registration();
-    ready(
+    let tokens = host.network.tokens().len();
+    host.network.reply(200, token("forced"));
+    let forced = ready(
         changed
             .prepare_with(unbound(), force(), budget())
             .await
             .unwrap(),
     );
+    assert_eq!(forced.token, "forced");
+    assert_eq!(host.network.tokens().len(), tokens + 1);
     let registrations = host.network.registrations();
     assert_eq!(registrations.len(), 4);
     assert_eq!(sent(&registrations[3])["software_id"], "example-adapter");
     assert_eq!(host.store.registration().unwrap().client_id, "dcr-client-4");
+    assert_eq!(
+        host.network.tokens().last().unwrap().authorization,
+        basic("dcr-client-4", "issued-secret-4")
+    );
     assert_eq!(*host.secrets.deleted.lock().unwrap(), [old, new, after]);
     // A failed forced replacement returns its error, keeps the current record
     // and counts toward the backoff, which a host `prepare` still bypasses.
@@ -1635,13 +1644,30 @@ async fn registration_commits_after_write_even_if_caller_dropped() {
             .registration_written_late
             .store(late, Ordering::SeqCst);
         let oauth = dcr_cc(&host);
-        let dropped = tokio::time::timeout(
-            Duration::from_millis(30),
-            oauth.challenge(unbound(), unauthorized()),
-        )
-        .await;
-        assert!(dropped.is_err());
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Handshake: drop the caller once the registration request is in flight.
+        {
+            let challenge = oauth.challenge(unbound(), unauthorized());
+            tokio::pin!(challenge);
+            while host.network.registrations().is_empty() {
+                tokio::select! {
+                    _ = &mut challenge => panic!("completed before the registration request"),
+                    _ = tokio::time::sleep(Duration::from_millis(1)) => {}
+                }
+            }
+        }
+        if late {
+            // Well past the registration delay: an aborted exchange never commits.
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        } else {
+            let committed = async {
+                while host.store.registration().is_none() {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            };
+            tokio::time::timeout(Duration::from_secs(10), committed)
+                .await
+                .expect("the written registration is committed");
+        }
         assert_eq!(host.network.registrations().len(), 1);
         if late {
             // Cancelled before the request was written: nothing is committed.
@@ -1748,4 +1774,80 @@ async fn retry_after_http_date() {
     assert!((59..=60).contains(&wait(&at(-300)).await));
     assert!((119..=120).contains(&wait("120").await));
     assert!((59..=60).contains(&wait("not a date").await));
+}
+
+/// A forced re-registration stays forced through the operation's
+/// re-attempts: a stale renewal's retry and an invalid_client re-registration
+/// never serve the old token; a repeated invalid_client is
+/// credential_unavailable.
+#[tokio::test]
+async fn forced_reregistration_holds_across_reattempts() {
+    let force = || PrepareOptions::new().force_registration();
+    // Stale: the token request after the forced registration is provably
+    // unsent; the issuer's metadata is refetched and the request retried.
+    let host = dcr_host();
+    let oauth = dcr_cc(&host);
+    let old = cc_ready(&host, &oauth, unbound()).await;
+    host.network.unsent_failures.store(1, Ordering::SeqCst);
+    host.network.reply(200, token("forced"));
+    let forced = ready(
+        oauth
+            .prepare_with(unbound(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(forced.token, "forced");
+    assert_ne!(forced.attempt_id, old.attempt_id);
+    assert_eq!(host.network.registrations().len(), 2);
+    // invalid_client after the forced registration: registered once more and
+    // acquired with that client, never the old token.
+    let host = dcr_host();
+    let oauth = dcr_cc(&host);
+    cc_ready(&host, &oauth, unbound()).await;
+    host.network.reply(401, invalid_client());
+    host.network.reply(200, token("reissued"));
+    let reissued = ready(
+        oauth
+            .prepare_with(unbound(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(reissued.token, "reissued");
+    assert_eq!(host.network.registrations().len(), 3);
+    // A repeated invalid_client is credential_unavailable.
+    host.network.reply(401, invalid_client());
+    host.network.reply(401, invalid_client());
+    assert_eq!(
+        code(oauth.prepare_with(unbound(), force(), budget()).await),
+        AuthErrorCode::CredentialUnavailable
+    );
+    assert_eq!(host.network.registrations().len(), 5);
+}
+
+/// Forcing re-registration applies only to a client-credentials DCR client:
+/// a PKCE or pre-registered client's usable token is served.
+#[tokio::test]
+async fn force_registration_keeps_other_clients_tokens() {
+    let force = || PrepareOptions::new().force_registration();
+    let host = Host::new();
+    let pkce = host.pkce(|c| c);
+    let seeded = host.seed(&pkce, context()).await;
+    let tokens = host.network.tokens().len();
+    let served = ready(
+        pkce.prepare_with(context(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(served.attempt_id, seeded.attempt_id);
+    let cc = host.cc(TokenAuthMethod::ClientSecretBasic, "secret");
+    host.network.reply(200, token("machine"));
+    let first = cc.credential(cc_context()).await.unwrap().unwrap();
+    let served = ready(
+        cc.prepare_with(cc_context(), force(), budget())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(served.attempt_id, first.attempt_id);
+    assert_eq!(host.network.tokens().len(), tokens + 1);
+    assert!(host.network.registrations().is_empty());
 }

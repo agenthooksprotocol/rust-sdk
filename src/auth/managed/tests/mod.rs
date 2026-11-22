@@ -14,8 +14,10 @@ use std::{
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 mod client_registration;
+mod scope_contract;
 #[cfg(feature = "reqwest")]
 mod transport;
+mod vectors;
 
 const FIXTURE: &str = include_str!("sdk-auth-lifecycle.json");
 
@@ -45,9 +47,18 @@ struct Store {
     writes: Arc<AtomicUsize>,
     /// Milliseconds each write takes, simulating a slow host store.
     write_delay: Arc<AtomicUsize>,
+    /// A host store failure returned by the next `acquire`.
+    failure: Mutex<Option<HookError>>,
+    /// Fail the next write that removes a pending login (a claim) with this
+    /// error: "gone" after writing, "pending" without, "undetermined" without
+    /// and leaving the store unavailable.
+    claim_fault: Arc<Mutex<Option<(HookError, String)>>>,
+    unavailable: Arc<AtomicBool>,
 }
 struct Guard {
     records: Arc<Mutex<BTreeMap<String, SessionRecord>>>,
+    claim_fault: Arc<Mutex<Option<(HookError, String)>>>,
+    unavailable: Arc<AtomicBool>,
     key: String,
     held: Arc<AtomicUsize>,
     rejected: Arc<AtomicUsize>,
@@ -116,6 +127,12 @@ impl CredentialStore for Store {
         _: OperationBudget,
     ) -> LocalFuture<'_, Result<Box<dyn CredentialGuard>, HookError>> {
         Box::pin(async move {
+            if let Some(error) = self.failure.lock().unwrap().take() {
+                return Err(error);
+            }
+            if self.unavailable.load(Ordering::SeqCst) {
+                return Err(fail(AuthErrorCode::ProviderFailed));
+            }
             let lock = self
                 .locks
                 .lock()
@@ -127,6 +144,8 @@ impl CredentialStore for Store {
             self.held.fetch_add(1, Ordering::SeqCst);
             Ok(Box::new(Guard {
                 records: self.records.clone(),
+                claim_fault: self.claim_fault.clone(),
+                unavailable: self.unavailable.clone(),
                 key: key.as_str().into(),
                 held: self.held.clone(),
                 rejected: self.rejected.clone(),
@@ -139,7 +158,12 @@ impl CredentialStore for Store {
 }
 impl CredentialGuard for Guard {
     fn load(&mut self) -> LocalFuture<'_, Result<Option<SessionRecord>, HookError>> {
-        Box::pin(async { Ok(self.records.lock().unwrap().get(&self.key).cloned()) })
+        Box::pin(async {
+            if self.unavailable.load(Ordering::SeqCst) {
+                return Err(fail(AuthErrorCode::ProviderFailed));
+            }
+            Ok(self.records.lock().unwrap().get(&self.key).cloned())
+        })
     }
     fn compare_and_swap(
         &mut self,
@@ -153,6 +177,20 @@ impl CredentialGuard for Guard {
             if records.get(&self.key).map(|r| r.version.clone()) != expected {
                 return Ok(false);
             }
+            let claims = records
+                .get(&self.key)
+                .is_some_and(|r| replacement.pending_logins.len() < r.pending_logins.len());
+            if claims && let Some((error, reread)) = self.claim_fault.lock().unwrap().take() {
+                match reread.as_str() {
+                    "gone" => {
+                        records.insert(self.key.clone(), replacement);
+                    }
+                    "pending" => {}
+                    "undetermined" => self.unavailable.store(true, Ordering::SeqCst),
+                    other => panic!("unknown reread {other}"),
+                }
+                return Err(error);
+            }
             self.writes.fetch_add(1, Ordering::SeqCst);
             records.insert(self.key.clone(), replacement);
             Ok(true)
@@ -164,7 +202,7 @@ impl CredentialGuard for Guard {
     }
 }
 
-/// Selects `read` (configurable) plus requirements. Asserts it is never called under a store guard.
+/// Selects `read` (configurable) as the target's requested scopes. Asserts it is never called under a store guard.
 struct Policy {
     held: Arc<AtomicUsize>,
     deny: AtomicBool,
@@ -173,6 +211,11 @@ struct Policy {
     only: Mutex<Option<String>>,
     /// Another holder (a detached exchange) may legitimately own a guard.
     shared_lock: AtomicBool,
+    /// A host refusal returned by `select` / `approve_endpoints`.
+    refuse: Mutex<Option<HookError>>,
+    /// `select` calls.
+    selects: AtomicUsize,
+    refuse_endpoints: Mutex<Option<HookError>>,
 }
 impl Policy {
     fn off_lock(&self) {
@@ -189,13 +232,19 @@ impl Policy {
             select: Mutex::new(scopes(&["read"])),
             only: Mutex::new(None),
             shared_lock: AtomicBool::new(false),
+            refuse: Mutex::new(None),
+            selects: AtomicUsize::new(0),
+            refuse_endpoints: Mutex::new(None),
         })
     }
 }
 impl OAuthPolicy for Policy {
     fn approve_endpoints(&self, _: EndpointTrust<'_>) -> Result<(), HookError> {
         self.off_lock();
-        Ok(())
+        match self.refuse_endpoints.lock().unwrap().clone() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
     fn select(
         &self,
@@ -204,8 +253,12 @@ impl OAuthPolicy for Policy {
         required: &[String],
     ) -> Result<TrustDecision, HookError> {
         self.off_lock();
+        self.selects.fetch_add(1, Ordering::SeqCst);
         if self.deny.load(Ordering::SeqCst) {
             return Err(fail(AuthErrorCode::UntrustedDestination));
+        }
+        if let Some(error) = self.refuse.lock().unwrap().clone() {
+            return Err(error);
         }
         let issuer = match self.only.lock().unwrap().clone() {
             Some(only) if !resource.authorization_servers.contains(&only) => {
@@ -214,9 +267,11 @@ impl OAuthPolicy for Policy {
             Some(only) => only,
             None => resource.authorization_servers[0].clone(),
         };
+        // S for the target; the operation's required set is requested anyway.
+        let _ = required;
         Ok(TrustDecision::new(
             issuer,
-            union(&self.select.lock().unwrap(), required),
+            self.select.lock().unwrap().clone(),
         ))
     }
 }
@@ -253,9 +308,13 @@ struct Network {
     registered: AtomicUsize,
     registration_delay: AtomicUsize,
     refuse_registration: AtomicBool,
+    /// Host destination refusals, by endpoint use.
+    refusals: Mutex<Vec<(EndpointUse, HookError)>>,
     /// Mark the registration request written only after the delay.
     registration_written_late: AtomicBool,
     on_registration: Mutex<Option<Hook>>,
+    /// A host network failure returned for the next token request.
+    token_failure: Mutex<Option<HookError>>,
 }
 impl Network {
     fn reply(&self, status: u16, body: Value) {
@@ -309,9 +368,19 @@ impl OAuthNetwork for Network {
     ) -> LocalFuture<'_, Result<(), HookError>> {
         let refused =
             usage == EndpointUse::Registration && self.refuse_registration.load(Ordering::SeqCst);
+        let refusal = self
+            .refusals
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(refused, _)| *refused == usage)
+            .map(|(_, error)| error.clone());
         Box::pin(async move {
             if refused {
                 return Err(fail(AuthErrorCode::UntrustedDestination));
+            }
+            if let Some(error) = refusal {
+                return Err(error);
             }
             Ok(())
         })
@@ -343,6 +412,9 @@ impl OAuthNetwork for Network {
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                     if let Some(hook) = self.on_token.lock().unwrap().take() {
                         hook();
+                    }
+                    if let Some(error) = self.token_failure.lock().unwrap().take() {
+                        return Err(error);
                     }
                     for (failures, unsent) in [
                         (&self.transport_failures, false),
@@ -723,6 +795,9 @@ fn canonical_key_vectors() {
 async fn canonical_token_vectors() {
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     for vector in fixture["token_responses"].as_array().unwrap() {
+        if !vectors::applies(vector) {
+            continue;
+        }
         let id = &vector["id"];
         let host = Host::new();
         let mut oauth = host.pkce(|c| c);
@@ -754,6 +829,7 @@ async fn canonical_token_vectors() {
         } else {
             union(&previous, &oauth.config.allowed_scopes)
         };
+        let ceiling = oauth.config.allowed_scopes.clone();
         if !previous.is_empty() {
             record.token = Some(SavedToken {
                 access_token: "old".into(),
@@ -769,7 +845,7 @@ async fn canonical_token_vectors() {
             previous.clone()
         } else if vector["wire_request"].is_array() {
             let wanted = union(&strings(&vector["requested"]), &required);
-            let wire = oauth.request_scopes(&previous, &wanted);
+            let wire = union(&previous, &within(&ceiling, &wanted));
             assert_eq!(wire, union(&strings(&vector["wire_request"]), &[]), "{id}");
             wire
         } else {
@@ -785,7 +861,7 @@ async fn canonical_token_vectors() {
         let result = match serde_json::from_slice::<BasicTokenResponse>(&body) {
             Ok(response) => {
                 oauth
-                    .committer()
+                    .committer(&ceiling)
                     .save_token(
                         &mut *guard,
                         &mut record,
@@ -809,11 +885,15 @@ async fn canonical_token_vectors() {
         };
         assert_eq!(result.is_ok(), vector["usable"] == true, "{id}");
         if let Some(error) = vector["error"].as_str() {
-            assert_eq!(
-                result.err().unwrap().auth_code().unwrap().as_str(),
-                error,
-                "{id}"
-            );
+            let result = result.err().unwrap();
+            assert_eq!(result.auth_code().unwrap().as_str(), error, "{id}");
+            if vector["error_scopes"].is_array() {
+                assert_eq!(
+                    result.required_scopes(),
+                    strings(&vector["error_scopes"]),
+                    "{id}"
+                );
+            }
         }
         let token = record.token.as_ref();
         let accepted = vector["accepted"] == true;
@@ -831,7 +911,7 @@ async fn canonical_token_vectors() {
             );
             if vector["effective"].is_array() {
                 assert_eq!(
-                    oauth.effective(&token.scopes),
+                    within(&ceiling, &token.scopes),
                     strings(&vector["effective"]),
                     "{id}"
                 );
@@ -851,7 +931,27 @@ async fn canonical_token_vectors() {
             );
         }
         assert_eq!(
-            oauth.cached(&record, &required).is_some(),
+            {
+                let operation = decide::Operation {
+                    required: union(&required, &[]),
+                    hint: Vec::new(),
+                    step_up: false,
+                    unauthorized: false,
+                    challenge: None,
+                };
+                matches!(
+                    decide::grant(
+                        &oauth.config,
+                        &operation,
+                        Mode::Deliver,
+                        &oauth.config.requested_scopes,
+                        record.token.as_ref(),
+                        None,
+                        false
+                    ),
+                    decide::Step::Use(_)
+                )
+            },
             vector["usable"] == true,
             "{id}"
         );
@@ -954,6 +1054,66 @@ fn lifecycle_manifest_maps_to_native_tests() {
             prepare_required_outside_ceiling_denied,
         ),
         ("challenged-replay-once", transport::challenged_replay_once),
+        (
+            "preset-scopes-requested-not-required",
+            scope_contract::rule1_preset_scopes_are_requested_not_required,
+        ),
+        (
+            "ceiling-refusal-before-network-every-path",
+            scope_contract::rule3_ceiling_refusal_before_network,
+        ),
+        (
+            "requested-outside-ceiling-invalid-configuration",
+            scope_contract::rule4_requested_outside_ceiling_invalid_configuration,
+        ),
+        (
+            "challenge-401-scope-requested-not-required",
+            scope_contract::rule5_unauthorized_scope_is_requested_not_required,
+        ),
+        (
+            "malformed-challenge-scope-denied",
+            scope_contract::rule7_malformed_challenge_scope,
+        ),
+        (
+            "insufficient-scope-already-granted-denied",
+            scope_contract::rule8_insufficient_scope_for_granted_scopes,
+        ),
+        (
+            "complete-enforces-stored-required-set",
+            scope_contract::rule9_complete_enforces_login_required_set,
+        ),
+        (
+            "grant-narrower-than-required-denied",
+            scope_contract::rule10_narrower_grants,
+        ),
+        (
+            "host-policy-errors-carry-no-scopes",
+            scope_contract::rule11_host_policy_errors_carry_no_scopes,
+        ),
+        (
+            "entry-points-route-through-decide",
+            scope_contract::entry_points_route_through_decide,
+        ),
+        (
+            "transport-challenge-routing",
+            transport::transport_challenge_routing,
+        ),
+        (
+            "replay-rejection-retires-token",
+            transport::replay_rejection_retires_token,
+        ),
+        (
+            "renewal-token-errors-classified",
+            vectors::canonical_token_error_vectors,
+        ),
+        (
+            "complete-token-endpoint-errors-classified",
+            vectors::canonical_completion_vectors,
+        ),
+        (
+            "complete-error-login-ended",
+            scope_contract::rule12_complete_errors_report_login_ended,
+        ),
         (
             "configured-preset-no-protected-resource-metadata",
             configured_preset_no_protected_resource_metadata,
@@ -1437,7 +1597,7 @@ async fn client_credentials_transient_reissue() {
         (
             400,
             json!({"error":"invalid_grant"}),
-            AuthErrorCode::ProviderFailed,
+            AuthErrorCode::CredentialUnavailable,
         ),
         (
             401,
@@ -1644,8 +1804,8 @@ async fn persisted_expired_logins_swept_on_prepare() {
     assert!(!host.store.dump().contains(&verifier));
 }
 
-// A prepare that rebinds through discovery (here: stale persisted metadata)
-// and is served from the cached token still sweeps expired persisted logins.
+// A prepare on a binding without persisted metadata, served from the cached
+// token with no request at all, still sweeps expired persisted logins.
 #[tokio::test]
 async fn persisted_expired_logins_swept_on_rebinding_prepare() {
     let host = Host::new();
@@ -1678,9 +1838,10 @@ async fn persisted_expired_logins_swept_on_rebinding_prepare() {
         ready(oauth.prepare(context(), budget()).await.unwrap()).token,
         "t"
     );
-    assert!(
-        host.network.metadata_requests().len() > discovery,
-        "rebound"
+    assert_eq!(
+        host.network.metadata_requests().len(),
+        discovery,
+        "served without a request"
     );
     assert!(host.pending().is_empty());
     assert!(!host.store.dump().contains(&verifier));
@@ -2094,6 +2255,16 @@ async fn invalid_callback_does_not_consume() {
         .append_pair("tenant", "one");
     let mut duplicate = valid();
     duplicate.query_pairs_mut().append_pair("code", "again");
+    // The redirect's own query must be present; duplicating any parameter fails.
+    let mut missing_query = callback(&pending);
+    missing_query
+        .query_pairs_mut()
+        .append_pair("iss", "https://issuer.example");
+    let mut duplicate_extra = valid();
+    duplicate_extra
+        .query_pairs_mut()
+        .append_pair("session_state", "a")
+        .append_pair("session_state", "b");
     // No state matches no pending login, like an unknown state.
     let mut stateless = valid();
     stateless.set_query(Some("tenant=one&code=x&iss=https%3A%2F%2Fissuer.example"));
@@ -2108,15 +2279,22 @@ async fn invalid_callback_does_not_consume() {
         wrong_issuer,
         missing_issuer,
         duplicate,
+        missing_query,
+        duplicate_extra,
     ] {
         assert!(oauth.complete(context(), bad, budget()).await.is_err());
     }
     assert!(host.network.tokens().is_empty());
     host.network
         .reply(200, json!({"access_token":"once","token_type":"Bearer"}));
+    // Parameters the authorization server adds (Keycloak, Entra) are allowed.
+    let mut with_session = valid();
+    with_session
+        .query_pairs_mut()
+        .append_pair("session_state", "opaque");
     assert_eq!(
         oauth
-            .complete(context(), valid(), budget())
+            .complete(context(), with_session, budget())
             .await
             .unwrap()
             .token,
@@ -2277,13 +2455,29 @@ async fn scope_challenge_without_required_scope() {
         AuthErrorCode::AccessDenied
     );
     assert!(host.network.seen.lock().unwrap().is_empty());
-    let mut required = cc_context();
-    required.authentication.as_mut().unwrap()["scopes"] = json!(["write"]);
+    // Preset scopes are requested, never required: still denied, no scopes.
+    let mut preset = cc_context();
+    preset.authentication.as_mut().unwrap()["scopes"] = json!(["read"]);
+    let error = oauth.challenge(preset, bare()).await.err().unwrap();
+    assert_eq!(error.auth_code(), Some(AuthErrorCode::AccessDenied));
+    assert!(error.required_scopes().is_empty());
+    assert!(host.network.seen.lock().unwrap().is_empty());
+    // Host-required scopes are the requirement.
+    let required = host.owner(
+        OAuthClientConfig::new("account", "client", OAuthFlow::ClientCredentials)
+            .scopes(scopes(&["read"]), scopes(&["read", "write"]))
+            .required_scopes(scopes(&["write"]))
+            .client_secret(
+                "secret-ref",
+                ClientSecret::new("secret".into()),
+                TokenAuthMethod::ClientSecretBasic,
+            ),
+    );
     host.network.reply(
         200,
         json!({"access_token":"w","token_type":"Bearer","scope":"read write"}),
     );
-    oauth.challenge(required, bare()).await.unwrap();
+    required.challenge(cc_context(), bare()).await.unwrap();
     assert_eq!(host.network.last_form()["scope"], "read write");
 }
 
@@ -2308,9 +2502,11 @@ async fn refresh_broadening_scope_ignored() {
     let token = host.store.token();
     assert_eq!(token.scopes, scopes(&["read"]));
     assert_eq!(token.refresh_token.as_deref(), Some("rotated"));
-    let mut write = context();
-    write.authentication.as_mut().unwrap()["scopes"] = json!(["write"]);
-    let error = recreated.credential(write).await.err().unwrap();
+    let write = host.pkce(|c| {
+        c.scopes(scopes(&["read", "write"]), scopes(&["read", "write"]))
+            .required_scopes(scopes(&["write"]))
+    });
+    let error = write.credential(context()).await.err().unwrap();
     assert_eq!(error.auth_code(), Some(AuthErrorCode::InteractionRequired));
     assert_eq!(error.required_scopes(), ["write"]);
 }
@@ -2429,7 +2625,11 @@ async fn prepare_required_outside_ceiling_denied() {
         .err()
         .unwrap();
     assert_eq!(error.auth_code(), Some(AuthErrorCode::AccessDenied));
-    assert_eq!(error.required_scopes(), ["admin"], "diagnostics only");
+    assert_eq!(
+        error.required_scopes(),
+        ["admin"],
+        "R on the ceiling refusal"
+    );
     assert!(host.network.seen.lock().unwrap().is_empty());
     assert!(host.pending().is_empty());
 }
@@ -2613,7 +2813,7 @@ async fn step_up_keeps_previous_grant() {
         scopes(&["files", "read", "write"])
     );
     assert_eq!(
-        writer.effective(&host.store.token().scopes),
+        within(&writer.config.allowed_scopes, &host.store.token().scopes),
         scopes(&["read", "write"])
     );
     let ready_files = files.credential(context()).await.unwrap().unwrap();
@@ -2920,7 +3120,10 @@ async fn challenge_with_empty_metadata_rediscovers_moved_issuer() {
     host.network
         .reply(200, json!({"access_token":"moved","token_type":"Bearer"}));
     oauth
-        .challenge(unbound(), challenge(401, "Bearer", None))
+        .challenge(
+            unbound(),
+            challenge(401, "Bearer", Some(&host.store.token().generation)),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -2931,7 +3134,9 @@ async fn challenge_with_empty_metadata_rediscovers_moved_issuer() {
         oauth.credential(unbound()).await.unwrap().unwrap().token,
         "moved"
     );
-    // PKCE: the binding is repaired and consent is requested from the new issuer.
+    // PKCE: interaction_required needs no authorization-server request, so
+    // the challenges decide it at once; the host's prepare repairs the binding
+    // and requests consent from the new issuer.
     let host = Host::new();
     let oauth = host.pkce(|c| c);
     assert_eq!(
@@ -2950,6 +3155,13 @@ async fn challenge_with_empty_metadata_rediscovers_moved_issuer() {
                 .await
         ),
         AuthErrorCode::InteractionRequired
+    );
+    let pending = login(oauth.prepare(unbound(), budget()).await.unwrap());
+    assert!(
+        pending
+            .authorization_url()
+            .as_str()
+            .starts_with("https://issuer2.example/")
     );
     assert_eq!(
         host.store.binding().unwrap().metadata.issuer,
@@ -2975,7 +3187,10 @@ async fn challenge_rebinds_when_old_issuer_still_answers() {
     host.network
         .reply(200, json!({"access_token":"rebound","token_type":"Bearer"}));
     oauth
-        .challenge(unbound(), challenge(401, "Bearer", None))
+        .challenge(
+            unbound(),
+            challenge(401, "Bearer", Some(&host.store.token().generation)),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -3129,7 +3344,10 @@ async fn definitive_discovery_failure_never_falls_back_to_cached_binding() {
     let header = r#"Bearer resource_metadata="https://api.example/missing""#;
     assert!(
         oauth
-            .challenge(unbound(), challenge(401, header, None))
+            .challenge(
+                unbound(),
+                challenge(401, header, Some(&host.store.token().generation))
+            )
             .await
             .is_err()
     );
@@ -3138,7 +3356,10 @@ async fn definitive_discovery_failure_never_falls_back_to_cached_binding() {
     *host.network.issuer_outage.lock().unwrap() = Some("issuer2.example".into());
     assert!(
         oauth
-            .challenge(unbound(), challenge(401, "Bearer", None))
+            .challenge(
+                unbound(),
+                challenge(401, "Bearer", Some(&host.store.token().generation))
+            )
             .await
             .is_err()
     );

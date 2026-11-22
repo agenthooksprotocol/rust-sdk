@@ -496,8 +496,10 @@ impl ManagedBackend for HttpBackend {
                         .join(", ");
                     if (status == 401 || (status == 403 && insufficient_scope(&challenge_header)))
                         && let Some(provider) = provider
-                        && !std::mem::replace(&mut challenged, true)
                     {
+                        // A token rejected on the replay is handed over too, so a
+                        // 401 retires it; it is not replayed again.
+                        let replayed = std::mem::replace(&mut challenged, true);
                         provider
                             .challenge(
                                 context.clone(),
@@ -513,7 +515,7 @@ impl ManagedBackend for HttpBackend {
                             .await
                             .map_err(crate::auth::sanitize_provider_error)?;
                         // A second rejection is an operational failure.
-                        if !notification {
+                        if !notification && !replayed {
                             continue;
                         }
                     }
@@ -908,14 +910,17 @@ mod transport_auth_tests {
                         respond(&listener, status, challenge).await;
                     }
                 });
-                // A second rejection is an operational failure without a second challenge.
+                // A second rejection is an operational failure without a second
+                // replay, but its token is handed to the provider too.
                 assert!(result.is_err());
                 let attempts = if notification { 1 } else { 2 };
                 assert_eq!(provider.credentials.load(Ordering::SeqCst), attempts);
                 let challenges = provider.challenges.lock().unwrap().clone();
-                assert_eq!(challenges.len(), 1);
-                assert_eq!(challenges[0].status, status);
-                assert_eq!(challenges[0].attempt_id.as_deref(), Some("attempt"));
+                assert_eq!(challenges.len(), attempts);
+                for challenge in &challenges {
+                    assert_eq!(challenge.status, status);
+                    assert_eq!(challenge.attempt_id.as_deref(), Some("attempt"));
+                }
                 no_replay(&listener).await;
             }
         }

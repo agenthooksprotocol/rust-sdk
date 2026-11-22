@@ -48,7 +48,8 @@ The supplied host OAuth provider owns its client configuration, trusted networki
 credential storage, UI, callback transport and cancellation. It can inspect
 `context.target()?` for a typed binding, either `OAuthFlow::AuthorizationCodePkce`
 or `OAuthFlow::ClientCredentials`, exact issuer/resource identity, client ID and
-configured scopes. Target parsing is not network trust approval. Destinations
+configured scopes (`preset_scopes()`: requested, never required; when present
+they must equal the client's requested scopes). Target parsing is not network trust approval. Destinations
 retain their full path/query; hosts must additionally isolate credential namespaces.
 
 Enable the optional `managed-oauth` feature for `auth::managed::ManagedOAuth`:

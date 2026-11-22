@@ -268,16 +268,26 @@ fn default_auth_methods() -> Vec<String> {
     vec!["client_secret_basic".to_owned()]
 }
 
-/// Returns trusted metadata, its retrieval provenance and the scopes to request.
-pub(super) async fn discover(
+/// The protected resource and its host policy selection: a preset's own, or
+/// protected-resource metadata discovery's for an unbound target. No
+/// authorization-server request.
+pub(super) struct Resource {
+    pub(super) resource: String,
+    pub(super) hint: Option<ResourceMetadataHint>,
+    pub(super) decision: super::TrustDecision,
+}
+
+/// Discover the resource and select its issuer, without any
+/// authorization-server request.
+pub(super) async fn discover_resource(
     owner: &ManagedOAuth,
     target: &AuthTarget,
     challenge: Option<&Challenge>,
     saved_hint: Option<&ResourceMetadataHint>,
-    cached_issuer: Option<&str>,
     required: &[String],
+    selection: &super::Selections,
     budget: OperationBudget,
-) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>, Vec<String>), HookError> {
+) -> Result<Resource, HookError> {
     let resource_url = https(target.destination().as_str(), false)?;
     let (metadata, hint) = match target.binding() {
         AuthBinding::OAuth { resource, .. } => {
@@ -315,11 +325,32 @@ pub(super) async fn discover(
     for issuer in &metadata.authorization_servers {
         https(issuer, true)?;
     }
-    let decision = owner.select(target, &metadata, required)?;
+    // The operation's selection, made again only for other servers.
+    let decision = owner.selected(selection, target, &metadata, required)?;
+    Ok(Resource {
+        resource: metadata.resource,
+        hint,
+        decision,
+    })
+}
+
+/// Returns trusted metadata, its retrieval provenance and the target's S.
+pub(super) async fn discover(
+    owner: &ManagedOAuth,
+    target: &AuthTarget,
+    resource: Resource,
+    cached_issuer: Option<&str>,
+    budget: OperationBudget,
+) -> Result<(TrustedMetadata, Option<ResourceMetadataHint>, Vec<String>), HookError> {
+    let Resource {
+        resource,
+        hint,
+        decision,
+    } = resource;
     let (issuer, scopes) = (decision.issuer, decision.scopes);
     // Validated metadata naming another issuer is a move, never a transient outage.
     let moved = cached_issuer.is_some_and(|cached| cached != issuer);
-    let metadata = issuer_metadata(owner, target, metadata.resource, issuer, budget)
+    let metadata = issuer_metadata(owner, target, resource, issuer, budget)
         .await
         .map_err(|error| {
             if moved {
