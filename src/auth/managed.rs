@@ -1684,9 +1684,12 @@ impl ManagedOAuth {
         if mode == Mode::Lookup && saved.as_ref().is_some_and(|r| !self.compatible(&target, r)) {
             return Err(fail(AuthErrorCode::DiscoveryFailed).into());
         }
-        // Challenge handling always rebinds through full discovery, so a resource
-        // that moved to another authorization server is found even if the old one
-        // still answers. The stored issuer's metadata is not refetched first.
+        // Challenge handling rebinds through full discovery when its outcome must
+        // contact the authorization server (a refresh, a client-credentials
+        // acquisition), so a resource that moved to another authorization server
+        // is found even if the old one still answers; the stored issuer's
+        // metadata is not refetched first. Outcomes that need no request (use, a
+        // local refusal, PKCE interaction_required) are decided before it.
         let force = rediscover || challenge.is_some();
         // A refused stored binding replaced by rediscovery is not known.
         let known = saved
